@@ -54,3 +54,19 @@ npm run mobile:android
 - 从中文自然语言中提取奶量、夜醒、哄睡难度、里程碑、提醒事项
 - 自动生成成长时间线、今日照护概览、AI 记忆和提醒追踪
 - 健康、疫苗、用药建议保留安全边界，不替代医生诊断
+
+## 后端服务
+
+仓库包含一个 Spring Boot 后端模块：[backend](backend)。当前后端提供文字聊天接口，接收 App 端文本后调用 DeepSeek Chat Completions API。
+
+```powershell
+cd backend
+$env:DEEPSEEK_API_KEY="sk-..."
+mvn spring-boot:run
+```
+
+接口：
+
+```http
+POST http://localhost:8080/api/ai/chat
+```

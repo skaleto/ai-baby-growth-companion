@@ -1,0 +1,20 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: baby-companion-backend
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,capacitor://localhost,http://localhost}
+
+deepseek:
+  api-key: ${DEEPSEEK_API_KEY:}
+  base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+  chat-path: ${DEEPSEEK_CHAT_PATH:/chat/completions}
+  model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+  max-tokens: ${DEEPSEEK_MAX_TOKENS:800}
+  temperature: ${DEEPSEEK_TEMPERATURE:0.4}
+  connect-timeout: ${DEEPSEEK_CONNECT_TIMEOUT:5s}
+  read-timeout: ${DEEPSEEK_READ_TIMEOUT:45s}
