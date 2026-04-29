@@ -4,6 +4,10 @@ ai-baby-growth-companion
 
 面向孕期到宝宝 1 岁家庭的 AI 成长记录 App。当前版本是 React + Capacitor 的移动 MVP：浏览器可预览，同一套代码可同步到 iOS 和 Android 原生工程。
 
+## 产品文档
+
+- [AI宝宝成长伙伴 App 需求文档](docs/product-requirements.md)
+
 ## 本地运行
 
 ```bash
