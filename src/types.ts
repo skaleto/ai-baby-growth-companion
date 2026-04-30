@@ -25,6 +25,8 @@ export interface ChatMessage {
   createdAt: string;
   attachments?: Attachment[];
   tags?: string[];
+  reasoning?: string;
+  isStreaming?: boolean;
 }
 
 export interface GrowthEvent {
@@ -78,4 +80,26 @@ export interface AnalysisResult {
   careLogPatch?: Partial<CareLog>;
   reminders: Reminder[];
   memories: MemoryItem[];
+}
+
+export interface AgentChatRequest {
+  message: string;
+  babyProfile: BabyProfile;
+  recentMessages: ChatMessage[];
+  careLogs: CareLog[];
+  memories: MemoryItem[];
+  attachments: Attachment[];
+}
+
+export interface AgentChatResponse {
+  aiText: string;
+  tags?: string[] | null;
+  growthEvent?: Partial<GrowthEvent> | null;
+  careLogPatch?: Partial<CareLog> | null;
+  reminders?: Array<Partial<Reminder>> | null;
+  memories?: Array<Partial<MemoryItem>> | null;
+  usedSkills?: string[] | null;
+  traceId?: string | null;
+  model?: string | null;
+  requestId?: string | null;
 }

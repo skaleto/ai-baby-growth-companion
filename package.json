@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
+    "build:android:debug": "bash scripts/build-android-debug.sh",
     "preview": "vite preview --host 0.0.0.0",
     "mobile:init": "npm run build && cap add ios && cap add android",
     "mobile:sync": "npm run build && cap sync",

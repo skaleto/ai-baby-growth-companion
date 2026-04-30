@@ -32,4 +32,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ErrorResponse("DEEPSEEK_API_ERROR", exception.getMessage(), Instant.now()));
     }
+
+    @ExceptionHandler(AgentResponseParseException.class)
+    public ResponseEntity<ErrorResponse> handleAgentResponseParse(AgentResponseParseException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("AGENT_RESPONSE_PARSE_ERROR", exception.getMessage(), Instant.now()));
+    }
 }

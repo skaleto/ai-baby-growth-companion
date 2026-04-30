@@ -28,8 +28,8 @@ import { Capacitor } from "@capacitor/core";
 import { Camera as NativeCamera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { LocalNotifications } from "@capacitor/local-notifications";
-import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
-import { analyzeInput } from "./aiEngine";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { runAgentChatStream } from "./agentApi";
 import {
   initialCareLogs,
   initialGrowthEvents,
@@ -41,7 +41,7 @@ import {
   todayISO,
 } from "./data";
 import { useStoredState } from "./storage";
-import { Attachment, CareLog, ChatMessage, Reminder } from "./types";
+import { AgentChatResponse, Attachment, CareLog, ChatMessage, GrowthEvent, MemoryItem, Reminder } from "./types";
 
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -152,6 +152,139 @@ const scheduleNativeReminders = async (newReminders: Reminder[]) => {
   }
 };
 
+const normalizeReminderCategory = (category: string | undefined): Reminder["category"] => {
+  if (category === "vaccine" || category === "routine" || category === "care" || category === "custom") {
+    return category;
+  }
+  return "custom";
+};
+
+const normalizeReminderStatus = (status: string | undefined): Reminder["status"] => {
+  if (status === "open" || status === "done" || status === "missed") return status;
+  return "open";
+};
+
+const normalizeMemoryCategory = (category: string | undefined): MemoryItem["category"] => {
+  if (
+    category === "routine" ||
+    category === "preference" ||
+    category === "health" ||
+    category === "caregiver" ||
+    category === "concern"
+  ) {
+    return category;
+  }
+  return "routine";
+};
+
+const normalizeSoothing = (value: CareLog["soothing"] | undefined): CareLog["soothing"] | undefined => {
+  if (value === "easy" || value === "normal" || value === "hard") return value;
+  return undefined;
+};
+
+const hasCareLogContent = (patch: Partial<CareLog>) =>
+  Boolean(
+    patch.milkMl ||
+      patch.milkTimes ||
+      patch.sleepHours ||
+      patch.wakes ||
+      patch.soothing ||
+      patch.solids?.length ||
+      patch.poop ||
+      patch.temperature ||
+      patch.notes?.length,
+  );
+
+const normalizeAgentResponse = (result: AgentChatResponse, parentText: string) => {
+  const now = new Date().toISOString();
+  const growthEvent: GrowthEvent | undefined =
+    result.growthEvent && (result.growthEvent.title || result.growthEvent.summary)
+      ? {
+          id: result.growthEvent.id ?? makeId("growth"),
+          type: result.growthEvent.type ?? "daily_growth",
+          title: result.growthEvent.title ?? "新的成长瞬间",
+          date: result.growthEvent.date ?? todayISO(),
+          summary: result.growthEvent.summary ?? `${parentText}。`,
+          firstTime: Boolean(result.growthEvent.firstTime),
+          mediaKind: result.growthEvent.mediaKind,
+          tags: result.growthEvent.tags ?? ["成长"],
+        }
+      : undefined;
+
+  const careLogPatch =
+    result.careLogPatch && hasCareLogContent(result.careLogPatch)
+      ? {
+          ...result.careLogPatch,
+          date: result.careLogPatch.date ?? todayISO(),
+          soothing: normalizeSoothing(result.careLogPatch.soothing),
+          solids: result.careLogPatch.solids ?? [],
+          notes: result.careLogPatch.notes?.length ? result.careLogPatch.notes : [parentText],
+        }
+      : undefined;
+
+  const reminders: Reminder[] = (result.reminders ?? [])
+    .filter((item) => item.title || item.dueText)
+    .map((item) => ({
+      id: item.id ?? makeId("reminder"),
+      title: item.title ?? "新的照护提醒",
+      dueText: item.dueText ?? "待确认时间",
+      category: normalizeReminderCategory(item.category),
+      recurrence: item.recurrence,
+      status: normalizeReminderStatus(item.status),
+      createdAt: item.createdAt ?? now,
+      history: item.history ?? [],
+    }));
+
+  const memories: MemoryItem[] = (result.memories ?? [])
+    .filter((item) => item.text?.trim())
+    .map((item) => ({
+      id: item.id ?? makeId("memory"),
+      text: item.text!.trim(),
+      category: normalizeMemoryCategory(item.category),
+      confidence: item.confidence ?? 0.72,
+      updatedAt: item.updatedAt ?? now,
+    }));
+
+  return {
+    aiText: result.aiText,
+    tags: result.tags ?? [],
+    growthEvent,
+    careLogPatch,
+    reminders,
+    memories,
+  };
+};
+
+const extractAiTextPreview = (jsonContent: string) => {
+  const keyIndex = jsonContent.indexOf('"aiText"');
+  if (keyIndex < 0) return "";
+
+  const colonIndex = jsonContent.indexOf(":", keyIndex);
+  if (colonIndex < 0) return "";
+
+  const quoteIndex = jsonContent.indexOf('"', colonIndex + 1);
+  if (quoteIndex < 0) return "";
+
+  let value = "";
+  let escaping = false;
+  for (let index = quoteIndex + 1; index < jsonContent.length; index += 1) {
+    const char = jsonContent[index];
+    if (escaping) {
+      value += char === "n" ? "\n" : char === "t" ? "\t" : char;
+      escaping = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaping = true;
+      continue;
+    }
+    if (char === '"') return value;
+    value += char;
+  }
+
+  return value;
+};
+
 function App() {
   const [profile] = useStoredState("baby-companion-profile", initialProfile);
   const [messages, setMessages] = useStoredState("baby-companion-messages", initialMessages);
@@ -162,7 +295,9 @@ function App() {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const appPlatform = platformLabel();
 
   const todayLog = careLogs.find((item) => item.date === todayISO()) ?? careLogs[careLogs.length - 1];
@@ -174,6 +309,14 @@ function App() {
     const delta = recent[recent.length - 1] - recent[0];
     return delta >= 0 ? `近3次 +${delta} ml` : `近3次 ${delta} ml`;
   }, [careLogs]);
+
+  useEffect(() => {
+    const list = messageListRef.current;
+    if (!list) return;
+    requestAnimationFrame(() => {
+      list.scrollTo({ top: list.scrollHeight, behavior: isSubmitting ? "auto" : "smooth" });
+    });
+  }, [messages, isSubmitting]);
 
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -249,33 +392,107 @@ function App() {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const text = input.trim();
-    if (!text && attachments.length === 0) return;
+    if ((!text && attachments.length === 0) || isSubmitting) return;
 
+    const submittedAttachments = attachments;
     const parentMessage: ChatMessage = {
       id: makeId("msg"),
       role: "parent",
       text: text || "上传了新的成长素材",
       createdAt: new Date().toISOString(),
-      attachments,
+      attachments: submittedAttachments,
     };
-    const result = analyzeInput(parentMessage.text, attachments, profile, careLogs, memories);
-    const aiMessage: ChatMessage = {
+    const pendingAiMessage: ChatMessage = {
       id: makeId("msg"),
       role: "ai",
-      text: result.aiText,
+      text: "正在生成最终回复...",
       createdAt: new Date().toISOString(),
-      tags: result.tags,
+      tags: ["处理中"],
+      reasoning: "",
+      isStreaming: true,
     };
 
-    setMessages((current) => [...current, parentMessage, aiMessage].slice(-32));
-    if (result.growthEvent) setGrowthEvents((current) => [...current, result.growthEvent!]);
-    if (result.careLogPatch) setCareLogs((current) => mergeCareLog(current, result.careLogPatch!));
-    if (result.reminders.length) setReminders((current) => [...result.reminders, ...current]);
-    if (result.memories.length) setMemories((current) => [...result.memories, ...current].slice(0, 10));
-    await scheduleNativeReminders(result.reminders);
-    if (Capacitor.isNativePlatform()) void Haptics.impact({ style: ImpactStyle.Light });
+    setIsSubmitting(true);
     setInput("");
     setAttachments([]);
+    setMessages((current) => [...current, parentMessage, pendingAiMessage].slice(-32));
+
+    try {
+      let reasoningText = "";
+      let contentText = "";
+      const agentResponse = await runAgentChatStream(
+        {
+          message: parentMessage.text,
+          babyProfile: profile,
+          recentMessages: messages.slice(-12),
+          careLogs: careLogs.slice(-10),
+          memories: memories.slice(0, 10),
+          attachments: submittedAttachments.map((item) => ({
+            id: item.id,
+            name: item.name,
+            kind: item.kind,
+          })),
+        },
+        {
+          onReasoning: (delta) => {
+            reasoningText += delta;
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === pendingAiMessage.id
+                  ? { ...message, reasoning: reasoningText, text: "正在思考并整理..." }
+                  : message,
+              ),
+            );
+          },
+          onContent: (delta) => {
+            contentText += delta;
+            const preview = extractAiTextPreview(contentText);
+            if (!preview) return;
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === pendingAiMessage.id
+                  ? { ...message, text: preview, tags: ["生成中"], reasoning: reasoningText }
+                  : message,
+              ),
+            );
+          },
+        },
+      );
+      const result = normalizeAgentResponse(agentResponse, parentMessage.text);
+      const aiMessage: ChatMessage = {
+        id: makeId("msg"),
+        role: "ai",
+        text: result.aiText,
+        createdAt: new Date().toISOString(),
+        tags: result.tags,
+        reasoning: reasoningText,
+        isStreaming: false,
+      };
+
+      setMessages((current) =>
+        current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
+      );
+      if (result.growthEvent) setGrowthEvents((current) => [...current, result.growthEvent!]);
+      if (result.careLogPatch) setCareLogs((current) => mergeCareLog(current, result.careLogPatch!));
+      if (result.reminders.length) setReminders((current) => [...result.reminders, ...current]);
+      if (result.memories.length) setMemories((current) => [...result.memories, ...current].slice(0, 10));
+      await scheduleNativeReminders(result.reminders);
+      if (Capacitor.isNativePlatform()) void Haptics.impact({ style: ImpactStyle.Light });
+    } catch (error) {
+      const aiMessage: ChatMessage = {
+        id: makeId("msg"),
+        role: "ai",
+        text: error instanceof Error ? `AI 服务暂时不可用：${error.message}` : "AI 服务暂时不可用，请稍后再试。",
+        createdAt: new Date().toISOString(),
+        tags: ["系统"],
+        isStreaming: false,
+      };
+      setMessages((current) =>
+        current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const completeReminder = (target: Reminder) => {
@@ -412,13 +629,19 @@ function App() {
             </button>
           </div>
 
-          <div className="message-list">
+          <div className="message-list" ref={messageListRef}>
             {messages.map((message) => (
               <article className={`message ${message.role}`} key={message.id}>
                 <div className="message-meta">
                   <span>{message.role === "ai" ? "AI" : profile.nickname + "家"}</span>
                   <time>{formatTime(message.createdAt)}</time>
                 </div>
+                {message.role === "ai" && message.reasoning ? (
+                  <details className="reasoning-box" open={message.isStreaming}>
+                    <summary>{message.isStreaming ? "思考中" : "思考过程"}</summary>
+                    <p>{message.reasoning}</p>
+                  </details>
+                ) : null}
                 <p>{message.text}</p>
                 {message.attachments?.length ? (
                   <div className="attachment-strip">
@@ -479,8 +702,9 @@ function App() {
                 rows={1}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="今天小宝第一次翻身了，喝奶 5 次，每次 120ml"
+                disabled={isSubmitting}
               />
-              <button className="send-button" type="submit" title="发送">
+              <button className="send-button" type="submit" title={isSubmitting ? "处理中" : "发送"} disabled={isSubmitting}>
                 <Send size={19} />
               </button>
             </div>

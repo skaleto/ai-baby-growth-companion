@@ -48,7 +48,8 @@ public class DeepSeekChatService {
     }
 
     public ChatResponse chat(ChatRequest request) {
-        if (!StringUtils.hasText(properties.getApiKey())) {
+        String apiKey = properties.getResolvedApiKey();
+        if (!StringUtils.hasText(apiKey)) {
             throw new IllegalStateException("DEEPSEEK_API_KEY is not configured");
         }
 
@@ -60,13 +61,14 @@ public class DeepSeekChatService {
                 ),
                 false,
                 properties.getMaxTokens(),
-                properties.getTemperature()
+                properties.getTemperature(),
+                null
         );
 
         try {
             DeepSeekChatResponse response = restClient.post()
                     .uri(properties.getChatPath())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .body(deepSeekRequest)
                     .retrieve()
                     .body(DeepSeekChatResponse.class);

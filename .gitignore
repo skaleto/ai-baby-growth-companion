@@ -1,12 +1,36 @@
+# Dependencies
 node_modules/
+
+# Frontend build output
 dist/
+
+# Mobile package outputs
+*.apk
+*.aab
+*.aar
+*.ap_
+*.ipa
+*.xcarchive
+
+# Android build output
+android/.gradle/
+android/app/build/
+android/build/
+android/app/debug/
+android/app/release/
+
+# Backend build output
+backend/target/
+
+# iOS build output
+ios/App/Pods/
+ios/App/build/
+ios/App/output/
+ios/App/DerivedData/
+ios/App/App.xcworkspace/xcuserdata/
+
+# Local editor/system files
 .DS_Store
 .idea/
 .vscode/
 *.log
-android/.gradle/
-android/app/build/
-android/build/
-ios/App/Pods/
-ios/App/build/
-ios/App/App.xcworkspace/xcuserdata/
