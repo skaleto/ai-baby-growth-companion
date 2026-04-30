@@ -11,7 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties = {"deepseek.api-key=", "deepseek.api-key-file="})
+@SpringBootTest(properties = {"deepseek.api-key=", "deepseek.api-key-file=", "doubao.api-key=", "doubao.api-key-file="})
 @AutoConfigureMockMvc
 class AgentControllerTests {
 

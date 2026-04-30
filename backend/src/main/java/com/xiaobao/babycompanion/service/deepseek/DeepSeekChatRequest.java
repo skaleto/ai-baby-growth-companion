@@ -14,6 +14,20 @@ public record DeepSeekChatRequest(
         Integer maxTokens,
         Double temperature,
         @JsonProperty("response_format")
-        DeepSeekResponseFormat responseFormat
+        DeepSeekResponseFormat responseFormat,
+        Object thinking,
+        List<DeepSeekTool> tools,
+        @JsonProperty("tool_choice")
+        Object toolChoice
 ) {
+    public DeepSeekChatRequest(
+            String model,
+            List<DeepSeekMessage> messages,
+            Boolean stream,
+            Integer maxTokens,
+            Double temperature,
+            DeepSeekResponseFormat responseFormat
+    ) {
+        this(model, messages, stream, maxTokens, temperature, responseFormat, null, null, null);
+    }
 }

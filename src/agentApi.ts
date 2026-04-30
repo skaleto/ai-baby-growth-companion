@@ -1,4 +1,4 @@
-import { AgentChatRequest, AgentChatResponse } from "./types";
+import { AgentChatRequest, AgentChatResponse, ToolActivity } from "./types";
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
@@ -36,11 +36,17 @@ export async function runAgentChat(request: AgentChatRequest): Promise<AgentChat
 type StreamHandlers = {
   onReasoning?: (delta: string) => void;
   onContent?: (delta: string) => void;
+  onTool?: (activity: ToolActivity) => void;
 };
 
 type StreamEnvelope = {
   delta?: string;
   message?: string;
+  id?: string;
+  toolId?: string;
+  name?: string;
+  status?: ToolActivity["status"];
+  query?: string;
 };
 
 export async function runAgentChatStream(
@@ -93,6 +99,16 @@ export async function runAgentChatStream(
     }
     if (event === "content" && envelope.delta) {
       handlers.onContent?.(envelope.delta);
+    }
+    if (event === "tool" && envelope.id && envelope.toolId && envelope.name && envelope.status && envelope.message) {
+      handlers.onTool?.({
+        id: envelope.id,
+        toolId: envelope.toolId,
+        name: envelope.name,
+        status: envelope.status,
+        message: envelope.message,
+        query: envelope.query,
+      });
     }
     if (event === "error") {
       throw new Error(envelope.message ?? "AI 流式响应失败");

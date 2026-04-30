@@ -5,6 +5,13 @@ const config: CapacitorConfig = {
   appName: "小宝成长伙伴",
   webDir: "dist",
   bundledWebRuntime: false,
+  android: {
+    allowMixedContent: true,
+  },
+  server: {
+    androidScheme: "http",
+    cleartext: true,
+  },
   plugins: {
     Camera: {
       permissions: ["camera", "photos"],

@@ -9,6 +9,7 @@ public record AgentChatResponse(
         AgentCareLog careLogPatch,
         List<AgentReminder> reminders,
         List<AgentMemory> memories,
+        List<AgentSource> sources,
         List<String> usedSkills,
         String traceId,
         String model,

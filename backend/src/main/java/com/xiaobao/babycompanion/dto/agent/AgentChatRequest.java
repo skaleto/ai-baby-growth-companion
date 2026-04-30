@@ -11,6 +11,9 @@ public record AgentChatRequest(
         @Size(max = 4000, message = "message must be at most 4000 characters")
         String message,
 
+        @Size(max = 80, message = "model must be at most 80 characters")
+        String model,
+
         @Valid
         AgentBabyProfile babyProfile,
 
@@ -24,6 +27,8 @@ public record AgentChatRequest(
         List<@Valid AgentMemory> memories,
 
         @Size(max = 8, message = "attachments must include at most 8 items")
-        List<@Valid AgentAttachment> attachments
+        List<@Valid AgentAttachment> attachments,
+
+        Boolean thinkingEnabled
 ) {
 }

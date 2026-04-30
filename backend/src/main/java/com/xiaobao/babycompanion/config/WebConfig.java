@@ -6,7 +6,12 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-@EnableConfigurationProperties({CorsProperties.class, DeepSeekProperties.class})
+@EnableConfigurationProperties({
+        CorsProperties.class,
+        DeepSeekProperties.class,
+        DoubaoProperties.class,
+        DoubaoAsrProperties.class
+})
 public class WebConfig implements WebMvcConfigurer {
 
     private final CorsProperties corsProperties;

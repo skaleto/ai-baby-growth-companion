@@ -7,6 +7,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.config.DeepSeekProperties;
+import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
 import org.junit.jupiter.api.Test;
@@ -15,8 +16,10 @@ class AgentRuntimeTests {
 
     private final AgentRuntime agentRuntime = new AgentRuntime(
             new DeepSeekProperties(),
+            new DoubaoProperties(),
             new ObjectMapper(),
-            new SkillRegistry()
+            new SkillRegistry(),
+            new ToolRegistry(List.of())
     );
 
     @Test
@@ -30,13 +33,15 @@ class AgentRuntimeTests {
                           "careLogPatch": {"milkMl": 600, "milkTimes": 5, "solids": [], "notes": ["喝奶 5 次"]},
                           "reminders": [],
                           "memories": [],
+                          "sources": [],
                           "usedSkills": ["ignored-by-runtime"]
                         }
                         """,
                 "agent-test",
                 "deepseek-test",
                 "request-test",
-                List.of("default-baby-companion")
+                List.of("default-baby-companion"),
+                List.of()
         );
 
         assertThat(response.aiText()).isEqualTo("已帮你记录今天的喂养。");
@@ -55,7 +60,8 @@ class AgentRuntimeTests {
                 "agent-test",
                 "deepseek-test",
                 "request-test",
-                List.of("default-baby-companion")
+                List.of("default-baby-companion"),
+                List.of()
         )).isInstanceOf(AgentResponseParseException.class)
                 .hasMessageContaining("JSON object");
     }

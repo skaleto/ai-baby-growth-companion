@@ -5,6 +5,19 @@ export interface Attachment {
   name: string;
   kind: AttachmentKind;
   url?: string;
+  dataUrl?: string;
+}
+
+export type AgentModelId =
+  | "deepseek-v4-pro"
+  | "deepseek-v4-flash"
+  | "doubao-seed-2.0-pro"
+  | "doubao-seed-2.0-lite";
+
+export interface AgentModelOption {
+  id: AgentModelId;
+  label: string;
+  supportsImageInput: boolean;
 }
 
 export interface BabyProfile {
@@ -27,6 +40,17 @@ export interface ChatMessage {
   tags?: string[];
   reasoning?: string;
   isStreaming?: boolean;
+  toolActivities?: ToolActivity[];
+  sources?: AgentSource[];
+}
+
+export interface ToolActivity {
+  id: string;
+  toolId: string;
+  name: string;
+  status: "running" | "completed" | "failed";
+  message: string;
+  query?: string;
 }
 
 export interface GrowthEvent {
@@ -84,11 +108,13 @@ export interface AnalysisResult {
 
 export interface AgentChatRequest {
   message: string;
+  model: AgentModelId;
   babyProfile: BabyProfile;
   recentMessages: ChatMessage[];
   careLogs: CareLog[];
   memories: MemoryItem[];
   attachments: Attachment[];
+  thinkingEnabled: boolean;
 }
 
 export interface AgentChatResponse {
@@ -98,8 +124,15 @@ export interface AgentChatResponse {
   careLogPatch?: Partial<CareLog> | null;
   reminders?: Array<Partial<Reminder>> | null;
   memories?: Array<Partial<MemoryItem>> | null;
+  sources?: AgentSource[] | null;
   usedSkills?: string[] | null;
   traceId?: string | null;
   model?: string | null;
   requestId?: string | null;
+}
+
+export interface AgentSource {
+  title: string;
+  url: string;
+  snippet?: string | null;
 }

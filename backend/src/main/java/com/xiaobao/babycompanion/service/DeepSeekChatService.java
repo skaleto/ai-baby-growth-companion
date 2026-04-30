@@ -78,7 +78,7 @@ public class DeepSeekChatService {
             }
 
             String reply = Optional.ofNullable(response.choices().get(0).message())
-                    .map(DeepSeekMessage::content)
+                    .map(DeepSeekMessage::contentAsText)
                     .filter(StringUtils::hasText)
                     .orElseThrow(() -> new DeepSeekApiException("DeepSeek response did not include message content"));
 

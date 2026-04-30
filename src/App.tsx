@@ -5,20 +5,28 @@ import {
   CalendarDays,
   Camera as CameraIcon,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleHelp,
   Clock3,
+  Globe2,
   HeartPulse,
   Image as ImageIcon,
+  Keyboard as KeyboardIcon,
   LineChart,
+  MessageCircle,
   Mic,
   Milk,
   Moon,
   Music2,
+  PencilLine,
+  Save,
   Send,
   ShieldAlert,
   Smartphone,
   Sparkles,
   Syringe,
+  UserRound,
   Users,
   Utensils,
   Video,
@@ -28,8 +36,19 @@ import { Capacitor } from "@capacitor/core";
 import { Camera as NativeCamera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { LocalNotifications } from "@capacitor/local-notifications";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  type CSSProperties,
+  FormEvent,
+  KeyboardEvent,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { runAgentChatStream } from "./agentApi";
+import { AsrStreamController, runAsrStream } from "./asrApi";
 import {
   initialCareLogs,
   initialGrowthEvents,
@@ -41,13 +60,69 @@ import {
   todayISO,
 } from "./data";
 import { useStoredState } from "./storage";
-import { AgentChatResponse, Attachment, CareLog, ChatMessage, GrowthEvent, MemoryItem, Reminder } from "./types";
+import {
+  AgentChatResponse,
+  AgentModelId,
+  AgentModelOption,
+  AgentSource,
+  Attachment,
+  BabyProfile,
+  CareLog,
+  ChatMessage,
+  GrowthEvent,
+  MemoryItem,
+  Reminder,
+  ToolActivity,
+} from "./types";
+
+const MODEL_OPTIONS: AgentModelOption[] = [
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", supportsImageInput: false },
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", supportsImageInput: false },
+  { id: "doubao-seed-2.0-pro", label: "Doubao Seed 2.0 Pro", supportsImageInput: true },
+  { id: "doubao-seed-2.0-lite", label: "Doubao Seed 2.0 Lite", supportsImageInput: true },
+];
+
+const DEFAULT_MODEL: AgentModelId = "deepseek-v4-pro";
+
+const MOBILE_TABS = [
+  { id: "chat", label: "聊天", icon: MessageCircle },
+  { id: "records", label: "记录", icon: CalendarDays },
+  { id: "reminders", label: "提醒", icon: Bell },
+  { id: "profile", label: "我的", icon: UserRound },
+] as const;
+
+type MobileTab = (typeof MOBILE_TABS)[number]["id"];
+
+type ComposerMode = "keyboard" | "voice";
+
+type VoiceStatus = "idle" | "connecting" | "listening" | "processing" | "unsupported" | "error";
+
+type RecordEventType = "message" | "care" | "growth" | "reminder";
+
+type RecordEvent = {
+  id: string;
+  date: string;
+  timeLabel: string;
+  sortValue: number;
+  type: RecordEventType;
+  title: string;
+  body: string;
+  tags: string[];
+};
 
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
+
+const formatFullDate = (value: string) =>
+  new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(
+    new Date(`${value}T00:00:00`),
+  );
+
+const monthTitle = (value: string) =>
+  new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(new Date(`${value}-01T00:00:00`));
 
 const ageLabel = (birthDate: string) => {
   const start = new Date(birthDate);
@@ -56,6 +131,36 @@ const ageLabel = (birthDate: string) => {
   const months = Math.floor(days / 30);
   return months > 0 ? `${months}个月${days % 30}天` : `${days}天`;
 };
+
+const stageLabel = (stage: BabyProfile["stage"]) => (stage === "pregnancy" ? "孕期" : "已出生");
+
+const toISODate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const addMonths = (month: string, offset: number) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return toISODate(new Date(year, monthIndex - 1 + offset, 1)).slice(0, 7);
+};
+
+const calendarDatesForMonth = (month: string) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const firstDay = new Date(year, monthIndex - 1, 1).getDay();
+  const totalDays = new Date(year, monthIndex, 0).getDate();
+  return [
+    ...Array.from({ length: firstDay }, () => ""),
+    ...Array.from({ length: totalDays }, (_, index) => `${month}-${`${index + 1}`.padStart(2, "0")}`),
+  ];
+};
+
+const splitListText = (value: string) =>
+  value
+    .split(/[、,，\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 const mergeCareLog = (logs: CareLog[], patch: Partial<CareLog>) => {
   const date = patch.date ?? todayISO();
@@ -101,6 +206,96 @@ const soothingText = {
   easy: "好哄睡",
   normal: "正常",
   hard: "偏难",
+};
+
+const summarizeCareLog = (log: CareLog) => {
+  const parts = [
+    log.milkMl ? `奶量 ${log.milkMl}ml` : "",
+    log.milkTimes ? `喝奶 ${log.milkTimes} 次` : "",
+    log.sleepHours ? `睡眠 ${log.sleepHours}h` : "",
+    log.wakes ? `夜醒 ${log.wakes} 次` : "",
+    log.soothing ? `哄睡${soothingText[log.soothing]}` : "",
+    log.solids.length ? `辅食 ${log.solids.join("、")}` : "",
+    log.temperature ? `体温 ${log.temperature}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join("，") : log.notes.join("，") || "这天有一条照护记录。";
+};
+
+const parseTimeSort = (value: string | undefined, fallback: number) => {
+  if (!value) return fallback;
+  const match = value.match(/(\d{1,2})\s*(?:点|:|：)\s*(\d{1,2})?/);
+  if (!match) return fallback;
+  return Number(match[1]) * 60 + Number(match[2] ?? 0);
+};
+
+const reminderDate = (reminder: Reminder) => {
+  const isoMatch = reminder.dueText.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+  }
+
+  const monthDay = reminder.dueText.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (monthDay) {
+    const year = new Date(reminder.createdAt).getFullYear();
+    return `${year}-${monthDay[1].padStart(2, "0")}-${monthDay[2].padStart(2, "0")}`;
+  }
+
+  return reminder.createdAt.slice(0, 10);
+};
+
+const buildRecordEvents = (
+  messages: ChatMessage[],
+  careLogs: CareLog[],
+  growthEvents: GrowthEvent[],
+  reminders: Reminder[],
+): RecordEvent[] => {
+  const messageEvents: RecordEvent[] = messages.map((message) => ({
+    id: `record-${message.id}`,
+    date: message.createdAt.slice(0, 10),
+    timeLabel: formatTime(message.createdAt),
+    sortValue: new Date(message.createdAt).getHours() * 60 + new Date(message.createdAt).getMinutes(),
+    type: "message",
+    title: message.role === "parent" ? "你记录了一句话" : "AI 整理反馈",
+    body: message.text,
+    tags: message.tags ?? [message.role === "parent" ? "聊天" : "AI"],
+  }));
+
+  const careEvents: RecordEvent[] = careLogs.map((log) => ({
+    id: `record-${log.id}`,
+    date: log.date,
+    timeLabel: "照护",
+    sortValue: 7 * 60,
+    type: "care",
+    title: "照护日志",
+    body: summarizeCareLog(log),
+    tags: ["照护"],
+  }));
+
+  const growthRecords: RecordEvent[] = growthEvents.map((event) => ({
+    id: `record-${event.id}`,
+    date: event.date,
+    timeLabel: event.firstTime ? "第一次" : "成长",
+    sortValue: 12 * 60,
+    type: "growth",
+    title: event.title,
+    body: event.summary,
+    tags: event.tags,
+  }));
+
+  const reminderEvents: RecordEvent[] = reminders.map((reminder) => ({
+    id: `record-${reminder.id}`,
+    date: reminderDate(reminder),
+    timeLabel: reminder.dueText,
+    sortValue: parseTimeSort(reminder.dueText, 20 * 60),
+    type: "reminder",
+    title: reminder.title,
+    body: reminder.status === "done" ? "已完成" : reminder.dueText,
+    tags: [reminder.category === "vaccine" ? "疫苗" : "提醒"],
+  }));
+
+  return [...messageEvents, ...careEvents, ...growthRecords, ...reminderEvents].sort(
+    (left, right) => left.date.localeCompare(right.date) || left.sortValue - right.sortValue,
+  );
 };
 
 const platformLabel = () => {
@@ -252,7 +447,77 @@ const normalizeAgentResponse = (result: AgentChatResponse, parentText: string) =
     careLogPatch,
     reminders,
     memories,
+    sources: normalizeSources(result.sources ?? []),
   };
+};
+
+const normalizeSources = (sources: AgentSource[]) =>
+  sources
+    .filter((source) => source.title?.trim() && source.url?.trim())
+    .map((source) => ({
+      title: source.title.trim(),
+      url: source.url.trim(),
+      snippet: source.snippet?.trim() ?? "",
+    }))
+    .slice(0, 5);
+
+const upsertToolActivity = (items: ToolActivity[] | undefined, activity: ToolActivity) => {
+  const current = items ?? [];
+  if (current.some((item) => item.id === activity.id)) {
+    return current.map((item) => (item.id === activity.id ? activity : item));
+  }
+  return [...current, activity];
+};
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+
+const mergeVoiceText = (baseText: string, transcript: string) => {
+  const base = baseText.trim();
+  const text = transcript.trim();
+  if (!base) return text;
+  if (!text) return base;
+  return `${base}${/[，。！？,.!?]$/.test(base) ? "" : " "}${text}`;
+};
+
+const downsampleAudio = (input: Float32Array, inputRate: number, outputRate: number) => {
+  if (inputRate === outputRate) return input;
+  const ratio = inputRate / outputRate;
+  const outputLength = Math.floor(input.length / ratio);
+  const output = new Float32Array(outputLength);
+
+  for (let index = 0; index < outputLength; index += 1) {
+    const start = Math.floor(index * ratio);
+    const end = Math.min(Math.floor((index + 1) * ratio), input.length);
+    let sum = 0;
+    for (let cursor = start; cursor < end; cursor += 1) {
+      sum += input[cursor];
+    }
+    output[index] = sum / Math.max(1, end - start);
+  }
+
+  return output;
+};
+
+const pcm16FromFloat32 = (input: Float32Array) => {
+  const output = new Uint8Array(input.length * 2);
+  const view = new DataView(output.buffer);
+  input.forEach((sample, index) => {
+    const value = Math.max(-1, Math.min(1, sample));
+    view.setInt16(index * 2, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+  });
+  return output;
+};
+
+const rmsLevel = (input: Float32Array) => {
+  if (!input.length) return 0;
+  const sum = input.reduce((total, sample) => total + sample * sample, 0);
+  return Math.min(1, Math.sqrt(sum / input.length) * 6);
 };
 
 const extractAiTextPreview = (jsonContent: string) => {
@@ -286,23 +551,67 @@ const extractAiTextPreview = (jsonContent: string) => {
 };
 
 function App() {
-  const [profile] = useStoredState("baby-companion-profile", initialProfile);
+  const [profile, setProfile] = useStoredState("baby-companion-profile", initialProfile);
   const [messages, setMessages] = useStoredState("baby-companion-messages", initialMessages);
   const [growthEvents, setGrowthEvents] = useStoredState("baby-companion-growth", initialGrowthEvents);
   const [careLogs, setCareLogs] = useStoredState("baby-companion-care", initialCareLogs);
   const [reminders, setReminders] = useStoredState("baby-companion-reminders", initialReminders);
   const [memories, setMemories] = useStoredState("baby-companion-memories", initialMemories);
+  const [thinkingEnabled, setThinkingEnabled] = useStoredState("baby-companion-thinking-enabled", false);
+  const [selectedModel, setSelectedModel] = useStoredState<AgentModelId>("baby-companion-model", DEFAULT_MODEL);
+  const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("chat");
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
+  const [isProfileEditing, setIsProfileEditing] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<BabyProfile>(profile);
+  const [allergiesText, setAllergiesText] = useState(profile.allergies.join("、"));
+  const [caregiversText, setCaregiversText] = useState(profile.caregivers.join("、"));
+  const [composerMode, setComposerMode] = useState<ComposerMode>("keyboard");
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
+  const [voiceLevel, setVoiceLevel] = useState(0);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceError, setVoiceError] = useState("");
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const asrControllerRef = useRef<AsrStreamController | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const silentGainRef = useRef<GainNode | null>(null);
+  const voiceBaseTextRef = useRef("");
+  const voiceSampleBufferRef = useRef<number[]>([]);
+  const voiceSessionRef = useRef(0);
+  const voiceShouldStopRef = useRef(false);
+  const voiceEndedRef = useRef(false);
+  const voiceAsrReadyRef = useRef(false);
+  const hasPositionedMessageListRef = useRef(false);
+  const messageScrollSignatureRef = useRef("");
   const appPlatform = platformLabel();
+  const currentModel = MODEL_OPTIONS.find((model) => model.id === selectedModel) ?? MODEL_OPTIONS[0];
+  const canAttachImages = currentModel.supportsImageInput;
 
   const todayLog = careLogs.find((item) => item.date === todayISO()) ?? careLogs[careLogs.length - 1];
-  const latestGrowth = growthEvents[growthEvents.length - 1];
   const openReminders = reminders.filter((item) => item.status === "open");
+  const recordEvents = useMemo(
+    () => buildRecordEvents(messages, careLogs, growthEvents, reminders),
+    [messages, careLogs, growthEvents, reminders],
+  );
+  const eventDates = useMemo(() => new Set(recordEvents.map((event) => event.date)), [recordEvents]);
+  const calendarDates = useMemo(() => calendarDatesForMonth(calendarMonth), [calendarMonth]);
+  const selectedEvents = useMemo(
+    () => recordEvents.filter((event) => event.date === selectedDate),
+    [recordEvents, selectedDate],
+  );
+  const selectedCareLog = careLogs.find((item) => item.date === selectedDate);
+  const selectedMessageCount = selectedEvents.filter((event) => event.type === "message").length;
+  const selectedGrowthCount = selectedEvents.filter((event) => event.type === "growth").length;
+  const selectedReminderCount = selectedEvents.filter((event) => event.type === "reminder").length;
+  const selectedDateIsToday = selectedDate === todayISO();
   const milkTrend = useMemo(() => {
     const recent = careLogs.slice(-3).map((item) => item.milkMl ?? 0).filter(Boolean);
     if (recent.length < 2) return "继续收集中";
@@ -310,30 +619,69 @@ function App() {
     return delta >= 0 ? `近3次 +${delta} ml` : `近3次 ${delta} ml`;
   }, [careLogs]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const list = messageListRef.current;
-    if (!list) return;
-    requestAnimationFrame(() => {
-      list.scrollTo({ top: list.scrollHeight, behavior: isSubmitting ? "auto" : "smooth" });
-    });
-  }, [messages, isSubmitting]);
+    if (!list || activeMobileTab !== "chat") return;
 
-  const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    const next = files.map((file) => {
-      const kind = file.type.startsWith("video") ? "video" : file.type.startsWith("audio") ? "audio" : "image";
-      return {
-        id: makeId("attachment"),
-        name: file.name,
-        kind,
-        url: kind === "image" || kind === "video" ? URL.createObjectURL(file) : undefined,
-      } satisfies Attachment;
-    });
+    const lastMessage = messages[messages.length - 1];
+    const signature = [
+      messages.length,
+      lastMessage?.id ?? "",
+      lastMessage?.text.length ?? 0,
+      lastMessage?.reasoning?.length ?? 0,
+      lastMessage?.isStreaming ? "streaming" : "done",
+      isSubmitting ? "submitting" : "idle",
+    ].join(":");
+    const isFirstPosition = !hasPositionedMessageListRef.current;
+    const didMessageChange = messageScrollSignatureRef.current !== signature;
+    messageScrollSignatureRef.current = signature;
+
+    if (!isFirstPosition && !didMessageChange) return;
+    if (isFirstPosition || isSubmitting || lastMessage?.isStreaming) {
+      list.scrollTop = list.scrollHeight;
+    } else {
+      list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    }
+    hasPositionedMessageListRef.current = true;
+  }, [messages, isSubmitting, activeMobileTab]);
+
+  useEffect(() => {
+    if (canAttachImages) return;
+    setAttachments([]);
+  }, [canAttachImages]);
+
+  useEffect(() => {
+    setProfileDraft(profile);
+    setAllergiesText(profile.allergies.join("、"));
+    setCaregiversText(profile.caregivers.join("、"));
+  }, [profile]);
+
+  const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!canAttachImages) {
+      event.target.value = "";
+      return;
+    }
+
+    const files = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith("image"));
+    const next = await Promise.all(
+      files.map(async (file) => {
+        const dataUrl = await readFileAsDataUrl(file);
+        return {
+          id: makeId("attachment"),
+          name: file.name,
+          kind: "image",
+          url: dataUrl,
+          dataUrl,
+        } satisfies Attachment;
+      }),
+    );
     setAttachments((current) => [...current, ...next].slice(0, 4));
     event.target.value = "";
   };
 
   const openMediaPicker = async () => {
+    if (!canAttachImages) return;
+
     if (!Capacitor.isNativePlatform()) {
       fileInputRef.current?.click();
       return;
@@ -359,6 +707,7 @@ function App() {
         name: `成长照片-${new Date().toLocaleTimeString("zh-CN", { hour12: false })}.jpeg`,
         kind: "image",
         url: photo.dataUrl,
+        dataUrl: photo.dataUrl,
       };
       setAttachments((current) => [...current, nativeAttachment].slice(0, 4));
     } catch {
@@ -366,27 +715,226 @@ function App() {
     }
   };
 
-  const startVoice = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setInput((value) => `${value}${value ? " " : ""}今天小宝第一次自己扶着沙发站起来了`);
+  const sendBufferedVoiceSamples = (flush = false) => {
+    const samplesPerChunk = 3200;
+    const controller = asrControllerRef.current;
+    const buffer = voiceSampleBufferRef.current;
+    if (!controller) {
+      buffer.length = 0;
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = "zh-CN";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    while (buffer.length >= samplesPerChunk || (flush && buffer.length > 0)) {
+      const chunkLength = buffer.length >= samplesPerChunk ? samplesPerChunk : buffer.length;
+      const chunk = new Float32Array(buffer.splice(0, chunkLength));
+      controller.sendAudio(pcm16FromFloat32(chunk));
+    }
+  };
+
+  const cleanupLocalVoiceCapture = () => {
+    const processor = scriptProcessorRef.current;
+    scriptProcessorRef.current = null;
+    if (processor) {
+      processor.onaudioprocess = null;
+      processor.disconnect();
+    }
+
+    const source = audioSourceRef.current;
+    audioSourceRef.current = null;
+    source?.disconnect();
+
+    const gain = silentGainRef.current;
+    silentGainRef.current = null;
+    gain?.disconnect();
+
+    const stream = mediaStreamRef.current;
+    mediaStreamRef.current = null;
+    stream?.getTracks().forEach((track) => track.stop());
+
+    const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
+    if (audioContext && audioContext.state !== "closed") {
+      void audioContext.close().catch(() => undefined);
+    }
+
+    setIsListening(false);
+    setVoiceLevel(0);
+  };
+
+  const finishVoiceStream = () => {
+    sendBufferedVoiceSamples(true);
+    const controller = asrControllerRef.current;
+    if (!controller || voiceEndedRef.current) return;
+    voiceEndedRef.current = true;
+    controller.end();
+    setVoiceStatus("processing");
+  };
+
+  const stopVoiceCapture = () => {
+    voiceShouldStopRef.current = true;
+    cleanupLocalVoiceCapture();
+    finishVoiceStream();
+  };
+
+  const startVoiceCapture = async () => {
+    if (isSubmitting || isListening) return;
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceStatus("unsupported");
+      setVoiceError("当前环境无法访问麦克风");
+      return;
+    }
+
+    const AudioContextConstructor =
+      window.AudioContext ?? window.webkitAudioContext;
+    if (!AudioContextConstructor) {
+      setVoiceStatus("unsupported");
+      setVoiceError("当前环境不支持实时音频采集");
+      return;
+    }
+
+    const sessionId = voiceSessionRef.current + 1;
+    voiceSessionRef.current = sessionId;
+    voiceShouldStopRef.current = false;
+    voiceEndedRef.current = false;
+    voiceAsrReadyRef.current = false;
+    voiceBaseTextRef.current = input.trim();
+    voiceSampleBufferRef.current = [];
+    setVoiceTranscript("");
+    setVoiceError("");
+    setVoiceLevel(0);
+    setVoiceStatus("connecting");
     setIsListening(true);
-    recognition.onresult = (event) => {
-      const transcript = event.results[0]?.[0]?.transcript ?? "";
-      setInput((value) => `${value}${value ? " " : ""}${transcript}`);
-    };
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
-    recognition.start();
+
+    const controller = runAsrStream({
+      onReady: () => {
+        if (voiceSessionRef.current !== sessionId) return;
+        voiceAsrReadyRef.current = true;
+        if (mediaStreamRef.current) {
+          setVoiceStatus("listening");
+        }
+      },
+      onPartial: (text) => {
+        if (voiceSessionRef.current !== sessionId) return;
+        setVoiceTranscript(text);
+        setInput(mergeVoiceText(voiceBaseTextRef.current, text));
+      },
+      onFinal: (text) => {
+        if (voiceSessionRef.current !== sessionId) return;
+        setVoiceTranscript(text);
+        setInput(mergeVoiceText(voiceBaseTextRef.current, text));
+        if (voiceEndedRef.current) {
+          setVoiceStatus("idle");
+          asrControllerRef.current?.close();
+          asrControllerRef.current = null;
+        }
+      },
+      onError: (message) => {
+        if (voiceSessionRef.current !== sessionId) return;
+        voiceShouldStopRef.current = true;
+        setVoiceError(message);
+        setVoiceStatus("error");
+        cleanupLocalVoiceCapture();
+        asrControllerRef.current?.close();
+        asrControllerRef.current = null;
+      },
+      onClose: () => {
+        if (voiceSessionRef.current !== sessionId) return;
+        cleanupLocalVoiceCapture();
+        asrControllerRef.current = null;
+        setVoiceStatus((current) => (current === "error" || current === "unsupported" ? current : "idle"));
+      },
+    });
+    asrControllerRef.current = controller;
+
+    let capturedStream: MediaStream | null = null;
+    try {
+      capturedStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      if (voiceSessionRef.current !== sessionId || voiceShouldStopRef.current) {
+        capturedStream.getTracks().forEach((track) => track.stop());
+        finishVoiceStream();
+        return;
+      }
+
+      const audioContext = new AudioContextConstructor();
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+      if (voiceSessionRef.current !== sessionId || voiceShouldStopRef.current) {
+        capturedStream.getTracks().forEach((track) => track.stop());
+        void audioContext.close().catch(() => undefined);
+        finishVoiceStream();
+        return;
+      }
+
+      const source = audioContext.createMediaStreamSource(capturedStream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const gain = audioContext.createGain();
+      gain.gain.value = 0;
+
+      mediaStreamRef.current = capturedStream;
+      audioContextRef.current = audioContext;
+      audioSourceRef.current = source;
+      scriptProcessorRef.current = processor;
+      silentGainRef.current = gain;
+
+      processor.onaudioprocess = (event) => {
+        if (voiceShouldStopRef.current || voiceSessionRef.current !== sessionId) return;
+        const samples = event.inputBuffer.getChannelData(0);
+        setVoiceLevel((current) => current * 0.55 + rmsLevel(samples) * 0.45);
+
+        const downsampled = downsampleAudio(samples, audioContext.sampleRate, 16000);
+        voiceSampleBufferRef.current.push(...downsampled);
+        sendBufferedVoiceSamples(false);
+      };
+
+      source.connect(processor);
+      processor.connect(gain);
+      gain.connect(audioContext.destination);
+      setVoiceStatus(voiceAsrReadyRef.current ? "listening" : "connecting");
+    } catch (error) {
+      capturedStream?.getTracks().forEach((track) => track.stop());
+      const message =
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "麦克风权限被拒绝，请在系统设置中允许录音"
+          : "无法启动麦克风，请稍后再试";
+      setVoiceError(message);
+      setVoiceStatus("error");
+      cleanupLocalVoiceCapture();
+      asrControllerRef.current?.close();
+      asrControllerRef.current = null;
+    }
+  };
+
+  useEffect(
+    () => () => {
+      voiceSessionRef.current += 1;
+      voiceShouldStopRef.current = true;
+      cleanupLocalVoiceCapture();
+      asrControllerRef.current?.close();
+      asrControllerRef.current = null;
+    },
+    [],
+  );
+
+  const toggleComposerMode = () => {
+    if (isSubmitting) return;
+    if (composerMode === "voice") {
+      stopVoiceCapture();
+      setComposerMode("keyboard");
+      return;
+    }
+
+    setComposerMode("voice");
+    setVoiceStatus("idle");
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -405,32 +953,45 @@ function App() {
     const pendingAiMessage: ChatMessage = {
       id: makeId("msg"),
       role: "ai",
-      text: "正在生成最终回复...",
+      text: thinkingEnabled ? "正在深度思考..." : "正在生成最终回复...",
       createdAt: new Date().toISOString(),
-      tags: ["处理中"],
+      tags: [thinkingEnabled ? "深度思考" : "处理中"],
       reasoning: "",
       isStreaming: true,
+      toolActivities: [],
     };
 
     setIsSubmitting(true);
+    stopVoiceCapture();
     setInput("");
     setAttachments([]);
     setMessages((current) => [...current, parentMessage, pendingAiMessage].slice(-32));
 
+    let toolActivities: ToolActivity[] = [];
     try {
       let reasoningText = "";
       let contentText = "";
       const agentResponse = await runAgentChatStream(
         {
           message: parentMessage.text,
+          model: currentModel.id,
           babyProfile: profile,
-          recentMessages: messages.slice(-12),
+          recentMessages: messages.slice(-12).map((message) => ({
+            ...message,
+            attachments: message.attachments?.map((attachment) => ({
+              id: attachment.id,
+              name: attachment.name,
+              kind: attachment.kind,
+            })),
+          })),
           careLogs: careLogs.slice(-10),
           memories: memories.slice(0, 10),
+          thinkingEnabled,
           attachments: submittedAttachments.map((item) => ({
             id: item.id,
             name: item.name,
             kind: item.kind,
+            dataUrl: canAttachImages && item.kind === "image" ? item.dataUrl : undefined,
           })),
         },
         {
@@ -456,6 +1017,21 @@ function App() {
               ),
             );
           },
+          onTool: (activity) => {
+            toolActivities = upsertToolActivity(toolActivities, activity);
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === pendingAiMessage.id
+                  ? {
+                      ...message,
+                      toolActivities,
+                      text: contentText ? message.text : activity.message,
+                      tags: activity.status === "running" ? ["查询中"] : message.tags,
+                    }
+                  : message,
+              ),
+            );
+          },
         },
       );
       const result = normalizeAgentResponse(agentResponse, parentMessage.text);
@@ -467,6 +1043,8 @@ function App() {
         tags: result.tags,
         reasoning: reasoningText,
         isStreaming: false,
+        toolActivities,
+        sources: result.sources,
       };
 
       setMessages((current) =>
@@ -486,6 +1064,7 @@ function App() {
         createdAt: new Date().toISOString(),
         tags: ["系统"],
         isStreaming: false,
+        toolActivities,
       };
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
@@ -493,6 +1072,13 @@ function App() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
   };
 
   const completeReminder = (target: Reminder) => {
@@ -509,12 +1095,65 @@ function App() {
     );
   };
 
-  const quickFill = (text: string) => {
-    setInput(text);
+  const selectRecordDate = (date: string) => {
+    setSelectedDate(date);
+    setCalendarMonth(date.slice(0, 7));
   };
 
+  const handleProfileSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    const allergies = splitListText(allergiesText);
+    const caregivers = splitListText(caregiversText);
+
+    setProfile({
+      ...profileDraft,
+      nickname: profileDraft.nickname.trim() || initialProfile.nickname,
+      birthDate: profileDraft.birthDate || initialProfile.birthDate,
+      expectedDate: profileDraft.expectedDate || initialProfile.expectedDate,
+      region: profileDraft.region.trim() || initialProfile.region,
+      feeding: profileDraft.feeding.trim() || initialProfile.feeding,
+      allergies: allergies.length ? allergies : ["暂未发现"],
+      caregivers: caregivers.length ? caregivers : initialProfile.caregivers,
+    });
+    setIsProfileEditing(false);
+    setActiveMobileTab("profile");
+  };
+
+  const resetProfileDraft = () => {
+    setProfileDraft(profile);
+    setAllergiesText(profile.allergies.join("、"));
+    setCaregiversText(profile.caregivers.join("、"));
+  };
+
+  const startProfileEditing = () => {
+    resetProfileDraft();
+    setIsProfileEditing(true);
+  };
+
+  const cancelProfileEditing = () => {
+    resetProfileDraft();
+    setIsProfileEditing(false);
+  };
+
+  const quickFill = (text: string) => {
+    setInput(text);
+    setActiveMobileTab("chat");
+  };
+
+  const voiceHoldLabel =
+    voiceStatus === "error"
+      ? voiceError || "语音识别暂时不可用"
+      : voiceStatus === "unsupported"
+        ? voiceError || "当前环境不支持语音输入"
+        : isListening
+          ? voiceTranscript || (voiceStatus === "connecting" ? "正在连接语音识别..." : "正在听，松开结束")
+          : voiceStatus === "processing"
+            ? voiceTranscript || "正在整理文字..."
+            : voiceTranscript || input.trim() || "按住说话";
+  const voiceButtonStyle = { "--voice-level": voiceLevel.toFixed(3) } as CSSProperties;
+
   return (
-    <main className="app-shell">
+    <main className={`app-shell mobile-tab-${activeMobileTab}`}>
       <section className="topbar" aria-label="今日概览">
         <div className="brand-block">
           <div className="brand-mark">
@@ -601,11 +1240,22 @@ function App() {
               <h2>今天和小宝发生了什么</h2>
             </div>
             <div className="head-actions">
-              <button type="button" className="icon-button" title="照片" onClick={openMediaPicker}>
+              <button
+                type="button"
+                className="icon-button"
+                title={canAttachImages ? "照片" : "当前模型不支持图片理解"}
+                disabled={!canAttachImages || isSubmitting}
+                onClick={openMediaPicker}
+              >
                 <CameraIcon size={18} />
               </button>
-              <button type="button" className={`icon-button ${isListening ? "active" : ""}`} title="语音" onClick={startVoice}>
-                <Mic size={18} />
+              <button
+                type="button"
+                className={`icon-button ${composerMode === "voice" ? "active" : ""}`}
+                title={composerMode === "voice" ? "键盘" : "语音"}
+                onClick={toggleComposerMode}
+              >
+                {composerMode === "voice" ? <KeyboardIcon size={18} /> : <Mic size={18} />}
               </button>
             </div>
           </div>
@@ -642,7 +1292,27 @@ function App() {
                     <p>{message.reasoning}</p>
                   </details>
                 ) : null}
+                {message.role === "ai" && message.toolActivities?.length ? (
+                  <div className="tool-activity-list">
+                    {message.toolActivities.map((activity) => (
+                      <div className={`tool-activity ${activity.status}`} key={activity.id}>
+                        <Globe2 size={14} />
+                        <span>{activity.message}</span>
+                        {activity.query ? <small>{activity.query}</small> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <p>{message.text}</p>
+                {message.sources?.length ? (
+                  <div className="source-list" aria-label="联网查询来源">
+                    {message.sources.map((source) => (
+                      <a href={source.url} key={source.url} target="_blank" rel="noreferrer">
+                        {source.title}
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
                 {message.attachments?.length ? (
                   <div className="attachment-strip">
                     {message.attachments.map((item) => (
@@ -683,32 +1353,421 @@ function App() {
               </div>
             ) : null}
             <div className="composer-row">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*,audio/*"
-                multiple
-                hidden
-                onChange={handleFiles}
-              />
-              <button type="button" className="tool-button" title="上传照片或视频" onClick={openMediaPicker}>
-                <CameraIcon size={19} />
-              </button>
-              <button type="button" className={`tool-button ${isListening ? "active" : ""}`} title="语音输入" onClick={startVoice}>
-                <Mic size={19} />
-              </button>
-              <textarea
-                value={input}
-                rows={1}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="今天小宝第一次翻身了，喝奶 5 次，每次 120ml"
-                disabled={isSubmitting}
-              />
-              <button className="send-button" type="submit" title={isSubmitting ? "处理中" : "发送"} disabled={isSubmitting}>
-                <Send size={19} />
-              </button>
+              <div className="composer-tools" aria-label="输入工具">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  disabled={!canAttachImages || isSubmitting}
+                  onChange={handleFiles}
+                />
+                <select
+                  className="model-select"
+                  title="模型"
+                  aria-label="模型"
+                  value={currentModel.id}
+                  disabled={isSubmitting}
+                  onChange={(event) => setSelectedModel(event.target.value as AgentModelId)}
+                >
+                  {MODEL_OPTIONS.map((model) => (
+                    <option value={model.id} key={model.id}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="tool-button"
+                  title={canAttachImages ? "上传图片" : "当前模型不支持图片理解"}
+                  disabled={!canAttachImages || isSubmitting}
+                  onClick={openMediaPicker}
+                >
+                  <CameraIcon size={19} />
+                </button>
+                <button
+                  type="button"
+                  className={`tool-button ${composerMode === "voice" ? "active" : ""}`}
+                  title={composerMode === "voice" ? "切换键盘输入" : "切换语音输入"}
+                  aria-label={composerMode === "voice" ? "键盘输入" : "语音输入"}
+                  aria-pressed={composerMode === "voice"}
+                  disabled={isSubmitting}
+                  onClick={toggleComposerMode}
+                >
+                  {composerMode === "voice" ? <KeyboardIcon size={19} /> : <Mic size={19} />}
+                </button>
+                <button
+                  type="button"
+                  className={`tool-button thinking-button ${thinkingEnabled ? "active" : ""}`}
+                  title={thinkingEnabled ? "深度思考已开启" : "开启深度思考"}
+                  aria-label="深度思考"
+                  aria-pressed={thinkingEnabled}
+                  disabled={isSubmitting}
+                  onClick={() => setThinkingEnabled((enabled) => !enabled)}
+                >
+                  <Brain size={19} />
+                </button>
+              </div>
+              <div className="composer-input-line">
+                {composerMode === "voice" ? (
+                  <button
+                    type="button"
+                    className={`voice-hold-button ${isListening ? "listening" : ""} ${voiceStatus}`}
+                    style={voiceButtonStyle}
+                    disabled={isSubmitting}
+                    aria-label="按住说话"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      try {
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      } catch {
+                        // Some WebViews can reject pointer capture during long-press gestures.
+                      }
+                      startVoiceCapture();
+                    }}
+                    onPointerUp={(event) => {
+                      event.preventDefault();
+                      try {
+                        event.currentTarget.releasePointerCapture(event.pointerId);
+                      } catch {
+                        // The pointer may already be released when the native view cancels a gesture.
+                      }
+                      stopVoiceCapture();
+                    }}
+                    onPointerCancel={stopVoiceCapture}
+                    onPointerLeave={() => {
+                      if (isListening) stopVoiceCapture();
+                    }}
+                    onContextMenu={(event) => event.preventDefault()}
+                  >
+                    <span>{voiceHoldLabel}</span>
+                  </button>
+                ) : (
+                  <textarea
+                    value={input}
+                    rows={1}
+                    onChange={(event) => setInput(event.target.value)}
+                    onKeyDown={handleComposerKeyDown}
+                    placeholder="记录小宝今天的新变化..."
+                    disabled={isSubmitting}
+                  />
+                )}
+                <button className="send-button" type="submit" title={isSubmitting ? "处理中" : "发送"} disabled={isSubmitting}>
+                  <Send size={19} />
+                </button>
+              </div>
             </div>
           </form>
+        </section>
+
+        <section className="records-screen" aria-label="记录">
+          <div className="screen-head">
+            <div>
+              <p className="eyebrow">记录</p>
+              <h2>{selectedDateIsToday ? "今天的总览" : formatFullDate(selectedDate)}</h2>
+            </div>
+            <button type="button" className="small-action" onClick={() => selectRecordDate(todayISO())}>
+              今天
+            </button>
+          </div>
+
+          <section className="summary-card">
+            <div className="summary-title">
+              <CalendarDays size={18} />
+              <span>{selectedDateIsToday ? "今日信息" : "当天信息"}</span>
+            </div>
+            <div className="record-summary-grid">
+              <div>
+                <span>奶量</span>
+                <strong>{selectedCareLog?.milkMl ? `${selectedCareLog.milkMl} ml` : "未记录"}</strong>
+                <small>{selectedCareLog?.milkTimes ? `${selectedCareLog.milkTimes} 次` : "次数待记录"}</small>
+              </div>
+              <div>
+                <span>睡眠</span>
+                <strong>{selectedCareLog?.sleepHours ? `${selectedCareLog.sleepHours} h` : "未记录"}</strong>
+                <small>{selectedCareLog?.wakes ? `夜醒 ${selectedCareLog.wakes} 次` : "夜醒待记录"}</small>
+              </div>
+              <div>
+                <span>成长</span>
+                <strong>{selectedGrowthCount} 条</strong>
+                <small>{selectedGrowthCount ? "已归档" : "暂无成长"}</small>
+              </div>
+              <div>
+                <span>提醒</span>
+                <strong>{selectedReminderCount} 条</strong>
+                <small>{openReminders.length} 个待办</small>
+              </div>
+              <div>
+                <span>聊天</span>
+                <strong>{selectedMessageCount} 条</strong>
+                <small>{selectedDateIsToday ? "今天的对话" : "当天对话"}</small>
+              </div>
+            </div>
+          </section>
+
+          <section className="calendar-card">
+            <div className="calendar-head">
+              <button type="button" title="上个月" onClick={() => setCalendarMonth((month) => addMonths(month, -1))}>
+                <ChevronLeft size={18} />
+              </button>
+              <strong>{monthTitle(calendarMonth)}</strong>
+              <button type="button" title="下个月" onClick={() => setCalendarMonth((month) => addMonths(month, 1))}>
+                <ChevronRight size={18} />
+              </button>
+            </div>
+            <div className="weekday-grid">
+              {["日", "一", "二", "三", "四", "五", "六"].map((day) => (
+                <span key={day}>{day}</span>
+              ))}
+            </div>
+            <div className="calendar-grid">
+              {calendarDates.map((date, index) =>
+                date ? (
+                  <button
+                    type="button"
+                    className={[
+                      date === selectedDate ? "selected" : "",
+                      date === todayISO() ? "today" : "",
+                      eventDates.has(date) ? "has-event" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    key={date}
+                    onClick={() => selectRecordDate(date)}
+                  >
+                    <span>{Number(date.slice(-2))}</span>
+                  </button>
+                ) : (
+                  <span className="calendar-blank" key={`blank-${index}`} />
+                ),
+              )}
+            </div>
+          </section>
+
+          <section className="day-timeline-card">
+            <div className="section-title">
+              <Clock3 size={18} />
+              <h2>当天时间线</h2>
+            </div>
+            {selectedEvents.length ? (
+              <div className="record-event-list">
+                {selectedEvents.map((event) => (
+                  <article className={`record-event ${event.type}`} key={event.id}>
+                    <time>{event.timeLabel}</time>
+                    <div>
+                      <h3>{event.title}</h3>
+                      <p>{event.body}</p>
+                      <div className="tag-row">
+                        {event.tags.slice(0, 3).map((tag) => (
+                          <span key={tag}>{tag}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <CalendarDays size={22} />
+                <p>这一天还没有记录。</p>
+                <button type="button" onClick={() => quickFill("今天小宝发生了什么？")}>
+                  去聊天记录
+                </button>
+              </div>
+            )}
+          </section>
+        </section>
+
+        <section className="reminders-screen" aria-label="提醒">
+          <div className="screen-head">
+            <div>
+              <p className="eyebrow">提醒</p>
+              <h2>照护提醒</h2>
+            </div>
+            <span className="screen-pill">{openReminders.length} 个待办</span>
+          </div>
+          <div className="reminder-list">
+            {openReminders.slice(0, 8).map((reminder) => (
+              <article className={`reminder-item ${reminder.category}`} key={reminder.id}>
+                <div className="reminder-icon">
+                  {reminder.category === "vaccine" ? <Syringe size={18} /> : <Clock3 size={18} />}
+                </div>
+                <div>
+                  <h3>{reminder.title}</h3>
+                  <p>{reminder.dueText}</p>
+                </div>
+                <button type="button" title="标记完成" onClick={() => completeReminder(reminder)}>
+                  <CheckCircle2 size={18} />
+                </button>
+              </article>
+            ))}
+          </div>
+          <div className="assistant-actions reminder-actions">
+            <button type="button" onClick={() => quickFill("下周二提醒我带小宝去社区医院打疫苗")}>
+              <Syringe size={16} />
+              疫苗
+            </button>
+            <button type="button" onClick={() => quickFill("晚上 8 点提醒我给小宝洗澡")}>
+              <Bell size={16} />
+              日常
+            </button>
+          </div>
+        </section>
+
+        <section className="profile-screen" aria-label="我的">
+          <div className="screen-head">
+            <div>
+              <p className="eyebrow">我的</p>
+              <h2>小宝信息</h2>
+            </div>
+            {isProfileEditing ? (
+              <button className="screen-action-button quiet" type="button" onClick={cancelProfileEditing}>
+                取消
+              </button>
+            ) : (
+              <button className="screen-action-button" type="button" onClick={startProfileEditing}>
+                <PencilLine size={16} />
+                编辑
+              </button>
+            )}
+          </div>
+
+          <section className="profile-panel app-profile-card">
+            <div className="baby-photo">
+              <div className="photo-sky" />
+              <div className="photo-baby">
+                <Baby size={54} />
+              </div>
+            </div>
+            <div className="profile-copy">
+              <h2>{profile.nickname}</h2>
+              <p>{stageLabel(profile.stage)} · {ageLabel(profile.birthDate)} · {profile.region}</p>
+            </div>
+            <div className="profile-highlights">
+              <div>
+                <span>喂养</span>
+                <strong>{profile.feeding}</strong>
+              </div>
+              <div>
+                <span>照护人</span>
+                <strong>{profile.caregivers.length} 位</strong>
+              </div>
+            </div>
+          </section>
+
+          {!isProfileEditing ? (
+            <section className="profile-detail-card">
+              <div className="profile-detail-row">
+                <span>阶段</span>
+                <strong>{stageLabel(profile.stage)}</strong>
+              </div>
+              <div className="profile-detail-row">
+                <span>出生日期</span>
+                <strong>{formatFullDate(profile.birthDate)}</strong>
+              </div>
+              <div className="profile-detail-row">
+                <span>预产期</span>
+                <strong>{formatFullDate(profile.expectedDate)}</strong>
+              </div>
+              <div className="profile-detail-row">
+                <span>地区</span>
+                <strong>{profile.region}</strong>
+              </div>
+              <div className="profile-detail-group">
+                <span>过敏信息</span>
+                <div className="profile-chip-list">
+                  {profile.allergies.map((item) => (
+                    <strong key={item}>{item}</strong>
+                  ))}
+                </div>
+              </div>
+              <div className="profile-detail-group">
+                <span>照护人</span>
+                <div className="profile-chip-list">
+                  {profile.caregivers.map((item) => (
+                    <strong key={item}>{item}</strong>
+                  ))}
+                </div>
+              </div>
+              <button className="profile-edit-button" type="button" onClick={startProfileEditing}>
+                <PencilLine size={18} />
+                编辑小宝资料
+              </button>
+            </section>
+          ) : (
+            <form className="profile-form" onSubmit={handleProfileSubmit}>
+              <label>
+                <span>昵称</span>
+                <input
+                  value={profileDraft.nickname}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, nickname: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>阶段</span>
+                <select
+                  value={profileDraft.stage}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({ ...current, stage: event.target.value as BabyProfile["stage"] }))
+                  }
+                >
+                  <option value="born">已出生</option>
+                  <option value="pregnancy">孕期</option>
+                </select>
+              </label>
+              <label>
+                <span>出生日期</span>
+                <input
+                  type="date"
+                  value={profileDraft.birthDate}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, birthDate: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>预产期</span>
+                <input
+                  type="date"
+                  value={profileDraft.expectedDate}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({ ...current, expectedDate: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                <span>地区</span>
+                <input
+                  value={profileDraft.region}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, region: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>喂养方式</span>
+                <input
+                  value={profileDraft.feeding}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, feeding: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>过敏信息</span>
+                <input value={allergiesText} onChange={(event) => setAllergiesText(event.target.value)} />
+              </label>
+              <label>
+                <span>照护人</span>
+                <input value={caregiversText} onChange={(event) => setCaregiversText(event.target.value)} />
+              </label>
+              <div className="profile-form-actions">
+                <button className="cancel-profile-button" type="button" onClick={cancelProfileEditing}>
+                  <X size={18} />
+                  取消
+                </button>
+                <button className="save-profile-button" type="submit">
+                  <Save size={18} />
+                  保存
+                </button>
+              </div>
+            </form>
+          )}
         </section>
 
         <aside className="right-rail">
@@ -812,6 +1871,25 @@ function App() {
           </section>
         </aside>
       </div>
+
+      <nav className="mobile-tabbar" aria-label="移动端导航">
+        {MOBILE_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeMobileTab === tab.id;
+          return (
+            <button
+              type="button"
+              className={isActive ? "active" : ""}
+              aria-current={isActive ? "page" : undefined}
+              key={tab.id}
+              onClick={() => setActiveMobileTab(tab.id)}
+            >
+              <Icon size={20} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </main>
   );
 }

@@ -8,19 +8,17 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.StringUtils;
 
-@ConfigurationProperties(prefix = "deepseek")
-public class DeepSeekProperties {
+@ConfigurationProperties(prefix = "doubao")
+public class DoubaoProperties {
 
     private String apiKey;
-    private String apiKeyFile = "/Users/.deepseek_apikey";
-    private String baseUrl = "https://api.deepseek.com";
+    private String apiKeyFile = "/Users/.doubao_apikey";
+    private String baseUrl = "https://ark.cn-beijing.volces.com/api/v3";
     private String chatPath = "/chat/completions";
-    private String model = "deepseek-v4-pro";
-    private Integer maxTokens = 800;
-    private Integer agentMaxTokens = 2000;
-    private Double temperature = 0.4;
+    private String seed20LiteModel = "doubao-seed-2-0-lite-260215";
+    private String seed20ProModel = "doubao-seed-2-0-pro-260215";
     private Duration connectTimeout = Duration.ofSeconds(5);
-    private Duration readTimeout = Duration.ofSeconds(45);
+    private Duration readTimeout = Duration.ofSeconds(60);
 
     public String getApiKey() {
         return apiKey;
@@ -54,7 +52,7 @@ public class DeepSeekProperties {
         try {
             return Files.readString(path).trim();
         } catch (IOException exception) {
-            throw new IllegalStateException("Failed to read DeepSeek API key file: " + apiKeyFile, exception);
+            throw new IllegalStateException("Failed to read Doubao API key file: " + apiKeyFile, exception);
         }
     }
 
@@ -74,36 +72,20 @@ public class DeepSeekProperties {
         this.chatPath = chatPath;
     }
 
-    public String getModel() {
-        return model;
+    public String getSeed20LiteModel() {
+        return seed20LiteModel;
     }
 
-    public void setModel(String model) {
-        this.model = model;
+    public void setSeed20LiteModel(String seed20LiteModel) {
+        this.seed20LiteModel = seed20LiteModel;
     }
 
-    public Integer getMaxTokens() {
-        return maxTokens;
+    public String getSeed20ProModel() {
+        return seed20ProModel;
     }
 
-    public void setMaxTokens(Integer maxTokens) {
-        this.maxTokens = maxTokens;
-    }
-
-    public Integer getAgentMaxTokens() {
-        return agentMaxTokens;
-    }
-
-    public void setAgentMaxTokens(Integer agentMaxTokens) {
-        this.agentMaxTokens = agentMaxTokens;
-    }
-
-    public Double getTemperature() {
-        return temperature;
-    }
-
-    public void setTemperature(Double temperature) {
-        this.temperature = temperature;
+    public void setSeed20ProModel(String seed20ProModel) {
+        this.seed20ProModel = seed20ProModel;
     }
 
     public Duration getConnectTimeout() {

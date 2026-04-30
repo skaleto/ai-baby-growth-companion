@@ -7,16 +7,33 @@ spring:
 
 app:
   cors:
-    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,capacitor://localhost,http://localhost}
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost,https://localhost,capacitor://localhost}
 
 deepseek:
   api-key: ${DEEPSEEK_API_KEY:}
   api-key-file: ${DEEPSEEK_API_KEY_FILE:/Users/.deepseek_apikey}
   base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
   chat-path: ${DEEPSEEK_CHAT_PATH:/chat/completions}
-  model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+  model: ${DEEPSEEK_MODEL:deepseek-v4-pro}
   max-tokens: ${DEEPSEEK_MAX_TOKENS:800}
   agent-max-tokens: ${DEEPSEEK_AGENT_MAX_TOKENS:2000}
   temperature: ${DEEPSEEK_TEMPERATURE:0.4}
   connect-timeout: ${DEEPSEEK_CONNECT_TIMEOUT:5s}
   read-timeout: ${DEEPSEEK_READ_TIMEOUT:45s}
+
+doubao:
+  api-key: ${DOUBAO_API_KEY:${ARK_API_KEY:}}
+  api-key-file: ${DOUBAO_API_KEY_FILE:/Users/.doubao_apikey}
+  base-url: ${DOUBAO_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}
+  chat-path: ${DOUBAO_CHAT_PATH:/chat/completions}
+  seed20-lite-model: ${DOUBAO_SEED20_LITE_MODEL:doubao-seed-2-0-lite-260215}
+  seed20-pro-model: ${DOUBAO_SEED20_PRO_MODEL:doubao-seed-2-0-pro-260215}
+  connect-timeout: ${DOUBAO_CONNECT_TIMEOUT:5s}
+  read-timeout: ${DOUBAO_READ_TIMEOUT:60s}
+  asr:
+    app-key: ${DOUBAO_ASR_APP_KEY:}
+    access-key: ${DOUBAO_ASR_ACCESS_KEY:}
+    access-key-file: ${DOUBAO_ASR_ACCESS_KEY_FILE:/Users/.doubao_apikey}
+    endpoint: ${DOUBAO_ASR_ENDPOINT:wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async}
+    resource-id: ${DOUBAO_ASR_RESOURCE_ID:volc.seedasr.sauc.duration}
+    connect-timeout: ${DOUBAO_ASR_CONNECT_TIMEOUT:8s}
