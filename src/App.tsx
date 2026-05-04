@@ -2973,7 +2973,6 @@ function App() {
     caregivers: initialProfile.caregivers,
   });
   const [onboardingAllergiesText, setOnboardingAllergiesText] = useState("暂未发现");
-  const [onboardingCaregiversText, setOnboardingCaregiversText] = useState(initialProfile.caregivers.join("、"));
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("chat");
   const [recordView, setRecordView] = useState<RecordView>("today");
   const [albumCategory, setAlbumCategory] = useState<AlbumItemCategory | "all">("all");
@@ -2982,7 +2981,6 @@ function App() {
   const [isProfileEditing, setIsProfileEditing] = useState(false);
   const [profileDraft, setProfileDraft] = useState<BabyProfile>(profile);
   const [allergiesText, setAllergiesText] = useState(profile.allergies.join("、"));
-  const [caregiversText, setCaregiversText] = useState(profile.caregivers.join("、"));
   const [composerMode, setComposerMode] = useState<ComposerMode>("keyboard");
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [voiceLevel, setVoiceLevel] = useState(0);
@@ -3484,7 +3482,6 @@ function App() {
   useEffect(() => {
     setProfileDraft(profile);
     setAllergiesText(profile.allergies.join("、"));
-    setCaregiversText(profile.caregivers.join("、"));
   }, [profile]);
 
   useEffect(() => {
@@ -4698,7 +4695,6 @@ function App() {
     event.preventDefault();
     if (!canCaregive) return;
     const allergies = splitListText(allergiesText);
-    const caregivers = splitListText(caregiversText);
 
     const nextProfile: BabyProfile = {
       ...profileDraft,
@@ -4708,7 +4704,7 @@ function App() {
       region: profileDraft.region.trim(),
       feeding: profileDraft.feeding.trim(),
       allergies: allergies.length ? allergies : ["暂未发现"],
-      caregivers: caregivers.length ? caregivers : initialProfile.caregivers,
+      caregivers: profile.caregivers.length ? profile.caregivers : initialProfile.caregivers,
     };
     setProfile(nextProfile);
     void persistRecord("profile", "default", nextProfile, { applyResponse: true }).catch(() => undefined);
@@ -4768,7 +4764,6 @@ function App() {
     event.preventDefault();
     if (!canCaregive) return;
     const allergies = splitListText(onboardingAllergiesText);
-    const caregivers = splitListText(onboardingCaregiversText);
     const completedProfile: BabyProfile = {
       ...onboardingDraft,
       nickname: onboardingDraft.nickname.trim() || "小宝",
@@ -4777,7 +4772,7 @@ function App() {
       region: onboardingDraft.region.trim(),
       feeding: onboardingDraft.feeding.trim(),
       allergies: allergies.length ? allergies : ["暂未发现"],
-      caregivers: caregivers.length ? caregivers : initialProfile.caregivers,
+      caregivers: profile.caregivers.length ? profile.caregivers : initialProfile.caregivers,
     };
 
     if (!hasCompleteProfile(completedProfile)) {
@@ -4799,7 +4794,6 @@ function App() {
   const resetProfileDraft = () => {
     setProfileDraft(profile);
     setAllergiesText(profile.allergies.join("、"));
-    setCaregiversText(profile.caregivers.join("、"));
   };
 
   const startProfileEditing = () => {
@@ -5051,10 +5045,11 @@ function App() {
                   <span>过敏信息</span>
                   <input value={onboardingAllergiesText} onChange={(event) => setOnboardingAllergiesText(event.target.value)} />
                 </label>
-                <label>
-                  <span>照护人</span>
-                  <input value={onboardingCaregiversText} onChange={(event) => setOnboardingCaregiversText(event.target.value)} />
-                </label>
+                <div className="profile-form-note">
+                  <strong>家庭照护人</strong>
+                  <span>{profile.caregivers.join("、") || "会按加入家庭的成员自动生成"}</span>
+                  <small>照护人来自家庭邀请码成员，不需要在这里手动填写。</small>
+                </div>
                 <p className="onboarding-note">这些资料会帮 AI 更稳地整理记录，你之后也能在“我的”里修改。</p>
               </>
             ) : null}
@@ -6271,8 +6266,8 @@ function App() {
                   ))}
                 </div>
               </div>
-              <div className="profile-detail-group">
-                <span>照护人</span>
+              <div className="profile-detail-group family-member-group">
+                <span>家庭照护人</span>
                 <div className="profile-chip-list">
                   {profile.caregivers.map((item) => (
                     <strong key={item}>{item}</strong>
@@ -6351,10 +6346,11 @@ function App() {
                 <span>过敏信息</span>
                 <input value={allergiesText} onChange={(event) => setAllergiesText(event.target.value)} />
               </label>
-              <label>
-                <span>照护人</span>
-                <input value={caregiversText} onChange={(event) => setCaregiversText(event.target.value)} />
-              </label>
+              <div className="profile-form-note">
+                <strong>家庭照护人</strong>
+                <span>{profile.caregivers.join("、") || "暂无照护人"}</span>
+                <small>照护人来自家庭成员，不能在小宝资料里手动修改。</small>
+              </div>
               <div className="profile-form-actions">
                 <button className="cancel-profile-button" type="button" onClick={cancelProfileEditing}>
                   <X size={18} />
