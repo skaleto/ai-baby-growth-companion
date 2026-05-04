@@ -1,8 +1,10 @@
 package com.xiaobao.babycompanion.controller;
 
 import com.xiaobao.babycompanion.agent.AgentRuntime;
+import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
+import com.xiaobao.babycompanion.dto.agent.ConversationSummaryResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,18 +18,28 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class AgentController {
 
     private final AgentRuntime agentRuntime;
+    private final CurrentUser currentUser;
 
-    public AgentController(AgentRuntime agentRuntime) {
+    public AgentController(AgentRuntime agentRuntime, CurrentUser currentUser) {
         this.agentRuntime = agentRuntime;
+        this.currentUser = currentUser;
     }
 
     @PostMapping("/chat")
     public AgentChatResponse chat(@Valid @RequestBody AgentChatRequest request) {
+        currentUser.requireCaregiver();
         return agentRuntime.chat(request);
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@Valid @RequestBody AgentChatRequest request) {
+        currentUser.requireCaregiver();
         return agentRuntime.stream(request);
+    }
+
+    @PostMapping("/conversation-summary/compress")
+    public ConversationSummaryResponse compressConversationSummary() {
+        currentUser.requireCaregiver();
+        return agentRuntime.compressConversationSummary();
     }
 }

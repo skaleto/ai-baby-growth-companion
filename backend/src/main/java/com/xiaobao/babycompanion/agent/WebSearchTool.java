@@ -1,6 +1,7 @@
 package com.xiaobao.babycompanion.agent;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -155,7 +156,7 @@ public class WebSearchTool implements AgentTool {
         Set<String> seenUrls = new LinkedHashSet<>();
         Matcher matcher = RESULT_PATTERN.matcher(html);
 
-        while (matcher.find() && sources.size() < MAX_RESULTS) {
+        while (matcher.find() && sources.size() < MAX_RESULTS * 3) {
             String url = normalizeUrl(matcher.group(1));
             if (!StringUtils.hasText(url) || !seenUrls.add(url)) continue;
 
@@ -166,7 +167,10 @@ public class WebSearchTool implements AgentTool {
             sources.add(new AgentSource(title, url, snippet));
         }
 
-        return sources;
+        return sources.stream()
+                .sorted((left, right) -> Integer.compare(sourceScore(right.url()), sourceScore(left.url())))
+                .limit(MAX_RESULTS)
+                .toList();
     }
 
     private String normalizeUrl(String rawUrl) {
@@ -193,6 +197,22 @@ public class WebSearchTool implements AgentTool {
     private String cleanText(String html) {
         String withoutTags = html.replaceAll("<[^>]+>", " ");
         return HtmlUtils.htmlUnescape(withoutTags).replaceAll("\\s+", " ").trim();
+    }
+
+    private int sourceScore(String url) {
+        try {
+            String host = new URI(url).getHost();
+            if (!StringUtils.hasText(host)) return 0;
+            String normalized = host.toLowerCase();
+            int score = 0;
+            if (normalized.endsWith(".gov.cn") || normalized.contains("gov.cn")) score += 10;
+            if (normalized.contains("nhc.gov.cn") || normalized.contains("chisc.net")) score += 4;
+            if (normalized.contains("hospital") || normalized.contains("cdc") || normalized.contains("疾控")) score += 3;
+            if (normalized.endsWith(".edu.cn")) score += 2;
+            return score;
+        } catch (URISyntaxException exception) {
+            return 0;
+        }
     }
 
     private record WebSearchArguments(

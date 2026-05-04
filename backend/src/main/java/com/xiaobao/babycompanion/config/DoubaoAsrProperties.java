@@ -11,35 +11,26 @@ import org.springframework.util.StringUtils;
 @ConfigurationProperties(prefix = "doubao.asr")
 public class DoubaoAsrProperties {
 
-    private String appKey;
-    private String accessKey;
-    private String accessKeyFile = "/Users/.doubao_apikey";
+    private String apiKey;
+    private String apiKeyFile = "/Users/.doubao_asr_key";
     private String endpoint = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async";
     private String resourceId = "volc.seedasr.sauc.duration";
     private Duration connectTimeout = Duration.ofSeconds(8);
 
-    public String getAppKey() {
-        return appKey;
+    public String getApiKey() {
+        return apiKey;
     }
 
-    public void setAppKey(String appKey) {
-        this.appKey = appKey;
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
     }
 
-    public String getAccessKey() {
-        return accessKey;
+    public String getApiKeyFile() {
+        return apiKeyFile;
     }
 
-    public void setAccessKey(String accessKey) {
-        this.accessKey = accessKey;
-    }
-
-    public String getAccessKeyFile() {
-        return accessKeyFile;
-    }
-
-    public void setAccessKeyFile(String accessKeyFile) {
-        this.accessKeyFile = accessKeyFile;
+    public void setApiKeyFile(String apiKeyFile) {
+        this.apiKeyFile = apiKeyFile;
     }
 
     public String getEndpoint() {
@@ -66,15 +57,15 @@ public class DoubaoAsrProperties {
         this.connectTimeout = connectTimeout;
     }
 
-    public String getResolvedAccessKey() {
-        if (StringUtils.hasText(accessKey)) {
-            return accessKey.trim();
+    public String getResolvedApiKey() {
+        if (StringUtils.hasText(apiKey)) {
+            return apiKey.trim();
         }
-        if (!StringUtils.hasText(accessKeyFile)) {
+        if (!StringUtils.hasText(apiKeyFile)) {
             return "";
         }
 
-        Path path = Path.of(accessKeyFile);
+        Path path = Path.of(apiKeyFile);
         if (!Files.isRegularFile(path)) {
             return "";
         }
@@ -82,7 +73,7 @@ public class DoubaoAsrProperties {
         try {
             return Files.readString(path).trim();
         } catch (IOException exception) {
-            throw new IllegalStateException("Failed to read Doubao ASR access key file: " + accessKeyFile, exception);
+            throw new IllegalStateException("Failed to read Doubao ASR API key file: " + apiKeyFile, exception);
         }
     }
 }

@@ -1,6 +1,4 @@
-const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
-
-const apiBaseUrl = trimTrailingSlash(import.meta.env.VITE_AGENT_API_BASE_URL ?? "http://localhost:8080");
+import { apiBaseUrl, getAuthToken } from "./authApi";
 
 export type AsrStreamMessage =
   | { type: "ready"; traceId: string }
@@ -27,6 +25,8 @@ const asWebSocketUrl = (url: string) => {
   parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
   parsed.pathname = "/api/asr/stream";
   parsed.search = "";
+  const token = getAuthToken();
+  if (token) parsed.searchParams.set("token", token);
   return parsed.toString();
 };
 
@@ -45,7 +45,7 @@ export function runAsrStream(handlers: AsrStreamHandlers = {}): AsrStreamControl
 
   socket.binaryType = "arraybuffer";
   socket.onopen = () => {
-    socket.send(JSON.stringify({ type: "start", sampleRate: 16000, format: "pcm_s16le", traceId }));
+    socket.send(JSON.stringify({ type: "start", sampleRate: 16000, format: "pcm_s16le", traceId, token: getAuthToken() }));
   };
   socket.onmessage = (event) => {
     const payload = JSON.parse(String(event.data)) as AsrStreamMessage;

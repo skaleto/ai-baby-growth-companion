@@ -1,8 +1,5 @@
-import { AgentChatRequest, AgentChatResponse, ToolActivity } from "./types";
-
-const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
-
-const apiBaseUrl = trimTrailingSlash(import.meta.env.VITE_AGENT_API_BASE_URL ?? "http://localhost:8080");
+import { AgentChatRequest, AgentChatResponse, ConversationSummary, ToolActivity } from "./types";
+import { apiBaseUrl, authHeaders } from "./authApi";
 
 type ApiErrorResponse = {
   code?: string;
@@ -14,6 +11,7 @@ export async function runAgentChat(request: AgentChatRequest): Promise<AgentChat
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
     },
     body: JSON.stringify(request),
   });
@@ -37,6 +35,7 @@ type StreamHandlers = {
   onReasoning?: (delta: string) => void;
   onContent?: (delta: string) => void;
   onTool?: (activity: ToolActivity) => void;
+  onStatus?: (status: { type: "planning" | "retrieving_context"; message: string }) => void;
 };
 
 type StreamEnvelope = {
@@ -58,6 +57,7 @@ export async function runAgentChatStream(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
+      ...authHeaders(),
     },
     body: JSON.stringify(request),
   });
@@ -110,6 +110,9 @@ export async function runAgentChatStream(
         query: envelope.query,
       });
     }
+    if ((event === "planning" || event === "retrieving_context") && envelope.message) {
+      handlers.onStatus?.({ type: event, message: envelope.message });
+    }
     if (event === "error") {
       throw new Error(envelope.message ?? "AI 流式响应失败");
     }
@@ -134,4 +137,31 @@ export async function runAgentChatStream(
   if (buffer.trim()) processBlock(buffer);
   if (!finalResponse) throw new Error("AI 流式响应缺少最终结果");
   return finalResponse;
+}
+
+export type ConversationSummaryResponse = {
+  needed: boolean;
+  status: "skipped" | "compressed";
+  conversationSummary?: ConversationSummary | null;
+};
+
+export async function compressConversationSummary(): Promise<ConversationSummaryResponse> {
+  const response = await fetch(`${apiBaseUrl}/api/agent/conversation-summary/compress`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    let message = `聊天记录整理失败（${response.status}）`;
+    try {
+      const error = (await response.json()) as ApiErrorResponse;
+      if (error.message) message = error.message;
+      if (error.code) message = `${error.code}: ${message}`;
+    } catch {
+      // Keep the status-based message when the backend did not return JSON.
+    }
+    throw new Error(message);
+  }
+
+  return (await response.json()) as ConversationSummaryResponse;
 }

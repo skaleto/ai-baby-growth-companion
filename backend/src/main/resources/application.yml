@@ -8,6 +8,21 @@ spring:
 app:
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost,https://localhost,capacitor://localhost}
+  storage:
+    data-dir: ${APP_DATA_DIR:}
+    max-upload-bytes: ${APP_MAX_UPLOAD_BYTES:15728640}
+
+auth:
+  jwt:
+    secret-file: ${AUTH_JWT_SECRET_FILE:backend/data/auth/jwt_secret}
+    ttl: ${AUTH_JWT_TTL:30d}
+  invite-codes-file: ${AUTH_INVITE_CODES_FILE:backend/data/auth/invite_codes}
+  max-login-attempts: ${AUTH_MAX_LOGIN_ATTEMPTS:8}
+  login-window: ${AUTH_LOGIN_WINDOW:10m}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
 
 deepseek:
   api-key: ${DEEPSEEK_API_KEY:}
@@ -15,6 +30,7 @@ deepseek:
   base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
   chat-path: ${DEEPSEEK_CHAT_PATH:/chat/completions}
   model: ${DEEPSEEK_MODEL:deepseek-v4-pro}
+  planner-model: ${DEEPSEEK_PLANNER_MODEL:deepseek-v4-flash}
   max-tokens: ${DEEPSEEK_MAX_TOKENS:800}
   agent-max-tokens: ${DEEPSEEK_AGENT_MAX_TOKENS:2000}
   temperature: ${DEEPSEEK_TEMPERATURE:0.4}
@@ -31,9 +47,8 @@ doubao:
   connect-timeout: ${DOUBAO_CONNECT_TIMEOUT:5s}
   read-timeout: ${DOUBAO_READ_TIMEOUT:60s}
   asr:
-    app-key: ${DOUBAO_ASR_APP_KEY:}
-    access-key: ${DOUBAO_ASR_ACCESS_KEY:}
-    access-key-file: ${DOUBAO_ASR_ACCESS_KEY_FILE:/Users/.doubao_apikey}
+    api-key: ${DOUBAO_ASR_API_KEY:}
+    api-key-file: ${DOUBAO_ASR_API_KEY_FILE:/Users/.doubao_asr_key}
     endpoint: ${DOUBAO_ASR_ENDPOINT:wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async}
     resource-id: ${DOUBAO_ASR_RESOURCE_ID:volc.seedasr.sauc.duration}
     connect-timeout: ${DOUBAO_ASR_CONNECT_TIMEOUT:8s}

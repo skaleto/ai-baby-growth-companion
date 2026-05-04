@@ -34,8 +34,7 @@ final class DoubaoAsrProtocol {
 
     static byte[] audioRequest(byte[] pcmChunk, int sequence, boolean last) {
         byte[] payload = gzip(pcmChunk);
-        int signedSequence = last ? -Math.abs(sequence) : Math.abs(sequence);
-        return frame(AUDIO_ONLY_REQUEST, last ? NEG_WITH_SEQUENCE : POS_SEQUENCE, NO_SERIALIZATION, GZIP, signedSequence, payload);
+        return frame(AUDIO_ONLY_REQUEST, last ? NEG_SEQUENCE : 0, NO_SERIALIZATION, GZIP, null, payload);
     }
 
     static ParsedFrame parse(byte[] bytes) {
@@ -50,7 +49,12 @@ final class DoubaoAsrProtocol {
         int compression = bytes[2] & 0x0F;
         int offset = headerSize;
         Integer sequence = null;
-        if (flags == POS_SEQUENCE || flags == NEG_SEQUENCE || flags == NEG_WITH_SEQUENCE) {
+        Integer errorCode = null;
+        if (messageType == SERVER_ERROR_RESPONSE) {
+            requireLength(bytes, offset + 4);
+            errorCode = ByteBuffer.wrap(bytes, offset, 4).getInt();
+            offset += 4;
+        } else if (flags == POS_SEQUENCE || flags == NEG_WITH_SEQUENCE) {
             requireLength(bytes, offset + 4);
             sequence = ByteBuffer.wrap(bytes, offset, 4).getInt();
             offset += 4;
@@ -70,7 +74,7 @@ final class DoubaoAsrProtocol {
         String textPayload = serialization == JSON || messageType == FULL_SERVER_RESPONSE || messageType == SERVER_ERROR_RESPONSE
                 ? new String(payload, StandardCharsets.UTF_8)
                 : "";
-        return new ParsedFrame(messageType, sequence, textPayload, messageType == SERVER_ERROR_RESPONSE);
+        return new ParsedFrame(messageType, sequence, errorCode, textPayload, messageType == SERVER_ERROR_RESPONSE);
     }
 
     private static byte[] frame(
@@ -121,7 +125,7 @@ final class DoubaoAsrProtocol {
         }
     }
 
-    record ParsedFrame(int messageType, Integer sequence, String payload, boolean error) {
+    record ParsedFrame(int messageType, Integer sequence, Integer errorCode, String payload, boolean error) {
         boolean isTextResponse() {
             return messageType == FULL_SERVER_RESPONSE || messageType == SERVER_ACK || messageType == SERVER_ERROR_RESPONSE;
         }

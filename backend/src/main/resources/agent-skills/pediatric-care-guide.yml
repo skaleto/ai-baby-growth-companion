@@ -1,0 +1,94 @@
+id: pediatric-care-guide
+name: 育儿基础知识底座
+description: 渐进式披露 skill：仅在育儿常识、喂养睡眠解释、健康安全边界或疫苗政策问题中加载相关小节。
+disclosurePolicy:
+  mode: progressive
+  maxSections: 4
+  maxTotalChars: 1200
+sourceAnchors:
+  - AAP/HealthyChildren 安全睡眠与发热就医建议
+  - CDC 发育里程碑、用药安全和儿童健康资料
+  - WHO 婴幼儿喂养和辅食添加指南
+  - 本地社区医院或儿科医生的疫苗与医疗安排
+copyrightBoundary:
+  - 不得声称已经逐字学习、复制或复述任何受版权保护的育儿书内容，包括《崔玉涛育儿百科》。
+  - 如果用户提供自己拥有授权的摘录、笔记或医生建议，只能作为用户提供资料处理，并避免长段复述。
+sections:
+  - id: feeding
+    title: 喂养观察
+    topics: [feeding]
+    riskHints: []
+    triggers: ["喝奶", "吃奶", "奶量", "母乳", "配方奶", "辅食", "拒奶", "吐奶"]
+    maxChars: 360
+    content:
+      - 喂养建议要结合月龄、体重增长、尿量、精神状态和近期趋势，不用单次奶量武断判断。
+      - 记录时优先要奶量、次数、时间；只有“开始吃奶/准备喝奶”时应追问喝完后的奶量。
+      - 频繁呕吐、明显拒奶、尿量减少、精神差或体重增长异常时提醒线下咨询医生。
+  - id: sleep
+    title: 睡眠与安全睡眠
+    topics: [sleep]
+    riskHints: [breathing]
+    triggers: ["睡", "入睡", "夜醒", "哄睡", "趴睡", "蒙被", "呼吸"]
+    maxChars: 360
+    content:
+      - 睡眠以趋势观察为主，不用单次入睡或夜醒直接判断异常。
+      - 安全睡眠要强调仰卧、独立睡眠空间、避免柔软覆盖物和过热环境。
+      - 只有睡眠时长或可推导的开始结束时间明确时才写入睡眠记录。
+  - id: growth
+    title: 发育里程碑
+    topics: [growth]
+    riskHints: []
+    triggers: ["翻身", "抬头", "追视", "里程碑", "发育", "会不会", "正常吗"]
+    maxChars: 320
+    content:
+      - 发育里程碑存在个体差异，应看持续趋势和多个信号，不凭一条消息诊断发育迟缓。
+      - 如果出现能力倒退、明显失去已掌握技能，建议尽快咨询儿保或儿科。
+  - id: temperature
+    title: 发热与体温
+    topics: [temperature]
+    riskHints: [fever, medicine]
+    triggers: ["发烧", "发热", "体温", "退烧", "38", "39", "40", "退烧药"]
+    maxChars: 380
+    content:
+      - 发热回复必须结合月龄、测量方式、精神状态、吃奶和尿量追问。
+      - 小月龄发热、高热、精神差或伴随呼吸异常、抽搐等信号时，应更保守地建议线下就医。
+      - 不要给出退烧药剂量或替用户决定是否用药。
+  - id: poop
+    title: 便便观察
+    topics: [poop]
+    riskHints: [allergy]
+    triggers: ["便便", "大便", "腹泻", "拉肚子", "血丝", "黏液", "绿便"]
+    maxChars: 300
+    content:
+      - 便便要结合颜色、性状、次数、血丝或黏液、吃奶和精神状态观察。
+      - 持续腹泻、血便、频繁呕吐、脱水表现或精神差时提醒就医。
+  - id: vaccine
+    title: 疫苗与本地政策
+    topics: [vaccine, policy]
+    riskHints: [vaccine, medicine]
+    triggers: ["疫苗", "接种", "预防针", "补种", "社区医院", "政策"]
+    maxChars: 360
+    content:
+      - 疫苗、补种和本地政策必须以社区医院或医生通知为准。
+      - 涉及最新政策、城市规则或接种安排时应优先联网查询并展示来源。
+      - 疫苗提醒可以帮助记录和提醒，但不能替代接种禁忌评估。
+  - id: safety
+    title: 医疗安全边界
+    topics: [temperature, vaccine, feeding, sleep, poop, growth]
+    riskHints: [fever, medicine, vaccine, allergy, breathing, injury]
+    triggers: ["用药", "药量", "剂量", "呼吸困难", "发紫", "抽搐", "摔", "过敏", "急诊"]
+    maxChars: 360
+    content:
+      - 健康、用药和疫苗问题只做低风险记录与常识提醒，不替代诊断、处方或接种禁忌评估。
+      - 对药物剂量、混用、加量、停药等问题，必须建议依据医生或药品说明书确认。
+      - 出现明显异常状态时，线上回复不能替代及时就医。
+  - id: redFlags
+    title: 需要及时线下处理的信号
+    topics: [temperature, sleep, feeding]
+    riskHints: [fever, allergy, breathing, injury]
+    triggers: ["呼吸困难", "嘴唇发紫", "脸色发紫", "抽搐", "叫不醒", "尿少", "脱水", "血便"]
+    maxChars: 360
+    content:
+      - 呼吸困难、口唇或面色发紫、抽搐、意识不清、叫不醒，需要立即线下处理。
+      - 小月龄发热、高热、持续发热或精神状态明显差，需要更谨慎地咨询儿科或急诊。
+      - 明显脱水、严重过敏、外伤后呕吐嗜睡或出血不止等情况，不要只依赖 AI 建议。

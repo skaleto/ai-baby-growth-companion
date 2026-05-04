@@ -2,6 +2,7 @@ package com.xiaobao.babycompanion.dto.agent;
 
 import java.util.List;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 
 public record AgentCareLog(
@@ -28,6 +29,9 @@ public record AgentCareLog(
         Double temperature,
 
         @Size(max = 10, message = "notes must include at most 10 items")
-        List<@Size(max = 400, message = "note must be at most 400 characters") String> notes
+        List<@Size(max = 400, message = "note must be at most 400 characters") String> notes,
+
+        @Size(max = 24, message = "events must include at most 24 items")
+        List<@Valid AgentCareLogEvent> events
 ) {
 }

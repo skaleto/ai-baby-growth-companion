@@ -1,6 +1,6 @@
 package com.xiaobao.babycompanion.exception;
 
-public class DeepSeekApiException extends RuntimeException {
+public class DeepSeekApiException extends ModelApiException {
 
     public DeepSeekApiException(String message) {
         super(message);

@@ -2,6 +2,7 @@ package com.xiaobao.babycompanion.dto.agent;
 
 import java.util.List;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -28,6 +29,8 @@ public record AgentChatRequest(
 
         @Size(max = 8, message = "attachments must include at most 8 items")
         List<@Valid AgentAttachment> attachments,
+
+        JsonNode pageContext,
 
         Boolean thinkingEnabled
 ) {

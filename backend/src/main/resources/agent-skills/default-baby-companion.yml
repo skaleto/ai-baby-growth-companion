@@ -1,0 +1,8 @@
+id: default-baby-companion
+name: 默认宝宝成长伙伴
+description: 覆盖成长记录、照护日志、提醒、记忆、安全回复和家庭共享数据读写的主链路能力。
+disclosurePolicy:
+  mode: always
+sections: []
+sourceAnchors: []
+copyrightBoundary: []

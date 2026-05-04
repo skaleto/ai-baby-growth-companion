@@ -16,6 +16,7 @@ public class DeepSeekProperties {
     private String baseUrl = "https://api.deepseek.com";
     private String chatPath = "/chat/completions";
     private String model = "deepseek-v4-pro";
+    private String plannerModel = "deepseek-v4-flash";
     private Integer maxTokens = 800;
     private Integer agentMaxTokens = 2000;
     private Double temperature = 0.4;
@@ -80,6 +81,14 @@ public class DeepSeekProperties {
 
     public void setModel(String model) {
         this.model = model;
+    }
+
+    public String getPlannerModel() {
+        return plannerModel;
+    }
+
+    public void setPlannerModel(String plannerModel) {
+        this.plannerModel = plannerModel;
     }
 
     public Integer getMaxTokens() {

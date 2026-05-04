@@ -10,6 +10,8 @@ public record AgentChatResponse(
         List<AgentReminder> reminders,
         List<AgentMemory> memories,
         List<AgentSource> sources,
+        List<AgentSafetyAlert> safetyAlerts,
+        List<AgentEffectDecision> effectDecisions,
         List<String> usedSkills,
         String traceId,
         String model,

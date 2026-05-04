@@ -23,6 +23,19 @@ public record AgentBabyProfile(
         @Size(max = 80, message = "feeding must be at most 80 characters")
         String feeding,
 
+        Integer ageDays,
+
+        Integer ageWeeks,
+
+        Integer ageMonths,
+
+        @Size(max = 120, message = "ageLabel must be at most 120 characters")
+        String ageLabel,
+
+        Boolean fullMonth,
+
+        Integer daysUntilFullMonth,
+
         @Size(max = 20, message = "allergies must include at most 20 items")
         List<@Size(max = 80, message = "allergy must be at most 80 characters") String> allergies,
 

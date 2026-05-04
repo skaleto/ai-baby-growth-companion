@@ -73,6 +73,28 @@ export const initialCareLogs: CareLog[] = [
     soothing: "normal",
     solids: [],
     notes: ["白天精神不错"],
+    events: [
+      {
+        id: "care-event-seed-1",
+        type: "milk",
+        date: "2026-04-27",
+        time: "08:10",
+        title: "喝奶",
+        amountMl: 110,
+        note: "早晨醒来后喝奶",
+        tags: ["喝奶"],
+      },
+      {
+        id: "care-event-seed-2",
+        type: "sleep",
+        date: "2026-04-27",
+        time: "13:30",
+        title: "午睡",
+        durationHours: 1.5,
+        note: "午睡比较安稳",
+        tags: ["睡眠"],
+      },
+    ],
   },
   {
     id: "care-seed-2",
@@ -84,6 +106,17 @@ export const initialCareLogs: CareLog[] = [
     soothing: "hard",
     solids: [],
     notes: ["22:00 左右闹觉"],
+    events: [
+      {
+        id: "care-event-seed-3",
+        type: "soothing",
+        date: "2026-04-28",
+        time: "22:00",
+        title: "闹觉",
+        note: "抱睡 20 分钟后睡着",
+        tags: ["睡眠", "哄睡"],
+      },
+    ],
   },
 ];
 

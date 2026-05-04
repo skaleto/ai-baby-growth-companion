@@ -40,6 +40,17 @@ npm run mobile:android
 - iOS：安装完整 Xcode，并在 Xcode 中配置 Team、Bundle Identifier、签名和 App Store Connect 信息。
 - Android：安装 Android Studio 和 JDK 17+，再用 Android Studio 或 Gradle 生成 release 包。
 
+## 阿里云 ECS 部署
+
+已有公网 IP 的 ECS 可以通过 JAR + systemd 方式部署后端：
+
+```bash
+ECS_HOST=<ECS_PUBLIC_IP> npm run deploy:aliyun
+VITE_AGENT_API_BASE_URL=http://<ECS_PUBLIC_IP>:8300 npm run build:android:debug
+```
+
+完整步骤、密钥文件位置、日志和备份说明见：[阿里云 ECS 公网 IP 部署](docs/aliyun-ecs-deploy.md)。
+
 ## 已接入的移动能力
 
 - Capacitor iOS/Android 工程：`ios/`、`android/`

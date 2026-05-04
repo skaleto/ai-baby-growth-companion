@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
@@ -14,12 +15,21 @@ import org.junit.jupiter.api.Test;
 
 class AgentRuntimeTests {
 
+    private final SkillRegistry skillRegistry = new SkillRegistry();
     private final AgentRuntime agentRuntime = new AgentRuntime(
             new DeepSeekProperties(),
             new DoubaoProperties(),
             new ObjectMapper(),
-            new SkillRegistry(),
-            new ToolRegistry(List.of())
+            new AgentPlanner(new ObjectMapper()),
+            null,
+            null,
+            new RecordSignalExtractor(new ObjectMapper()),
+            new EffectPolicy(new ObjectMapper(), new CareEventCompletenessPolicy(new ObjectMapper())),
+            new CurrentUser(),
+            skillRegistry,
+            new SkillDisclosureService(skillRegistry),
+            new ToolRegistry(List.of()),
+            new SafetyGuard()
     );
 
     @Test
@@ -48,6 +58,7 @@ class AgentRuntimeTests {
         assertThat(response.tags()).containsExactly("喂养");
         assertThat(response.careLogPatch().milkMl()).isEqualTo(600);
         assertThat(response.usedSkills()).containsExactly("default-baby-companion");
+        assertThat(response.safetyAlerts()).isEmpty();
         assertThat(response.traceId()).isEqualTo("agent-test");
         assertThat(response.model()).isEqualTo("deepseek-test");
         assertThat(response.requestId()).isEqualTo("request-test");

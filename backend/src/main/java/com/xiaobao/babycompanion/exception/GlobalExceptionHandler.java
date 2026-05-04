@@ -27,10 +27,28 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("SERVICE_UNAVAILABLE", exception.getMessage(), Instant.now()));
     }
 
-    @ExceptionHandler(DeepSeekApiException.class)
-    public ResponseEntity<ErrorResponse> handleDeepSeek(DeepSeekApiException exception) {
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ErrorResponse("BAD_REQUEST", exception.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<ErrorResponse> handleAuth(AuthException exception) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse("AUTH_FAILED", exception.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse("FORBIDDEN", exception.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler(ModelApiException.class)
+    public ResponseEntity<ErrorResponse> handleModelApi(ModelApiException exception) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(new ErrorResponse("DEEPSEEK_API_ERROR", exception.getMessage(), Instant.now()));
+                .body(new ErrorResponse("MODEL_API_ERROR", exception.getMessage(), Instant.now()));
     }
 
     @ExceptionHandler(AgentResponseParseException.class)

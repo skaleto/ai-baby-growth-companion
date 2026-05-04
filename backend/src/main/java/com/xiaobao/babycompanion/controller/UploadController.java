@@ -1,0 +1,56 @@
+package com.xiaobao.babycompanion.controller;
+
+import com.xiaobao.babycompanion.dto.app.AttachmentDto;
+import com.xiaobao.babycompanion.dto.app.UploadRequest;
+import com.xiaobao.babycompanion.service.AttachmentStorageService;
+import jakarta.validation.Valid;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+@RestController
+@RequestMapping("/api/uploads")
+public class UploadController {
+
+    private final AttachmentStorageService attachmentStorageService;
+
+    public UploadController(AttachmentStorageService attachmentStorageService) {
+        this.attachmentStorageService = attachmentStorageService;
+    }
+
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    public AttachmentDto uploadDataUrl(@Valid @RequestBody UploadRequest request) {
+        return attachmentStorageService.saveDataUrl(request);
+    }
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public AttachmentDto uploadFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "id", required = false) String id,
+            @RequestParam(value = "kind", required = false) String kind
+    ) {
+        return attachmentStorageService.saveMultipart(file, id, kind);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Resource> read(@PathVariable String id) {
+        AttachmentStorageService.StoredAttachment attachment = attachmentStorageService.load(id);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(attachment.mimeType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(attachment.name())
+                        .build()
+                        .toString())
+                .body(attachment.resource());
+    }
+}

@@ -21,6 +21,19 @@ android/app/release/
 
 # Backend build output
 backend/target/
+backend/data/
+/backend/data/auth/
+backend/backend/data/
+backend/*.pid
+
+# Deployment local secrets/config
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+deploy.local.*
 
 # iOS build output
 ios/App/Pods/

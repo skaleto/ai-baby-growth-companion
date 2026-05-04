@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.net.http.WebSocketHandshakeException;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.Map;
@@ -17,7 +18,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiaobao.babycompanion.auth.AuthPrincipal;
+import com.xiaobao.babycompanion.auth.AuthService;
 import com.xiaobao.babycompanion.config.DoubaoAsrProperties;
+import com.xiaobao.babycompanion.exception.AuthException;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.BinaryMessage;
@@ -31,12 +35,14 @@ public class DoubaoAsrWebSocketHandler extends AbstractWebSocketHandler {
 
     private final DoubaoAsrProperties properties;
     private final ObjectMapper objectMapper;
+    private final AuthService authService;
     private final HttpClient httpClient;
     private final Map<String, AsrSessionState> sessions = new ConcurrentHashMap<>();
 
-    public DoubaoAsrWebSocketHandler(DoubaoAsrProperties properties, ObjectMapper objectMapper) {
+    public DoubaoAsrWebSocketHandler(DoubaoAsrProperties properties, ObjectMapper objectMapper, AuthService authService) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.authService = authService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getConnectTimeout())
                 .build();
@@ -94,14 +100,24 @@ public class DoubaoAsrWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
 
-        String appKey = properties.getAppKey() == null ? "" : properties.getAppKey().trim();
-        String accessKey = properties.getResolvedAccessKey();
-        if (!StringUtils.hasText(appKey) || !StringUtils.hasText(accessKey)) {
-            sendError(state.frontend, "ASR_CONFIG_MISSING", "DOUBAO_ASR_APP_KEY or Doubao ASR access key is not configured");
+        String traceId = root.path("traceId").asText("asr-" + UUID.randomUUID());
+        String token = root.path("token").asText("");
+        try {
+            AuthPrincipal principal = authService.authenticateToken(token);
+            if (!principal.caregiver()) {
+                sendError(state.frontend, "FORBIDDEN", "当前身份仅可查看，不能记录或修改。");
+                return;
+            }
+        } catch (AuthException exception) {
+            sendError(state.frontend, "AUTH_REQUIRED", "请先登录后再使用语音输入。");
             return;
         }
-
-        String traceId = root.path("traceId").asText("asr-" + UUID.randomUUID());
+        String apiKey = properties.getResolvedApiKey();
+        if (!StringUtils.hasText(apiKey)) {
+            sendError(state.frontend, "ASR_CONFIG_MISSING", "DOUBAO_ASR_API_KEY or /Users/.doubao_asr_key is not configured");
+            return;
+        }
+        String requestId = UUID.randomUUID().toString();
         int sampleRate = root.path("sampleRate").asInt(16000);
         String format = root.path("format").asText("pcm_s16le");
         if (sampleRate != 16000 || !"pcm_s16le".equals(format)) {
@@ -111,21 +127,37 @@ public class DoubaoAsrWebSocketHandler extends AbstractWebSocketHandler {
 
         WebSocket.Listener listener = new DoubaoListener(state);
         httpClient.newWebSocketBuilder()
-                .header("X-Api-App-Key", appKey)
-                .header("X-Api-Access-Key", accessKey)
+                .header("X-Api-Key", apiKey)
                 .header("X-Api-Resource-Id", properties.getResourceId())
-                .header("X-Api-Connect-Id", traceId)
+                .header("X-Api-Request-Id", requestId)
+                .header("X-Api-Sequence", "-1")
                 .buildAsync(URI.create(properties.getEndpoint()), listener)
                 .orTimeout(properties.getConnectTimeout().toMillis(), TimeUnit.MILLISECONDS)
                 .whenComplete((socket, exception) -> {
                     if (exception != null) {
-                        sendError(state.frontend, "ASR_CONNECT_FAILED", "Failed to connect Doubao ASR");
+                        sendError(state.frontend, "ASR_CONNECT_FAILED", asrConnectErrorMessage(exception));
                         return;
                     }
                     state.socket = socket;
                     sendFullClientRequest(state, traceId);
                     sendJson(state.frontend, Map.of("type", "ready", "traceId", traceId));
                 });
+    }
+
+    private String asrConnectErrorMessage(Throwable exception) {
+        Throwable root = exception instanceof java.util.concurrent.CompletionException completionException
+                ? completionException.getCause()
+                : exception;
+        if (root instanceof WebSocketHandshakeException handshakeException) {
+            int status = handshakeException.getResponse().statusCode();
+            String logId = handshakeException.getResponse().headers().firstValue("x-tt-logid").orElse("");
+            return StringUtils.hasText(logId)
+                    ? "Failed to connect Doubao ASR: HTTP " + status + ", logid=" + logId
+                    : "Failed to connect Doubao ASR: HTTP " + status;
+        }
+        return root == null || !StringUtils.hasText(root.getMessage())
+                ? "Failed to connect Doubao ASR"
+                : "Failed to connect Doubao ASR: " + root.getMessage();
     }
 
     private void sendFullClientRequest(AsrSessionState state, String traceId) {
