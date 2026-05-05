@@ -2,6 +2,7 @@ package com.xiaobao.babycompanion.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -125,6 +126,39 @@ class AuthControllerTests {
                 .andExpect(jsonPath("$.member.roleName").value("妈妈"))
                 .andExpect(jsonPath("$.member.caregiver").value(true))
                 .andExpect(jsonPath("$.onboardingRequired").value(true));
+    }
+
+    @Test
+    void caregiverCanUpdateFamilyName() throws Exception {
+        String token = login("13800000130", "AUTH-CODE-1", "爸爸", true);
+
+        mockMvc.perform(put("/api/auth/family")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"芊芊家"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("芊芊家"));
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.family.name").value("芊芊家"));
+    }
+
+    @Test
+    void viewerCannotUpdateFamilyName() throws Exception {
+        String token = login("13800000131", "AUTH-CODE-2", "亲友", false);
+
+        mockMvc.perform(put("/api/auth/family")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"新的家"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("当前身份仅可查看，不能修改家庭信息。"));
     }
 
     @Test

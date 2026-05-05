@@ -285,6 +285,20 @@ public class AuthService {
         return new AuthFamilyDto(principal.familyId(), principal.familyName());
     }
 
+    @Transactional
+    public AuthFamilyDto updateFamilyName(AuthPrincipal principal, String name) {
+        if (!principal.caregiver()) {
+            throw new AuthException("当前身份仅可查看，不能修改家庭信息。");
+        }
+        AuthFamilyRecord family = familyService.getById(principal.familyId());
+        if (family == null) {
+            throw new AuthException("家庭信息不存在，请重新登录。");
+        }
+        family.setName(normalizeFamilyName(name));
+        familyService.updateById(family);
+        return toFamilyDto(family);
+    }
+
     public AuthMemberDto currentMember(AuthPrincipal principal) {
         return new AuthMemberDto(principal.roleName(), principal.caregiver());
     }
@@ -319,7 +333,7 @@ public class AuthService {
             }
             String code = randomCode();
             Files.writeString(path, """
-                    # 小宝成长伙伴本地邀请码，一行一个。
+                    # 小宝记本地邀请码，一行一个。
                     # 第一版使用“手机号 + 邀请码”登录，不接真实短信。
                     %s
                     """.formatted(code), StandardCharsets.UTF_8);
@@ -466,6 +480,14 @@ public class AuthService {
             return "家庭成员";
         }
         return normalized.length() > 20 ? normalized.substring(0, 20) : normalized;
+    }
+
+    private String normalizeFamilyName(String name) {
+        String normalized = name == null ? "" : name.trim();
+        if (!StringUtils.hasText(normalized)) {
+            return DatabaseInitializer.DEFAULT_FAMILY_NAME;
+        }
+        return normalized.length() > 30 ? normalized.substring(0, 30) : normalized;
     }
 
     private void fillPlaceholderMemberIdentity(AuthFamilyMemberRecord member, String roleName, Boolean caregiver) {

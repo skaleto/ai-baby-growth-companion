@@ -15,6 +15,12 @@ public record AgentReminder(
         @Size(max = 20, message = "reminderKind must be at most 20 characters")
         String reminderKind,
 
+        @Size(max = 20, message = "scheduleMode must be at most 20 characters")
+        String scheduleMode,
+
+        @Size(max = 20, message = "alertMode must be at most 20 characters")
+        String alertMode,
+
         @Size(max = 120, message = "dueText must be at most 120 characters")
         String dueText,
 

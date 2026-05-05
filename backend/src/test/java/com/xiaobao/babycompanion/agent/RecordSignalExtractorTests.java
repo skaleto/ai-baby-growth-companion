@@ -137,6 +137,50 @@ class RecordSignalExtractorTests {
         RecordSignals signals = extractor.extract("三分钟后提醒我喝奶");
 
         assertThat(signals.explicitReminderTime()).isTrue();
+        assertThat(signals.reminderSignal()).isNull();
+    }
+
+    @Test
+    void detectsHalfHourMilkIntervalReminder() {
+        RecordSignals signals = extractor.extract("每半小时提醒我喂奶");
+
+        assertThat(signals.topics()).contains("reminder", "feeding");
+        assertThat(signals.explicitReminderTime()).isTrue();
+        assertThat(signals.reminderSignal()).isNotNull();
+        assertThat(signals.reminderSignal().kind()).isEqualTo("interval");
+        assertThat(signals.reminderSignal().topic()).isEqualTo("feeding");
+        assertThat(signals.reminderSignal().ringingRequested()).isTrue();
+        assertThat(signals.reminderSignal().intervalMinutes()).isEqualTo(30);
+    }
+
+    @Test
+    void detectsTenMinuteMilkIntervalReminder() {
+        RecordSignals signals = extractor.extract("每十分钟提醒我喂奶");
+
+        assertThat(signals.explicitReminderTime()).isTrue();
+        assertThat(signals.reminderSignal()).isNotNull();
+        assertThat(signals.reminderSignal().intervalMinutes()).isEqualTo(10);
+    }
+
+    @Test
+    void detectsGenericIntervalNotificationReminder() {
+        RecordSignals signals = extractor.extract("每两小时提醒我喝水");
+
+        assertThat(signals.explicitReminderTime()).isTrue();
+        assertThat(signals.reminderSignal()).isNotNull();
+        assertThat(signals.reminderSignal().topic()).isEqualTo("general");
+        assertThat(signals.reminderSignal().ringingRequested()).isFalse();
+        assertThat(signals.reminderSignal().intervalMinutes()).isEqualTo(120);
+    }
+
+    @Test
+    void detectsGenericIntervalRingingReminder() {
+        RecordSignals signals = extractor.extract("每两小时闹钟提醒我喝水");
+
+        assertThat(signals.explicitReminderTime()).isTrue();
+        assertThat(signals.reminderSignal()).isNotNull();
+        assertThat(signals.reminderSignal().ringingRequested()).isTrue();
+        assertThat(signals.reminderSignal().intervalMinutes()).isEqualTo(120);
     }
 
     @Test

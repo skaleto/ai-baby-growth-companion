@@ -2157,6 +2157,15 @@ canvas {
   color: var(--muted);
 }
 
+.screen-action-button.danger {
+  border-color: rgba(221, 134, 118, 0.5);
+  color: #fffaf5;
+  background:
+    linear-gradient(180deg, rgba(196, 96, 91, 0.98), rgba(171, 74, 80, 0.98)),
+    #b55357;
+  box-shadow: 0 10px 20px rgba(161, 74, 74, 0.18);
+}
+
 .small-action {
   cursor: pointer;
 }
@@ -2848,6 +2857,59 @@ canvas {
   box-shadow: 0 0 0 4px rgba(106, 164, 217, 0.14);
 }
 
+.delete-confirm-modal {
+  width: min(100%, 360px);
+  place-items: center;
+  padding: 20px 18px 18px;
+  text-align: center;
+}
+
+.delete-confirm-badge {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(246, 188, 170, 0.92);
+  border-radius: 8px;
+  color: #a64c4f;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.94), transparent 34%),
+    linear-gradient(135deg, #fff4e6, #ffe9e2);
+  box-shadow: 0 14px 24px rgba(151, 83, 65, 0.14);
+}
+
+.complete-confirm-badge {
+  border-color: rgba(142, 199, 170, 0.9);
+  color: #2f7a5d;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.94), transparent 34%),
+    linear-gradient(135deg, #effbf1, #e7f6ff);
+  box-shadow: 0 14px 24px rgba(67, 132, 96, 0.14);
+}
+
+.delete-confirm-copy {
+  display: grid;
+  gap: 7px;
+}
+
+.delete-confirm-copy h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.delete-confirm-copy p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.delete-confirm-actions {
+  width: 100%;
+}
+
 .reminder-editor-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -3476,14 +3538,61 @@ canvas {
   font-size: 12px;
 }
 
-.pending-effect-editor {
-  min-height: 140px;
+.pending-effect-form,
+.pending-effect-form fieldset {
+  display: grid;
+  gap: 9px;
+}
+
+.pending-effect-form fieldset {
+  min-width: 0;
+  margin: 0;
   padding: 10px;
+  border: 1px solid rgba(88, 127, 168, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.pending-effect-form legend {
+  padding: 0 4px;
+  color: #245070;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pending-effect-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pending-effect-form input,
+.pending-effect-form textarea {
+  width: 100%;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.pending-effect-form input {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.pending-effect-form textarea {
+  min-height: 68px;
+  padding: 9px 10px;
   resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+}
+
+.pending-effect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .pending-effect-actions {
@@ -4234,8 +4343,8 @@ body {
   z-index: 2;
   display: grid;
   place-items: center;
-  width: 70px;
-  height: 70px;
+  width: 76px;
+  height: 76px;
   border: 7px solid rgba(255, 255, 255, 0.82);
   border-radius: 8px;
   background: #fffaf1;
@@ -4247,6 +4356,8 @@ body {
 .storybook-baby img {
   width: 74px;
   height: 74px;
+  max-width: none;
+  object-fit: contain;
   transform: translateY(2px) scale(1.08);
 }
 

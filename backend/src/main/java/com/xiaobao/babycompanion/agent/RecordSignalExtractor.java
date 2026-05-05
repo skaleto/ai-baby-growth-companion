@@ -31,6 +31,7 @@ public class RecordSignalExtractor {
     private static final Pattern SLEEP = Pattern.compile("(?:睡了|睡眠|睡觉)\\s*(\\d+(?:\\.\\d+)?)\\s*(?:个)?(?:小时|h)");
     private static final Pattern WAKES = Pattern.compile("(?:夜醒|醒了|醒来)\\s*(\\d{1,2})\\s*次");
     private static final Pattern TEMPERATURE = Pattern.compile("(3[5-9](?:\\.\\d)?)\\s*(?:度|℃)");
+    private static final Pattern INTERVAL_REMINDER = Pattern.compile("(?:每隔|每)\\s*(半|\\d+(?:\\.\\d+)?|[一二两三四五六七八九十]+)\\s*(?:个)?\\s*(分钟|分|小时)");
     private static final Pattern PART_SEPARATOR = Pattern.compile("[。；;\\n，,]");
 
     private final ObjectMapper objectMapper;
@@ -60,6 +61,7 @@ public class RecordSignalExtractor {
         ArrayNode events = objectMapper.createArrayNode();
         List<CareRecordClarification> clarifications = new ArrayList<>();
         boolean concreteCare = false;
+        ReminderSignal reminderSignal = reminderSignal(text);
 
         if (matches(text, feedingPattern())) topics.add("feeding");
         if (matches(text, "睡|夜醒|哄睡")) topics.add("sleep");
@@ -160,6 +162,7 @@ public class RecordSignalExtractor {
                         || matches(text, "明天|后天|大后天|上午|下午|晚上|\\d+月\\d+[日号]?|20\\d{2}")
                         || matches(text, "(\\d+|[一二两三四五六七八九十]+)\\s*(分钟|分|小时|天)\\s*后|半\\s*(个)?小时\\s*后|一刻钟后")
                         || matches(text, "每隔\\s*(\\d+|[一二两三四五六七八九十半]+)\\s*(分钟|分|小时)|每\\s*(\\d+|[一二两三四五六七八九十半]+)\\s*(分钟|分|小时)")
+                        || reminderSignal != null
         );
         return new RecordSignals(
                 dates.isEmpty() ? List.of(today.toString()) : dates,
@@ -169,8 +172,41 @@ public class RecordSignalExtractor {
                 concreteCare,
                 explicitReminderTime,
                 clarifications,
-                AgentCapabilityContract.unsupportedMutationRequest(text)
+                AgentCapabilityContract.unsupportedMutationRequest(text),
+                reminderSignal
         );
+    }
+
+    private ReminderSignal reminderSignal(String text) {
+        boolean hasReminderIntent = matches(text, "提醒|闹钟|记得|定时|响铃|铃声");
+        if (!hasReminderIntent) return null;
+        Integer intervalMinutes = intervalMinutes(text);
+        boolean intervalIntent = intervalMinutes != null || matches(text, "循环提醒|定时提醒|每隔|喂奶闹钟|定时喂奶|喂奶定时");
+        if (!intervalIntent) return null;
+        String topic = matches(text, feedingPattern()) ? "feeding" : "general";
+        boolean ringingRequested = "feeding".equals(topic) || matches(text, "闹钟|响铃|铃声");
+        return new ReminderSignal("interval", intervalMinutes, compact(text), topic, ringingRequested);
+    }
+
+    private Integer intervalMinutes(String text) {
+        Matcher matcher = INTERVAL_REMINDER.matcher(text);
+        if (!matcher.find()) return null;
+        Double amount = looseIntervalNumber(matcher.group(1));
+        if (amount == null) return null;
+        int minutes = "小时".equals(matcher.group(2)) ? (int) Math.round(amount * 60) : (int) Math.round(amount);
+        return minutes > 0 ? minutes : null;
+    }
+
+    private Double looseIntervalNumber(String value) {
+        if (!StringUtils.hasText(value)) return null;
+        if ("半".equals(value)) return 0.5;
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException ignored) {
+            // Fall through to common Chinese numerals.
+        }
+        Integer parsed = looseNumber(value);
+        return parsed == null ? null : parsed.doubleValue();
     }
 
     private List<ObjectNode> extractCareEvents(String text, String date, LocalDate today) {

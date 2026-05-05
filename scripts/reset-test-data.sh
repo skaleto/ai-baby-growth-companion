@@ -87,7 +87,7 @@ write_invite_codes() {
 
   mkdir -p "$data_dir/auth"
   {
-    printf '# 小宝成长伙伴测试邀请码，一行一个。\n'
+    printf '# 小宝记测试邀请码，一行一个。\n'
     printf '# reset-test-data.sh 于 %s 重新生成。\n' "$(date '+%Y-%m-%d %H:%M:%S %z')"
     local count=0
     local code
@@ -285,7 +285,7 @@ write_invite_codes() {
   local tmp="$file.tmp"
   $SUDO mkdir -p "$data_dir/auth"
   {
-    printf '# 小宝成长伙伴测试邀请码，一行一个。\n'
+    printf '# 小宝记测试邀请码，一行一个。\n'
     printf '# reset-test-data.sh 于 %s 重新生成。\n' "$(date '+%Y-%m-%d %H:%M:%S %z')"
     count=0
     while [[ "$count" -lt "$INVITE_CODE_COUNT" ]]; do

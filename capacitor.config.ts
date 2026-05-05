@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.xiaobao.growthcompanion",
-  appName: "小宝成长伙伴",
+  appName: "小宝记",
   webDir: "dist",
   bundledWebRuntime: false,
   android: {

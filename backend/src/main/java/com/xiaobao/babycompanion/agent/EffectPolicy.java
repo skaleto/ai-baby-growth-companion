@@ -22,6 +22,9 @@ import org.springframework.util.StringUtils;
 @Component
 public class EffectPolicy {
 
+    private static final int MIN_INTERVAL_REMINDER_MINUTES = 10;
+    private static final int MAX_INTERVAL_REMINDER_MINUTES = 12 * 60;
+
     private final ObjectMapper objectMapper;
     private final CareEventCompletenessPolicy completenessPolicy;
 
@@ -60,13 +63,97 @@ public class EffectPolicy {
         if (response.growthEvent() != null) {
             decisions.add(decision("pending", "growthEvent", objectMapper.valueToTree(response.growthEvent()), 0.72, "成长事件需要确认后归档。", "model"));
         }
-        listOrEmpty(response.reminders()).forEach((reminder) ->
-                decisions.add(reminderDecision(reminder, signals, highRisk))
-        );
-        listOrEmpty(response.memories()).forEach((memory) ->
-                decisions.add(decision("pending", "memory", objectMapper.valueToTree(memory), 0.66, "长期记忆需要确认后保存。", "model"))
-        );
+        AgentEffectDecision ruleReminder = reminderSignalDecision(signals, highRisk);
+        if (ruleReminder != null) {
+            decisions.add(ruleReminder);
+        } else {
+            listOrEmpty(response.reminders()).forEach((reminder) ->
+                    decisions.add(reminderDecision(reminder, signals, highRisk))
+            );
+        }
+        if (!suppressModelMemories(signals, ruleReminder)) {
+            listOrEmpty(response.memories()).forEach((memory) ->
+                    decisions.add(decision("pending", "memory", objectMapper.valueToTree(memory), 0.66, "长期记忆需要确认后保存。", "model"))
+            );
+        }
         return decisions;
+    }
+
+    private AgentEffectDecision reminderSignalDecision(RecordSignals signals, boolean highRisk) {
+        ReminderSignal signal = signals.reminderSignal();
+        if (signal == null || !"interval".equals(signal.kind())) return null;
+        Integer intervalMinutes = signal.intervalMinutes();
+        if (intervalMinutes == null || intervalMinutes < MIN_INTERVAL_REMINDER_MINUTES || intervalMinutes > MAX_INTERVAL_REMINDER_MINUTES) {
+            ObjectNode ask = objectMapper.createObjectNode();
+            ask.put("topic", "reminder");
+            ask.putArray("missingFields").add("提醒间隔");
+            ask.put("question", "想每隔多久提醒一次？告诉我明确的间隔后，我再帮你设置。");
+            return decision("ask", "reminder", ask, 0.86, "循环提醒缺少明确或合理的间隔。", "rule");
+        }
+
+        boolean feeding = "feeding".equals(signal.topic());
+        boolean ringing = signal.ringingRequested();
+        String title = reminderTitle(signal.sourceText(), feeding);
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putNull("id");
+        payload.put("title", title);
+        payload.put("reminderKind", ringing ? "alarm" : "schedule");
+        payload.put("scheduleMode", "interval");
+        payload.put("alertMode", ringing ? "ringing" : "notification");
+        payload.put("dueText", "每 " + formatIntervalText(intervalMinutes) + " " + title);
+        payload.putNull("dueAt");
+        payload.put("timeSourceText", signal.sourceText());
+        payload.put("timezone", "Asia/Shanghai");
+        payload.putNull("notificationId");
+        payload.put("notificationStatus", "pending");
+        payload.putNull("notificationError");
+        payload.put("category", feeding ? "care" : "custom");
+        payload.put("recurrence", "每 " + formatIntervalText(intervalMinutes) + " " + title);
+        ObjectNode repeatRule = objectMapper.createObjectNode();
+        repeatRule.put("mode", "fixedInterval");
+        repeatRule.put("intervalMinutes", intervalMinutes);
+        repeatRule.put("anchorType", feeding ? "careEvent" : "now");
+        if (feeding) {
+            repeatRule.put("careEventType", "milk");
+        }
+        payload.set("repeatRule", repeatRule);
+        if (ringing) {
+            payload.put("soundId", "soft_chime");
+        } else {
+            payload.putNull("soundId");
+        }
+        payload.putNull("lastAnchorEventId");
+        payload.putNull("lastAnchorAt");
+        payload.put("status", "open");
+        payload.putNull("createdAt");
+        payload.set("history", objectMapper.createArrayNode().add("按循环提醒规则创建"));
+
+        return decision(
+                highRisk ? "pending" : "auto",
+                "reminder",
+                payload,
+                highRisk ? 0.72 : 0.96,
+                highRisk ? "健康、疫苗或用药相关提醒需要确认后再创建。" : "识别到明确的循环提醒，已创建提醒。",
+                "rule"
+        );
+    }
+
+    private String reminderTitle(String sourceText, boolean feeding) {
+        if (feeding) return "喂奶提醒";
+        if (sourceText != null && sourceText.matches(".*喝水.*")) return "喝水提醒";
+        if (sourceText != null && sourceText.matches(".*(吃药|用药|喂药).*")) return "用药提醒";
+        if (sourceText != null && sourceText.matches(".*洗澡.*")) return "洗澡提醒";
+        return "循环提醒";
+    }
+
+    private boolean suppressModelMemories(RecordSignals signals, AgentEffectDecision ruleReminder) {
+        return ruleReminder != null || (signals.topics().contains("reminder") && !signals.concreteCareLog());
+    }
+
+    private String formatIntervalText(int minutes) {
+        if (minutes % 60 == 0) return (minutes / 60) + " 小时";
+        if (minutes < 60) return minutes + " 分钟";
+        return (minutes / 60) + " 小时 " + (minutes % 60) + " 分钟";
     }
 
     private AgentEffectDecision mixedFeedingClarification(
@@ -134,24 +221,23 @@ public class EffectPolicy {
 
     private AgentEffectDecision reminderDecision(AgentReminder reminder, RecordSignals signals, boolean highRisk) {
         ObjectNode payload = normalizeReminderPayload(reminder);
-        if ("alarm".equals(payload.path("reminderKind").asText())) {
+        if ("interval".equals(payload.path("scheduleMode").asText())) {
             JsonNode repeatRule = payload.path("repeatRule");
             int intervalMinutes = repeatRule.path("intervalMinutes").asInt(0);
             boolean validRule = "fixedInterval".equals(repeatRule.path("mode").asText())
-                    && "careEvent".equals(repeatRule.path("anchorType").asText())
-                    && "milk".equals(repeatRule.path("careEventType").asText())
-                    && intervalMinutes >= 30
-                    && intervalMinutes <= 12 * 60;
+                    && ("now".equals(repeatRule.path("anchorType").asText())
+                    || ("careEvent".equals(repeatRule.path("anchorType").asText()) && "milk".equals(repeatRule.path("careEventType").asText())))
+                    && intervalMinutes >= MIN_INTERVAL_REMINDER_MINUTES
+                    && intervalMinutes <= MAX_INTERVAL_REMINDER_MINUTES;
             if (!validRule) {
                 ObjectNode ask = objectMapper.createObjectNode();
                 ask.put("topic", "reminder");
-                ask.putArray("missingFields").add("intervalMinutes");
-                ask.put("question", "想每隔多久提醒一次喂奶？告诉我明确的间隔后，我再帮你设置喂奶闹钟。");
+                ask.putArray("missingFields").add("提醒间隔");
+                ask.put("question", "想每隔多久提醒一次？告诉我明确的间隔后，我再帮你设置。");
                 ask.set("draftReminder", payload);
-                return decision("ask", "reminder", ask, 0.66, "循环闹钟缺少明确或合理的间隔。", "model");
+                return decision("ask", "reminder", ask, 0.66, "循环提醒缺少明确或合理的间隔。", "model");
             }
-            payload.put("category", "care");
-            if (!StringUtils.hasText(text(payload, "soundId"))) {
+            if ("ringing".equals(payload.path("alertMode").asText()) && !StringUtils.hasText(text(payload, "soundId"))) {
                 payload.put("soundId", "soft_chime");
             }
             return decision(
@@ -159,14 +245,14 @@ public class EffectPolicy {
                     "reminder",
                     payload,
                     highRisk ? 0.72 : 0.9,
-                    highRisk ? "健康、疫苗或用药相关提醒需要确认后再创建。" : "识别到明确的喂奶循环闹钟，已创建提醒。",
+                    highRisk ? "健康、疫苗或用药相关提醒需要确认后再创建。" : "识别到明确的循环提醒，已创建提醒。",
                     "model"
             );
         }
         if (!hasUsableScheduleTime(payload, signals)) {
             ObjectNode ask = objectMapper.createObjectNode();
             ask.put("topic", "reminder");
-            ask.putArray("missingFields").add("dueAt");
+            ask.putArray("missingFields").add("提醒时间");
             ask.put("question", "这个提醒想定在什么时候？告诉我具体时间后，我再帮你设置。");
             ask.set("draftReminder", payload);
             return decision("ask", "reminder", ask, 0.64, "提醒时间不明确，需要补充具体时间。", "model");
@@ -227,7 +313,25 @@ public class EffectPolicy {
 
     private ObjectNode normalizeReminderPayload(AgentReminder reminder) {
         ObjectNode payload = objectMapper.valueToTree(reminder);
+        String reminderKind = text(payload, "reminderKind");
+        if (!StringUtils.hasText(text(payload, "scheduleMode"))) {
+            payload.put("scheduleMode", payload.path("repeatRule").isObject() || "alarm".equals(reminderKind) ? "interval" : "once");
+        }
+        if (!"interval".equals(payload.path("scheduleMode").asText()) && !"once".equals(payload.path("scheduleMode").asText())) {
+            payload.put("scheduleMode", payload.path("repeatRule").isObject() ? "interval" : "once");
+        }
+        if (!StringUtils.hasText(text(payload, "alertMode"))) {
+            payload.put("alertMode", "alarm".equals(reminderKind) ? "ringing" : "notification");
+        }
+        if (!"ringing".equals(payload.path("alertMode").asText()) && !"notification".equals(payload.path("alertMode").asText())) {
+            payload.put("alertMode", "alarm".equals(reminderKind) ? "ringing" : "notification");
+        }
         if (!StringUtils.hasText(text(payload, "reminderKind"))) {
+            payload.put("reminderKind", "ringing".equals(payload.path("alertMode").asText()) ? "alarm" : "schedule");
+        }
+        if ("ringing".equals(payload.path("alertMode").asText())) {
+            payload.put("reminderKind", "alarm");
+        } else {
             payload.put("reminderKind", "schedule");
         }
         if (!StringUtils.hasText(text(payload, "timezone"))) {

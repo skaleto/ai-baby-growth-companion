@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLog;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLogEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
+import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.dto.agent.AgentReminder;
 import com.xiaobao.babycompanion.dto.agent.AgentSafetyAlert;
 import org.junit.jupiter.api.Test;
@@ -206,6 +207,8 @@ class EffectPolicyTests {
                 null,
                 "提醒喂奶",
                 "schedule",
+                "once",
+                "notification",
                 "今天 10:45",
                 "2026-05-04T10:45:00+08:00",
                 "10:45提醒我喂奶",
@@ -272,6 +275,8 @@ class EffectPolicyTests {
                 null,
                 "提醒喝奶",
                 "schedule",
+                "once",
+                "notification",
                 "三分钟后",
                 null,
                 "三分钟后",
@@ -303,6 +308,8 @@ class EffectPolicyTests {
                 null,
                 "提醒洗澡",
                 "schedule",
+                "once",
+                "notification",
                 "今天 20:00",
                 "2026-05-04T20:00:00+08:00",
                 "八点提醒我给小宝洗澡",
@@ -334,6 +341,8 @@ class EffectPolicyTests {
                 null,
                 "提醒喝奶",
                 "schedule",
+                "once",
+                "notification",
                 "过会儿",
                 "2026-05-04T20:00:00+08:00",
                 "过会儿",
@@ -356,7 +365,7 @@ class EffectPolicyTests {
 
         assertThat(decisions).hasSize(1);
         assertThat(decisions.get(0).mode()).isEqualTo("ask");
-        assertThat(decisions.get(0).payload().path("missingFields").get(0).asText()).isEqualTo("dueAt");
+        assertThat(decisions.get(0).payload().path("missingFields").get(0).asText()).isEqualTo("提醒时间");
     }
 
     @Test
@@ -365,6 +374,8 @@ class EffectPolicyTests {
                 null,
                 "提醒喝奶",
                 "schedule",
+                "once",
+                "notification",
                 "过会儿",
                 null,
                 "过会儿",
@@ -387,7 +398,59 @@ class EffectPolicyTests {
 
         assertThat(decisions).hasSize(1);
         assertThat(decisions.get(0).mode()).isEqualTo("ask");
-        assertThat(decisions.get(0).payload().path("missingFields").get(0).asText()).isEqualTo("dueAt");
+        assertThat(decisions.get(0).payload().path("missingFields").get(0).asText()).isEqualTo("提醒时间");
+    }
+
+    @Test
+    void keepsRelativeMilkReminderAsScheduleAndSuppressesProfileMemory() {
+        AgentChatResponse response = new AgentChatResponse(
+                "好的",
+                List.of(),
+                null,
+                null,
+                List.of(new AgentReminder(
+                        null,
+                        "提醒喂奶",
+                        "schedule",
+                        "once",
+                        "notification",
+                        "三分钟后",
+                        "2099-05-04T20:03:00+08:00",
+                        "三分钟后提醒我喂奶",
+                        "Asia/Shanghai",
+                        null,
+                        "pending",
+                        null,
+                        "care",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "open",
+                        null,
+                        List.of()
+                )),
+                List.of(new AgentMemory(null, "小宝目前是混合喂养，暂未发现过敏", "profile", 0.8, null)),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        var decisions = policy.decide(response, extractor.extract("三分钟后提醒我喂奶"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).type()).isEqualTo("reminder");
+        assertThat(decisions.get(0).payload().path("reminderKind").asText()).isEqualTo("schedule");
+        assertThat(decisions.get(0).payload().path("scheduleMode").asText()).isEqualTo("once");
+        assertThat(decisions.get(0).payload().path("alertMode").asText()).isEqualTo("notification");
+        assertThat(decisions.get(0).payload().path("repeatRule").isMissingNode()
+                || decisions.get(0).payload().path("repeatRule").isNull()).isTrue();
     }
 
     @Test
@@ -401,6 +464,8 @@ class EffectPolicyTests {
                 null,
                 "喂奶提醒",
                 "alarm",
+                "interval",
+                "ringing",
                 "每 3 小时喂奶提醒",
                 null,
                 "每 3 小时",
@@ -424,7 +489,137 @@ class EffectPolicyTests {
         assertThat(decisions).hasSize(1);
         assertThat(decisions.get(0).mode()).isEqualTo("auto");
         assertThat(decisions.get(0).payload().path("reminderKind").asText()).isEqualTo("alarm");
+        assertThat(decisions.get(0).payload().path("scheduleMode").asText()).isEqualTo("interval");
+        assertThat(decisions.get(0).payload().path("alertMode").asText()).isEqualTo("ringing");
         assertThat(decisions.get(0).payload().path("repeatRule").path("intervalMinutes").asInt()).isEqualTo(180);
+    }
+
+    @Test
+    void forcesHalfHourMilkIntervalReminderEvenWhenModelReturnsScheduleAndMemory() {
+        AgentChatResponse response = new AgentChatResponse(
+                "好的",
+                List.of(),
+                null,
+                null,
+                List.of(new AgentReminder(
+                        null,
+                        "提醒喂奶",
+                        "schedule",
+                        "once",
+                        "notification",
+                        "半小时后",
+                        null,
+                        "每半小时提醒我喂奶",
+                        "Asia/Shanghai",
+                        null,
+                        "pending",
+                        null,
+                        "care",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "open",
+                        null,
+                        List.of()
+                )),
+                List.of(new AgentMemory(null, "小宝目前是混合喂养，暂未发现过敏", "profile", 0.8, null)),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        var decisions = policy.decide(response, extractor.extract("每半小时提醒我喂奶"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).type()).isEqualTo("reminder");
+        assertThat(decisions.get(0).payload().path("reminderKind").asText()).isEqualTo("alarm");
+        assertThat(decisions.get(0).payload().path("scheduleMode").asText()).isEqualTo("interval");
+        assertThat(decisions.get(0).payload().path("alertMode").asText()).isEqualTo("ringing");
+        assertThat(decisions.get(0).payload().path("repeatRule").path("intervalMinutes").asInt()).isEqualTo(30);
+    }
+
+    @Test
+    void forcesTenMinuteMilkIntervalReminderWithoutAskingAgain() {
+        AgentChatResponse response = new AgentChatResponse(
+                "好的，已帮你创建喂奶闹钟。",
+                List.of(),
+                null,
+                null,
+                List.of(new AgentReminder(
+                        null,
+                        "提醒喂奶",
+                        "schedule",
+                        "once",
+                        "notification",
+                        "十分钟后",
+                        null,
+                        "每十分钟提醒我喂奶",
+                        "Asia/Shanghai",
+                        null,
+                        "pending",
+                        null,
+                        "care",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "open",
+                        null,
+                        List.of()
+                )),
+                List.of(new AgentMemory(null, "小宝目前是混合喂养，暂未发现过敏", "profile", 0.8, null)),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        var decisions = policy.decide(response, extractor.extract("每十分钟提醒我喂奶"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).type()).isEqualTo("reminder");
+        assertThat(decisions.get(0).payload().path("reminderKind").asText()).isEqualTo("alarm");
+        assertThat(decisions.get(0).payload().path("scheduleMode").asText()).isEqualTo("interval");
+        assertThat(decisions.get(0).payload().path("alertMode").asText()).isEqualTo("ringing");
+        assertThat(decisions.get(0).payload().path("repeatRule").path("intervalMinutes").asInt()).isEqualTo(10);
+    }
+
+    @Test
+    void createsGenericIntervalNotificationReminderByDefault() {
+        var decisions = policy.decide(response(List.of(), List.of()), extractor.extract("每两小时提醒我喝水"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).type()).isEqualTo("reminder");
+        assertThat(decisions.get(0).payload().path("scheduleMode").asText()).isEqualTo("interval");
+        assertThat(decisions.get(0).payload().path("alertMode").asText()).isEqualTo("notification");
+        assertThat(decisions.get(0).payload().path("repeatRule").path("anchorType").asText()).isEqualTo("now");
+        assertThat(decisions.get(0).payload().path("repeatRule").path("intervalMinutes").asInt()).isEqualTo(120);
+    }
+
+    @Test
+    void createsGenericIntervalRingingReminderWhenRequested() {
+        var decisions = policy.decide(response(List.of(), List.of()), extractor.extract("每两小时闹钟提醒我喝水"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).type()).isEqualTo("reminder");
+        assertThat(decisions.get(0).payload().path("scheduleMode").asText()).isEqualTo("interval");
+        assertThat(decisions.get(0).payload().path("alertMode").asText()).isEqualTo("ringing");
+        assertThat(decisions.get(0).payload().path("repeatRule").path("anchorType").asText()).isEqualTo("now");
+        assertThat(decisions.get(0).payload().path("repeatRule").path("intervalMinutes").asInt()).isEqualTo(120);
     }
 
     private AgentChatResponse response(AgentCareLog careLog, List<AgentSafetyAlert> alerts) {

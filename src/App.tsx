@@ -1,5 +1,6 @@
 import {
   Bell,
+  BellOff,
   Brain,
   CalendarDays,
   Camera as CameraIcon,
@@ -29,9 +30,9 @@ import {
   Video,
   X,
 } from "lucide-react";
+import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Camera as NativeCamera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import {
   ChangeEvent,
@@ -69,12 +70,20 @@ import {
   loginWithInvite,
   logoutCurrentUser,
   readCurrentUser,
+  updateFamilyName,
 } from "./authApi";
 import {
   initialProfile,
   makeId,
   todayISO,
 } from "./data";
+import { hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarning } from "./haptics";
+import {
+  cancelAlarmReminder,
+  consumeAlarmEvents,
+  isNativeAlarmAvailable,
+  scheduleAlarmReminder,
+} from "./nativeAlarm";
 import { useStoredState } from "./storage";
 import {
   AgentChatResponse,
@@ -100,7 +109,9 @@ import {
   PendingEffect,
   Reminder,
   ReminderKind,
+  ReminderAlertMode,
   ReminderRepeatRule,
+  ReminderScheduleMode,
   ReminderSoundId,
   SafetyAlert,
   ToolActivity,
@@ -164,16 +175,18 @@ const REMINDER_QUICK_ACTIONS = [
 
 const REMINDER_CHANNELS = {
   schedule: "baby_schedule_v1",
-  soft_chime: "baby_alarm_chime_v1",
-  soft_bell: "baby_alarm_bell_v1",
+  soft_chime: "baby_alarm_chime_v2",
+  soft_bell: "baby_alarm_bell_v2",
 } as const;
+
+const LEGACY_REMINDER_CHANNELS = ["baby_alarm_chime_v1", "baby_alarm_bell_v1"];
 
 const REMINDER_SOUND_FILES: Record<ReminderSoundId, string> = {
   soft_chime: "xiaobao_chime.wav",
   soft_bell: "xiaobao_bell.wav",
 };
 
-const MIN_INTERVAL_MINUTES = 30;
+const MIN_INTERVAL_MINUTES = 10;
 const MAX_INTERVAL_MINUTES = 12 * 60;
 
 const StorybookScene = () => (
@@ -229,12 +242,46 @@ type CareEventDraft = {
 type ReminderDraft = {
   title: string;
   category: Reminder["category"];
-  reminderKind: ReminderKind;
+  scheduleMode: ReminderScheduleMode;
+  alertMode: ReminderAlertMode;
   dueDate: string;
   dueTime: string;
-  repeatEnabled: boolean;
-  intervalHours: string;
+  intervalMinutes: string;
   soundId: ReminderSoundId;
+};
+
+type PendingReminderDraft = {
+  id: string;
+  draft: ReminderDraft;
+};
+
+type PendingMemoryDraft = {
+  id: string;
+  text: string;
+};
+
+type PendingGrowthDraft = {
+  title: string;
+  date: string;
+  summary: string;
+};
+
+type PendingCareDraft = {
+  date: string;
+  milkMl: string;
+  milkTimes: string;
+  sleepHours: string;
+  wakes: string;
+  poop: string;
+  temperature: string;
+  notes: string;
+};
+
+type PendingEffectDraft = {
+  growthEvent?: PendingGrowthDraft;
+  careLogPatch?: PendingCareDraft;
+  reminders: PendingReminderDraft[];
+  memories: PendingMemoryDraft[];
 };
 
 type AlbumMediaDecision = {
@@ -328,9 +375,14 @@ const REMINDER_CATEGORY_OPTIONS: Array<SelectOption<Reminder["category"]>> = [
   { value: "custom", label: "自定义", hint: "其他家庭事项" },
 ];
 
-const REMINDER_KIND_OPTIONS: Array<SelectOption<ReminderKind>> = [
-  { value: "schedule", label: "日程提醒", hint: "到点推送一条消息" },
-  { value: "alarm", label: "闹钟提醒", hint: "柔和短音提示，适合喂奶循环" },
+const REMINDER_SCHEDULE_MODE_OPTIONS: Array<SelectOption<ReminderScheduleMode>> = [
+  { value: "once", label: "提醒一次", hint: "选一个具体日期和时间" },
+  { value: "interval", label: "循环提醒", hint: "按固定间隔重复提醒" },
+];
+
+const REMINDER_ALERT_MODE_OPTIONS: Array<SelectOption<ReminderAlertMode>> = [
+  { value: "notification", label: "普通通知", hint: "到点推送一条消息" },
+  { value: "ringing", label: "闹铃响起", hint: "进入全屏提醒页并播放提示音" },
 ];
 
 const REMINDER_SOUND_OPTIONS: Array<SelectOption<ReminderSoundId>> = [
@@ -389,13 +441,23 @@ function StorySelect<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen((current) => !current);
+        }}
       >
         <span className={selectedOption ? "" : "placeholder"}>{selectedOption?.label ?? placeholder}</span>
         <ChevronDown size={17} aria-hidden="true" />
       </button>
       {open ? (
-        <div className="story-select-menu" role="listbox" aria-label={ariaLabel}>
+        <div
+          className="story-select-menu"
+          role="listbox"
+          aria-label={ariaLabel}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
           {options.map((option) => (
             <button
               type="button"
@@ -405,7 +467,13 @@ function StorySelect<T extends string>({
               className={`${option.value === value ? "selected" : ""} ${option.disabled ? "disabled" : ""}`.trim()}
               disabled={option.disabled}
               key={option.value}
-              onClick={() => {
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 if (option.disabled) return;
                 onChange(option.value);
                 setOpen(false);
@@ -586,6 +654,8 @@ const blankProfile: BabyProfile = {
 
 const hasCompleteProfile = (profile?: Partial<BabyProfile> | null) =>
   Boolean(profile?.nickname?.trim() && (profile.birthDate?.trim() || profile.expectedDate?.trim()));
+
+const suggestedFamilyName = (nickname: string) => `${nickname.trim() || "小宝"}家`;
 
 const textValue = (value: unknown, fallback = "") => (typeof value === "string" ? value : fallback);
 
@@ -885,13 +955,26 @@ const reminderNotificationId = (reminder: Pick<Reminder, "id">, offset = 0) => {
 const normalizeReminderKind = (kind: unknown): ReminderKind =>
   kind === "alarm" || kind === "schedule" ? kind : "schedule";
 
+const normalizeReminderScheduleMode = (mode: unknown, reminderKind?: unknown, repeatRule?: unknown): ReminderScheduleMode => {
+  if (mode === "once" || mode === "interval") return mode;
+  if (repeatRule && typeof repeatRule === "object") return "interval";
+  return reminderKind === "alarm" ? "interval" : "once";
+};
+
+const normalizeReminderAlertMode = (mode: unknown, reminderKind?: unknown): ReminderAlertMode => {
+  if (mode === "notification" || mode === "ringing") return mode;
+  return reminderKind === "alarm" ? "ringing" : "notification";
+};
+
 const normalizeReminderSoundId = (soundId: unknown): ReminderSoundId =>
   soundId === "soft_bell" || soundId === "soft_chime" ? soundId : "soft_chime";
 
 const normalizeReminderRepeatRule = (value: unknown): ReminderRepeatRule | undefined => {
   if (!value || typeof value !== "object") return undefined;
   const source = value as Partial<ReminderRepeatRule>;
-  if (source.mode !== "fixedInterval" || source.anchorType !== "careEvent" || source.careEventType !== "milk") return undefined;
+  if (source.mode !== "fixedInterval") return undefined;
+  const anchorType = source.anchorType === "careEvent" ? "careEvent" : "now";
+  if (anchorType === "careEvent" && source.careEventType !== "milk") return undefined;
   const intervalMinutes = typeof source.intervalMinutes === "number" && Number.isFinite(source.intervalMinutes)
     ? Math.round(source.intervalMinutes)
     : undefined;
@@ -899,31 +982,38 @@ const normalizeReminderRepeatRule = (value: unknown): ReminderRepeatRule | undef
   return {
     mode: "fixedInterval",
     intervalMinutes: Math.min(MAX_INTERVAL_MINUTES, Math.max(MIN_INTERVAL_MINUTES, intervalMinutes)),
-    anchorType: "careEvent",
-    careEventType: "milk",
+    anchorType,
+    careEventType: anchorType === "careEvent" ? "milk" : undefined,
   };
 };
 
-const isIntervalMilkReminder = (reminder: Pick<Reminder, "reminderKind" | "repeatRule" | "status">) =>
+const isIntervalReminder = (reminder: Pick<Reminder, "scheduleMode" | "repeatRule" | "status">) =>
   reminder.status !== "done" &&
-  reminder.reminderKind === "alarm" &&
-  reminder.repeatRule?.mode === "fixedInterval" &&
-  reminder.repeatRule.anchorType === "careEvent" &&
-  reminder.repeatRule.careEventType === "milk";
+  reminder.scheduleMode === "interval" &&
+  reminder.repeatRule?.mode === "fixedInterval";
+
+const isIntervalMilkReminder = (reminder: Pick<Reminder, "scheduleMode" | "repeatRule" | "status">) =>
+  isIntervalReminder(reminder) &&
+  reminder.repeatRule?.anchorType === "careEvent" &&
+  reminder.repeatRule?.careEventType === "milk";
 
 const normalizeReminderSchedule = (reminder: Reminder, now = new Date()): Reminder => {
-  const reminderKind = normalizeReminderKind(reminder.reminderKind);
   const repeatRule = normalizeReminderRepeatRule(reminder.repeatRule);
+  const scheduleMode = normalizeReminderScheduleMode(reminder.scheduleMode, reminder.reminderKind, repeatRule);
+  const alertMode = normalizeReminderAlertMode(reminder.alertMode, reminder.reminderKind);
+  const reminderKind: ReminderKind = alertMode === "ringing" ? "alarm" : "schedule";
   let dueAt = parseReminderDueAt(reminder, now);
-  if (!dueAt && repeatRule) {
+  if (!dueAt && scheduleMode === "interval" && repeatRule) {
     dueAt = new Date(now.getTime() + repeatRule.intervalMinutes * 60 * 1000);
   }
   if (!dueAt) {
     return {
       ...reminder,
       reminderKind,
+      scheduleMode,
+      alertMode,
       repeatRule,
-      soundId: reminderKind === "alarm" ? normalizeReminderSoundId(reminder.soundId) : reminder.soundId,
+      soundId: alertMode === "ringing" ? normalizeReminderSoundId(reminder.soundId) : reminder.soundId,
       timeSourceText: reminder.timeSourceText || reminder.dueText,
       timezone: reminder.timezone || reminderTimezone(),
       notificationStatus: reminder.notificationStatus ?? "pending",
@@ -932,6 +1022,8 @@ const normalizeReminderSchedule = (reminder: Reminder, now = new Date()): Remind
   return {
     ...reminder,
     reminderKind,
+    scheduleMode,
+    alertMode,
     dueAt: dueAt.toISOString(),
     dueText: formatReminderDueText(dueAt),
     timeSourceText: reminder.timeSourceText || reminder.dueText,
@@ -939,7 +1031,7 @@ const normalizeReminderSchedule = (reminder: Reminder, now = new Date()): Remind
     notificationId: reminder.notificationId ?? reminderNotificationId(reminder),
     notificationStatus: reminder.notificationStatus ?? "pending",
     repeatRule,
-    soundId: reminderKind === "alarm" ? normalizeReminderSoundId(reminder.soundId) : reminder.soundId,
+    soundId: alertMode === "ringing" ? normalizeReminderSoundId(reminder.soundId) : reminder.soundId,
   };
 };
 
@@ -1081,10 +1173,15 @@ const normalizeGrowthEvent = (value: Partial<GrowthEvent> | null | undefined, in
 });
 
 const normalizeReminder = (value: Partial<Reminder> | null | undefined, index: number): Reminder => {
+  const repeatRule = normalizeReminderRepeatRule(value?.repeatRule);
+  const scheduleMode = normalizeReminderScheduleMode(value?.scheduleMode, value?.reminderKind, repeatRule);
+  const alertMode = normalizeReminderAlertMode(value?.alertMode, value?.reminderKind);
   const reminder: Reminder = {
     id: textValue(value?.id, `reminder-${index}`),
     title: textValue(value?.title, "照护提醒"),
-    reminderKind: normalizeReminderKind(value?.reminderKind),
+    reminderKind: alertMode === "ringing" ? "alarm" : "schedule",
+    scheduleMode,
+    alertMode,
     dueText: textValue(value?.dueText, "待确认时间"),
     dueAt: textValue(value?.dueAt) || undefined,
     timeSourceText: textValue(value?.timeSourceText) || undefined,
@@ -1104,7 +1201,7 @@ const normalizeReminder = (value: Partial<Reminder> | null | undefined, index: n
     notificationError: textValue(value?.notificationError) || undefined,
     category: normalizeReminderCategory(value?.category),
     recurrence: textValue(value?.recurrence) || undefined,
-    repeatRule: normalizeReminderRepeatRule(value?.repeatRule),
+    repeatRule,
     soundId: normalizeReminderSoundId(value?.soundId),
     lastAnchorEventId: textValue(value?.lastAnchorEventId) || undefined,
     lastAnchorAt: textValue(value?.lastAnchorAt) || undefined,
@@ -1607,13 +1704,15 @@ const reminderStatusLabel = (status: Reminder["status"]) => {
   return "待完成";
 };
 
-const reminderKindLabel = (reminder: Reminder) => (reminder.reminderKind === "alarm" ? "闹钟型" : "日程型");
+const reminderScheduleLabel = (reminder: Reminder) => (reminder.scheduleMode === "interval" ? "循环" : "一次");
+
+const reminderAlertLabel = (reminder: Reminder) => (reminder.alertMode === "ringing" ? "闹铃" : "通知");
 
 const reminderRepeatLabel = (reminder: Reminder) =>
   reminder.repeatRule ? `每 ${formatIntervalText(reminder.repeatRule.intervalMinutes)}` : undefined;
 
 const reminderSoundLabel = (reminder: Reminder) =>
-  reminder.reminderKind === "alarm"
+  reminder.alertMode === "ringing"
     ? REMINDER_SOUND_OPTIONS.find((option) => option.value === normalizeReminderSoundId(reminder.soundId))?.label
     : undefined;
 
@@ -2253,20 +2352,20 @@ const nextIntervalDueAt = (anchorAt: Date, intervalMinutes: number, now = new Da
 };
 
 const prepareIntervalReminder = (reminder: Reminder, careLogs: CareLog[], now = new Date()) => {
-  if (!isIntervalMilkReminder(reminder) || !reminder.repeatRule) return normalizeReminderSchedule(reminder, now);
-  const anchor = latestCareEventAnchor(careLogs, "milk");
+  if (!isIntervalReminder(reminder) || !reminder.repeatRule) return normalizeReminderSchedule(reminder, now);
+  const anchor = isIntervalMilkReminder(reminder) ? latestCareEventAnchor(careLogs, "milk") : null;
   const anchorAt = anchor?.occurredAt ?? now;
   const dueAt = nextIntervalDueAt(anchorAt, reminder.repeatRule.intervalMinutes, now);
   const entry = anchor
     ? `按最近一次喝奶 ${anchor.label} 计算下一次提醒`
-    : "没有最近喝奶记录，按当前时间开始循环提醒";
+    : "按当前时间开始循环提醒";
   return normalizeReminderSchedule(
     addReminderHistory(
       {
         ...reminder,
         dueAt: dueAt.toISOString(),
         dueText: formatReminderDueText(dueAt),
-        recurrence: `每 ${formatIntervalText(reminder.repeatRule.intervalMinutes)} 喂奶提醒`,
+        recurrence: `每 ${formatIntervalText(reminder.repeatRule.intervalMinutes)} ${reminder.title || "提醒"}`,
         lastAnchorEventId: anchor?.id,
         lastAnchorAt: anchorAt.toISOString(),
         notificationStatus: "pending",
@@ -2279,18 +2378,26 @@ const prepareIntervalReminder = (reminder: Reminder, careLogs: CareLog[], now = 
 };
 
 const reminderChannelId = (reminder: Reminder) =>
-  reminder.reminderKind === "alarm"
+  reminder.alertMode === "ringing"
     ? reminder.soundId === "soft_bell"
       ? REMINDER_CHANNELS.soft_bell
       : REMINDER_CHANNELS.soft_chime
     : REMINDER_CHANNELS.schedule;
 
 const reminderSoundFile = (reminder: Reminder) =>
-  reminder.reminderKind === "alarm" ? REMINDER_SOUND_FILES[normalizeReminderSoundId(reminder.soundId)] : undefined;
+  reminder.alertMode === "ringing" ? REMINDER_SOUND_FILES[normalizeReminderSoundId(reminder.soundId)] : undefined;
+
+const shouldUseNativeReminderScheduler = (reminder: Reminder) =>
+  isNativeAlarmAvailable() && (isIntervalReminder(reminder) || reminder.alertMode === "ringing");
 
 const ensureReminderChannels = async () => {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || reminderChannelsReady) return;
   try {
+    await Promise.all(
+      LEGACY_REMINDER_CHANNELS.map((id) =>
+        LocalNotifications.deleteChannel({ id }).catch(() => undefined),
+      ),
+    );
     await LocalNotifications.createChannel({
       id: REMINDER_CHANNELS.schedule,
       name: "小宝日程提醒",
@@ -2367,24 +2474,34 @@ const scheduleNativeReminders = async (
 
     await ensureReminderChannels();
     const exactAlarmGranted = await canScheduleExactAlarm();
+    const nativeAlarmExactById = new Map<string, boolean>();
+    const nativeAlarmReminders = scheduleable.filter(shouldUseNativeReminderScheduler);
+    const localNotificationReminders = scheduleable.filter((reminder) => !shouldUseNativeReminderScheduler(reminder));
 
-    if (scheduleable.length) {
+    for (const reminder of nativeAlarmReminders) {
+      const result = await scheduleAlarmReminder(reminder);
+      nativeAlarmExactById.set(reminder.id, result.exact);
+    }
+
+    if (localNotificationReminders.length) {
       await LocalNotifications.schedule({
-        notifications: scheduleable.map((reminder) => ({
+        notifications: localNotificationReminders.map((reminder) => ({
           id: reminder.notificationId ?? reminderNotificationId(reminder),
           title: reminder.title,
-          body: reminder.reminderKind === "alarm"
-            ? `${reminder.dueText} · 到喂奶提醒时间啦`
-            : `${reminder.dueText} · 打开小宝成长伙伴确认是否完成`,
+          body: reminder.alertMode === "ringing"
+            ? `${reminder.dueText} · 到提醒时间啦`
+            : `${reminder.dueText} · 打开小宝记确认是否完成`,
           sound: reminderSoundFile(reminder),
           channelId: reminderChannelId(reminder),
           schedule: {
             at: new Date(reminder.dueAt!),
-            allowWhileIdle: reminder.reminderKind === "alarm" && exactAlarmGranted,
+            allowWhileIdle: (reminder.alertMode === "ringing" || reminder.scheduleMode === "interval") && exactAlarmGranted,
           },
           extra: {
             reminderId: reminder.id,
             reminderKind: reminder.reminderKind,
+            scheduleMode: reminder.scheduleMode,
+            alertMode: reminder.alertMode,
             repeatRule: reminder.repeatRule,
           },
         })),
@@ -2392,13 +2509,20 @@ const scheduleNativeReminders = async (
     }
 
     return [
-      ...scheduleable.map((reminder) => ({
-        ...reminder,
-        notificationStatus: reminder.reminderKind === "alarm" && !exactAlarmGranted ? "scheduled_inexact" as const : "scheduled" as const,
-        notificationError: reminder.reminderKind === "alarm" && !exactAlarmGranted
-          ? "Android 精确闹钟权限未开启，已降级为普通定时提醒。"
-          : undefined,
-      })),
+      ...scheduleable.map((reminder) => {
+        const exactForReminder = nativeAlarmExactById.has(reminder.id)
+          ? nativeAlarmExactById.get(reminder.id)
+          : reminder.alertMode === "ringing" || reminder.scheduleMode === "interval"
+            ? exactAlarmGranted
+            : true;
+        return {
+          ...reminder,
+          notificationStatus: (reminder.alertMode === "ringing" || reminder.scheduleMode === "interval") && !exactForReminder ? "scheduled_inexact" as const : "scheduled" as const,
+          notificationError: (reminder.alertMode === "ringing" || reminder.scheduleMode === "interval") && !exactForReminder
+            ? "Android 精确闹钟权限未开启，已安排提醒，但可能不够准时。"
+            : undefined,
+        };
+      }),
       ...failed.map((reminder) => ({
         ...reminder,
         notificationStatus: "failed" as const,
@@ -2417,6 +2541,13 @@ const scheduleNativeReminders = async (
 
 const cancelNativeReminder = async (reminder: Reminder) => {
   if (!Capacitor.isNativePlatform() || !reminder.notificationId) return;
+  if (shouldUseNativeReminderScheduler(reminder)) {
+    try {
+      await cancelAlarmReminder(reminder);
+    } catch {
+      // Continue with the LocalNotifications cleanup below in case an older schedule exists.
+    }
+  }
   try {
     await LocalNotifications.cancel({ notifications: [{ id: reminder.notificationId }] });
   } catch {
@@ -2431,11 +2562,11 @@ function createReminderDraft(base = new Date()): ReminderDraft {
   return {
     title: "",
     category: "care",
-    reminderKind: "schedule",
+    scheduleMode: "once",
+    alertMode: "notification",
     dueDate: localDateKey(dueAt),
     dueTime: localTimeKey(dueAt),
-    repeatEnabled: false,
-    intervalHours: "3",
+    intervalMinutes: "180",
     soundId: "soft_chime",
   };
 }
@@ -2445,26 +2576,28 @@ function reminderDraftFromReminder(reminder: Reminder): ReminderDraft {
   return {
     title: reminder.title,
     category: reminder.category,
-    reminderKind: normalizeReminderKind(reminder.reminderKind),
+    scheduleMode: normalizeReminderScheduleMode(reminder.scheduleMode, reminder.reminderKind, reminder.repeatRule),
+    alertMode: normalizeReminderAlertMode(reminder.alertMode, reminder.reminderKind),
     dueDate: localDateKey(dueAt),
     dueTime: localTimeKey(dueAt),
-    repeatEnabled: Boolean(reminder.repeatRule),
-    intervalHours: reminder.repeatRule ? String(reminder.repeatRule.intervalMinutes / 60).replace(/\.0$/, "") : "3",
+    intervalMinutes: reminder.repeatRule ? String(reminder.repeatRule.intervalMinutes) : "180",
     soundId: normalizeReminderSoundId(reminder.soundId),
   };
 }
 
 function reminderFromDraft(draft: ReminderDraft, existing?: Reminder): Reminder {
-  const title = draft.title.trim() || (draft.reminderKind === "alarm" ? "喂奶提醒" : "照护提醒");
-  const reminderKind = normalizeReminderKind(draft.reminderKind);
-  const intervalHours = Number(draft.intervalHours);
-  const intervalMinutes = Math.round((Number.isFinite(intervalHours) ? intervalHours : 3) * 60);
-  const repeatRule: ReminderRepeatRule | undefined = reminderKind === "alarm" && draft.repeatEnabled
+  const scheduleMode = normalizeReminderScheduleMode(draft.scheduleMode);
+  const alertMode = normalizeReminderAlertMode(draft.alertMode);
+  const title = draft.title.trim() || (scheduleMode === "interval" ? "循环提醒" : "照护提醒");
+  const reminderKind: ReminderKind = alertMode === "ringing" ? "alarm" : "schedule";
+  const intervalValue = Number(draft.intervalMinutes);
+  const intervalMinutes = Math.round(Number.isFinite(intervalValue) ? intervalValue : 180);
+  const repeatRule: ReminderRepeatRule | undefined = scheduleMode === "interval"
     ? {
         mode: "fixedInterval",
         intervalMinutes: Math.min(MAX_INTERVAL_MINUTES, Math.max(MIN_INTERVAL_MINUTES, intervalMinutes)),
-        anchorType: "careEvent",
-        careEventType: "milk",
+        anchorType: /奶|喂奶|喝奶|吃奶/.test(title) ? "careEvent" : "now",
+        careEventType: /奶|喂奶|喝奶|吃奶/.test(title) ? "milk" : undefined,
       }
     : undefined;
   const dueAt = new Date(`${draft.dueDate || todayISO()}T${draft.dueTime || "09:00"}:00`);
@@ -2474,7 +2607,9 @@ function reminderFromDraft(draft: ReminderDraft, existing?: Reminder): Reminder 
     id: existing?.id ?? makeId("reminder"),
     title,
     reminderKind,
-    dueText: repeatRule ? `每 ${formatIntervalText(repeatRule.intervalMinutes)} 喂奶提醒` : formatReminderDueText(scheduleDueAt),
+    scheduleMode,
+    alertMode,
+    dueText: repeatRule ? `每 ${formatIntervalText(repeatRule.intervalMinutes)} ${title}` : formatReminderDueText(scheduleDueAt),
     dueAt: repeatRule ? existing?.dueAt : scheduleDueAt.toISOString(),
     timeSourceText: repeatRule ? `每 ${formatIntervalText(repeatRule.intervalMinutes)}` : formatReminderDueText(scheduleDueAt),
     timezone: reminderTimezone(),
@@ -2482,9 +2617,9 @@ function reminderFromDraft(draft: ReminderDraft, existing?: Reminder): Reminder 
     notificationStatus: "pending",
     notificationError: undefined,
     category: draft.category,
-    recurrence: repeatRule ? `每 ${formatIntervalText(repeatRule.intervalMinutes)} 喂奶提醒` : undefined,
+    recurrence: repeatRule ? `每 ${formatIntervalText(repeatRule.intervalMinutes)} ${title}` : undefined,
     repeatRule,
-    soundId: reminderKind === "alarm" ? normalizeReminderSoundId(draft.soundId) : undefined,
+    soundId: alertMode === "ringing" ? normalizeReminderSoundId(draft.soundId) : undefined,
     lastAnchorEventId: existing?.lastAnchorEventId,
     lastAnchorAt: existing?.lastAnchorAt,
     status: "open",
@@ -2493,6 +2628,76 @@ function reminderFromDraft(draft: ReminderDraft, existing?: Reminder): Reminder 
   };
   return normalizeReminderSchedule(base);
 }
+
+const pendingDraftFromEffect = (effect: PendingEffect): PendingEffectDraft => ({
+  growthEvent: effect.growthEvent
+    ? {
+        title: effect.growthEvent.title ?? "",
+        date: effect.growthEvent.date ?? todayISO(),
+        summary: effect.growthEvent.summary ?? "",
+      }
+    : undefined,
+  careLogPatch: effect.careLogPatch
+    ? {
+        date: effect.careLogPatch.date ?? selectedDateFallback(effect),
+        milkMl: effect.careLogPatch.milkMl ? String(effect.careLogPatch.milkMl) : "",
+        milkTimes: effect.careLogPatch.milkTimes ? String(effect.careLogPatch.milkTimes) : "",
+        sleepHours: effect.careLogPatch.sleepHours ? String(effect.careLogPatch.sleepHours) : "",
+        wakes: effect.careLogPatch.wakes ? String(effect.careLogPatch.wakes) : "",
+        poop: effect.careLogPatch.poop ?? "",
+        temperature: effect.careLogPatch.temperature ? String(effect.careLogPatch.temperature) : "",
+        notes: effect.careLogPatch.notes?.join("、") ?? "",
+      }
+    : undefined,
+  reminders: effect.reminders.map((reminder) => ({
+    id: reminder.id,
+    draft: reminderDraftFromReminder(reminder),
+  })),
+  memories: effect.memories.map((memory) => ({
+    id: memory.id,
+    text: memory.text,
+  })),
+});
+
+const selectedDateFallback = (effect: PendingEffect) =>
+  effect.createdAt ? effect.createdAt.slice(0, 10) : todayISO();
+
+const growthEventFromPendingDraft = (effect: PendingEffect, draft: PendingGrowthDraft | undefined) =>
+  effect.growthEvent && draft
+    ? normalizeGrowthEvent({
+        ...effect.growthEvent,
+        title: draft.title.trim() || effect.growthEvent.title,
+        date: draft.date || effect.growthEvent.date,
+        summary: draft.summary.trim() || effect.growthEvent.summary,
+      }, 0)
+    : undefined;
+
+const careLogPatchFromPendingDraft = (effect: PendingEffect, draft: PendingCareDraft | undefined): Partial<CareLog> | undefined =>
+  effect.careLogPatch && draft
+    ? {
+        ...effect.careLogPatch,
+        date: draft.date || effect.careLogPatch.date,
+        milkMl: draft.milkMl ? Number(draft.milkMl) : undefined,
+        milkTimes: draft.milkTimes ? Number(draft.milkTimes) : undefined,
+        sleepHours: draft.sleepHours ? Number(draft.sleepHours) : undefined,
+        wakes: draft.wakes ? Number(draft.wakes) : undefined,
+        poop: draft.poop.trim() || undefined,
+        temperature: draft.temperature ? Number(draft.temperature) : undefined,
+        notes: splitListText(draft.notes),
+      }
+    : undefined;
+
+const remindersFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
+  effect.reminders.map((reminder) => {
+    const nextDraft = draft.reminders.find((item) => item.id === reminder.id)?.draft;
+    return nextDraft ? reminderFromDraft(nextDraft, reminder) : reminder;
+  });
+
+const memoriesFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
+  effect.memories.map((memory) => {
+    const nextDraft = draft.memories.find((item) => item.id === memory.id);
+    return nextDraft ? { ...memory, text: nextDraft.text.trim() || memory.text } : memory;
+  });
 
 function normalizeReminderCategory(category: string | undefined): Reminder["category"] {
   if (category === "vaccine" || category === "routine" || category === "care" || category === "custom") {
@@ -2648,6 +2853,8 @@ const normalizeAgentResponse = (result: AgentChatResponse, parentText: string) =
           notificationError: item.notificationError,
           category: item.category,
           recurrence: item.recurrence,
+          scheduleMode: item.scheduleMode,
+          alertMode: item.alertMode,
           repeatRule: item.repeatRule,
           soundId: item.soundId,
           lastAnchorEventId: item.lastAnchorEventId,
@@ -2770,7 +2977,7 @@ const MISSING_FIELD_LABELS: Record<string, string> = {
 
 const userFacingMissingFields = (fields: string[]) =>
   fields
-    .map((field) => MISSING_FIELD_LABELS[field])
+    .map((field) => MISSING_FIELD_LABELS[field] ?? (/[\u4e00-\u9fff]/.test(field) ? field : undefined))
     .filter((label, index, labels): label is string => Boolean(label) && labels.indexOf(label) === index);
 
 const askDecisions = (decisions: EffectDecision[] | undefined) =>
@@ -2964,6 +3171,7 @@ function App() {
   const [loginError, setLoginError] = useState("");
   const [occupiedInviteRoles, setOccupiedInviteRoles] = useState<string[]>([]);
   const [inviteRoleHint, setInviteRoleHint] = useState("");
+  const [inviteFamilyName, setInviteFamilyName] = useState("");
   const [isCheckingInviteRoles, setIsCheckingInviteRoles] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
@@ -2972,6 +3180,8 @@ function App() {
     allergies: ["暂未发现"],
     caregivers: initialProfile.caregivers,
   });
+  const [onboardingFamilyName, setOnboardingFamilyName] = useState(suggestedFamilyName(initialProfile.nickname));
+  const onboardingFamilyNameTouchedRef = useRef(false);
   const [onboardingAllergiesText, setOnboardingAllergiesText] = useState("暂未发现");
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("chat");
   const [recordView, setRecordView] = useState<RecordView>("today");
@@ -2994,7 +3204,7 @@ function App() {
   const [storageStatus, setStorageStatus] = useState<"loading" | "ready" | "offline">("loading");
   const [compressionStatus, setCompressionStatus] = useState<CompressionStatus>("idle");
   const [editingPendingId, setEditingPendingId] = useState("");
-  const [pendingDraftText, setPendingDraftText] = useState("");
+  const [pendingDraft, setPendingDraft] = useState<PendingEffectDraft | null>(null);
   const [autoRecordUndos, setAutoRecordUndos] = useState<AutoRecordUndo[]>([]);
   const [isCareLogEditing, setIsCareLogEditing] = useState(false);
   const [careLogDraft, setCareLogDraft] = useState({
@@ -3020,6 +3230,8 @@ function App() {
   const [reminderEditorOpen, setReminderEditorOpen] = useState(false);
   const [editingReminderId, setEditingReminderId] = useState("");
   const [reminderDraft, setReminderDraft] = useState<ReminderDraft>(() => createReminderDraft());
+  const [completeReminderTarget, setCompleteReminderTarget] = useState<Reminder | null>(null);
+  const [deleteReminderTarget, setDeleteReminderTarget] = useState<Reminder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const asrControllerRef = useRef<AsrStreamController | null>(null);
@@ -3049,6 +3261,7 @@ function App() {
   const compressionInFlightRef = useRef(false);
   const compressionResetTimerRef = useRef<number | null>(null);
   const intervalReminderRescheduleRef = useRef("");
+  const remindersRef = useRef<Reminder[]>([]);
   const appPlatform = platformLabel();
   const currentModel = MODEL_OPTIONS.find((model) => model.id === selectedModel) ?? MODEL_OPTIONS[0];
   const canCaregive = authMember?.caregiver ?? true;
@@ -3066,6 +3279,9 @@ function App() {
   );
   const loginSelectedRoleOccupied = Boolean(loginRoleName && occupiedInviteRoles.includes(loginRoleName));
   const loginReady = Boolean(loginRoleName && loginCaregiver !== null && !loginSelectedRoleOccupied);
+  const switchMobileTab = (tab: MobileTab) => {
+    setActiveMobileTab(tab);
+  };
 
   const todayDate = todayISO();
   const todayLog = careLogs.find((item) => item.date === todayDate) ?? careLogs[careLogs.length - 1];
@@ -3080,10 +3296,10 @@ function App() {
     return {
       today: active.filter((item) => reminderDate(item) === todayDate),
       overdue: active.filter((item) => reminderDate(item) < todayDate || item.status === "missed"),
-      upcoming: active.filter((item) => reminderDate(item) > todayDate),
       done: sorted.filter((item) => item.status === "done").reverse(),
     };
   }, [reminders, todayDate]);
+  const actionableReminderCount = reminderBuckets.today.length + reminderBuckets.overdue.length;
   const latestMilkAnchor = useMemo(() => latestCareEventAnchor(careLogs, "milk"), [careLogs]);
   const recordEvents = useMemo(
     () => buildRecordEvents(careLogs, growthEvents, reminders),
@@ -3163,6 +3379,10 @@ function App() {
     isSubmittingRef.current = isSubmitting;
   }, [isSubmitting]);
 
+  useEffect(() => {
+    remindersRef.current = reminders;
+  }, [reminders]);
+
   useEffect(
     () => () => {
       if (compressionResetTimerRef.current !== null) window.clearTimeout(compressionResetTimerRef.current);
@@ -3176,6 +3396,7 @@ function App() {
     if (compactCode.length < 6) {
       setOccupiedInviteRoles([]);
       setInviteRoleHint("");
+      setInviteFamilyName("");
       setIsCheckingInviteRoles(false);
       return undefined;
     }
@@ -3189,16 +3410,19 @@ function App() {
           const occupied = result.occupiedRoles.filter((role) =>
             (UNIQUE_ROLE_OPTIONS as readonly string[]).includes(role),
           );
+          const familyName = result.familyName || "小宝家";
           setOccupiedInviteRoles(occupied);
+          setInviteFamilyName(familyName);
           setInviteRoleHint(
             occupied.length
-              ? `${result.familyName || "小宝家"} 已有：${occupied.join("、")}`
-              : `${result.familyName || "小宝家"} 可选择家庭身份`,
+              ? `${familyName} 已有：${occupied.join("、")}`
+              : `${familyName} 可选择家庭身份`,
           );
         })
         .catch((error) => {
           if (cancelled) return;
           setOccupiedInviteRoles([]);
+          setInviteFamilyName("");
           setInviteRoleHint(error instanceof Error ? error.message : "邀请码暂时无法确认");
         })
         .finally(() => {
@@ -3217,6 +3441,16 @@ function App() {
       setLoginRoleName("");
     }
   }, [loginRoleName, occupiedInviteRoles]);
+
+  useEffect(() => {
+    if (!onboardingRequired || onboardingFamilyNameTouchedRef.current) return;
+    const existingFamilyName = authFamily?.name?.trim() ?? "";
+    const nextFamilyName =
+      existingFamilyName && existingFamilyName !== "小宝家"
+        ? existingFamilyName
+        : suggestedFamilyName(onboardingDraft.nickname || initialProfile.nickname);
+    setOnboardingFamilyName(nextFamilyName);
+  }, [authFamily?.name, onboardingDraft.nickname, onboardingRequired]);
 
   const buildAppSnapshot = (): AppStateSnapshot => ({
     profile,
@@ -3315,6 +3549,80 @@ function App() {
       throw error;
     }
   };
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !isNativeAlarmAvailable()) return undefined;
+
+    let cancelled = false;
+    const syncNativeAlarmEvents = async () => {
+      try {
+        const events = await consumeAlarmEvents();
+        if (cancelled || !events.length) return;
+
+        const updates = events.flatMap((event) => {
+          const target = remindersRef.current.find(
+            (reminder) => reminder.id === event.reminderId || reminder.notificationId === event.notificationId,
+          );
+          if (!target) return [];
+          const nextDueAt = event.nextDueAt ? new Date(event.nextDueAt) : new Date(Number.NaN);
+          const handledAt = new Date(event.handledAt);
+          if (Number.isNaN(nextDueAt.getTime())) {
+            const completed: Reminder = {
+              ...target,
+              status: "done",
+              notificationStatus: "cancelled",
+              history: [`${formatReminderDueText(Number.isNaN(handledAt.getTime()) ? new Date() : handledAt)} 已关闭本次提醒`, ...target.history],
+            };
+            return [completed];
+          }
+
+          const handledLabel = Number.isNaN(handledAt.getTime())
+            ? formatReminderDueText(new Date())
+            : formatReminderDueText(handledAt);
+          const nextReminder = addReminderHistory(
+            {
+              ...target,
+              status: "open",
+              dueAt: nextDueAt.toISOString(),
+              dueText: formatReminderDueText(nextDueAt),
+              lastAnchorAt: Number.isNaN(handledAt.getTime()) ? target.lastAnchorAt : handledAt.toISOString(),
+              notificationStatus: event.exact === false ? "scheduled_inexact" : "scheduled",
+              notificationError: event.exact === false
+                ? "Android 精确闹钟权限未开启，已安排提醒，但可能不够准时。"
+                : undefined,
+            },
+            event.type === "alarm_closed_current"
+              ? `${handledLabel} 已关闭本次闹铃，下一次 ${formatReminderDueText(nextDueAt)}`
+              : `${handledLabel} 已触发本次通知，下一次 ${formatReminderDueText(nextDueAt)}`,
+          );
+          return [nextReminder];
+        });
+
+        if (!updates.length) return;
+        setReminders((current) => {
+          const byId = new Map(current.map((reminder) => [reminder.id, reminder]));
+          updates.forEach((reminder) => byId.set(reminder.id, reminder));
+          const next = Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
+          remindersRef.current = next;
+          return next;
+        });
+        for (const reminder of updates) {
+          await persistRecord("reminders", reminder.id, reminder);
+        }
+      } catch {
+        // Native alarm events are best-effort sync; the native side already scheduled the next alarm.
+      }
+    };
+
+    void syncNativeAlarmEvents();
+    const listener = CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) void syncNativeAlarmEvents();
+    });
+    return () => {
+      cancelled = true;
+      void listener.then((handle) => handle.remove());
+    };
+  }, [authStatus]);
 
   const scheduleCompressionStatusReset = (status: CompressionStatus, delayMs: number) => {
     if (compressionResetTimerRef.current !== null) window.clearTimeout(compressionResetTimerRef.current);
@@ -3571,7 +3879,6 @@ function App() {
     }
 
     try {
-      await Haptics.impact({ style: ImpactStyle.Light });
       const photo = await NativeCamera.getPhoto({
         quality: 82,
         allowEditing: false,
@@ -3780,6 +4087,7 @@ function App() {
   const stopVoiceCapture = (autoSubmit = false, keepStandby = true) => {
     voicePressingRef.current = false;
     if (autoSubmit) {
+      hapticSelection();
       voiceAutoSubmitRef.current = true;
       scheduleVoiceAutoSubmit(1200);
     }
@@ -3790,10 +4098,12 @@ function App() {
 
   const startVoiceCapture = async () => {
     if (!canCaregive || isSubmitting || isListening) return;
+    hapticMedium();
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setVoiceStatus("unsupported");
       setVoiceError("当前环境无法访问麦克风");
+      hapticWarning();
       return;
     }
 
@@ -3802,6 +4112,7 @@ function App() {
     if (!AudioContextConstructor) {
       setVoiceStatus("unsupported");
       setVoiceError("当前环境不支持实时音频采集");
+      hapticWarning();
       return;
     }
 
@@ -3858,6 +4169,7 @@ function App() {
         cleanupLocalVoiceCapture();
         asrControllerRef.current?.close();
         asrControllerRef.current = null;
+        hapticWarning();
       },
       onClose: () => {
         if (voiceSessionRef.current !== sessionId) return;
@@ -3929,6 +4241,7 @@ function App() {
       cleanupLocalVoiceCapture();
       asrControllerRef.current?.close();
       asrControllerRef.current = null;
+      hapticWarning();
     }
   };
 
@@ -3970,6 +4283,7 @@ function App() {
     const text = (textOverride ?? inputValueRef.current).trim();
     if (!canCaregive) return;
     if ((!text && attachments.length === 0) || isSubmittingRef.current) return;
+    hapticLight();
 
     const submittedAttachments = attachments;
     const parentMessage: ChatMessage = {
@@ -4232,6 +4546,7 @@ function App() {
           return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
         });
       }
+      if (autoUndos.length || autoAlbumItems.length || autoScheduledReminders.length) hapticSuccess();
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
       );
@@ -4283,7 +4598,6 @@ function App() {
       } catch {
         // Local state stays usable; the status chip tells the parent that the backend sync needs attention.
       }
-      if (Capacitor.isNativePlatform()) void Haptics.impact({ style: ImpactStyle.Light });
     } catch (error) {
       const aiMessage: ChatMessage = {
         id: makeId("msg"),
@@ -4297,6 +4611,7 @@ function App() {
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
       );
+      hapticWarning();
       try {
         await persistRecord("messages", parentMessage.id, messageForStorage(parentMessage));
         await persistRecord("messages", aiMessage.id, messageForStorage(aiMessage));
@@ -4345,26 +4660,21 @@ function App() {
   const saveReminderDraft = async (event: FormEvent) => {
     event.preventDefault();
     if (!canCaregive) return;
-    if (reminderDraft.reminderKind === "schedule" && (!reminderDraft.dueDate || !reminderDraft.dueTime)) {
+    if (reminderDraft.scheduleMode === "once" && (!reminderDraft.dueDate || !reminderDraft.dueTime)) {
       window.alert("请选择提醒日期和时间。");
       return;
     }
-    if (reminderDraft.reminderKind === "alarm") {
-      const hours = Number(reminderDraft.intervalHours);
-      if (!Number.isFinite(hours) || hours * 60 < MIN_INTERVAL_MINUTES || hours * 60 > MAX_INTERVAL_MINUTES) {
-        window.alert(`喂奶循环间隔需要在 ${formatIntervalText(MIN_INTERVAL_MINUTES)} 到 ${formatIntervalText(MAX_INTERVAL_MINUTES)} 之间。`);
+    if (reminderDraft.scheduleMode === "interval") {
+      const intervalMinutes = Number(reminderDraft.intervalMinutes);
+      if (!Number.isFinite(intervalMinutes) || intervalMinutes < MIN_INTERVAL_MINUTES || intervalMinutes > MAX_INTERVAL_MINUTES) {
+        window.alert(`循环间隔需要在 ${formatIntervalText(MIN_INTERVAL_MINUTES)} 到 ${formatIntervalText(MAX_INTERVAL_MINUTES)} 之间。`);
         return;
       }
     }
 
     const existing = editingReminderId ? reminders.find((item) => item.id === editingReminderId) : undefined;
     if (existing) await cancelNativeReminder(existing);
-    const baseReminder = reminderFromDraft(
-      reminderDraft.reminderKind === "alarm"
-        ? { ...reminderDraft, repeatEnabled: true, category: "care" }
-        : reminderDraft,
-      existing,
-    );
+    const baseReminder = reminderFromDraft(reminderDraft, existing);
     const [scheduledReminder] = await scheduleNativeReminders([baseReminder], { careLogs });
     const nextReminder = scheduledReminder ?? baseReminder;
     setReminders((current) => {
@@ -4384,7 +4694,7 @@ function App() {
   const completeReminder = async (target: Reminder) => {
     if (!canCaregive) return;
     await cancelNativeReminder(target);
-    if (isIntervalMilkReminder(target) && target.repeatRule) {
+    if (isIntervalReminder(target) && target.repeatRule) {
       const completedAt = new Date();
       const nextDueAt = new Date(completedAt.getTime() + target.repeatRule.intervalMinutes * 60 * 1000);
       const baseReminder: Reminder = addReminderHistory(
@@ -4393,8 +4703,8 @@ function App() {
           status: "open",
           dueAt: nextDueAt.toISOString(),
           dueText: formatReminderDueText(nextDueAt),
-          lastAnchorEventId: target.lastAnchorEventId ?? latestMilkAnchor?.id,
-          lastAnchorAt: target.lastAnchorAt ?? latestMilkAnchor?.occurredAt.toISOString() ?? completedAt.toISOString(),
+          lastAnchorEventId: target.lastAnchorEventId ?? (isIntervalMilkReminder(target) ? latestMilkAnchor?.id : undefined),
+          lastAnchorAt: target.lastAnchorAt ?? (isIntervalMilkReminder(target) ? latestMilkAnchor?.occurredAt.toISOString() : undefined) ?? completedAt.toISOString(),
           notificationStatus: "pending",
           notificationError: undefined,
         },
@@ -4418,12 +4728,28 @@ function App() {
     void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
   };
 
+  const requestCompleteReminder = (target: Reminder) => {
+    if (!canCaregive) return;
+    setCompleteReminderTarget(target);
+  };
+
+  const closeCompleteReminderConfirm = () => {
+    setCompleteReminderTarget(null);
+  };
+
+  const confirmCompleteReminder = async () => {
+    if (!canCaregive || !completeReminderTarget) return;
+    const target = completeReminderTarget;
+    setCompleteReminderTarget(null);
+    await completeReminder(target);
+  };
+
   const postponeReminder = async (target: Reminder) => {
     if (!canCaregive) return;
     await cancelNativeReminder(target);
     const sourceDueAt = parseReminderDueAt(target) ?? new Date();
     const postponedAt = new Date(sourceDueAt);
-    if (target.reminderKind === "alarm") {
+    if (target.alertMode === "ringing" || target.scheduleMode === "interval") {
       postponedAt.setMinutes(postponedAt.getMinutes() + 30);
     } else {
       postponedAt.setDate(postponedAt.getDate() + 1);
@@ -4438,16 +4764,27 @@ function App() {
       history: [`${new Intl.DateTimeFormat("zh-CN").format(new Date())} 顺延到 ${formatReminderDueText(postponedAt)}`, ...target.history],
     };
     const [scheduledReminder] = await scheduleNativeReminders([baseReminder], {
-      careLogs: target.repeatRule ? [] : careLogs,
-      anchorInterval: !target.repeatRule,
+      careLogs: target.scheduleMode === "interval" ? [] : careLogs,
+      anchorInterval: target.scheduleMode !== "interval",
     });
     const nextReminder = scheduledReminder ?? baseReminder;
     setReminders((current) => current.map((item) => (item.id === target.id ? nextReminder : item)));
     void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
   };
 
-  const deleteReminder = async (target: Reminder) => {
+  const requestDeleteReminder = (target: Reminder) => {
     if (!canCaregive) return;
+    setDeleteReminderTarget(target);
+  };
+
+  const closeDeleteReminderConfirm = () => {
+    setDeleteReminderTarget(null);
+  };
+
+  const confirmDeleteReminder = async () => {
+    if (!canCaregive || !deleteReminderTarget) return;
+    const target = deleteReminderTarget;
+    setDeleteReminderTarget(null);
     await cancelNativeReminder(target);
     setReminders((current) => current.filter((item) => item.id !== target.id));
     void deleteAppRecord("reminders", target.id).catch(() => setStorageStatus("offline"));
@@ -4520,6 +4857,7 @@ function App() {
         }
       }
       setEditingPendingId("");
+      setPendingDraft(null);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "确认记录失败，请稍后再试。");
     }
@@ -4531,6 +4869,7 @@ function App() {
       const response = await discardPendingEffectOnServer(effect.id);
       applyAppSnapshot(response.state);
       setEditingPendingId("");
+      setPendingDraft(null);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "丢弃记录失败，请稍后再试。");
     }
@@ -4563,33 +4902,21 @@ function App() {
   const beginEditPendingEffect = (effect: PendingEffect) => {
     if (!canCaregive) return;
     setEditingPendingId(effect.id);
-    setPendingDraftText(JSON.stringify(
-      {
-        growthEvent: effect.growthEvent ?? null,
-        careLogPatch: effect.careLogPatch ?? null,
-        reminders: effect.reminders,
-        memories: effect.memories,
-      },
-      null,
-      2,
-    ));
+    setPendingDraft(pendingDraftFromEffect(effect));
   };
 
   const savePendingEffectDraft = async (effect: PendingEffect) => {
     if (!canCaregive) return;
-    let parsed: Partial<PendingEffect>;
-    try {
-      parsed = JSON.parse(pendingDraftText) as Partial<PendingEffect>;
-    } catch {
-      window.alert("待确认内容不是合法 JSON，请检查后再保存。");
+    if (!pendingDraft) {
+      setEditingPendingId("");
       return;
     }
     const nextEffect: PendingEffect = {
       ...effect,
-      growthEvent: parsed.growthEvent,
-      careLogPatch: parsed.careLogPatch,
-      reminders: parsed.reminders ?? [],
-      memories: parsed.memories ?? [],
+      growthEvent: growthEventFromPendingDraft(effect, pendingDraft.growthEvent),
+      careLogPatch: careLogPatchFromPendingDraft(effect, pendingDraft.careLogPatch),
+      reminders: remindersFromPendingDraft(effect, pendingDraft),
+      memories: memoriesFromPendingDraft(effect, pendingDraft),
     };
     setPendingEffects((current) =>
       current.map((item) => (item.id === effect.id ? nextEffect : item)),
@@ -4597,9 +4924,46 @@ function App() {
     try {
       await persistRecord("pendingEffects", nextEffect.id, nextEffect);
       setEditingPendingId("");
+      setPendingDraft(null);
     } catch {
       window.alert("保存待确认内容失败，请稍后再试。");
     }
+  };
+
+  const updatePendingGrowthDraft = (patch: Partial<PendingGrowthDraft>) => {
+    setPendingDraft((current) =>
+      current?.growthEvent ? { ...current, growthEvent: { ...current.growthEvent, ...patch } } : current,
+    );
+  };
+
+  const updatePendingCareDraft = (patch: Partial<PendingCareDraft>) => {
+    setPendingDraft((current) =>
+      current?.careLogPatch ? { ...current, careLogPatch: { ...current.careLogPatch, ...patch } } : current,
+    );
+  };
+
+  const updatePendingReminderDraft = (id: string, updater: (draft: ReminderDraft) => ReminderDraft) => {
+    setPendingDraft((current) =>
+      current
+        ? {
+            ...current,
+            reminders: current.reminders.map((item) =>
+              item.id === id ? { ...item, draft: updater(item.draft) } : item,
+            ),
+          }
+        : current,
+    );
+  };
+
+  const updatePendingMemoryDraft = (id: string, text: string) => {
+    setPendingDraft((current) =>
+      current
+        ? {
+            ...current,
+            memories: current.memories.map((item) => (item.id === id ? { ...item, text } : item)),
+          }
+        : current,
+    );
   };
 
   const saveCareLogDraft = (event: FormEvent) => {
@@ -4755,6 +5119,9 @@ function App() {
     setIsProfileEditing(false);
     setIsCareLogEditing(false);
     setActiveMobileTab("chat");
+    setInviteFamilyName("");
+    setOnboardingFamilyName(suggestedFamilyName(initialProfile.nickname));
+    onboardingFamilyNameTouchedRef.current = false;
     clearLocalAppState();
     legacyLocalStateRef.current = false;
     applyEmptyAppSnapshot();
@@ -4781,7 +5148,10 @@ function App() {
     }
 
     try {
+      const nextFamilyName = (onboardingFamilyName.trim() || suggestedFamilyName(completedProfile.nickname)).slice(0, 30);
+      const updatedFamily = await updateFamilyName(nextFamilyName);
       await persistRecord("profile", "default", completedProfile, { applyResponse: true });
+      setAuthFamily(updatedFamily);
       setOnboardingRequired(false);
       setActiveMobileTab("chat");
       backendReadyRef.current = true;
@@ -4840,7 +5210,7 @@ function App() {
       <main className="app-shell auth-shell">
         <section className="auth-panel">
           <StorybookScene />
-          <h1>小宝成长伙伴</h1>
+          <h1>小宝记</h1>
           <p>正在确认登录状态...</p>
           <span className="loading-stars auth-loading" aria-hidden="true">
             <i />
@@ -4886,7 +5256,7 @@ function App() {
             <div className="auth-join-options" aria-label="加入家庭身份设置">
               <div>
                 <strong>加入家庭前先确认身份</strong>
-                <small>新手机号第一次使用家庭邀请码时，会按这里的选择加入小宝家。</small>
+                <small>新手机号第一次使用家庭邀请码时，会按这里的选择加入{inviteFamilyName || "对应家庭"}。</small>
               </div>
               <label>
                 <span>家庭身份</span>
@@ -4985,6 +5355,23 @@ function App() {
                     placeholder="比如：小宝"
                     value={onboardingDraft.nickname}
                     onChange={(event) => setOnboardingDraft((current) => ({ ...current, nickname: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>家庭名称</span>
+                  <input
+                    placeholder="比如：芊芊家"
+                    value={onboardingFamilyName}
+                    onChange={(event) => {
+                      onboardingFamilyNameTouchedRef.current = true;
+                      setOnboardingFamilyName(event.target.value);
+                    }}
+                    onBlur={() => {
+                      if (!onboardingFamilyName.trim()) {
+                        onboardingFamilyNameTouchedRef.current = false;
+                        setOnboardingFamilyName(suggestedFamilyName(onboardingDraft.nickname || initialProfile.nickname));
+                      }
+                    }}
                   />
                 </label>
                 <label>
@@ -5379,11 +5766,217 @@ function App() {
                             <Clock3 size={16} />
                           </div>
                           {editingPendingId === effect.id ? (
-                            <textarea
-                              className="pending-effect-editor"
-                              value={pendingDraftText}
-                              onChange={(event) => setPendingDraftText(event.target.value)}
-                            />
+                            pendingDraft ? (
+                              <div className="pending-effect-form">
+                                {pendingDraft.growthEvent ? (
+                                  <fieldset>
+                                    <legend>成长事件</legend>
+                                    <label>
+                                      标题
+                                      <input
+                                        value={pendingDraft.growthEvent.title}
+                                        onChange={(event) => updatePendingGrowthDraft({ title: event.target.value })}
+                                      />
+                                    </label>
+                                    <label>
+                                      日期
+                                      <input
+                                        type="date"
+                                        value={pendingDraft.growthEvent.date}
+                                        onChange={(event) => updatePendingGrowthDraft({ date: event.target.value })}
+                                      />
+                                    </label>
+                                    <label>
+                                      摘要
+                                      <textarea
+                                        value={pendingDraft.growthEvent.summary}
+                                        onChange={(event) => updatePendingGrowthDraft({ summary: event.target.value })}
+                                      />
+                                    </label>
+                                  </fieldset>
+                                ) : null}
+                                {pendingDraft.careLogPatch ? (
+                                  <fieldset>
+                                    <legend>照护记录</legend>
+                                    <label>
+                                      日期
+                                      <input
+                                        type="date"
+                                        value={pendingDraft.careLogPatch.date}
+                                        onChange={(event) => updatePendingCareDraft({ date: event.target.value })}
+                                      />
+                                    </label>
+                                    <div className="pending-effect-grid">
+                                      <label>
+                                        奶量 ml
+                                        <input
+                                          inputMode="numeric"
+                                          value={pendingDraft.careLogPatch.milkMl}
+                                          onChange={(event) => updatePendingCareDraft({ milkMl: event.target.value })}
+                                        />
+                                      </label>
+                                      <label>
+                                        喝奶次数
+                                        <input
+                                          inputMode="numeric"
+                                          value={pendingDraft.careLogPatch.milkTimes}
+                                          onChange={(event) => updatePendingCareDraft({ milkTimes: event.target.value })}
+                                        />
+                                      </label>
+                                      <label>
+                                        睡眠小时
+                                        <input
+                                          inputMode="decimal"
+                                          value={pendingDraft.careLogPatch.sleepHours}
+                                          onChange={(event) => updatePendingCareDraft({ sleepHours: event.target.value })}
+                                        />
+                                      </label>
+                                      <label>
+                                        夜醒次数
+                                        <input
+                                          inputMode="numeric"
+                                          value={pendingDraft.careLogPatch.wakes}
+                                          onChange={(event) => updatePendingCareDraft({ wakes: event.target.value })}
+                                        />
+                                      </label>
+                                    </div>
+                                    <label>
+                                      便便
+                                      <input
+                                        value={pendingDraft.careLogPatch.poop}
+                                        onChange={(event) => updatePendingCareDraft({ poop: event.target.value })}
+                                      />
+                                    </label>
+                                    <label>
+                                      体温
+                                      <input
+                                        inputMode="decimal"
+                                        value={pendingDraft.careLogPatch.temperature}
+                                        onChange={(event) => updatePendingCareDraft({ temperature: event.target.value })}
+                                      />
+                                    </label>
+                                    <label>
+                                      备注
+                                      <textarea
+                                        value={pendingDraft.careLogPatch.notes}
+                                        onChange={(event) => updatePendingCareDraft({ notes: event.target.value })}
+                                      />
+                                    </label>
+                                  </fieldset>
+                                ) : null}
+                                {pendingDraft.reminders.map((item) => (
+                                  <fieldset key={item.id}>
+                                    <legend>提醒</legend>
+                                    <label>
+                                      标题
+                                      <input
+                                        value={item.draft.title}
+                                        onChange={(event) =>
+                                          updatePendingReminderDraft(item.id, (draft) => ({ ...draft, title: event.target.value }))
+                                        }
+                                      />
+                                    </label>
+                                    <div className="pending-effect-grid">
+                                      <label>
+                                        时间模式
+                                        <StorySelect
+                                          value={item.draft.scheduleMode}
+                                          options={REMINDER_SCHEDULE_MODE_OPTIONS}
+                                          ariaLabel="待确认提醒时间模式"
+                                          onChange={(scheduleMode) =>
+                                            updatePendingReminderDraft(item.id, (draft) => ({ ...draft, scheduleMode }))
+                                          }
+                                        />
+                                      </label>
+                                      <label>
+                                        提醒方式
+                                        <StorySelect
+                                          value={item.draft.alertMode}
+                                          options={REMINDER_ALERT_MODE_OPTIONS}
+                                          ariaLabel="待确认提醒方式"
+                                          onChange={(alertMode) =>
+                                            updatePendingReminderDraft(item.id, (draft) => ({ ...draft, alertMode }))
+                                          }
+                                        />
+                                      </label>
+                                    </div>
+                                    <div className="pending-effect-grid">
+                                      <label>
+                                        分类
+                                        <StorySelect
+                                          value={item.draft.category}
+                                          options={REMINDER_CATEGORY_OPTIONS}
+                                          ariaLabel="待确认提醒分类"
+                                          onChange={(category) =>
+                                            updatePendingReminderDraft(item.id, (draft) => ({ ...draft, category }))
+                                          }
+                                        />
+                                      </label>
+                                      {item.draft.alertMode === "ringing" ? (
+                                        <label>
+                                          提示音
+                                          <StorySelect
+                                            value={item.draft.soundId}
+                                            options={REMINDER_SOUND_OPTIONS}
+                                            ariaLabel="待确认闹铃提示音"
+                                            onChange={(soundId) =>
+                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, soundId }))
+                                            }
+                                          />
+                                        </label>
+                                      ) : null}
+                                    </div>
+                                    {item.draft.scheduleMode === "interval" ? (
+                                      <label>
+                                        循环间隔（分钟）
+                                        <input
+                                          type="number"
+                                          min={MIN_INTERVAL_MINUTES}
+                                          max={MAX_INTERVAL_MINUTES}
+                                          step="5"
+                                          value={item.draft.intervalMinutes}
+                                          onChange={(event) =>
+                                            updatePendingReminderDraft(item.id, (draft) => ({ ...draft, intervalMinutes: event.target.value }))
+                                          }
+                                        />
+                                      </label>
+                                    ) : (
+                                      <div className="pending-effect-grid">
+                                        <label>
+                                          日期
+                                          <input
+                                            type="date"
+                                            value={item.draft.dueDate}
+                                            onChange={(event) =>
+                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, dueDate: event.target.value }))
+                                            }
+                                          />
+                                        </label>
+                                        <label>
+                                          时间
+                                          <input
+                                            type="time"
+                                            value={item.draft.dueTime}
+                                            onChange={(event) =>
+                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, dueTime: event.target.value }))
+                                            }
+                                          />
+                                        </label>
+                                      </div>
+                                    )}
+                                  </fieldset>
+                                ))}
+                                {pendingDraft.memories.map((item) => (
+                                  <fieldset key={item.id}>
+                                    <legend>记忆</legend>
+                                    <label>
+                                      内容
+                                      <textarea value={item.text} onChange={(event) => updatePendingMemoryDraft(item.id, event.target.value)} />
+                                    </label>
+                                  </fieldset>
+                                ))}
+                              </div>
+                            ) : null
                           ) : (
                             <div className="pending-effect-body">
                               {effect.growthEvent ? <p>成长：{effect.growthEvent.title}</p> : null}
@@ -5398,20 +5991,36 @@ function App() {
                           )}
                           <div className="pending-effect-actions">
                             {editingPendingId === effect.id ? (
-                              <button type="button" onClick={() => void savePendingEffectDraft(effect)}>
-                                保存
-                              </button>
+                              <>
+                                <button type="button" onClick={() => void savePendingEffectDraft(effect)}>
+                                  保存
+                                </button>
+                                <button
+                                  type="button"
+                                  className="quiet"
+                                  onClick={() => {
+                                    setEditingPendingId("");
+                                    setPendingDraft(null);
+                                  }}
+                                >
+                                  取消
+                                </button>
+                              </>
                             ) : (
                               <button type="button" onClick={() => beginEditPendingEffect(effect)}>
                                 编辑
                               </button>
                             )}
-                            <button type="button" onClick={() => void confirmPendingEffect(effect)}>
-                              确认
-                            </button>
-                            <button type="button" className="quiet" onClick={() => void discardPendingEffect(effect)}>
-                              丢弃
-                            </button>
+                            {editingPendingId === effect.id ? null : (
+                              <>
+                                <button type="button" onClick={() => void confirmPendingEffect(effect)}>
+                                  确认
+                                </button>
+                                <button type="button" className="quiet" onClick={() => void discardPendingEffect(effect)}>
+                                  丢弃
+                                </button>
+                              </>
+                            )}
                           </div>
                         </section>
                       ))}
@@ -5963,7 +6572,7 @@ function App() {
                         onClick={() => {
                           selectRecordDate(item.date);
                           setRecordView("calendar");
-                          setActiveMobileTab("records");
+                          switchMobileTab("records");
                         }}
                       >
                         查看当天
@@ -5985,7 +6594,7 @@ function App() {
               </span>
               <p>还没有这个分类的回忆。</p>
               {canCaregive ? (
-                <button type="button" onClick={() => setActiveMobileTab("chat")}>
+                <button type="button" onClick={() => switchMobileTab("chat")}>
                   去上传值得收藏的素材
                 </button>
               ) : null}
@@ -6000,7 +6609,7 @@ function App() {
               <h2>照护任务中心</h2>
             </div>
             <div className="screen-head-actions">
-              <span className="screen-pill">{openReminders.length} 个待办</span>
+              <span className="screen-pill">{actionableReminderCount} 个今日/逾期待办</span>
               {canCaregive ? (
                 <button className="screen-action-button" type="button" onClick={openNewReminderEditor}>
                   <Bell size={16} />
@@ -6026,7 +6635,6 @@ function App() {
           {[
             { key: "today", title: "今天要做", items: reminderBuckets.today, empty: "今天暂时没有待办。" },
             { key: "overdue", title: "已逾期", items: reminderBuckets.overdue, empty: "没有逾期任务。" },
-            { key: "upcoming", title: "未来安排", items: reminderBuckets.upcoming, empty: "还没有未来安排。" },
             { key: "done", title: "已完成", items: reminderBuckets.done, empty: "完成后的提醒会留在这里。" },
           ].map((group) => (
             <section className={`reminder-group reminder-group-${group.key}`} key={group.key}>
@@ -6045,7 +6653,8 @@ function App() {
                         <h3>{reminder.title}</h3>
                         <p>{reminder.dueText}</p>
                         <div className="reminder-meta">
-                          <span>{reminderKindLabel(reminder)}</span>
+                          <span>{reminderScheduleLabel(reminder)}</span>
+                          <span>{reminderAlertLabel(reminder)}</span>
                           <span>{reminderCategoryLabel(reminder.category)}</span>
                           <span>{reminderStatusLabel(reminder.status)}</span>
                           {reminderRepeatLabel(reminder) ? <span>{reminderRepeatLabel(reminder)}</span> : null}
@@ -6056,16 +6665,16 @@ function App() {
                       </div>
                       {canCaregive && reminder.status !== "done" ? (
                         <div className="reminder-card-actions">
-                          <button type="button" title="标记完成" onClick={() => void completeReminder(reminder)}>
+                          <button type="button" title="标记完成" onClick={() => requestCompleteReminder(reminder)}>
                             <CheckCircle2 size={18} />
                           </button>
-                          <button type="button" title={reminder.reminderKind === "alarm" ? "稍后 30 分钟" : "顺延一天"} onClick={() => void postponeReminder(reminder)}>
+                          <button type="button" title={reminder.scheduleMode === "interval" || reminder.alertMode === "ringing" ? "稍后 30 分钟" : "顺延一天"} onClick={() => void postponeReminder(reminder)}>
                             <Clock3 size={18} />
                           </button>
                           <button type="button" title="编辑提醒" onClick={() => openEditReminderEditor(reminder)}>
                             <PencilLine size={18} />
                           </button>
-                          <button type="button" title="删除提醒" onClick={() => void deleteReminder(reminder)}>
+                          <button type="button" title="删除提醒" onClick={() => requestDeleteReminder(reminder)}>
                             <Trash2 size={18} />
                           </button>
                         </div>
@@ -6095,61 +6704,65 @@ function App() {
                   <input
                     value={reminderDraft.title}
                     onChange={(event) => setReminderDraft((current) => ({ ...current, title: event.target.value }))}
-                    placeholder={reminderDraft.reminderKind === "alarm" ? "比如 每 3 小时喂奶" : "比如 明天体检"}
+                    placeholder={reminderDraft.scheduleMode === "interval" ? "比如 喂奶提醒" : "比如 明天体检"}
                   />
                 </label>
                 <div className="reminder-editor-grid">
                   <label>
-                    类型
+                    时间模式
                     <StorySelect
-                      value={reminderDraft.reminderKind}
-                      options={REMINDER_KIND_OPTIONS}
-                      ariaLabel="提醒类型"
-                      onChange={(reminderKind) =>
-                        setReminderDraft((current) => ({
-                          ...current,
-                          reminderKind,
-                          repeatEnabled: reminderKind === "alarm" ? true : current.repeatEnabled,
-                          category: reminderKind === "alarm" ? "care" : current.category,
-                          title: current.title || (reminderKind === "alarm" ? "喂奶提醒" : ""),
-                        }))
-                      }
+                      value={reminderDraft.scheduleMode}
+                      options={REMINDER_SCHEDULE_MODE_OPTIONS}
+                      ariaLabel="提醒时间模式"
+                      onChange={(scheduleMode) => setReminderDraft((current) => ({ ...current, scheduleMode }))}
                     />
                   </label>
+                  <label>
+                    提醒方式
+                    <StorySelect
+                      value={reminderDraft.alertMode}
+                      options={REMINDER_ALERT_MODE_OPTIONS}
+                      ariaLabel="提醒方式"
+                      onChange={(alertMode) => setReminderDraft((current) => ({ ...current, alertMode }))}
+                    />
+                  </label>
+                </div>
+                <div className="reminder-editor-grid">
                   <label>
                     分类
                     <StorySelect
                       value={reminderDraft.category}
                       options={REMINDER_CATEGORY_OPTIONS}
                       ariaLabel="提醒分类"
-                      disabled={reminderDraft.reminderKind === "alarm"}
                       onChange={(category) => setReminderDraft((current) => ({ ...current, category }))}
                     />
                   </label>
-                </div>
-                {reminderDraft.reminderKind === "alarm" ? (
-                  <div className="reminder-alarm-fields">
-                    <label>
-                      喂奶间隔（小时）
-                      <input
-                        type="number"
-                        min={MIN_INTERVAL_MINUTES / 60}
-                        max={MAX_INTERVAL_MINUTES / 60}
-                        step="0.5"
-                        value={reminderDraft.intervalHours}
-                        onChange={(event) => setReminderDraft((current) => ({ ...current, intervalHours: event.target.value, repeatEnabled: true }))}
-                      />
-                    </label>
+                  {reminderDraft.alertMode === "ringing" ? (
                     <label>
                       提示音
                       <StorySelect
                         value={reminderDraft.soundId}
                         options={REMINDER_SOUND_OPTIONS}
-                        ariaLabel="闹钟提示音"
+                        ariaLabel="闹铃提示音"
                         onChange={(soundId) => setReminderDraft((current) => ({ ...current, soundId }))}
                       />
                     </label>
-                    <p className="form-help">下一次会按最近一次喝奶时间 + 间隔计算；没有喝奶记录时，从现在开始往后推。</p>
+                  ) : null}
+                </div>
+                {reminderDraft.scheduleMode === "interval" ? (
+                  <div className="reminder-alarm-fields">
+                    <label>
+                      循环间隔（分钟）
+                      <input
+                        type="number"
+                        min={MIN_INTERVAL_MINUTES}
+                        max={MAX_INTERVAL_MINUTES}
+                        step="5"
+                        value={reminderDraft.intervalMinutes}
+                        onChange={(event) => setReminderDraft((current) => ({ ...current, intervalMinutes: event.target.value }))}
+                      />
+                    </label>
+                    <p className="form-help">喂奶类循环会优先按最近一次喝奶时间计算；其他循环按当前时间往后推。</p>
                   </div>
                 ) : (
                   <div className="reminder-editor-grid">
@@ -6182,6 +6795,72 @@ function App() {
                   </button>
                 </div>
               </form>
+            </div>
+          ) : null}
+          {completeReminderTarget ? (
+            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeCompleteReminderConfirm}>
+              <div
+                className="story-modal delete-confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="complete-reminder-title"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="delete-confirm-badge complete-confirm-badge" aria-hidden="true">
+                  <CheckCircle2 size={22} />
+                </div>
+                <div className="delete-confirm-copy">
+                  <p className="eyebrow">完成提醒</p>
+                  <h3 id="complete-reminder-title">
+                    {isIntervalReminder(completeReminderTarget) ? "关闭本次提醒吗？" : "确认已经完成了吗？"}
+                  </h3>
+                  <p>
+                    {isIntervalReminder(completeReminderTarget)
+                      ? `“${completeReminderTarget.title}”会关闭本次提醒，并按当前时间重新安排下一次。`
+                      : `“${completeReminderTarget.title}”会进入已完成，手机上已经安排的通知也会取消。`}
+                  </p>
+                </div>
+                <div className="story-modal-actions delete-confirm-actions">
+                  <button type="button" className="screen-action-button quiet" onClick={closeCompleteReminderConfirm}>
+                    先不完成
+                  </button>
+                  <button type="button" className="screen-action-button" onClick={() => void confirmCompleteReminder()}>
+                    <CheckCircle2 size={16} />
+                    确认完成
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {deleteReminderTarget ? (
+            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeDeleteReminderConfirm}>
+              <div
+                className="story-modal delete-confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-reminder-title"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="delete-confirm-badge" aria-hidden="true">
+                  <BellOff size={22} />
+                </div>
+                <div className="delete-confirm-copy">
+                  <p className="eyebrow">删除提醒</p>
+                  <h3 id="delete-reminder-title">确定不再提醒吗？</h3>
+                  <p>
+                    “{deleteReminderTarget.title}”会从提醒列表移除，已经安排的手机通知或闹铃也会一起取消。
+                  </p>
+                </div>
+                <div className="story-modal-actions delete-confirm-actions">
+                  <button type="button" className="screen-action-button quiet" onClick={closeDeleteReminderConfirm}>
+                    先保留
+                  </button>
+                  <button type="button" className="screen-action-button danger" onClick={() => void confirmDeleteReminder()}>
+                    <Trash2 size={16} />
+                    删除
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
         </section>
@@ -6436,7 +7115,7 @@ function App() {
                     <h3>{reminder.title}</h3>
                     <p>{reminder.dueText}</p>
                   </div>
-                  <button type="button" title="标记完成" onClick={() => void completeReminder(reminder)}>
+                  <button type="button" title="标记完成" onClick={() => requestCompleteReminder(reminder)}>
                     <CheckCircle2 size={18} />
                   </button>
                 </article>
@@ -6477,7 +7156,7 @@ function App() {
               className={isActive ? "active" : ""}
               aria-current={isActive ? "page" : undefined}
               key={tab.id}
-              onClick={() => setActiveMobileTab(tab.id)}
+              onClick={() => switchMobileTab(tab.id)}
             >
               <Icon size={20} />
               <span>{tab.label}</span>

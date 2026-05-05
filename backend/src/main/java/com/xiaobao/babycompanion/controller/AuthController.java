@@ -4,6 +4,8 @@ import com.xiaobao.babycompanion.auth.AuthPrincipal;
 import com.xiaobao.babycompanion.auth.AuthService;
 import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.auth.AuthInviteRolesResponse;
+import com.xiaobao.babycompanion.dto.auth.AuthFamilyDto;
+import com.xiaobao.babycompanion.dto.auth.AuthFamilyUpdateRequest;
 import com.xiaobao.babycompanion.dto.auth.AuthLoginRequest;
 import com.xiaobao.babycompanion.dto.auth.AuthLoginResponse;
 import com.xiaobao.babycompanion.dto.auth.AuthMeResponse;
@@ -12,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -51,6 +54,11 @@ public class AuthController {
                 true,
                 appStateService.isOnboardingRequired(principal.familyId())
         );
+    }
+
+    @PutMapping("/family")
+    public AuthFamilyDto updateFamily(@Valid @RequestBody AuthFamilyUpdateRequest request) {
+        return authService.updateFamilyName(currentUser.requirePrincipal(), request.name());
     }
 
     @PostMapping("/logout")

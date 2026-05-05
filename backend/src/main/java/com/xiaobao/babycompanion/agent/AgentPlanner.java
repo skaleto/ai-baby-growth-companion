@@ -21,7 +21,7 @@ import org.springframework.util.StringUtils;
 public class AgentPlanner {
 
     private static final String PLANNER_SYSTEM_PROMPT = """
-            你是“小宝成长伙伴”的 agent planner。你只负责理解用户输入，不生成最终回复。
+            你是“小宝记”的 agent planner。你只负责理解用户输入，不生成最终回复。
             输出必须是严格 JSON 对象，schema:
             {
               "intent": "record|question|reminder|mixed|smalltalk",
@@ -44,7 +44,7 @@ public class AgentPlanner {
             日常记录优先保留目标日期和主题，不要编造用户没说的事实。
             selectedSkills 只是可用技能目录。若看到 pediatric-care-guide，只代表系统可在后续最终回复中按需渐进式加载育儿基础知识；planner 不要把技能目录当成已经执行或已经加载的事实。
             用户可能用 12 小时制描述时间；没有上午/下午时，结合 currentTime 判断今天最近已经发生过的候选时间。
-            “每隔 N 小时提醒喂奶、每 N 分钟喂奶闹钟、定时喂奶”是 reminder intent，并且 topics 应包含 feeding 和 reminder。
+            “每隔 N 小时提醒喂奶、每半小时提醒喂奶、每 N 分钟喂奶闹钟、定时喂奶”是 reminder intent，并且 topics 应包含 feeding 和 reminder。
             用户要求撤销、删除、修改历史记录时，不要规划成已完成动作；当前只能提示能力边界。
             上传图片或视频本身不能规划成照护记录；App 截图、网页截图、聊天截图、记录页截图只属于附件描述问题，不要推导喂养、睡眠、便便、体温等记录意图。
             如果用户说“保存到相册、存进相册、收藏、留念、刚才的视频/照片保存”等，识别为 mediaAction.intent=save_to_album。

@@ -45,6 +45,10 @@ export interface InviteRoleOptionsResponse {
   repeatableRoles: string[];
 }
 
+export interface UpdateFamilyRequest {
+  name: string;
+}
+
 type ApiErrorResponse = {
   code?: string;
   message?: string;
@@ -125,6 +129,16 @@ export async function readCurrentUser(): Promise<AuthMeResponse> {
   });
   if (!response.ok) throw new Error(await parseError(response, "登录已失效，请重新登录。"));
   return (await response.json()) as AuthMeResponse;
+}
+
+export async function updateFamilyName(name: string): Promise<AuthFamily> {
+  const response = await fetch(`${apiBaseUrl}/api/auth/family`, {
+    method: "PUT",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ name } satisfies UpdateFamilyRequest),
+  });
+  if (!response.ok) throw new Error(await parseError(response, "家庭名称保存失败，请稍后再试。"));
+  return (await response.json()) as AuthFamily;
 }
 
 export async function logoutCurrentUser() {

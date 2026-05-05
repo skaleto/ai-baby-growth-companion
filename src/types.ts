@@ -136,17 +136,23 @@ export type ReminderKind = "schedule" | "alarm";
 
 export type ReminderSoundId = "soft_chime" | "soft_bell";
 
+export type ReminderScheduleMode = "once" | "interval";
+
+export type ReminderAlertMode = "notification" | "ringing";
+
 export interface ReminderRepeatRule {
   mode: "fixedInterval";
   intervalMinutes: number;
-  anchorType: "careEvent";
-  careEventType: "milk";
+  anchorType: "now" | "careEvent";
+  careEventType?: "milk" | string;
 }
 
 export interface Reminder {
   id: string;
   title: string;
   reminderKind?: ReminderKind;
+  scheduleMode?: ReminderScheduleMode;
+  alertMode?: ReminderAlertMode;
   dueText: string;
   dueAt?: string;
   timeSourceText?: string;
