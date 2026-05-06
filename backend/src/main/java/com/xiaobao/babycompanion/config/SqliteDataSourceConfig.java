@@ -5,6 +5,7 @@ import java.nio.file.Path;
 
 import javax.sql.DataSource;
 
+import org.sqlite.SQLiteConfig;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -27,6 +28,12 @@ public class SqliteDataSourceConfig {
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName("org.sqlite.JDBC");
         dataSource.setUrl("jdbc:sqlite:" + dataDir.resolve("baby-companion.sqlite").toAbsolutePath());
+        SQLiteConfig sqliteConfig = new SQLiteConfig();
+        sqliteConfig.setJournalMode(SQLiteConfig.JournalMode.WAL);
+        sqliteConfig.setSynchronous(SQLiteConfig.SynchronousMode.NORMAL);
+        sqliteConfig.setBusyTimeout(10_000);
+        sqliteConfig.enforceForeignKeys(true);
+        dataSource.setConnectionProperties(sqliteConfig.toProperties());
         return dataSource;
     }
 

@@ -26,6 +26,8 @@ public class DatabaseInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("PRAGMA journal_mode=WAL");
+            statement.execute("PRAGMA synchronous=NORMAL");
+            statement.execute("PRAGMA busy_timeout=10000");
             statement.execute("PRAGMA foreign_keys=ON");
             createRecordTable(connection, statement, "baby_profile");
             createRecordTable(connection, statement, "chat_message");

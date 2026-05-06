@@ -687,6 +687,19 @@ const normalizeAttachment = (value: Partial<Attachment> | null | undefined, inde
   height: numberValue(value?.height),
 });
 
+const stripAttachmentUrlForStorage = (url?: string) => {
+  if (!url || url.startsWith("data:")) return undefined;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.pathname.startsWith("/api/uploads/")) return parsed.pathname;
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return url.split("?")[0];
+  }
+};
+
 const normalizeAlbumCategory = (value: unknown): AlbumItemCategory => {
   if (
     value === "growth" ||
@@ -1814,14 +1827,57 @@ const classifyAlbumCategoryFromText = (text: string): AlbumItemCategory => {
   return "daily";
 };
 
-const albumTitleFromText = (text: string, attachment: Attachment) => {
-  const clean = text.replace(/保存到相册|存到相册|加入相册|放进相册|收藏|留念|纪念/g, "").trim();
-  return clean ? clean.slice(0, 18) : attachment.name || "值得收藏的素材";
+const albumTitleFromText = (text: string, attachment: Attachment, category: AlbumItemCategory = "daily", occurredAt?: string) => {
+  const clean = text
+    .replace(/保存到相册|存到相册|加入相册|放进相册|收藏|留念|纪念|记录到相册/g, "")
+    .replace(/刚才的?|这个|这张|这段|上个|上一条|再看一下|看一下|视频|照片|图片|素材|呢|啦|哦/g, "")
+    .replace(/[，。！？,.!?]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const tooGeneric = !clean || clean.length <= 1 || internalReferencePattern.test(clean);
+  return tooGeneric ? defaultAlbumTitle(category, attachment, occurredAt) : clean.slice(0, 18);
 };
 
 const isAlbumMediaAttachment = (attachment: Attachment) => attachment.kind === "image" || attachment.kind === "video";
 
 const mediaKindLabel = (attachment: Attachment) => (attachment.kind === "video" ? "视频" : "照片");
+
+const internalReferencePattern = /\b(?:msg|message|attachment|att|album|decision)-[a-z0-9._-]+\b/i;
+
+const compactDateLabel = (dateText?: string) => {
+  const parsed = dateText ? new Date(dateText) : new Date();
+  if (Number.isNaN(parsed.getTime())) return "";
+  return `${parsed.getMonth() + 1}月${parsed.getDate()}日`;
+};
+
+const defaultAlbumTitle = (category: AlbumItemCategory, attachment: Attachment, occurredAt?: string) => {
+  const date = compactDateLabel(occurredAt);
+  const prefix = date ? `${date}` : "宝宝";
+  const media = mediaKindLabel(attachment);
+  if (category === "growth") return `${prefix}成长${media}`;
+  if (category === "feeding") return `${prefix}喂养${media}`;
+  if (category === "sleep") return `${prefix}睡眠${media}`;
+  if (category === "health") return `${prefix}健康${media}`;
+  if (category === "reminder") return `${prefix}提醒${media}`;
+  return `${prefix}宝宝日常${media}`;
+};
+
+const attachmentExtension = (attachment: Attachment) => {
+  const fromName = attachment.name.match(/\.([a-z0-9]{2,5})$/i)?.[1];
+  if (fromName) return fromName.toLowerCase();
+  if (attachment.mimeType?.includes("mp4")) return "mp4";
+  if (attachment.mimeType?.includes("quicktime")) return "mov";
+  if (attachment.mimeType?.includes("webm")) return "webm";
+  if (attachment.mimeType?.includes("png")) return "png";
+  if (attachment.mimeType?.includes("webp")) return "webp";
+  if (attachment.mimeType?.includes("gif")) return "gif";
+  return attachment.kind === "video" ? "mp4" : "jpg";
+};
+
+const generatedAlbumFileName = (title: string, attachment: Attachment) => {
+  const safeTitle = title.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "").slice(0, 28) || `宝宝${mediaKindLabel(attachment)}`;
+  return `${safeTitle}.${attachmentExtension(attachment)}`;
+};
 
 const decideAlbumMedia = (message: ChatMessage, attachment: Attachment): AlbumMediaDecision => {
   const text = message.text === "上传了新的成长素材" ? "" : message.text;
@@ -1846,7 +1902,7 @@ const decideAlbumMedia = (message: ChatMessage, attachment: Attachment): AlbumMe
       mode: "auto_save",
       category,
       reason: "用户表达了明确的留念或成长记录意图。",
-      title: albumTitleFromText(text, attachment),
+      title: albumTitleFromText(text, attachment, category, message.createdAt),
       tags: [albumCategoryLabel(category), mediaKindLabel(attachment)],
     };
   }
@@ -1856,7 +1912,7 @@ const decideAlbumMedia = (message: ChatMessage, attachment: Attachment): AlbumMe
       mode: "ask",
       category,
       reason: "这段素材可能和宝宝照护有关，但还不确定是否值得长期保存。",
-      title: albumTitleFromText(text, attachment),
+      title: albumTitleFromText(text, attachment, category, message.createdAt),
       tags: [albumCategoryLabel(category), "待确认"],
     };
   }
@@ -1875,20 +1931,26 @@ const albumPromptFromDecision = (decision: AlbumMediaDecision): AlbumPrompt => (
   createdAt: decision.createdAt,
 });
 
-const albumItemFromDecision = (decision: AlbumMediaDecision, message: ChatMessage, attachment: Attachment): AlbumItem => ({
-  id: `album-media-${message.id}-${attachment.id}`,
-  kind: "media",
-  title: decision.title || albumTitleFromText(message.text, attachment),
-  date: message.createdAt.slice(0, 10),
-  occurredAt: message.createdAt,
-  category: decision.category,
-  tags: decision.tags.length ? decision.tags : [albumCategoryLabel(decision.category), mediaKindLabel(attachment)],
-  attachmentId: attachment.id,
-  attachment,
-  linkedType: "chatMessage",
-  linkedId: message.id,
-  source: "rule",
-});
+const albumItemFromDecision = (decision: AlbumMediaDecision, message: ChatMessage, attachment: Attachment): AlbumItem => {
+  const title = decision.title || albumTitleFromText(message.text, attachment, decision.category, message.createdAt);
+  return {
+    id: `album-media-${message.id}-${attachment.id}`,
+    kind: "media",
+    title,
+    date: message.createdAt.slice(0, 10),
+    occurredAt: message.createdAt,
+    category: decision.category,
+    tags: decision.tags.length ? decision.tags : [albumCategoryLabel(decision.category), mediaKindLabel(attachment)],
+    attachmentId: attachment.id,
+    attachment: {
+      ...attachment,
+      name: generatedAlbumFileName(title, attachment),
+    },
+    linkedType: "chatMessage",
+    linkedId: message.id,
+    source: "rule",
+  };
+};
 
 const isVisibleAlbumMedia = (item: AlbumItem) =>
   item.kind === "media" &&
@@ -1967,7 +2029,7 @@ const albumPromptFromEffectDecision = (
     id: decision.id || makeId("album-decision"),
     attachmentId: attachment.id,
     sourceMessageId: sourceMessage.id,
-    title: payload.title || albumTitleFromText(payload.refHint || sourceMessage.text, attachment),
+    title: albumTitleFromText(payload.title || payload.refHint || sourceMessage.text, attachment, category, sourceMessage.createdAt),
     category,
     reason: payload.reason || decision.reason || `这段${mediaKindLabel(attachment)}可能值得保存到相册。`,
     tags: uniqueTexts([albumCategoryLabel(category), mediaKindLabel(attachment), ...(payload.tags ?? [])]).slice(0, 6),
@@ -3460,7 +3522,14 @@ function App() {
     reminders,
     memories,
     pendingEffects,
-    albumItems: storedAlbumItemsNormalized,
+    albumItems: storedAlbumItemsNormalized.map((item) => ({
+      ...item,
+      attachment: item.attachment ? {
+        ...item.attachment,
+        url: stripAttachmentUrlForStorage(item.attachment.url),
+        publicUrl: stripAttachmentUrlForStorage(item.attachment.publicUrl),
+      } : undefined,
+    })),
     conversationSummary,
     thinkingEnabled,
     selectedModel,
@@ -3666,7 +3735,8 @@ function App() {
   };
 
   const attachmentForStorage = (attachment: Attachment): Attachment => {
-    const storedUrl = attachment.publicUrl || (attachment.url?.startsWith("data:") ? undefined : attachment.url?.split("?")[0]);
+    const storedPublicUrl = stripAttachmentUrlForStorage(attachment.publicUrl);
+    const storedUrl = storedPublicUrl || stripAttachmentUrlForStorage(attachment.url);
     return {
       id: attachment.id,
       name: attachment.name,
@@ -3674,7 +3744,7 @@ function App() {
       url: storedUrl,
       mimeType: attachment.mimeType,
       filePath: attachment.filePath,
-      publicUrl: attachment.publicUrl,
+      publicUrl: storedPublicUrl,
       width: attachment.width,
       height: attachment.height,
     };
@@ -3683,6 +3753,11 @@ function App() {
   const messageForStorage = (message: ChatMessage): ChatMessage => ({
     ...message,
     attachments: message.attachments?.map(attachmentForStorage),
+  });
+
+  const albumItemForStorage = (item: AlbumItem): AlbumItem => ({
+    ...item,
+    attachment: item.attachment ? attachmentForStorage(item.attachment) : undefined,
   });
 
   useEffect(() => {
@@ -4573,7 +4648,7 @@ function App() {
       }
       if (autoAlbumItems.length) {
         autoAlbumItems.forEach((item) => {
-          persistenceTasks.push(() => persistRecord("albumItems", item.id, item));
+          persistenceTasks.push(() => persistRecord("albumItems", item.id, albumItemForStorage(item)));
         });
       }
       if (autoScheduledReminders.length) {
@@ -4806,7 +4881,7 @@ function App() {
       0,
     );
     setAlbumItems((current) => dedupeAlbumItems([nextItem, ...current.filter((entry) => entry.id !== nextItem.id)]));
-    void persistRecord("albumItems", nextItem.id, nextItem).catch(() => setStorageStatus("offline"));
+    void persistRecord("albumItems", nextItem.id, albumItemForStorage(nextItem)).catch(() => setStorageStatus("offline"));
   };
 
   const updateAlbumPromptStatus = (messageId: string, promptId: string, status: AlbumPrompt["status"]) => {
@@ -4838,7 +4913,7 @@ function App() {
     const albumItem = albumItemFromDecision({ ...prompt, mode: "auto_save" }, sourceMessage, attachment);
     setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
     updateAlbumPromptStatus(messageId, prompt.id, "saved");
-    void persistRecord("albumItems", albumItem.id, albumItem).catch(() => setStorageStatus("offline"));
+    void persistRecord("albumItems", albumItem.id, albumItemForStorage(albumItem)).catch(() => setStorageStatus("offline"));
   };
 
   const ignoreAlbumPrompt = (messageId: string, prompt: AlbumPrompt) => {

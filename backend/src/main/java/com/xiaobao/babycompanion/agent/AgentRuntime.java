@@ -44,6 +44,8 @@ import com.xiaobao.babycompanion.service.deepseek.DeepSeekFunctionCall;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekMessage;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekResponseFormat;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekToolCall;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -56,6 +58,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Service
 public class AgentRuntime {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentRuntime.class);
+
     private static final String AGENT_SYSTEM_PROMPT = """
             你是“小宝记”的 agent runtime。你的性格温柔、克制、可靠，帮助孕期到宝宝 1 岁家庭整理日常聊天。
             你需要从用户输入中识别成长事件、喂养和睡眠照护日志、提醒事项、值得长期记住的信息，并生成简洁可执行的中文回复。
@@ -67,6 +71,7 @@ public class AgentRuntime {
             图片/视频描述、相册保存、照护日志是三件不同的事。上传图片或视频本身不能单独生成喂养、睡眠、便便、体温等 careLog；只有用户文本/语音明确说了奶量、睡眠时长、体温等字段，才允许输出照护日志。
             App 截图、网页截图、聊天截图、记录页截图、纯 UI/文字界面图只可以描述，不得输出 careLogPatch、growthEvent、reminders 或 memories，也不要说已保存到相册。
             相册保存由系统根据 albumItem effectDecision 和前端准入校验完成；没有 albumItem effectDecision 时，你不能承诺“已保存到相册”。如果用户只是问“这图/视频里有啥”，只描述附件内容；如果明显是截图，可以温和补一句这类图片不会保存到成长相册。
+            当用户只是要求“把刚才/这个图片或视频保存到相册”时，只处理相册保存，不要顺带追问或生成成长、照护、记忆、提醒记录，也不要说“提交审核/审核通过”。
             所有面向用户的文字，包括 aiText、标题、question、reason，都必须使用自然中文；不要暴露内部字段名或技术词，例如 milkMl、feedingType、dueAt、intervalMinutes。
 
             你必须只返回一个合法 JSON 对象，不要返回 Markdown、代码块、解释文字或多余前后缀。
@@ -546,6 +551,14 @@ public class AgentRuntime {
 
             streamDeepSeekResponse(httpRequest, emitter, traceId, runtimeModel, usedSkills, sources, request.message(), signals, plan, contextSnapshot.babyProfile());
         } catch (Exception exception) {
+            LOGGER.warn(
+                    "Agent stream failed before model stream. traceId={}, provider={}, model={}, cause={}",
+                    traceId,
+                    runtimeModel.provider(),
+                    runtimeModel.id(),
+                    rootCauseMessage(exception),
+                    exception
+            );
             sendEvent(emitter, "error", Map.of("message", exception.getMessage()));
             emitter.complete();
         }
@@ -642,6 +655,15 @@ public class AgentRuntime {
                     .orElse("");
             return agentPlanner.parse(content, request, signals);
         } catch (RestClientException exception) {
+            LOGGER.warn(
+                    "Agent planner model call failed. provider={}, model={}, apiModel={}, path={}, cause={}",
+                    plannerRuntimeModel.provider(),
+                    plannerRuntimeModel.id(),
+                    plannerRuntimeModel.apiModel(),
+                    plannerRuntimeModel.chatPath(),
+                    rootCauseMessage(exception),
+                    exception
+            );
             throw new DeepSeekApiException("Failed to call model API for agent planning", exception);
         }
     }
@@ -843,6 +865,14 @@ public class AgentRuntime {
             try (Stream<String> lines = response.body()) {
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {
                     String errorBody = String.join("\n", lines.toList());
+                    LOGGER.warn(
+                            "Agent model stream returned non-2xx. traceId={}, provider={}, model={}, status={}, body={}",
+                            traceId,
+                            runtimeModel.provider(),
+                            runtimeModel.id(),
+                            response.statusCode(),
+                            abbreviate(errorBody, 1200)
+                    );
                     sendEvent(emitter, "error", Map.of("message", runtimeModel.id() + " stream failed: " + errorBody));
                     emitter.complete();
                     return;
@@ -862,12 +892,20 @@ public class AgentRuntime {
             sendEvent(emitter, "final", withSafetyAlertsAndDecisions(parsed, userMessage, signals, plan, babyProfile));
             emitter.complete();
         } catch (Exception exception) {
+            LOGGER.warn(
+                    "Agent model stream failed. traceId={}, provider={}, model={}, cause={}",
+                    traceId,
+                    runtimeModel.provider(),
+                    runtimeModel.id(),
+                    rootCauseMessage(exception),
+                    exception
+            );
             sendEvent(emitter, "error", Map.of("message", exception.getMessage()));
             emitter.complete();
         }
     }
 
-    private AgentChatResponse withSafetyAlertsAndDecisions(
+    AgentChatResponse withSafetyAlertsAndDecisions(
             AgentChatResponse response,
             String userMessage,
             RecordSignals signals,
@@ -890,16 +928,22 @@ public class AgentRuntime {
                 response.model(),
                 response.requestId()
         );
-        List<AgentEffectDecision> decisions = new ArrayList<>(effectPolicy.decide(withSafety, signals, babyProfile, userMessage));
-        decisions.addAll(mediaDecisions(plan));
-        String aiText = adjustedAiText(withSafety.aiText(), signals, decisions);
+        List<AgentEffectDecision> mediaDecisions = mediaDecisions(plan);
+        boolean albumSaveOnly = isAlbumSaveOnly(plan, userMessage);
+        List<AgentEffectDecision> decisions = albumSaveOnly
+                ? new ArrayList<>()
+                : new ArrayList<>(effectPolicy.decide(withSafety, signals, babyProfile, userMessage));
+        decisions.addAll(mediaDecisions);
+        String aiText = albumSaveOnly && !mediaDecisions.isEmpty()
+                ? albumSaveAiText(plan)
+                : adjustedAiText(withSafety.aiText(), signals, decisions);
         return new AgentChatResponse(
                 aiText,
                 withSafety.tags(),
-                withSafety.growthEvent(),
-                withSafety.careLogPatch(),
-                withSafety.reminders(),
-                withSafety.memories(),
+                albumSaveOnly ? null : withSafety.growthEvent(),
+                albumSaveOnly ? null : withSafety.careLogPatch(),
+                albumSaveOnly ? List.of() : withSafety.reminders(),
+                albumSaveOnly ? List.of() : withSafety.memories(),
                 withSafety.sources(),
                 withSafety.safetyAlerts(),
                 decisions,
@@ -908,6 +952,28 @@ public class AgentRuntime {
                 withSafety.model(),
                 withSafety.requestId()
         );
+    }
+
+    private boolean isAlbumSaveOnly(AgentPlan plan, String userMessage) {
+        AgentMediaAction action = plan == null ? null : plan.mediaAction();
+        if (action == null || !"save_to_album".equals(action.intent())) return false;
+        String message = userMessage == null ? "" : userMessage.trim();
+        boolean saveIntent = message.matches(".*(保存到相册|存到相册|加入相册|放进相册|收藏|留念|记录到相册).*");
+        boolean mediaReference = message.matches(".*(刚才|这个|这张|这段|上个|上一条|视频|照片|图片|素材|相册).*");
+        boolean explicitOtherRecord = message.matches(".*(喝了|喝奶|奶量|睡了|睡眠|拉屎|便便|体温|提醒我|闹钟|疫苗|体检|第一次|里程碑).*")
+                && !message.matches(".*(视频|照片|图片).*");
+        return saveIntent && mediaReference && !explicitOtherRecord;
+    }
+
+    private String albumSaveAiText(AgentPlan plan) {
+        AgentMediaAction action = plan == null ? null : plan.mediaAction();
+        String label = "素材";
+        if (action != null && "video".equals(action.targetKind())) {
+            label = "视频";
+        } else if (action != null && "image".equals(action.targetKind())) {
+            label = "照片";
+        }
+        return "已把刚才的%s整理到相册里。".formatted(label);
     }
 
     private List<AgentEffectDecision> mediaDecisions(AgentPlan plan) {
@@ -1421,6 +1487,22 @@ public class AgentRuntime {
         return toolResults.stream()
                 .flatMap((result) -> listOrEmpty(result.sources()).stream())
                 .toList();
+    }
+
+    private String rootCauseMessage(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null && cursor.getCause() != null) {
+            cursor = cursor.getCause();
+        }
+        String message = cursor == null ? "" : cursor.getMessage();
+        return StringUtils.hasText(message) ? abbreviate(message, 500) : cursor == null ? "unknown" : cursor.getClass().getSimpleName();
+    }
+
+    private String abbreviate(String value, int maxLength) {
+        if (value == null) return "";
+        String trimmed = value.trim();
+        if (trimmed.length() <= maxLength) return trimmed;
+        return trimmed.substring(0, Math.max(0, maxLength - 1)) + "…";
     }
 
     @FunctionalInterface
