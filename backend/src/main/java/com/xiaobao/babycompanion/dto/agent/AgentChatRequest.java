@@ -32,6 +32,32 @@ public record AgentChatRequest(
 
         JsonNode pageContext,
 
-        Boolean thinkingEnabled
+        Boolean thinkingEnabled,
+
+        Boolean lowLatencyEnabled
 ) {
+    public AgentChatRequest(
+            String message,
+            String model,
+            AgentBabyProfile babyProfile,
+            List<@Valid AgentChatMessage> recentMessages,
+            List<@Valid AgentCareLog> careLogs,
+            List<@Valid AgentMemory> memories,
+            List<@Valid AgentAttachment> attachments,
+            JsonNode pageContext,
+            Boolean thinkingEnabled
+    ) {
+        this(
+                message,
+                model,
+                babyProfile,
+                recentMessages,
+                careLogs,
+                memories,
+                attachments,
+                pageContext,
+                thinkingEnabled,
+                false
+        );
+    }
 }

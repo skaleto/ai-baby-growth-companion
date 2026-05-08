@@ -53,6 +53,7 @@ export interface AgentModelOption {
   label: string;
   supportsImageInput: boolean;
   supportsVideoInput: boolean;
+  supportsLowLatency: boolean;
 }
 
 export interface BabyProfile {
@@ -250,6 +251,7 @@ export interface AgentChatRequest {
   attachments: Attachment[];
   pageContext?: AgentPageContext;
   thinkingEnabled: boolean;
+  lowLatencyEnabled?: boolean;
 }
 
 export interface AgentPageContext {

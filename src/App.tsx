@@ -29,11 +29,12 @@ import {
   Users,
   Video,
   X,
+  Zap,
 } from "lucide-react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Camera as NativeCamera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { LocalNotifications } from "@capacitor/local-notifications";
+import { LocalNotifications, type ActionPerformed, type LocalNotificationSchema } from "@capacitor/local-notifications";
 import {
   ChangeEvent,
   type CSSProperties,
@@ -82,7 +83,9 @@ import {
   cancelAlarmReminder,
   consumeAlarmEvents,
   isNativeAlarmAvailable,
+  nativeAlarmPlatform,
   scheduleAlarmReminder,
+  type NativeAlarmEvent,
 } from "./nativeAlarm";
 import { useStoredState } from "./storage";
 import {
@@ -127,12 +130,39 @@ import reminderIcon from "./assets/storybook-icons/reminder.png";
 import sleepIcon from "./assets/storybook-icons/sleep.png";
 import solidIcon from "./assets/storybook-icons/solid.png";
 import temperatureIcon from "./assets/storybook-icons/temperature.png";
+import alarmSceneImage from "./assets/alarm/alarm-scene.png";
+import softBellSoundUrl from "./assets/sounds/xiaobao_bell.wav";
+import softChimeSoundUrl from "./assets/sounds/xiaobao_chime.wav";
 
 const MODEL_OPTIONS: AgentModelOption[] = [
-  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", supportsImageInput: false, supportsVideoInput: false },
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", supportsImageInput: false, supportsVideoInput: false },
-  { id: "doubao-seed-2.0-pro", label: "Doubao Seed 2.0 Pro", supportsImageInput: true, supportsVideoInput: true },
-  { id: "doubao-seed-2.0-lite", label: "Doubao Seed 2.0 Lite", supportsImageInput: true, supportsVideoInput: true },
+  {
+    id: "deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    supportsImageInput: false,
+    supportsVideoInput: false,
+    supportsLowLatency: false,
+  },
+  {
+    id: "deepseek-v4-flash",
+    label: "DeepSeek V4 Flash",
+    supportsImageInput: false,
+    supportsVideoInput: false,
+    supportsLowLatency: false,
+  },
+  {
+    id: "doubao-seed-2.0-pro",
+    label: "Doubao Seed 2.0 Pro",
+    supportsImageInput: true,
+    supportsVideoInput: true,
+    supportsLowLatency: true,
+  },
+  {
+    id: "doubao-seed-2.0-lite",
+    label: "Doubao Seed 2.0 Lite",
+    supportsImageInput: true,
+    supportsVideoInput: true,
+    supportsLowLatency: true,
+  },
 ];
 
 const DEFAULT_MODEL: AgentModelId = "deepseek-v4-pro";
@@ -184,6 +214,11 @@ const LEGACY_REMINDER_CHANNELS = ["baby_alarm_chime_v1", "baby_alarm_bell_v1"];
 const REMINDER_SOUND_FILES: Record<ReminderSoundId, string> = {
   soft_chime: "xiaobao_chime.wav",
   soft_bell: "xiaobao_bell.wav",
+};
+
+const REMINDER_WEB_SOUND_URLS: Record<ReminderSoundId, string> = {
+  soft_chime: softChimeSoundUrl,
+  soft_bell: softBellSoundUrl,
 };
 
 const MIN_INTERVAL_MINUTES = 10;
@@ -354,7 +389,12 @@ const FEEDING_SELECT_OPTIONS: Array<SelectOption<string>> = [
 const MODEL_SELECT_OPTIONS: Array<SelectOption<AgentModelId>> = MODEL_OPTIONS.map((model) => ({
   value: model.id,
   label: model.label,
-  hint: model.supportsImageInput || model.supportsVideoInput ? "支持视觉理解" : "文本对话模型",
+  hint: [
+    model.supportsImageInput || model.supportsVideoInput ? "支持视觉理解" : "文本对话模型",
+    model.supportsLowLatency ? "可选低延迟" : "",
+  ]
+    .filter(Boolean)
+    .join(" · "),
 }));
 
 const CARE_EVENT_TYPE_OPTIONS: Array<SelectOption<CareLogEventType>> = [
@@ -2449,8 +2489,11 @@ const reminderChannelId = (reminder: Reminder) =>
 const reminderSoundFile = (reminder: Reminder) =>
   reminder.alertMode === "ringing" ? REMINDER_SOUND_FILES[normalizeReminderSoundId(reminder.soundId)] : undefined;
 
-const shouldUseNativeReminderScheduler = (reminder: Reminder) =>
-  isNativeAlarmAvailable() && (isIntervalReminder(reminder) || reminder.alertMode === "ringing");
+const shouldUseNativeReminderScheduler = (reminder: Reminder) => {
+  const platform = nativeAlarmPlatform();
+  if (platform === "ios") return true;
+  return platform === "android" && (isIntervalReminder(reminder) || reminder.alertMode === "ringing");
+};
 
 const ensureReminderChannels = async () => {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || reminderChannelsReady) return;
@@ -2530,7 +2573,7 @@ const scheduleNativeReminders = async (
       return prepared.map((reminder) => ({
         ...reminder,
         notificationStatus: "permission_denied",
-        notificationError: "Android 通知权限未开启，提醒会保留在 App 内。",
+        notificationError: "系统通知权限未开启，提醒会保留在 App 内。",
       }));
     }
 
@@ -2581,7 +2624,7 @@ const scheduleNativeReminders = async (
           ...reminder,
           notificationStatus: (reminder.alertMode === "ringing" || reminder.scheduleMode === "interval") && !exactForReminder ? "scheduled_inexact" as const : "scheduled" as const,
           notificationError: (reminder.alertMode === "ringing" || reminder.scheduleMode === "interval") && !exactForReminder
-            ? "Android 精确闹钟权限未开启，已安排提醒，但可能不够准时。"
+            ? "系统精确定时权限未开启，已安排提醒，但可能不够准时。"
             : undefined,
         };
       }),
@@ -3187,6 +3230,7 @@ function App() {
   );
   const [thinkingEnabled, setThinkingEnabled] = useStoredState("baby-companion-thinking-enabled", false);
   const [selectedModel, setSelectedModel] = useStoredState<AgentModelId>("baby-companion-model", DEFAULT_MODEL);
+  const [lowLatencyEnabled, setLowLatencyEnabled] = useState(false);
   const profile = useMemo(() => normalizeBabyProfile(storedProfile), [storedProfile]);
   const messages = useMemo(() => storedMessages.map(normalizeChatMessage), [storedMessages]);
   const growthEvents = useMemo(() => storedGrowthEvents.map(normalizeGrowthEvent), [storedGrowthEvents]);
@@ -3230,6 +3274,7 @@ function App() {
   const [loginInviteCode, setLoginInviteCode] = useState("");
   const [loginRoleName, setLoginRoleName] = useState<"" | (typeof ROLE_OPTIONS)[number]>("");
   const [loginCaregiver, setLoginCaregiver] = useState<boolean | null>(null);
+  const [loginExistingMember, setLoginExistingMember] = useState<AuthMember | null>(null);
   const [loginError, setLoginError] = useState("");
   const [occupiedInviteRoles, setOccupiedInviteRoles] = useState<string[]>([]);
   const [inviteRoleHint, setInviteRoleHint] = useState("");
@@ -3294,6 +3339,7 @@ function App() {
   const [reminderDraft, setReminderDraft] = useState<ReminderDraft>(() => createReminderDraft());
   const [completeReminderTarget, setCompleteReminderTarget] = useState<Reminder | null>(null);
   const [deleteReminderTarget, setDeleteReminderTarget] = useState<Reminder | null>(null);
+  const [ringingReminder, setRingingReminder] = useState<Reminder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const asrControllerRef = useRef<AsrStreamController | null>(null);
@@ -3324,11 +3370,15 @@ function App() {
   const compressionResetTimerRef = useRef<number | null>(null);
   const intervalReminderRescheduleRef = useRef("");
   const remindersRef = useRef<Reminder[]>([]);
+  const handledNativeNotificationKeysRef = useRef<Set<string>>(new Set());
+  const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
   const appPlatform = platformLabel();
   const currentModel = MODEL_OPTIONS.find((model) => model.id === selectedModel) ?? MODEL_OPTIONS[0];
   const canCaregive = authMember?.caregiver ?? true;
   const visibleTabs = canCaregive ? MOBILE_TABS : MOBILE_TABS.filter((tab) => tab.id !== "chat");
   const canAttachVisuals = canCaregive && (currentModel.supportsImageInput || currentModel.supportsVideoInput);
+  const canUseLowLatency = canCaregive && currentModel.supportsLowLatency;
+  const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
   const loginRoleOptions = useMemo(
     () =>
       ROLE_SELECT_OPTIONS.map((option) => {
@@ -3340,7 +3390,10 @@ function App() {
     [occupiedInviteRoles],
   );
   const loginSelectedRoleOccupied = Boolean(loginRoleName && occupiedInviteRoles.includes(loginRoleName));
-  const loginReady = Boolean(loginRoleName && loginCaregiver !== null && !loginSelectedRoleOccupied);
+  const loginCredentialsReady = loginPhone.trim().replace(/\s+/g, "").length === 11 && loginInviteCode.trim().replace(/\s+/g, "").length >= 6;
+  const loginReady = loginExistingMember
+    ? loginCredentialsReady
+    : Boolean(loginCredentialsReady && loginRoleName && loginCaregiver !== null && !loginSelectedRoleOccupied);
   const switchMobileTab = (tab: MobileTab) => {
     setActiveMobileTab(tab);
   };
@@ -3445,9 +3498,28 @@ function App() {
     remindersRef.current = reminders;
   }, [reminders]);
 
+  useEffect(() => {
+    ringingAudioRef.current?.pause();
+    ringingAudioRef.current = null;
+    if (!ringingReminder) return undefined;
+
+    const soundUrl = REMINDER_WEB_SOUND_URLS[normalizeReminderSoundId(ringingReminder.soundId)];
+    const audio = new Audio(soundUrl);
+    audio.loop = true;
+    ringingAudioRef.current = audio;
+    void audio.play().catch(() => undefined);
+
+    return () => {
+      audio.pause();
+      audio.currentTime = 0;
+      if (ringingAudioRef.current === audio) ringingAudioRef.current = null;
+    };
+  }, [ringingReminder?.id, ringingReminder?.soundId]);
+
   useEffect(
     () => () => {
       if (compressionResetTimerRef.current !== null) window.clearTimeout(compressionResetTimerRef.current);
+      ringingAudioRef.current?.pause();
     },
     [],
   );
@@ -3455,10 +3527,12 @@ function App() {
   useEffect(() => {
     const normalizedCode = loginInviteCode.trim();
     const compactCode = normalizedCode.replace(/\s+/g, "");
+    const compactPhone = loginPhone.trim().replace(/\s+/g, "");
     if (compactCode.length < 6) {
       setOccupiedInviteRoles([]);
       setInviteRoleHint("");
       setInviteFamilyName("");
+      setLoginExistingMember(null);
       setIsCheckingInviteRoles(false);
       return undefined;
     }
@@ -3466,7 +3540,7 @@ function App() {
     let cancelled = false;
     setIsCheckingInviteRoles(true);
     const timer = window.setTimeout(() => {
-      readInviteRoleOptions(normalizedCode)
+      readInviteRoleOptions(normalizedCode, compactPhone.length === 11 ? compactPhone : undefined)
         .then((result) => {
           if (cancelled) return;
           const occupied = result.occupiedRoles.filter((role) =>
@@ -3475,16 +3549,22 @@ function App() {
           const familyName = result.familyName || "小宝家";
           setOccupiedInviteRoles(occupied);
           setInviteFamilyName(familyName);
-          setInviteRoleHint(
-            occupied.length
-              ? `${familyName} 已有：${occupied.join("、")}`
-              : `${familyName} 可选择家庭身份`,
-          );
+          setLoginExistingMember(result.existingMember ? result.member ?? null : null);
+          if (result.existingMember && result.member) {
+            setInviteRoleHint(`已是 ${familyName} 的成员：${result.member.roleName} · ${result.member.caregiver ? "照护人" : "仅查看"}`);
+          } else {
+            setInviteRoleHint(
+              occupied.length
+                ? `${familyName} 已有：${occupied.join("、")}`
+                : `${familyName} 可选择家庭身份`,
+            );
+          }
         })
         .catch((error) => {
           if (cancelled) return;
           setOccupiedInviteRoles([]);
           setInviteFamilyName("");
+          setLoginExistingMember(null);
           setInviteRoleHint(error instanceof Error ? error.message : "邀请码暂时无法确认");
         })
         .finally(() => {
@@ -3496,7 +3576,7 @@ function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [loginInviteCode]);
+  }, [loginInviteCode, loginPhone]);
 
   useEffect(() => {
     if (loginRoleName && occupiedInviteRoles.includes(loginRoleName)) {
@@ -3619,6 +3699,59 @@ function App() {
     }
   };
 
+  const applyNativeAlarmEvents = async (events: NativeAlarmEvent[]) => {
+    const updates = events.flatMap((event) => {
+      const target = remindersRef.current.find(
+        (reminder) => reminder.id === event.reminderId || reminder.notificationId === event.notificationId,
+      );
+      if (!target) return [];
+      const nextDueAt = event.nextDueAt ? new Date(event.nextDueAt) : new Date(Number.NaN);
+      const handledAt = new Date(event.handledAt);
+      if (Number.isNaN(nextDueAt.getTime())) {
+        const completed: Reminder = {
+          ...target,
+          status: "done",
+          notificationStatus: "cancelled",
+          history: [`${formatReminderDueText(Number.isNaN(handledAt.getTime()) ? new Date() : handledAt)} 已关闭本次提醒`, ...target.history],
+        };
+        return [completed];
+      }
+
+      const handledLabel = Number.isNaN(handledAt.getTime())
+        ? formatReminderDueText(new Date())
+        : formatReminderDueText(handledAt);
+      const nextReminder = addReminderHistory(
+        {
+          ...target,
+          status: "open",
+          dueAt: nextDueAt.toISOString(),
+          dueText: formatReminderDueText(nextDueAt),
+          lastAnchorAt: Number.isNaN(handledAt.getTime()) ? target.lastAnchorAt : handledAt.toISOString(),
+          notificationStatus: event.exact === false ? "scheduled_inexact" : "scheduled",
+          notificationError: event.exact === false
+            ? "系统精确定时权限未开启，已安排提醒，但可能不够准时。"
+            : undefined,
+        },
+        event.type === "alarm_closed_current"
+          ? `${handledLabel} 已关闭本次闹铃，下一次 ${formatReminderDueText(nextDueAt)}`
+          : `${handledLabel} 已触发本次通知，下一次 ${formatReminderDueText(nextDueAt)}`,
+      );
+      return [nextReminder];
+    });
+
+    if (!updates.length) return;
+    setReminders((current) => {
+      const byId = new Map(current.map((reminder) => [reminder.id, reminder]));
+      updates.forEach((reminder) => byId.set(reminder.id, reminder));
+      const next = Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
+      remindersRef.current = next;
+      return next;
+    });
+    for (const reminder of updates) {
+      await persistRecord("reminders", reminder.id, reminder);
+    }
+  };
+
   useEffect(() => {
     if (authStatus !== "authenticated" || !isNativeAlarmAvailable()) return undefined;
 
@@ -3627,57 +3760,7 @@ function App() {
       try {
         const events = await consumeAlarmEvents();
         if (cancelled || !events.length) return;
-
-        const updates = events.flatMap((event) => {
-          const target = remindersRef.current.find(
-            (reminder) => reminder.id === event.reminderId || reminder.notificationId === event.notificationId,
-          );
-          if (!target) return [];
-          const nextDueAt = event.nextDueAt ? new Date(event.nextDueAt) : new Date(Number.NaN);
-          const handledAt = new Date(event.handledAt);
-          if (Number.isNaN(nextDueAt.getTime())) {
-            const completed: Reminder = {
-              ...target,
-              status: "done",
-              notificationStatus: "cancelled",
-              history: [`${formatReminderDueText(Number.isNaN(handledAt.getTime()) ? new Date() : handledAt)} 已关闭本次提醒`, ...target.history],
-            };
-            return [completed];
-          }
-
-          const handledLabel = Number.isNaN(handledAt.getTime())
-            ? formatReminderDueText(new Date())
-            : formatReminderDueText(handledAt);
-          const nextReminder = addReminderHistory(
-            {
-              ...target,
-              status: "open",
-              dueAt: nextDueAt.toISOString(),
-              dueText: formatReminderDueText(nextDueAt),
-              lastAnchorAt: Number.isNaN(handledAt.getTime()) ? target.lastAnchorAt : handledAt.toISOString(),
-              notificationStatus: event.exact === false ? "scheduled_inexact" : "scheduled",
-              notificationError: event.exact === false
-                ? "Android 精确闹钟权限未开启，已安排提醒，但可能不够准时。"
-                : undefined,
-            },
-            event.type === "alarm_closed_current"
-              ? `${handledLabel} 已关闭本次闹铃，下一次 ${formatReminderDueText(nextDueAt)}`
-              : `${handledLabel} 已触发本次通知，下一次 ${formatReminderDueText(nextDueAt)}`,
-          );
-          return [nextReminder];
-        });
-
-        if (!updates.length) return;
-        setReminders((current) => {
-          const byId = new Map(current.map((reminder) => [reminder.id, reminder]));
-          updates.forEach((reminder) => byId.set(reminder.id, reminder));
-          const next = Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
-          remindersRef.current = next;
-          return next;
-        });
-        for (const reminder of updates) {
-          await persistRecord("reminders", reminder.id, reminder);
-        }
+        await applyNativeAlarmEvents(events);
       } catch {
         // Native alarm events are best-effort sync; the native side already scheduled the next alarm.
       }
@@ -3690,6 +3773,60 @@ function App() {
     return () => {
       cancelled = true;
       void listener.then((handle) => handle.remove());
+    };
+  }, [authStatus]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") {
+      return undefined;
+    }
+
+    const handleIosNativeAlarmNotification = (notification: LocalNotificationSchema, source: "received" | "action") => {
+      const extra = notification.extra as Record<string, unknown> | undefined;
+      if (!extra?.nativeAlarm) return;
+      const reminderId = typeof extra.reminderId === "string" ? extra.reminderId : "";
+      if (!reminderId) return;
+      const target = remindersRef.current.find((reminder) => reminder.id === reminderId);
+      if (!target) return;
+
+      const key = typeof extra.requestIdentifier === "string"
+        ? extra.requestIdentifier
+        : `${reminderId}-${notification.id}-${source}`;
+      if (handledNativeNotificationKeysRef.current.has(key)) return;
+      handledNativeNotificationKeysRef.current.add(key);
+
+      if (target.alertMode === "ringing") {
+        setRingingReminder(target);
+        return;
+      }
+
+      if (isIntervalReminder(target) && target.repeatRule) {
+        const handledAt = new Date();
+        const nextDueAt = new Date(handledAt.getTime() + target.repeatRule.intervalMinutes * 60 * 1000);
+        void applyNativeAlarmEvents([
+          {
+            type: "reminder_triggered",
+            reminderId: target.id,
+            notificationId: target.notificationId,
+            handledAt: handledAt.toISOString(),
+            nextDueAt: nextDueAt.toISOString(),
+            intervalMinutes: target.repeatRule.intervalMinutes,
+            exact: true,
+          },
+        ]).catch(() => undefined);
+      }
+    };
+
+    const receivedListener = LocalNotifications.addListener("localNotificationReceived", (notification) => {
+      handleIosNativeAlarmNotification(notification, "received");
+    });
+    const actionListener = LocalNotifications.addListener("localNotificationActionPerformed", (action: ActionPerformed) => {
+      handleIosNativeAlarmNotification(action.notification, "action");
+    });
+
+    return () => {
+      void receivedListener.then((handle) => handle.remove());
+      void actionListener.then((handle) => handle.remove());
     };
   }, [authStatus]);
 
@@ -4436,6 +4573,7 @@ function App() {
           memories: memories.slice(0, 10),
           pageContext: buildAgentPageContext(),
           thinkingEnabled,
+          lowLatencyEnabled: effectiveLowLatencyEnabled,
           attachments: agentAttachments,
         },
         {
@@ -4819,6 +4957,13 @@ function App() {
     await completeReminder(target);
   };
 
+  const closeRingingReminder = async () => {
+    if (!ringingReminder) return;
+    const target = ringingReminder;
+    setRingingReminder(null);
+    await completeReminder(target);
+  };
+
   const postponeReminder = async (target: Reminder) => {
     if (!canCaregive) return;
     await cancelNativeReminder(target);
@@ -5155,13 +5300,18 @@ function App() {
     event.preventDefault();
     if (isLoggingIn) return;
     setLoginError("");
-    if (!loginRoleName || loginCaregiver === null) {
+    if (!loginExistingMember && (!loginRoleName || loginCaregiver === null)) {
       setLoginError("请先选择家庭身份和是否照护人。");
       return;
     }
     setIsLoggingIn(true);
     try {
-      const response = await loginWithInvite(loginPhone, loginInviteCode, loginRoleName, loginCaregiver);
+      const response = await loginWithInvite(
+        loginPhone,
+        loginInviteCode,
+        loginExistingMember ? undefined : loginRoleName,
+        loginExistingMember ? undefined : loginCaregiver,
+      );
       setAuthUser(response.user);
       setAuthFamily(response.family);
       setAuthMember(response.member);
@@ -5195,6 +5345,7 @@ function App() {
     setIsCareLogEditing(false);
     setActiveMobileTab("chat");
     setInviteFamilyName("");
+    setLoginExistingMember(null);
     setOnboardingFamilyName(suggestedFamilyName(initialProfile.nickname));
     onboardingFamilyNameTouchedRef.current = false;
     clearLocalAppState();
@@ -5328,49 +5479,60 @@ function App() {
                 onChange={(event) => setLoginInviteCode(event.target.value)}
               />
             </label>
-            <div className="auth-join-options" aria-label="加入家庭身份设置">
-              <div>
-                <strong>加入家庭前先确认身份</strong>
-                <small>新手机号第一次使用家庭邀请码时，会按这里的选择加入{inviteFamilyName || "对应家庭"}。</small>
-              </div>
-              <label>
-                <span>家庭身份</span>
-                <StorySelect
-                  ariaLabel="家庭身份"
-                  value={loginRoleName}
-                  options={loginRoleOptions}
-                  onChange={setLoginRoleName}
-                />
-                {isCheckingInviteRoles || inviteRoleHint ? (
-                  <small className="auth-role-hint">
-                    {isCheckingInviteRoles ? "正在确认家庭身份..." : inviteRoleHint}
+            {loginExistingMember ? (
+              <div className="auth-join-options compact" aria-label="已注册家庭身份">
+                <div>
+                  <strong>已识别家庭身份</strong>
+                  <small>
+                    {inviteRoleHint || `你已经是${inviteFamilyName || "这个家庭"}的成员，本次登录会沿用原身份。`}
                   </small>
-                ) : null}
-              </label>
-              <div className="auth-permission-choice">
-                <span>权限</span>
-                <div className="auth-choice-row" role="radiogroup" aria-label="是否照护人">
-                  <button
-                    type="button"
-                    className={loginCaregiver === true ? "selected" : ""}
-                    aria-pressed={loginCaregiver === true}
-                    onClick={() => setLoginCaregiver(true)}
-                  >
-                    <strong>照护人</strong>
-                    <small>可聊天记录、上传和完成提醒</small>
-                  </button>
-                  <button
-                    type="button"
-                    className={loginCaregiver === false ? "selected" : ""}
-                    aria-pressed={loginCaregiver === false}
-                    onClick={() => setLoginCaregiver(false)}
-                  >
-                    <strong>仅查看</strong>
-                    <small>只能查看家庭记录和提醒</small>
-                  </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="auth-join-options" aria-label="加入家庭身份设置">
+                <div>
+                  <strong>加入家庭前先确认身份</strong>
+                  <small>新手机号第一次使用家庭邀请码时，会按这里的选择加入{inviteFamilyName || "对应家庭"}。</small>
+                </div>
+                <label>
+                  <span>家庭身份</span>
+                  <StorySelect
+                    ariaLabel="家庭身份"
+                    value={loginRoleName}
+                    options={loginRoleOptions}
+                    onChange={setLoginRoleName}
+                  />
+                  {isCheckingInviteRoles || inviteRoleHint ? (
+                    <small className="auth-role-hint">
+                      {isCheckingInviteRoles ? "正在确认家庭身份..." : inviteRoleHint}
+                    </small>
+                  ) : null}
+                </label>
+                <div className="auth-permission-choice">
+                  <span>权限</span>
+                  <div className="auth-choice-row" role="radiogroup" aria-label="是否照护人">
+                    <button
+                      type="button"
+                      className={loginCaregiver === true ? "selected" : ""}
+                      aria-pressed={loginCaregiver === true}
+                      onClick={() => setLoginCaregiver(true)}
+                    >
+                      <strong>照护人</strong>
+                      <small>可聊天记录、上传和完成提醒</small>
+                    </button>
+                    <button
+                      type="button"
+                      className={loginCaregiver === false ? "selected" : ""}
+                      aria-pressed={loginCaregiver === false}
+                      onClick={() => setLoginCaregiver(false)}
+                    >
+                      <strong>仅查看</strong>
+                      <small>只能查看家庭记录和提醒</small>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {loginError ? <p className="auth-error">{loginError}</p> : null}
             <button type="submit" disabled={isLoggingIn || !loginReady}>
               {isLoggingIn ? "登录中..." : "登录"}
@@ -6182,7 +6344,27 @@ function App() {
                 >
                   <Brain size={19} />
                 </button>
+                <button
+                  type="button"
+                  className={`tool-button latency-button ${effectiveLowLatencyEnabled ? "active" : ""}`}
+                  title={
+                    canUseLowLatency
+                      ? effectiveLowLatencyEnabled
+                        ? "低延迟模式已开启，会在请求中使用 fast 服务档位，费用更高"
+                        : "开启低延迟模式，会在请求中使用 fast 服务档位，费用更高"
+                      : "当前模型不支持低延迟模式"
+                  }
+                  aria-label="低延迟模式"
+                  aria-pressed={effectiveLowLatencyEnabled}
+                  disabled={!canUseLowLatency || isSubmitting}
+                  onClick={() => setLowLatencyEnabled((enabled) => !enabled)}
+                >
+                  <Zap size={18} />
+                </button>
               </div>
+              {effectiveLowLatencyEnabled ? (
+                <p className="composer-mode-note">低延迟模式已开启，会在请求中使用 fast 服务档位。</p>
+              ) : null}
               <div className="composer-input-line">
                 {composerMode === "voice" ? (
                   <button
@@ -6859,7 +7041,7 @@ function App() {
                     </label>
                   </div>
                 )}
-                {!Capacitor.isNativePlatform() ? <p className="form-help">浏览器里只显示 App 内提醒；安装到 Android 后会调度手机本地通知。</p> : null}
+                {!Capacitor.isNativePlatform() ? <p className="form-help">浏览器里只显示 App 内提醒；安装到移动 App 后会调度手机本地通知。</p> : null}
                 <div className="story-modal-actions">
                   <button type="button" className="screen-action-button quiet" onClick={closeReminderEditor}>
                     取消
@@ -7239,6 +7421,30 @@ function App() {
           );
         })}
       </nav>
+      {ringingReminder ? (
+        <div className="alarm-ringing-overlay" role="dialog" aria-modal="true" aria-labelledby="alarm-ringing-title">
+          <div className="alarm-ringing-scene" aria-hidden="true">
+            <img src={alarmSceneImage} alt="" />
+            <span className="alarm-ringing-glow" />
+          </div>
+          <section className="alarm-ringing-card">
+            <p className="eyebrow">小宝闹铃提醒</p>
+            <h2 id="alarm-ringing-title">到提醒时间啦</h2>
+            <p className="alarm-ringing-rule">
+              {ringingReminder.title}
+              {ringingReminder.repeatRule ? ` · 每 ${formatIntervalText(ringingReminder.repeatRule.intervalMinutes)}` : ""}
+            </p>
+            <p className="alarm-ringing-due">{ringingReminder.dueText || "轻轻看看这次提醒"}</p>
+            <button type="button" className="screen-action-button alarm-ringing-close" onClick={() => void closeRingingReminder()}>
+              <BellOff size={18} />
+              关闭本次
+            </button>
+            <p className="alarm-ringing-helper">
+              {isIntervalReminder(ringingReminder) ? "关闭后会自动安排下一次提醒" : "关闭后本次提醒结束"}
+            </p>
+          </section>
+        </div>
+      ) : null}
       {previewAttachment?.url ? (
         <div className="media-preview" role="dialog" aria-modal="true" aria-label="附件预览" onClick={() => setPreviewAttachment(null)}>
           <button className="media-preview-close" type="button" aria-label="关闭预览" onClick={() => setPreviewAttachment(null)}>

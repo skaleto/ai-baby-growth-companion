@@ -271,7 +271,7 @@ public class AgentRuntime {
     }
 
     public AgentChatResponse chat(AgentChatRequest request) {
-        RuntimeModel runtimeModel = resolveModel(request.model());
+        RuntimeModel runtimeModel = resolveModel(request.model(), Boolean.TRUE.equals(request.lowLatencyEnabled()));
         RuntimeModel plannerRuntimeModel = resolvePlannerModel();
         String apiKey = resolvedApiKey(runtimeModel);
         if (!StringUtils.hasText(apiKey)) {
@@ -335,7 +335,7 @@ public class AgentRuntime {
     }
 
     public SseEmitter stream(AgentChatRequest request) {
-        RuntimeModel runtimeModel = resolveModel(request.model());
+        RuntimeModel runtimeModel = resolveModel(request.model(), Boolean.TRUE.equals(request.lowLatencyEnabled()));
         RuntimeModel plannerRuntimeModel = resolvePlannerModel();
         String apiKey = resolvedApiKey(runtimeModel);
         if (!StringUtils.hasText(apiKey)) {
@@ -414,6 +414,7 @@ public class AgentRuntime {
                     0.0,
                     responseFormat(runtimeModel),
                     Map.of("type", "disabled"),
+                    null,
                     null,
                     null
             );
@@ -621,7 +622,8 @@ public class AgentRuntime {
                 responseFormat(runtimeModel),
                 thinkingConfig(request),
                 null,
-                null
+                null,
+                serviceTier(runtimeModel)
         );
     }
 
@@ -762,7 +764,8 @@ public class AgentRuntime {
                 null,
                 Map.of("type", "disabled"),
                 tools.stream().map(AgentTool::definition).toList(),
-                likelyNeedsExternalLookup(request.message()) ? "required" : "auto"
+                likelyNeedsExternalLookup(request.message()) ? "required" : "auto",
+                serviceTier(runtimeModel)
         );
     }
 
@@ -1145,12 +1148,17 @@ public class AgentRuntime {
     }
 
     private RuntimeModel resolveModel(String requestedModel) {
+        return resolveModel(requestedModel, false);
+    }
+
+    private RuntimeModel resolveModel(String requestedModel, boolean lowLatencyEnabled) {
         String model = StringUtils.hasText(requestedModel) ? requestedModel.trim() : properties.getModel();
         return switch (model) {
             case "deepseek-v4-flash" -> new RuntimeModel(
                     "deepseek-v4-flash",
                     Provider.DEEPSEEK,
                     "deepseek-v4-flash",
+                    false,
                     false,
                     false,
                     properties.getBaseUrl(),
@@ -1164,35 +1172,43 @@ public class AgentRuntime {
                     "deepseek-v4-pro",
                     false,
                     false,
+                    false,
                     properties.getBaseUrl(),
                     properties.getChatPath(),
                     properties.getReadTimeout(),
                     "DEEPSEEK_API_KEY"
             );
-            case "doubao-seed-2.0-lite", "doubao-seed-2-0-lite-260215" -> new RuntimeModel(
+            case "doubao-seed-2.0-lite", "doubao-seed-2-0-lite-260215" -> doubaoRuntimeModel(
                     "doubao-seed-2.0-lite",
-                    Provider.DOUBAO,
                     doubaoProperties.getSeed20LiteModel(),
-                    true,
-                    true,
-                    doubaoProperties.getBaseUrl(),
-                    doubaoProperties.getChatPath(),
-                    doubaoProperties.getReadTimeout(),
-                    "DOUBAO_API_KEY or ARK_API_KEY"
+                    lowLatencyEnabled
             );
-            case "doubao-seed-2.0-pro", "doubao-seed-2-0-pro-260215" -> new RuntimeModel(
+            case "doubao-seed-2.0-pro", "doubao-seed-2-0-pro-260215" -> doubaoRuntimeModel(
                     "doubao-seed-2.0-pro",
-                    Provider.DOUBAO,
                     doubaoProperties.getSeed20ProModel(),
-                    true,
-                    true,
-                    doubaoProperties.getBaseUrl(),
-                    doubaoProperties.getChatPath(),
-                    doubaoProperties.getReadTimeout(),
-                    "DOUBAO_API_KEY or ARK_API_KEY"
+                    lowLatencyEnabled
             );
             default -> throw new IllegalArgumentException("Unsupported agent model: " + model);
         };
+    }
+
+    private RuntimeModel doubaoRuntimeModel(
+            String modelId,
+            String standardModel,
+            boolean lowLatencyEnabled
+    ) {
+        return new RuntimeModel(
+                modelId,
+                Provider.DOUBAO,
+                standardModel,
+                true,
+                true,
+                lowLatencyEnabled,
+                doubaoProperties.getBaseUrl(),
+                doubaoProperties.getChatPath(),
+                doubaoProperties.getReadTimeout(),
+                "DOUBAO_API_KEY or ARK_API_KEY"
+        );
     }
 
     private RuntimeModel resolvePlannerModel() {
@@ -1215,6 +1231,13 @@ public class AgentRuntime {
 
     private String endpointUrl(RuntimeModel runtimeModel) {
         return runtimeModel.baseUrl().replaceAll("/+$", "") + runtimeModel.chatPath();
+    }
+
+    private String serviceTier(RuntimeModel runtimeModel) {
+        if (runtimeModel.provider() != Provider.DOUBAO || !runtimeModel.lowLatencyEnabled()) return null;
+        return StringUtils.hasText(doubaoProperties.getLowLatencyServiceTier())
+                ? doubaoProperties.getLowLatencyServiceTier()
+                : "fast";
     }
 
     private Map<String, Object> requesterContext(AuthPrincipal principal) {
@@ -1521,6 +1544,7 @@ public class AgentRuntime {
             String apiModel,
             boolean supportsImageInput,
             boolean supportsVideoInput,
+            boolean lowLatencyEnabled,
             String baseUrl,
             String chatPath,
             Duration readTimeout,

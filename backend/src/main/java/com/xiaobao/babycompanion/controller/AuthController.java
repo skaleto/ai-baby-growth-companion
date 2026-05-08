@@ -40,8 +40,11 @@ public class AuthController {
     }
 
     @GetMapping("/invite/roles")
-    public AuthInviteRolesResponse inviteRoles(@RequestParam String inviteCode) {
-        return authService.inviteRoles(inviteCode);
+    public AuthInviteRolesResponse inviteRoles(
+            @RequestParam String inviteCode,
+            @RequestParam(required = false) String phone
+    ) {
+        return authService.inviteRoles(inviteCode, phone);
     }
 
     @GetMapping("/me")

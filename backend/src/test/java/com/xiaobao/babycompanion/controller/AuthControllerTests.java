@@ -303,13 +303,44 @@ class AuthControllerTests {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk());
 
-        String secondToken = login("13800000117", "AUTH-CODE-4", "亲友", false);
+        String secondLoginBody = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"phone":"13800000117","inviteCode":"AUTH-CODE-4"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.member.roleName").value("爸爸"))
+                .andExpect(jsonPath("$.member.caregiver").value(true))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String secondToken = objectMapper.readTree(secondLoginBody).get("accessToken").asText();
 
         mockMvc.perform(get("/api/auth/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.member.roleName").value("爸爸"))
                 .andExpect(jsonPath("$.member.caregiver").value(true));
+    }
+
+    @Test
+    void invitePreviewMarksExistingFamilyMember() throws Exception {
+        loginPayload("13800000132", "AUTH-CODE-4", "妈妈", true);
+
+        mockMvc.perform(get("/api/auth/invite/roles")
+                        .param("inviteCode", "AUTH-CODE-4")
+                        .param("phone", "13800000132"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.existingMember").value(true))
+                .andExpect(jsonPath("$.member.roleName").value("妈妈"))
+                .andExpect(jsonPath("$.member.caregiver").value(true));
+
+        mockMvc.perform(get("/api/auth/invite/roles")
+                        .param("inviteCode", "AUTH-CODE-4")
+                        .param("phone", "13800000133"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.existingMember").value(false))
+                .andExpect(jsonPath("$.member").doesNotExist());
     }
 
     @Test

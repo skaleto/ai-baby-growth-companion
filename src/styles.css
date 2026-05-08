@@ -353,6 +353,12 @@ h3 {
   background: var(--sky);
 }
 
+.latency-button.active {
+  color: #fff;
+  border-color: #6ba8df;
+  background: #6ba8df;
+}
+
 .send-button:disabled,
 .tool-button:disabled,
 .icon-button:disabled {
@@ -797,6 +803,107 @@ h3 {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
+}
+
+.alarm-ringing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  grid-template-rows: minmax(260px, 1fr) auto;
+  gap: 18px;
+  width: 100vw;
+  height: 100dvh;
+  padding: max(24px, env(safe-area-inset-top)) 22px max(24px, env(safe-area-inset-bottom));
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 237, 190, 0.72), transparent 34%),
+    linear-gradient(180deg, #fff7e9 0%, #eff9f3 100%);
+}
+
+.alarm-ringing-scene {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(237, 216, 187, 0.9);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.84);
+  box-shadow: 0 22px 50px rgba(108, 79, 49, 0.14);
+}
+
+.alarm-ringing-scene img {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 520px);
+  height: 100%;
+  object-fit: contain;
+}
+
+.alarm-ringing-glow {
+  position: absolute;
+  inset: 20% 14%;
+  border-radius: 999px;
+  background: rgba(102, 178, 230, 0.22);
+  filter: blur(22px);
+  animation: alarmPulse 1.7s ease-in-out infinite;
+}
+
+.alarm-ringing-card {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 430px);
+  justify-self: center;
+  padding: 22px 18px;
+  border: 1px solid rgba(223, 200, 171, 0.92);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: 0 18px 44px rgba(94, 76, 52, 0.16);
+  text-align: center;
+}
+
+.alarm-ringing-card h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.alarm-ringing-rule,
+.alarm-ringing-due,
+.alarm-ringing-helper {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.alarm-ringing-rule {
+  color: #566f63;
+  font-weight: 700;
+}
+
+.alarm-ringing-close {
+  width: 100%;
+  min-height: 56px;
+  margin-top: 8px;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(180deg, #67b88b, #4d9d74);
+  box-shadow: 0 14px 26px rgba(61, 135, 95, 0.22);
+}
+
+@keyframes alarmPulse {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(0.94);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
 }
 
 .composer-row {
@@ -1490,7 +1597,7 @@ h3 {
 
   .composer-tools {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) repeat(3, 44px);
+    grid-template-columns: minmax(0, 1fr) repeat(4, 44px);
     gap: 8px;
     min-width: 0;
   }
@@ -1630,7 +1737,7 @@ h3 {
   }
 
   .composer-tools {
-    grid-template-columns: minmax(0, 1fr) repeat(3, 44px);
+    grid-template-columns: minmax(0, 1fr) repeat(4, 44px);
   }
 }
 
@@ -1777,6 +1884,11 @@ canvas {
   border: 1px solid rgba(234, 223, 208, 0.95);
   border-radius: 10px;
   background: rgba(255, 253, 248, 0.82);
+}
+
+.auth-join-options.compact {
+  border-color: rgba(112, 166, 139, 0.36);
+  background: linear-gradient(180deg, rgba(246, 255, 249, 0.94), rgba(255, 253, 248, 0.9));
 }
 
 .auth-join-options > div {
@@ -2261,7 +2373,7 @@ canvas {
 
 .composer-tools {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, 44px);
+  grid-template-columns: minmax(0, 1fr) repeat(4, 44px);
   gap: 8px;
   min-width: 0;
 }
@@ -2271,6 +2383,13 @@ canvas {
   grid-template-columns: minmax(0, 1fr) 52px;
   gap: 8px;
   min-width: 0;
+}
+
+.composer-mode-note {
+  margin: -1px 2px 0;
+  color: rgba(72, 89, 101, 0.72);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .model-select,

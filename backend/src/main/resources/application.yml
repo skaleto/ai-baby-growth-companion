@@ -44,6 +44,7 @@ doubao:
   chat-path: ${DOUBAO_CHAT_PATH:/chat/completions}
   seed20-lite-model: ${DOUBAO_SEED20_LITE_MODEL:doubao-seed-2-0-lite-260215}
   seed20-pro-model: ${DOUBAO_SEED20_PRO_MODEL:doubao-seed-2-0-pro-260215}
+  low-latency-service-tier: ${DOUBAO_LOW_LATENCY_SERVICE_TIER:fast}
   connect-timeout: ${DOUBAO_CONNECT_TIMEOUT:5s}
   read-timeout: ${DOUBAO_READ_TIMEOUT:60s}
   asr:

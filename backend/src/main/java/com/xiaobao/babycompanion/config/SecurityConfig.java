@@ -47,6 +47,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/invite/roles").permitAll()
+                        .requestMatchers("/api/asr/stream").permitAll()
                         .requestMatchers("/api/health").permitAll()
                         .anyRequest().authenticated()
                 )

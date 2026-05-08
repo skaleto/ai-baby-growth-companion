@@ -197,7 +197,7 @@ public class AuthService {
         );
     }
 
-    public AuthInviteRolesResponse inviteRoles(String inviteCode) {
+    public AuthInviteRolesResponse inviteRoles(String inviteCode, String phone) {
         ensureInviteCodesImported();
         String normalizedCode = AuthHashing.normalizedInviteCode(inviteCode);
         if (!StringUtils.hasText(normalizedCode)) {
@@ -217,11 +217,14 @@ public class AuthService {
             }
             occupiedRoles = occupiedUniqueRoles(familyId, null);
         }
+        AuthMemberDto existingMember = existingInviteMember(phone, familyId);
         return new AuthInviteRolesResponse(
                 familyName,
                 occupiedRoles,
                 UNIQUE_FAMILY_ROLES,
-                REPEATABLE_FAMILY_ROLES
+                REPEATABLE_FAMILY_ROLES,
+                existingMember != null,
+                existingMember
         );
     }
 
@@ -533,6 +536,22 @@ public class AuthService {
             }
         }
         return UNIQUE_FAMILY_ROLES.stream().filter(roles::contains).toList();
+    }
+
+    private AuthMemberDto existingInviteMember(String phone, String familyId) {
+        String rawPhone = phone == null ? "" : phone.trim().replaceAll("\\s+", "");
+        if (!CHINA_PHONE.matcher(rawPhone).matches() || !StringUtils.hasText(familyId)) {
+            return null;
+        }
+        AuthUserRecord user = userByPhone(rawPhone);
+        if (user == null) {
+            return null;
+        }
+        AuthFamilyMemberRecord member = memberByUser(user.getId());
+        if (member == null || !familyId.equals(member.getFamilyId())) {
+            return null;
+        }
+        return toMemberDto(member);
     }
 
     private void requireMemberSelection(String roleName, Boolean caregiver) {

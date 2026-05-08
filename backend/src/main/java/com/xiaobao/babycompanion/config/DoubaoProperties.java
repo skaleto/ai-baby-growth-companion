@@ -17,6 +17,7 @@ public class DoubaoProperties {
     private String chatPath = "/chat/completions";
     private String seed20LiteModel = "doubao-seed-2-0-lite-260215";
     private String seed20ProModel = "doubao-seed-2-0-pro-260215";
+    private String lowLatencyServiceTier = "fast";
     private Duration connectTimeout = Duration.ofSeconds(5);
     private Duration readTimeout = Duration.ofSeconds(60);
 
@@ -88,6 +89,13 @@ public class DoubaoProperties {
         this.seed20ProModel = seed20ProModel;
     }
 
+    public String getLowLatencyServiceTier() {
+        return lowLatencyServiceTier;
+    }
+
+    public void setLowLatencyServiceTier(String lowLatencyServiceTier) {
+        this.lowLatencyServiceTier = lowLatencyServiceTier;
+    }
     public Duration getConnectTimeout() {
         return connectTimeout;
     }
@@ -103,4 +111,5 @@ public class DoubaoProperties {
     public void setReadTimeout(Duration readTimeout) {
         this.readTimeout = readTimeout;
     }
+
 }

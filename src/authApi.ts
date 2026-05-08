@@ -43,6 +43,8 @@ export interface InviteRoleOptionsResponse {
   occupiedRoles: string[];
   uniqueRoles: string[];
   repeatableRoles: string[];
+  existingMember: boolean;
+  member?: AuthMember | null;
 }
 
 export interface UpdateFamilyRequest {
@@ -103,8 +105,8 @@ async function parseError(response: Response, fallback: string) {
 export async function loginWithInvite(
   phone: string,
   inviteCode: string,
-  roleName: string,
-  caregiver: boolean,
+  roleName?: string,
+  caregiver?: boolean | null,
 ): Promise<AuthLoginResponse> {
   const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
     method: "POST",
@@ -117,8 +119,10 @@ export async function loginWithInvite(
   return payload;
 }
 
-export async function readInviteRoleOptions(inviteCode: string): Promise<InviteRoleOptionsResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/auth/invite/roles?inviteCode=${encodeURIComponent(inviteCode)}`);
+export async function readInviteRoleOptions(inviteCode: string, phone?: string): Promise<InviteRoleOptionsResponse> {
+  const params = new URLSearchParams({ inviteCode });
+  if (phone) params.set("phone", phone);
+  const response = await fetch(`${apiBaseUrl}/api/auth/invite/roles?${params.toString()}`);
   if (!response.ok) throw new Error(await parseError(response, "邀请码暂时无法确认，请稍后再试。"));
   return (await response.json()) as InviteRoleOptionsResponse;
 }

@@ -18,7 +18,9 @@ public record DeepSeekChatRequest(
         Object thinking,
         List<DeepSeekTool> tools,
         @JsonProperty("tool_choice")
-        Object toolChoice
+        Object toolChoice,
+        @JsonProperty("service_tier")
+        String serviceTier
 ) {
     public DeepSeekChatRequest(
             String model,
@@ -28,6 +30,6 @@ public record DeepSeekChatRequest(
             Double temperature,
             DeepSeekResponseFormat responseFormat
     ) {
-        this(model, messages, stream, maxTokens, temperature, responseFormat, null, null, null);
+        this(model, messages, stream, maxTokens, temperature, responseFormat, null, null, null, null);
     }
 }

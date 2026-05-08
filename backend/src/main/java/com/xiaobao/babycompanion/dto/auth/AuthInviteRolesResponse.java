@@ -6,6 +6,8 @@ public record AuthInviteRolesResponse(
         String familyName,
         List<String> occupiedRoles,
         List<String> uniqueRoles,
-        List<String> repeatableRoles
+        List<String> repeatableRoles,
+        boolean existingMember,
+        AuthMemberDto member
 ) {
 }

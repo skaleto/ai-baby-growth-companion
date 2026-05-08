@@ -1,8 +1,8 @@
 package com.xiaobao.babycompanion.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,26 +13,32 @@ import com.xiaobao.babycompanion.dto.agent.AgentGrowthEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
+import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
+import com.xiaobao.babycompanion.service.deepseek.DeepSeekMessage;
 import org.junit.jupiter.api.Test;
 
 class AgentRuntimeTests {
 
     private final SkillRegistry skillRegistry = new SkillRegistry();
-    private final AgentRuntime agentRuntime = new AgentRuntime(
-            new DeepSeekProperties(),
-            new DoubaoProperties(),
-            new ObjectMapper(),
-            new AgentPlanner(new ObjectMapper()),
-            null,
-            null,
-            new RecordSignalExtractor(new ObjectMapper()),
-            new EffectPolicy(new ObjectMapper(), new CareEventCompletenessPolicy(new ObjectMapper())),
-            new CurrentUser(),
-            skillRegistry,
-            new SkillDisclosureService(skillRegistry),
-            new ToolRegistry(List.of()),
-            new SafetyGuard()
-    );
+    private final AgentRuntime agentRuntime = runtimeWith(new DoubaoProperties());
+
+    private AgentRuntime runtimeWith(DoubaoProperties doubaoProperties) {
+        return new AgentRuntime(
+                new DeepSeekProperties(),
+                doubaoProperties,
+                new ObjectMapper(),
+                new AgentPlanner(new ObjectMapper()),
+                null,
+                null,
+                new RecordSignalExtractor(new ObjectMapper()),
+                new EffectPolicy(new ObjectMapper(), new CareEventCompletenessPolicy(new ObjectMapper())),
+                new CurrentUser(),
+                skillRegistry,
+                new SkillDisclosureService(skillRegistry),
+                new ToolRegistry(List.of()),
+                new SafetyGuard()
+        );
+    }
 
     @Test
     void parsesModelJsonAndAddsRuntimeMetadata() {
@@ -68,7 +74,7 @@ class AgentRuntimeTests {
 
     @Test
     void rejectsNonJsonModelContent() {
-        assertThatThrownBy(() -> agentRuntime.parseModelContent(
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> agentRuntime.parseModelContent(
                 "我已经帮你记录好了。",
                 "agent-test",
                 "deepseek-test",
@@ -120,5 +126,45 @@ class AgentRuntimeTests {
         assertThat(response.memories()).isEmpty();
         assertThat(response.effectDecisions()).hasSize(1);
         assertThat(response.effectDecisions().get(0).type()).isEqualTo("albumItem");
+    }
+
+    @Test
+    void doubaoLowLatencyKeepsStandardModelAndMarksServiceTierMode() throws Exception {
+        Object runtimeModel = resolveRuntimeModel(agentRuntime, "doubao-seed-2.0-lite", true);
+
+        assertThat(runtimeModelValue(runtimeModel, "apiModel")).isEqualTo("doubao-seed-2-0-lite-260215");
+        assertThat(runtimeModelValue(runtimeModel, "lowLatencyEnabled")).isEqualTo(true);
+    }
+
+    @Test
+    void serializesServiceTierForFastInference() throws Exception {
+        DeepSeekChatRequest request = new DeepSeekChatRequest(
+                "doubao-seed-2-0-lite-260215",
+                List.of(new DeepSeekMessage("user", "hello")),
+                true,
+                100,
+                0.2,
+                null,
+                null,
+                null,
+                null,
+                "fast"
+        );
+
+        String json = new ObjectMapper().writeValueAsString(request);
+
+        assertThat(json).contains("\"service_tier\":\"fast\"");
+    }
+
+    private Object resolveRuntimeModel(AgentRuntime runtime, String model, boolean lowLatencyEnabled) throws Exception {
+        Method method = AgentRuntime.class.getDeclaredMethod("resolveModel", String.class, boolean.class);
+        method.setAccessible(true);
+        return method.invoke(runtime, model, lowLatencyEnabled);
+    }
+
+    private Object runtimeModelValue(Object runtimeModel, String accessor) throws Exception {
+        Method method = runtimeModel.getClass().getDeclaredMethod(accessor);
+        method.setAccessible(true);
+        return method.invoke(runtimeModel);
     }
 }

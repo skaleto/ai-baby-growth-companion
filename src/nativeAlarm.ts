@@ -37,12 +37,14 @@ const AlarmReminder = registerPlugin<NativeAlarmPlugin>("AlarmReminder");
 
 export const isNativeAlarmAvailable = () =>
   Capacitor.isNativePlatform() &&
-  Capacitor.getPlatform() === "android" &&
+  (Capacitor.getPlatform() === "android" || Capacitor.getPlatform() === "ios") &&
   Capacitor.isPluginAvailable("AlarmReminder");
+
+export const nativeAlarmPlatform = () => (isNativeAlarmAvailable() ? Capacitor.getPlatform() : undefined);
 
 export const scheduleAlarmReminder = async (reminder: Reminder) => {
   if (!isNativeAlarmAvailable() || !reminder.notificationId || !reminder.dueAt) {
-    throw new Error("Android native reminder scheduler is not available for this reminder.");
+    throw new Error("Native reminder scheduler is not available for this reminder.");
   }
   const scheduleMode = reminder.scheduleMode === "interval" ? "interval" : "once";
   const alertMode = reminder.alertMode === "ringing" ? "ringing" : "notification";

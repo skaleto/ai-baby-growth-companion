@@ -77,6 +77,7 @@ public class AgentPlanner {
                 jsonResponseFormat ? new DeepSeekResponseFormat("json_object") : null,
                 Map.of("type", "disabled"),
                 null,
+                null,
                 null
         );
     }
