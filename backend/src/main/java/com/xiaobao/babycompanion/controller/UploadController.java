@@ -9,6 +9,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,6 +46,28 @@ public class UploadController {
     @GetMapping("/{id}")
     public ResponseEntity<Resource> read(@PathVariable String id) {
         AttachmentStorageService.StoredAttachment attachment = attachmentStorageService.load(id);
+        if (attachment.redirectUri() != null) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(attachment.redirectUri())
+                    .build();
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(attachment.mimeType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(attachment.name())
+                        .build()
+                .toString())
+                .body(attachment.resource());
+    }
+
+    @GetMapping("/{id}/thumbnail")
+    public ResponseEntity<Resource> readThumbnail(@PathVariable String id) {
+        AttachmentStorageService.StoredAttachment attachment = attachmentStorageService.loadThumbnail(id);
+        if (attachment.redirectUri() != null) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(attachment.redirectUri())
+                    .build();
+        }
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(attachment.mimeType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()

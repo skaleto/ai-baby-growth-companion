@@ -12,6 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
         DoubaoProperties.class,
         DoubaoAsrProperties.class,
         AppStorageProperties.class,
+        MobileUpdateProperties.class,
         AuthProperties.class
 })
 public class WebConfig implements WebMvcConfigurer {

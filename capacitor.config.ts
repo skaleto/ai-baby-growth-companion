@@ -20,6 +20,14 @@ const config: CapacitorConfig = {
       smallIcon: "ic_stat_icon_config_sample",
       iconColor: "#2f5e4d",
     },
+    CapacitorUpdater: {
+      autoUpdate: false,
+      appReadyTimeout: 15000,
+      autoDeleteFailed: true,
+      autoDeletePrevious: true,
+      resetWhenUpdate: true,
+      statsUrl: "",
+    },
   },
 };
 

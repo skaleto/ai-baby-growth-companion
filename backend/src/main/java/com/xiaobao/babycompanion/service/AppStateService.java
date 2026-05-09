@@ -319,13 +319,19 @@ public class AppStateService {
     private <T extends AppRecordEntity> List<JsonNode> readList(IService<T> service, String familyId) {
         QueryWrapper<T> query = familyQuery(null, familyId);
         query.orderByAsc("sort_key").orderByAsc("created_at");
-        return service.list(query).stream().map((record) -> parse(record.getPayloadJson())).toList();
+        Map<String, AttachmentDto> attachmentCache = new LinkedHashMap<>();
+        return service.list(query).stream()
+                .map((record) -> hydrateAttachmentMetadata(parse(record.getPayloadJson()), familyId, attachmentCache))
+                .toList();
     }
 
     private <T extends AppRecordEntity> List<JsonNode> readPrivateList(IService<T> service, String familyId, String userId) {
         QueryWrapper<T> query = privateQuery(null, familyId, userId);
         query.orderByAsc("sort_key").orderByAsc("created_at");
-        return service.list(query).stream().map((record) -> parse(record.getPayloadJson())).toList();
+        Map<String, AttachmentDto> attachmentCache = new LinkedHashMap<>();
+        return service.list(query).stream()
+                .map((record) -> hydrateAttachmentMetadata(parse(record.getPayloadJson()), familyId, attachmentCache))
+                .toList();
     }
 
     private List<JsonNode> readCareLogs(String familyId) {
@@ -334,6 +340,7 @@ public class AppStateService {
         Map<String, ObjectNode> byDate = new LinkedHashMap<>();
         for (CareLogRecord record : careLogService.list(query)) {
             JsonNode payload = parse(record.getPayloadJson());
+            payload = hydrateAttachmentMetadata(payload, familyId, new LinkedHashMap<>());
             if (!(payload instanceof ObjectNode object)) continue;
             String date = text(object, "date", record.getSortKey());
             ObjectNode existing = byDate.get(date);
@@ -555,6 +562,43 @@ public class AppStateService {
         return objectNode;
     }
 
+    private JsonNode hydrateAttachmentMetadata(JsonNode node, String familyId, Map<String, AttachmentDto> attachmentCache) {
+        if (node == null) return null;
+        if (node instanceof ObjectNode object) {
+            hydrateSingleAttachment(object, familyId, attachmentCache);
+            object.fields().forEachRemaining((entry) -> hydrateAttachmentMetadata(entry.getValue(), familyId, attachmentCache));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) hydrateAttachmentMetadata(child, familyId, attachmentCache);
+        }
+        return node;
+    }
+
+    private void hydrateSingleAttachment(ObjectNode object, String familyId, Map<String, AttachmentDto> attachmentCache) {
+        String id = text(object, "id", "");
+        String kind = text(object, "kind", "");
+        if (!StringUtils.hasText(id) || !List.of("image", "video", "audio").contains(kind)) return;
+        String cacheKey = familyId + ":" + id;
+        AttachmentDto attachment;
+        if (attachmentCache.containsKey(cacheKey)) {
+            attachment = attachmentCache.get(cacheKey);
+        } else {
+            attachment = attachmentStorageService.metadata(id, familyId);
+            attachmentCache.put(cacheKey, attachment);
+        }
+        if (attachment == null) return;
+        if (!StringUtils.hasText(text(object, "name", ""))) object.put("name", attachment.name());
+        if (!StringUtils.hasText(text(object, "mimeType", ""))) object.put("mimeType", attachment.mimeType());
+        if (!StringUtils.hasText(text(object, "filePath", ""))) object.put("filePath", attachment.filePath());
+        if (!StringUtils.hasText(text(object, "publicUrl", ""))) object.put("publicUrl", attachment.publicUrl());
+        if (StringUtils.hasText(attachment.url())) object.put("url", attachment.url());
+        if (StringUtils.hasText(attachment.thumbnailPath()) && !StringUtils.hasText(text(object, "thumbnailPath", ""))) {
+            object.put("thumbnailPath", attachment.thumbnailPath());
+        }
+        if (StringUtils.hasText(attachment.thumbnailUrl())) {
+            object.put("thumbnailUrl", attachment.thumbnailUrl());
+        }
+    }
+
     private void normalizeAttachments(JsonNode node, String ownerType, String ownerId, String familyId, String userId) {
         if (node == null) return;
         if (node.isObject()) {
@@ -587,6 +631,8 @@ public class AppStateService {
             attachment.put("mimeType", saved.mimeType());
             attachment.put("filePath", saved.filePath());
             attachment.put("publicUrl", saved.publicUrl());
+            if (StringUtils.hasText(saved.thumbnailPath())) attachment.put("thumbnailPath", saved.thumbnailPath());
+            if (StringUtils.hasText(saved.thumbnailUrl())) attachment.put("thumbnailUrl", saved.thumbnailUrl());
             attachment.put("url", saved.url());
             return;
         }
@@ -598,21 +644,40 @@ public class AppStateService {
         if (!StringUtils.hasText(text(object, "filePath", "")) && !StringUtils.hasText(text(object, "publicUrl", ""))) return;
 
         String id = text(object, "id", "attachment-" + ownerId);
+        AttachmentRecord existing = attachmentRecordService.getOne(new QueryWrapper<AttachmentRecord>()
+                .eq("id", id)
+                .eq("family_id", familyId), false);
         AttachmentRecord record = new AttachmentRecord();
         record.setId(id);
-        record.setName(text(object, "name", id));
-        record.setKind(text(object, "kind", "image"));
-        record.setMimeType(text(object, "mimeType", ""));
-        record.setFilePath(text(object, "filePath", ""));
-        record.setPublicUrl(text(object, "publicUrl", text(object, "url", "/api/uploads/" + id)));
+        record.setName(existing != null && StringUtils.hasText(existing.getName()) ? existing.getName() : text(object, "name", id));
+        record.setKind(existing != null && StringUtils.hasText(existing.getKind()) ? existing.getKind() : text(object, "kind", "image"));
+        record.setMimeType(existing != null && StringUtils.hasText(existing.getMimeType()) ? existing.getMimeType() : text(object, "mimeType", ""));
+        record.setFilePath(existing != null && StringUtils.hasText(existing.getFilePath()) ? existing.getFilePath() : text(object, "filePath", ""));
+        record.setPublicUrl(existing != null && StringUtils.hasText(existing.getPublicUrl()) ? existing.getPublicUrl() : text(object, "publicUrl", text(object, "url", "/api/uploads/" + id)));
+        record.setThumbnailPath(existing != null && StringUtils.hasText(existing.getThumbnailPath()) ? existing.getThumbnailPath() : text(object, "thumbnailPath", ""));
+        record.setThumbnailUrl(existing != null && StringUtils.hasText(existing.getThumbnailUrl()) ? existing.getThumbnailUrl() : text(object, "thumbnailUrl", ""));
         record.setOwnerType(ownerType);
         record.setOwnerId(ownerId);
-        record.setOwnerUserId(userId);
+        record.setOwnerUserId(existing != null && StringUtils.hasText(existing.getOwnerUserId()) ? existing.getOwnerUserId() : userId);
         record.setFamilyId(familyId);
-        record.setCreatedByUserId(userId);
-        record.setCreatedAt(text(object, "createdAt", Instant.now().toString()));
-        record.setPayloadJson(write(object));
+        record.setCreatedByUserId(existing != null && StringUtils.hasText(existing.getCreatedByUserId()) ? existing.getCreatedByUserId() : userId);
+        record.setCreatedAt(existing != null && StringUtils.hasText(existing.getCreatedAt()) ? existing.getCreatedAt() : text(object, "createdAt", Instant.now().toString()));
+        record.setPayloadJson(write(attachmentRecordPayload(record)));
         attachmentRecordService.saveOrUpdate(record);
+    }
+
+    private ObjectNode attachmentRecordPayload(AttachmentRecord record) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("id", record.getId());
+        payload.put("name", record.getName());
+        payload.put("kind", record.getKind());
+        payload.put("mimeType", record.getMimeType());
+        payload.put("filePath", record.getFilePath());
+        payload.put("publicUrl", record.getPublicUrl());
+        payload.put("url", record.getPublicUrl());
+        if (StringUtils.hasText(record.getThumbnailPath())) payload.put("thumbnailPath", record.getThumbnailPath());
+        if (StringUtils.hasText(record.getThumbnailUrl())) payload.put("thumbnailUrl", record.getThumbnailUrl());
+        return payload;
     }
 
     private void clear(String familyId) {

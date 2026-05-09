@@ -13,11 +13,20 @@ REMOTE_DATA_DIR="${REMOTE_DATA_DIR:-/var/lib/ai-baby-growth-companion}"
 REMOTE_CONFIG_DIR="${REMOTE_CONFIG_DIR:-/etc/ai-baby-growth-companion}"
 REMOTE_USER="${REMOTE_USER:-babyapp}"
 SYNC_DATA="${SYNC_DATA:-1}"
+SYNC_MOBILE_UPDATES="${SYNC_MOBILE_UPDATES:-0}"
 OVERWRITE_REMOTE_DATA="${OVERWRITE_REMOTE_DATA:-0}"
 SKIP_BACKEND_BUILD="${SKIP_BACKEND_BUILD:-0}"
 SKIP_KEY_CHECK="${SKIP_KEY_CHECK:-0}"
 BUILD_ANDROID="${BUILD_ANDROID:-0}"
 ANDROID_API_BASE_URL="${ANDROID_API_BASE_URL:-http://${ECS_HOST}:${DEPLOY_PORT}}"
+APP_STORAGE_MODE="${APP_STORAGE_MODE:-local}"
+ALIYUN_OSS_ENDPOINT="${ALIYUN_OSS_ENDPOINT:-}"
+ALIYUN_OSS_BUCKET="${ALIYUN_OSS_BUCKET:-}"
+ALIYUN_OSS_OBJECT_PREFIX="${ALIYUN_OSS_OBJECT_PREFIX:-baby-companion}"
+ALIYUN_OSS_ACCESS_KEY_ID_FILE="${ALIYUN_OSS_ACCESS_KEY_ID_FILE:-${REMOTE_CONFIG_DIR}/aliyun_oss_access_key_id}"
+ALIYUN_OSS_ACCESS_KEY_SECRET_FILE="${ALIYUN_OSS_ACCESS_KEY_SECRET_FILE:-${REMOTE_CONFIG_DIR}/aliyun_oss_access_key_secret}"
+ALIYUN_OSS_SIGNED_URL_TTL_SECONDS="${ALIYUN_OSS_SIGNED_URL_TTL_SECONDS:-86400}"
+ALIYUN_OSS_MIGRATE_LOCAL_ON_STARTUP="${ALIYUN_OSS_MIGRATE_LOCAL_ON_STARTUP:-false}"
 ANDROID_STUDIO_JBR="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 INTELLIJ_MAVEN="/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn"
 SSH_KEY="${SSH_KEY:-}"
@@ -34,15 +43,24 @@ Options:
   ECS_PORT=22                        SSH port.
   DEPLOY_PORT=8300                   Backend HTTP port.
   SYNC_DATA=1                        Upload backend/data on first deploy.
+  SYNC_MOBILE_UPDATES=0              Upload backend/data/mobile-updates without syncing SQLite data.
   OVERWRITE_REMOTE_DATA=0            Refuse to overwrite an existing remote SQLite file.
   SKIP_KEY_CHECK=0                   Require remote API key files before starting service.
   BUILD_ANDROID=0                    Also build Android debug APK with the public API URL.
   ANDROID_API_BASE_URL=http://ip:8300 Override APK API base URL.
+  APP_STORAGE_MODE=local|oss          Backend attachment storage mode.
+  ALIYUN_OSS_ENDPOINT=...             OSS endpoint when APP_STORAGE_MODE=oss.
+  ALIYUN_OSS_BUCKET=...               OSS bucket when APP_STORAGE_MODE=oss.
+  ALIYUN_OSS_OBJECT_PREFIX=...        OSS object key prefix.
+  ALIYUN_OSS_MIGRATE_LOCAL_ON_STARTUP=true
+                                      Upload existing local attachment files to OSS during startup.
 
 Remote key files expected:
   ${REMOTE_CONFIG_DIR}/deepseek_apikey
   ${REMOTE_CONFIG_DIR}/doubao_apikey
   ${REMOTE_CONFIG_DIR}/doubao_asr_key
+  ${REMOTE_CONFIG_DIR}/aliyun_oss_access_key_id       when APP_STORAGE_MODE=oss
+  ${REMOTE_CONFIG_DIR}/aliyun_oss_access_key_secret   when APP_STORAGE_MODE=oss
 EOF
 }
 
@@ -54,6 +72,21 @@ fi
 if [[ -z "$ECS_HOST" ]]; then
   usage
   exit 1
+fi
+
+if [[ "$APP_STORAGE_MODE" == "oss" ]]; then
+  missing_oss_config=0
+  if [[ -z "$ALIYUN_OSS_ENDPOINT" ]]; then
+    echo "ALIYUN_OSS_ENDPOINT is required when APP_STORAGE_MODE=oss." >&2
+    missing_oss_config=1
+  fi
+  if [[ -z "$ALIYUN_OSS_BUCKET" ]]; then
+    echo "ALIYUN_OSS_BUCKET is required when APP_STORAGE_MODE=oss." >&2
+    missing_oss_config=1
+  fi
+  if [[ "$missing_oss_config" == "1" ]]; then
+    exit 1
+  fi
 fi
 
 ssh_args=(-p "$ECS_PORT")
@@ -205,9 +238,22 @@ REMOTE_DATA
   fi
 fi
 
+LOCAL_UPDATE_DIR="$LOCAL_DATA_DIR/mobile-updates"
+if [[ "$SYNC_MOBILE_UPDATES" == "1" && -d "$LOCAL_UPDATE_DIR" ]]; then
+  echo "Uploading mobile update bundles to remote persistent directory..."
+  rsync -az -e "ssh ${ssh_args[*]}" "$LOCAL_UPDATE_DIR"/ "$ECS_USER@$ECS_HOST:/tmp/${SERVICE_NAME}-mobile-updates/"
+  remote "SERVICE_NAME='$SERVICE_NAME' REMOTE_USER='$REMOTE_USER' REMOTE_DATA_DIR='$REMOTE_DATA_DIR' bash -s" <<'REMOTE_MOBILE_UPDATES'
+set -euo pipefail
+if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
+$SUDO mkdir -p "$REMOTE_DATA_DIR/mobile-updates"
+$SUDO rsync -a "/tmp/${SERVICE_NAME}-mobile-updates/" "$REMOTE_DATA_DIR/mobile-updates/"
+$SUDO chown -R "$REMOTE_USER:$REMOTE_USER" "$REMOTE_DATA_DIR/mobile-updates"
+REMOTE_MOBILE_UPDATES
+fi
+
 if [[ "$SKIP_KEY_CHECK" != "1" ]]; then
   echo "Checking remote API key files..."
-  remote "REMOTE_USER='$REMOTE_USER' REMOTE_CONFIG_DIR='$REMOTE_CONFIG_DIR' bash -s" <<'REMOTE_KEYS'
+  remote "REMOTE_USER='$REMOTE_USER' REMOTE_CONFIG_DIR='$REMOTE_CONFIG_DIR' APP_STORAGE_MODE='$APP_STORAGE_MODE' bash -s" <<'REMOTE_KEYS'
 set -euo pipefail
 if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 missing=0
@@ -217,6 +263,14 @@ for file in deepseek_apikey doubao_apikey doubao_asr_key; do
     missing=1
   fi
 done
+if [[ "${APP_STORAGE_MODE:-local}" == "oss" ]]; then
+  for file in aliyun_oss_access_key_id aliyun_oss_access_key_secret; do
+    if [[ ! -s "$REMOTE_CONFIG_DIR/$file" ]]; then
+      echo "Missing or empty: $REMOTE_CONFIG_DIR/$file"
+      missing=1
+    fi
+  done
+fi
 if [[ "$missing" == "1" ]]; then
   echo
   echo "Create the missing files on ECS, for example:"
@@ -228,11 +282,17 @@ for file in deepseek_apikey doubao_apikey doubao_asr_key; do
   $SUDO chown "root:$REMOTE_USER" "$REMOTE_CONFIG_DIR/$file"
   $SUDO chmod 640 "$REMOTE_CONFIG_DIR/$file"
 done
+if [[ "${APP_STORAGE_MODE:-local}" == "oss" ]]; then
+  for file in aliyun_oss_access_key_id aliyun_oss_access_key_secret; do
+    $SUDO chown "root:$REMOTE_USER" "$REMOTE_CONFIG_DIR/$file"
+    $SUDO chmod 640 "$REMOTE_CONFIG_DIR/$file"
+  done
+fi
 REMOTE_KEYS
 fi
 
 echo "Installing systemd service..."
-remote "SERVICE_NAME='$SERVICE_NAME' REMOTE_USER='$REMOTE_USER' REMOTE_APP_DIR='$REMOTE_APP_DIR' REMOTE_DATA_DIR='$REMOTE_DATA_DIR' REMOTE_CONFIG_DIR='$REMOTE_CONFIG_DIR' DEPLOY_PORT='$DEPLOY_PORT' ECS_HOST='$ECS_HOST' bash -s" <<'REMOTE_SERVICE'
+remote "SERVICE_NAME='$SERVICE_NAME' REMOTE_USER='$REMOTE_USER' REMOTE_APP_DIR='$REMOTE_APP_DIR' REMOTE_DATA_DIR='$REMOTE_DATA_DIR' REMOTE_CONFIG_DIR='$REMOTE_CONFIG_DIR' DEPLOY_PORT='$DEPLOY_PORT' ECS_HOST='$ECS_HOST' APP_STORAGE_MODE='$APP_STORAGE_MODE' ALIYUN_OSS_ENDPOINT='$ALIYUN_OSS_ENDPOINT' ALIYUN_OSS_BUCKET='$ALIYUN_OSS_BUCKET' ALIYUN_OSS_OBJECT_PREFIX='$ALIYUN_OSS_OBJECT_PREFIX' ALIYUN_OSS_ACCESS_KEY_ID_FILE='$ALIYUN_OSS_ACCESS_KEY_ID_FILE' ALIYUN_OSS_ACCESS_KEY_SECRET_FILE='$ALIYUN_OSS_ACCESS_KEY_SECRET_FILE' ALIYUN_OSS_SIGNED_URL_TTL_SECONDS='$ALIYUN_OSS_SIGNED_URL_TTL_SECONDS' ALIYUN_OSS_MIGRATE_LOCAL_ON_STARTUP='$ALIYUN_OSS_MIGRATE_LOCAL_ON_STARTUP' bash -s" <<'REMOTE_SERVICE'
 set -euo pipefail
 if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 JAVA_BIN="$(command -v java)"
@@ -259,6 +319,15 @@ Environment=DEEPSEEK_API_KEY_FILE=${REMOTE_CONFIG_DIR}/deepseek_apikey
 Environment=DOUBAO_API_KEY_FILE=${REMOTE_CONFIG_DIR}/doubao_apikey
 Environment=DOUBAO_ASR_API_KEY_FILE=${REMOTE_CONFIG_DIR}/doubao_asr_key
 Environment=APP_CORS_ALLOWED_ORIGINS=${CORS_ORIGINS}
+Environment=APP_MOBILE_UPDATES_PUBLIC_BASE_URL=http://${ECS_HOST}:${DEPLOY_PORT}
+Environment=APP_STORAGE_MODE=${APP_STORAGE_MODE}
+Environment=ALIYUN_OSS_ENDPOINT=${ALIYUN_OSS_ENDPOINT}
+Environment=ALIYUN_OSS_BUCKET=${ALIYUN_OSS_BUCKET}
+Environment=ALIYUN_OSS_OBJECT_PREFIX=${ALIYUN_OSS_OBJECT_PREFIX}
+Environment=ALIYUN_OSS_ACCESS_KEY_ID_FILE=${ALIYUN_OSS_ACCESS_KEY_ID_FILE}
+Environment=ALIYUN_OSS_ACCESS_KEY_SECRET_FILE=${ALIYUN_OSS_ACCESS_KEY_SECRET_FILE}
+Environment=ALIYUN_OSS_SIGNED_URL_TTL_SECONDS=${ALIYUN_OSS_SIGNED_URL_TTL_SECONDS}
+Environment=ALIYUN_OSS_MIGRATE_LOCAL_ON_STARTUP=${ALIYUN_OSS_MIGRATE_LOCAL_ON_STARTUP}
 
 [Install]
 WantedBy=multi-user.target

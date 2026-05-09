@@ -147,6 +147,33 @@ class AppStateControllerTests {
     }
 
     @Test
+    void savesVideoUploadsWithGeneratedThumbnailMetadata() throws Exception {
+        mockMvc.perform(post("/api/uploads")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "video-with-thumb",
+                                  "name": "moment.mp4",
+                                  "kind": "video",
+                                  "dataUrl": "data:video/mp4;base64,AQIDBA==",
+                                  "thumbnailDataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("video-with-thumb"))
+                .andExpect(jsonPath("$.kind").value("video"))
+                .andExpect(jsonPath("$.url").value("/api/uploads/video-with-thumb"))
+                .andExpect(jsonPath("$.thumbnailPath").value(org.hamcrest.Matchers.startsWith("uploads/")))
+                .andExpect(jsonPath("$.thumbnailUrl").value("/api/uploads/video-with-thumb/thumbnail"));
+
+        mockMvc.perform(get("/api/uploads/video-with-thumb/thumbnail")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_JPEG));
+    }
+
+    @Test
     void viewerCanReadSharedStateButCannotWrite() throws Exception {
         mockMvc.perform(put("/api/app/state/profile/default")
                         .header(HttpHeaders.AUTHORIZATION, bearer())

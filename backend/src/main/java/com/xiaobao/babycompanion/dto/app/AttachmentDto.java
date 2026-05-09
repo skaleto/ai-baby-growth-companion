@@ -7,6 +7,8 @@ public record AttachmentDto(
         String mimeType,
         String filePath,
         String publicUrl,
+        String thumbnailPath,
+        String thumbnailUrl,
         String url,
         String createdAt
 ) {

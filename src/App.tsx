@@ -41,6 +41,7 @@ import {
   FormEvent,
   KeyboardEvent,
   type SetStateAction,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -723,6 +724,8 @@ const normalizeAttachment = (value: Partial<Attachment> | null | undefined, inde
   mimeType: textValue(value?.mimeType) || undefined,
   filePath: textValue(value?.filePath) || undefined,
   publicUrl: textValue(value?.publicUrl) || undefined,
+  thumbnailPath: textValue(value?.thumbnailPath) || undefined,
+  thumbnailUrl: textValue(value?.thumbnailUrl) || undefined,
   width: numberValue(value?.width),
   height: numberValue(value?.height),
 });
@@ -1881,6 +1884,8 @@ const albumTitleFromText = (text: string, attachment: Attachment, category: Albu
 const isAlbumMediaAttachment = (attachment: Attachment) => attachment.kind === "image" || attachment.kind === "video";
 
 const mediaKindLabel = (attachment: Attachment) => (attachment.kind === "video" ? "视频" : "照片");
+
+const attachmentListSrc = (attachment: Attachment) => attachment.thumbnailUrl || attachment.url;
 
 const internalReferencePattern = /\b(?:msg|message|attachment|att|album|decision)-[a-z0-9._-]+\b/i;
 
@@ -3306,6 +3311,7 @@ function App() {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [previewTransform, setPreviewTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [isListening, setIsListening] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [storageStatus, setStorageStatus] = useState<"loading" | "ready" | "offline">("loading");
@@ -3372,8 +3378,18 @@ function App() {
   const remindersRef = useRef<Reminder[]>([]);
   const handledNativeNotificationKeysRef = useRef<Set<string>>(new Set());
   const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const previewLastPointRef = useRef({ x: 0, y: 0 });
+  const previewPinchRef = useRef<{ distance: number; scale: number } | null>(null);
+  const previewVideoCleanupRef = useRef<(() => void) | null>(null);
   const appPlatform = platformLabel();
   const currentModel = MODEL_OPTIONS.find((model) => model.id === selectedModel) ?? MODEL_OPTIONS[0];
+  const babyNickname = profile.nickname.trim() || "小宝";
+  const familySpeakerName = `${babyNickname}家`;
+  const withBabyNickname = useCallback(
+    (text: string) => text.split("小宝").join(babyNickname),
+    [babyNickname],
+  );
   const canCaregive = authMember?.caregiver ?? true;
   const visibleTabs = canCaregive ? MOBILE_TABS : MOBILE_TABS.filter((tab) => tab.id !== "chat");
   const canAttachVisuals = canCaregive && (currentModel.supportsImageInput || currentModel.supportsVideoInput);
@@ -3397,6 +3413,110 @@ function App() {
   const switchMobileTab = (tab: MobileTab) => {
     setActiveMobileTab(tab);
   };
+
+  const closePreviewAttachment = useCallback(() => {
+    previewPointersRef.current.clear();
+    previewPinchRef.current = null;
+    setPreviewTransform({ scale: 1, x: 0, y: 0 });
+    setPreviewAttachment(null);
+  }, []);
+
+  const bindPreviewVideo = useCallback(
+    (node: HTMLVideoElement | null) => {
+      previewVideoCleanupRef.current?.();
+      previewVideoCleanupRef.current = null;
+      if (!node) return;
+      const closeAfterNativeFullscreen = () => closePreviewAttachment();
+      const closeAfterStandardFullscreen = () => {
+        if (!document.fullscreenElement) closePreviewAttachment();
+      };
+      node.addEventListener("webkitendfullscreen", closeAfterNativeFullscreen);
+      document.addEventListener("fullscreenchange", closeAfterStandardFullscreen);
+      previewVideoCleanupRef.current = () => {
+        node.removeEventListener("webkitendfullscreen", closeAfterNativeFullscreen);
+        document.removeEventListener("fullscreenchange", closeAfterStandardFullscreen);
+      };
+    },
+    [closePreviewAttachment],
+  );
+
+  const previewDistance = (points: Array<{ x: number; y: number }>) => {
+    if (points.length < 2) return 0;
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+  };
+
+  const onPreviewImagePointerDown = (event: React.PointerEvent<HTMLImageElement>) => {
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = { x: event.clientX, y: event.clientY };
+    previewPointersRef.current.set(event.pointerId, point);
+    previewLastPointRef.current = point;
+    const points = Array.from(previewPointersRef.current.values());
+    if (points.length >= 2) {
+      previewPinchRef.current = {
+        distance: previewDistance(points),
+        scale: previewTransform.scale,
+      };
+    }
+  };
+
+  const onPreviewImagePointerMove = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (!previewPointersRef.current.has(event.pointerId)) return;
+    event.stopPropagation();
+    const point = { x: event.clientX, y: event.clientY };
+    previewPointersRef.current.set(event.pointerId, point);
+    const points = Array.from(previewPointersRef.current.values());
+    if (points.length >= 2 && previewPinchRef.current) {
+      const distance = previewDistance(points);
+      if (!distance || !previewPinchRef.current.distance) return;
+      const nextScale = Math.min(4, Math.max(1, previewPinchRef.current.scale * (distance / previewPinchRef.current.distance)));
+      setPreviewTransform((current) => ({
+        ...current,
+        scale: nextScale,
+        x: nextScale === 1 ? 0 : current.x,
+        y: nextScale === 1 ? 0 : current.y,
+      }));
+      return;
+    }
+    if (points.length === 1 && previewTransform.scale > 1) {
+      const last = previewLastPointRef.current;
+      const deltaX = point.x - last.x;
+      const deltaY = point.y - last.y;
+      previewLastPointRef.current = point;
+      setPreviewTransform((current) => ({
+        ...current,
+        x: current.x + deltaX,
+        y: current.y + deltaY,
+      }));
+    }
+  };
+
+  const onPreviewImagePointerEnd = (event: React.PointerEvent<HTMLImageElement>) => {
+    event.stopPropagation();
+    previewPointersRef.current.delete(event.pointerId);
+    previewPinchRef.current = null;
+    const [remaining] = Array.from(previewPointersRef.current.values());
+    if (remaining) previewLastPointRef.current = remaining;
+  };
+
+  const togglePreviewZoom = (event: React.MouseEvent<HTMLImageElement>) => {
+    event.stopPropagation();
+    setPreviewTransform((current) => (
+      current.scale > 1
+        ? { scale: 1, x: 0, y: 0 }
+        : { scale: 2.4, x: 0, y: 0 }
+    ));
+  };
+
+  useEffect(() => {
+    previewPointersRef.current.clear();
+    previewPinchRef.current = null;
+    setPreviewTransform({ scale: 1, x: 0, y: 0 });
+    return () => {
+      previewVideoCleanupRef.current?.();
+      previewVideoCleanupRef.current = null;
+    };
+  }, [previewAttachment?.id]);
 
   const todayDate = todayISO();
   const todayLog = careLogs.find((item) => item.date === todayDate) ?? careLogs[careLogs.length - 1];
@@ -3874,6 +3994,7 @@ function App() {
   const attachmentForStorage = (attachment: Attachment): Attachment => {
     const storedPublicUrl = stripAttachmentUrlForStorage(attachment.publicUrl);
     const storedUrl = storedPublicUrl || stripAttachmentUrlForStorage(attachment.url);
+    const storedThumbnailUrl = stripAttachmentUrlForStorage(attachment.thumbnailUrl);
     return {
       id: attachment.id,
       name: attachment.name,
@@ -3882,6 +4003,8 @@ function App() {
       mimeType: attachment.mimeType,
       filePath: attachment.filePath,
       publicUrl: storedPublicUrl,
+      thumbnailPath: attachment.thumbnailPath,
+      thumbnailUrl: storedThumbnailUrl,
       width: attachment.width,
       height: attachment.height,
     };
@@ -4027,21 +4150,75 @@ function App() {
       image.src = dataUrl;
     });
 
+  const createVideoThumbnailDataUrl = (file: File): Promise<string | undefined> =>
+    new Promise((resolve) => {
+      const video = document.createElement("video");
+      const objectUrl = URL.createObjectURL(file);
+      const cleanup = () => {
+        URL.revokeObjectURL(objectUrl);
+        video.removeAttribute("src");
+        video.load();
+      };
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        const seekTime = Number.isFinite(video.duration) && video.duration > 0 ? Math.min(0.4, video.duration / 8) : 0;
+        try {
+          video.currentTime = seekTime;
+        } catch {
+          cleanup();
+          resolve(undefined);
+        }
+      };
+      video.onseeked = () => {
+        try {
+          const width = video.videoWidth || 480;
+          const height = video.videoHeight || 480;
+          const scale = Math.min(1, 480 / Math.max(width, height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(width * scale));
+          canvas.height = Math.max(1, Math.round(height * scale));
+          const context = canvas.getContext("2d");
+          if (!context) {
+            cleanup();
+            resolve(undefined);
+            return;
+          }
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          cleanup();
+          resolve(dataUrl);
+        } catch {
+          cleanup();
+          resolve(undefined);
+        }
+      };
+      video.onerror = () => {
+        cleanup();
+        resolve(undefined);
+      };
+      video.src = objectUrl;
+    });
+
   const uploadMediaDataUrl = async (
     id: string,
     name: string,
     kind: AttachmentKind,
     dataUrl: string,
     dimensions?: Pick<Attachment, "width" | "height">,
+    thumbnailDataUrl?: string,
   ): Promise<Attachment> => {
     if (!canCaregive) throw new Error("当前身份仅可查看，不能上传附件。");
-    const uploaded = await uploadDataUrlAttachment({ id, name, kind, dataUrl });
+    const uploaded = await uploadDataUrlAttachment({ id, name, kind, dataUrl, thumbnailDataUrl });
     return {
       id: uploaded.id,
       name: uploaded.name,
       kind: uploaded.kind,
       url: uploaded.url,
       publicUrl: uploaded.publicUrl,
+      thumbnailUrl: uploaded.thumbnailUrl,
+      thumbnailPath: uploaded.thumbnailPath,
       filePath: uploaded.filePath,
       mimeType: uploaded.mimeType,
       width: dimensions?.width,
@@ -4063,7 +4240,8 @@ function App() {
           const dataUrl = await readFileAsDataUrl(file);
           const kind: AttachmentKind = file.type.startsWith("video/") ? "video" : "image";
           const dimensions = kind === "image" ? await readImageDimensions(dataUrl) : {};
-          return uploadMediaDataUrl(id, file.name, kind, dataUrl, dimensions);
+          const thumbnailDataUrl = kind === "video" ? await createVideoThumbnailDataUrl(file) : undefined;
+          return uploadMediaDataUrl(id, file.name, kind, dataUrl, dimensions, thumbnailDataUrl);
         }),
       );
       setAttachments((current) => [...current, ...next].slice(0, 4));
@@ -5791,8 +5969,8 @@ function App() {
                 <img className="companion-icon-img" src={companionAvatarIcon} alt="" />
               </div>
               <div>
-                <p className="eyebrow">小宝伙伴陪你记</p>
-                <h2>今天和小宝发生了什么</h2>
+                <p className="eyebrow">陪你记录{babyNickname}</p>
+                <h2>今天和{babyNickname}发生了什么</h2>
               </div>
             </div>
             <div className="head-actions">
@@ -5829,15 +6007,15 @@ function App() {
                 <img className="quick-icon-img" src={milkIcon} alt="" />
                 喂奶
               </button>
-              <button type="button" onClick={() => quickFill("晚上 8 点提醒我给小宝洗澡")}>
+              <button type="button" onClick={() => quickFill(`晚上 8 点提醒我给${babyNickname}洗澡`)}>
                 <img className="quick-icon-img" src={reminderIcon} alt="" />
                 提醒
               </button>
-              <button type="button" onClick={() => quickFill("今天小宝第一次自己扶着沙发站起来了")}>
+              <button type="button" onClick={() => quickFill(`今天${babyNickname}第一次自己扶着沙发站起来了`)}>
                 <img className="quick-icon-img" src={growthIcon} alt="" />
                 里程碑
               </button>
-              <button type="button" onClick={() => quickFill("为什么这两天小宝更难哄睡？")}>
+              <button type="button" onClick={() => quickFill(`为什么这两天${babyNickname}更难哄睡？`)}>
                 <CircleHelp size={16} />
                 问问AI
               </button>
@@ -5853,7 +6031,7 @@ function App() {
                   </span>
                 ) : null}
                 <div className={`message-meta ${message.role === "ai" ? "message-meta-ai" : ""}`}>
-                  {message.role === "parent" ? <span>{profile.nickname + "家"}</span> : null}
+                  {message.role === "parent" ? <span>{familySpeakerName}</span> : null}
                   <time>{formatTime(message.createdAt)}</time>
                 </div>
                 {message.role === "ai" && message.reasoning ? (
@@ -5917,9 +6095,14 @@ function App() {
                         disabled={!item.url}
                         title={item.url ? "查看大图" : item.name}
                       >
-                        {item.kind === "image" && item.url ? <img src={item.url} alt={item.name} /> : null}
-                        {item.kind === "video" && item.url ? <video src={item.url} muted /> : null}
-                        {!item.url ? <ImageIcon size={18} /> : null}
+                        {item.kind === "image" && attachmentListSrc(item) ? (
+                          <img src={attachmentListSrc(item)} alt={item.name} loading="lazy" decoding="async" />
+                        ) : null}
+                        {item.kind === "video" && item.thumbnailUrl ? (
+                          <img src={item.thumbnailUrl} alt={item.name} loading="lazy" decoding="async" />
+                        ) : null}
+                        {item.kind === "video" && !item.thumbnailUrl ? <Video size={20} /> : null}
+                        {!item.url && item.kind !== "video" ? <ImageIcon size={18} /> : null}
                         <span>{item.kind === "video" ? "视频" : item.kind === "audio" ? "语音" : "照片"}</span>
                       </button>
                     ))}
@@ -6279,7 +6462,13 @@ function App() {
                       disabled={!item.url}
                       onClick={() => item.url && setPreviewAttachment(item)}
                     >
-                      {item.kind === "image" && item.url ? <img src={item.url} alt={item.name} /> : <Video size={18} />}
+                      {item.kind === "image" && attachmentListSrc(item) ? (
+                        <img src={attachmentListSrc(item)} alt={item.name} loading="lazy" decoding="async" />
+                      ) : item.kind === "video" && item.thumbnailUrl ? (
+                        <img src={item.thumbnailUrl} alt={item.name} loading="lazy" decoding="async" />
+                      ) : (
+                        <Video size={18} />
+                      )}
                     </button>
                     <span>{item.name}</span>
                     <button
@@ -6409,7 +6598,7 @@ function App() {
                       setInput(event.target.value);
                     }}
                     onKeyDown={handleComposerKeyDown}
-                    placeholder="记录小宝今天的新变化..."
+                    placeholder={`记录${babyNickname}今天的新变化...`}
                     disabled={isSubmitting}
                   />
                 )}
@@ -6735,7 +6924,7 @@ function App() {
                 </span>
                 <p>这一天还没有关键记录。</p>
                 {canCaregive ? (
-                  <button type="button" onClick={() => quickFill("今天小宝发生了什么？")}>
+                  <button type="button" onClick={() => quickFill(`今天${babyNickname}发生了什么？`)}>
                     去补充记录
                   </button>
                 ) : null}
@@ -6805,9 +6994,13 @@ function App() {
                       aria-label={`预览 ${item.title}`}
                     >
                       {item.attachment.kind === "video" ? (
-                        <video src={item.attachment.url} muted playsInline />
+                        item.attachment.thumbnailUrl ? (
+                          <img src={item.attachment.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" />
+                        ) : (
+                          <Video size={24} />
+                        )
                       ) : (
-                        <img src={item.attachment.url} alt={item.title} />
+                        <img src={attachmentListSrc(item.attachment)} alt={item.title} loading="lazy" decoding="async" />
                       )}
                     </button>
                   ) : (
@@ -6879,7 +7072,7 @@ function App() {
           {canCaregive ? (
             <div className="assistant-actions reminder-actions">
               {REMINDER_QUICK_ACTIONS.map((action) => (
-                <button type="button" key={action.label} onClick={() => quickFill(action.prompt)}>
+                <button type="button" key={action.label} onClick={() => quickFill(withBabyNickname(action.prompt))}>
                   {action.label === "疫苗" || action.label === "喂药" ? <Syringe size={16} /> : <Bell size={16} />}
                   {action.label}
                 </button>
@@ -7390,11 +7583,11 @@ function App() {
               <p>已按移动 App 架构准备：手机端使用原生相机/相册和本地通知，浏览器端保留预览能力。</p>
             </div>
             <div className="assistant-actions">
-              <button type="button" onClick={() => quickFill("下周二提醒我带小宝去社区医院打疫苗")}>
+              <button type="button" onClick={() => quickFill(`下周二提醒我带${babyNickname}去社区医院打疫苗`)}>
                 <Syringe size={16} />
                 疫苗
               </button>
-              <button type="button" onClick={() => quickFill("小宝最近喜欢白噪音和轻拍，10 点左右容易闹觉")}>
+              <button type="button" onClick={() => quickFill(`${babyNickname}最近喜欢白噪音和轻拍，10 点左右容易闹觉`)}>
                 <Music2 size={16} />
                 哄睡
               </button>
@@ -7446,15 +7639,37 @@ function App() {
         </div>
       ) : null}
       {previewAttachment?.url ? (
-        <div className="media-preview" role="dialog" aria-modal="true" aria-label="附件预览" onClick={() => setPreviewAttachment(null)}>
-          <button className="media-preview-close" type="button" aria-label="关闭预览" onClick={() => setPreviewAttachment(null)}>
+        <div className="media-preview" role="dialog" aria-modal="true" aria-label="附件预览" onClick={closePreviewAttachment}>
+          <button className="media-preview-close" type="button" aria-label="关闭预览" onClick={closePreviewAttachment}>
             <X size={20} />
           </button>
           <figure>
             {previewAttachment.kind === "video" ? (
-              <video src={previewAttachment.url} controls autoPlay onClick={(event) => event.stopPropagation()} />
+              <video
+                ref={bindPreviewVideo}
+                src={previewAttachment.url}
+                controls
+                autoPlay
+                playsInline
+                preload="auto"
+                onClick={(event) => event.stopPropagation()}
+              />
             ) : (
-              <img src={previewAttachment.url} alt={previewAttachment.name} />
+              <img
+                className={previewTransform.scale > 1 ? "is-zoomed" : ""}
+                src={previewAttachment.url}
+                alt={previewAttachment.name}
+                draggable={false}
+                style={{
+                  transform: `translate3d(${previewTransform.x}px, ${previewTransform.y}px, 0) scale(${previewTransform.scale})`,
+                }}
+                onClick={(event) => event.stopPropagation()}
+                onDoubleClick={togglePreviewZoom}
+                onPointerDown={onPreviewImagePointerDown}
+                onPointerMove={onPreviewImagePointerMove}
+                onPointerUp={onPreviewImagePointerEnd}
+                onPointerCancel={onPreviewImagePointerEnd}
+              />
             )}
             <figcaption>{previewAttachment.name}</figcaption>
           </figure>

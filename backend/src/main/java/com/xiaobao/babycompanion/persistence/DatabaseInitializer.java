@@ -47,6 +47,8 @@ public class DatabaseInitializer implements ApplicationRunner {
                       mime_type TEXT,
                       file_path TEXT NOT NULL,
                       public_url TEXT,
+                      thumbnail_path TEXT,
+                      thumbnail_url TEXT,
                       owner_type TEXT,
                       owner_id TEXT,
                       owner_user_id TEXT,
@@ -59,6 +61,8 @@ public class DatabaseInitializer implements ApplicationRunner {
             addColumnIfMissing(connection, statement, "attachment", "owner_user_id", "TEXT");
             addColumnIfMissing(connection, statement, "attachment", "family_id", "TEXT");
             addColumnIfMissing(connection, statement, "attachment", "created_by_user_id", "TEXT");
+            addColumnIfMissing(connection, statement, "attachment", "thumbnail_path", "TEXT");
+            addColumnIfMissing(connection, statement, "attachment", "thumbnail_url", "TEXT");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_attachment_owner ON attachment(owner_type, owner_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_attachment_owner_user ON attachment(owner_user_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_attachment_family ON attachment(family_id)");

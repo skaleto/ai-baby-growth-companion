@@ -9,6 +9,8 @@ export interface Attachment {
   mimeType?: string;
   filePath?: string;
   publicUrl?: string;
+  thumbnailPath?: string;
+  thumbnailUrl?: string;
   width?: number;
   height?: number;
 }

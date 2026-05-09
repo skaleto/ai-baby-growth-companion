@@ -14,6 +14,8 @@ public class AttachmentRecord {
     private String mimeType;
     private String filePath;
     private String publicUrl;
+    private String thumbnailPath;
+    private String thumbnailUrl;
     private String ownerType;
     private String ownerId;
     private String ownerUserId;
@@ -68,6 +70,22 @@ public class AttachmentRecord {
 
     public void setPublicUrl(String publicUrl) {
         this.publicUrl = publicUrl;
+    }
+
+    public String getThumbnailPath() {
+        return thumbnailPath;
+    }
+
+    public void setThumbnailPath(String thumbnailPath) {
+        this.thumbnailPath = thumbnailPath;
+    }
+
+    public String getThumbnailUrl() {
+        return thumbnailUrl;
+    }
+
+    public void setThumbnailUrl(String thumbnailUrl) {
+        this.thumbnailUrl = thumbnailUrl;
     }
 
     public String getOwnerType() {

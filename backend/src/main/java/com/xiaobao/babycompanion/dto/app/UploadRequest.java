@@ -7,6 +7,7 @@ public record UploadRequest(
         String name,
         String kind,
         @NotBlank(message = "dataUrl is required")
-        String dataUrl
+        String dataUrl,
+        String thumbnailDataUrl
 ) {
 }

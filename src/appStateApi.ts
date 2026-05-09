@@ -21,6 +21,8 @@ export type UploadResponse = Attachment & {
   mimeType: string;
   filePath: string;
   publicUrl: string;
+  thumbnailPath?: string;
+  thumbnailUrl?: string;
   createdAt: string;
 };
 
@@ -40,8 +42,12 @@ const withAbsoluteAttachmentUrls = <T>(value: T): T => {
     Object.entries(record).forEach(([key, item]) => {
       next[key] = visit(item);
     });
-    if (typeof next.publicUrl === "string") next.url = toAbsoluteUrl(next.publicUrl);
-    if (typeof next.url === "string") next.url = toAbsoluteUrl(next.url);
+    if (typeof next.url === "string") {
+      next.url = toAbsoluteUrl(next.url);
+    } else if (typeof next.publicUrl === "string") {
+      next.url = toAbsoluteUrl(next.publicUrl);
+    }
+    if (typeof next.thumbnailUrl === "string") next.thumbnailUrl = toAbsoluteUrl(next.thumbnailUrl);
     return next;
   };
   return visit(value) as T;
@@ -112,6 +118,7 @@ export async function uploadDataUrlAttachment(input: {
   name: string;
   kind: AttachmentKind;
   dataUrl: string;
+  thumbnailDataUrl?: string;
 }): Promise<UploadResponse> {
   const response = await fetch(`${apiBaseUrl}/api/uploads`, {
     method: "POST",
@@ -120,7 +127,7 @@ export async function uploadDataUrlAttachment(input: {
   });
   if (!response.ok) throw new Error(await parseError(response, `上传附件失败（${response.status}）`));
   const payload = (await response.json()) as UploadResponse;
-  return { ...payload, url: toAbsoluteUrl(payload.publicUrl) };
+  return { ...payload, url: toAbsoluteUrl(payload.url || payload.publicUrl), thumbnailUrl: toAbsoluteUrl(payload.thumbnailUrl) };
 }
 
 export async function confirmPendingEffectOnServer(id: string): Promise<AppStateResponse> {

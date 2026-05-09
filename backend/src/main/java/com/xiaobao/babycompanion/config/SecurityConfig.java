@@ -49,6 +49,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/invite/roles").permitAll()
                         .requestMatchers("/api/asr/stream").permitAll()
                         .requestMatchers("/api/health").permitAll()
+                        .requestMatchers("/api/mobile-updates/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(authTokenFilter, UsernamePasswordAuthenticationFilter.class)
