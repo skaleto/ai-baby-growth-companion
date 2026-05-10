@@ -46,6 +46,7 @@ import com.xiaobao.babycompanion.service.deepseek.DeepSeekResponseFormat;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekToolCall;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -352,18 +353,26 @@ public class AgentRuntime {
         List<Skill> selectedSkills = skillRegistry.selectSkills(request);
         SseEmitter emitter = new SseEmitter(runtimeModel.readTimeout().plusSeconds(45).toMillis());
 
-        CompletableFuture.runAsync(() -> streamAgentResponse(
-                request,
-                emitter,
-                traceId,
-                familyId,
-                principal,
-                selectedSkills,
-                runtimeModel,
-                apiKey,
-                plannerRuntimeModel,
-                plannerApiKey
-        ));
+        String requestId = MDC.get("requestId");
+        CompletableFuture.runAsync(() -> {
+            if (StringUtils.hasText(requestId)) MDC.put("requestId", requestId);
+            try {
+                streamAgentResponse(
+                        request,
+                        emitter,
+                        traceId,
+                        familyId,
+                        principal,
+                        selectedSkills,
+                        runtimeModel,
+                        apiKey,
+                        plannerRuntimeModel,
+                        plannerApiKey
+                );
+            } finally {
+                if (StringUtils.hasText(requestId)) MDC.remove("requestId");
+            }
+        });
         return emitter;
     }
 
@@ -1400,7 +1409,7 @@ public class AgentRuntime {
         List<Object> content = new ArrayList<>();
         content.add(Map.of("type", "text", "text", prompt));
         visualInputs.forEach((input) -> {
-            if ("video".equals(input.kind())) {
+            if ("video".equals(input.kind()) && input.dataUrl().startsWith("data:video/")) {
                 content.add(Map.of(
                         "type", "video_url",
                         "video_url", Map.of("url", input.dataUrl())
@@ -1431,7 +1440,11 @@ public class AgentRuntime {
                     if (StringUtils.hasText(attachment.id())) summary.put("id", attachment.id());
                     if (StringUtils.hasText(attachment.name())) summary.put("name", attachment.name());
                     if (StringUtils.hasText(attachment.kind())) summary.put("kind", attachment.kind());
-                    if (StringUtils.hasText(attachment.dataUrl())) summary.put("contentStatus", "image-bytes-attached");
+                    if (StringUtils.hasText(attachment.dataUrl())) {
+                        summary.put("contentStatus", "video".equals(attachment.kind()) && attachment.dataUrl().startsWith("data:image/")
+                                ? "video-thumbnail-attached"
+                                : "visual-bytes-attached");
+                    }
                     return summary;
                 })
                 .toList();
@@ -1440,14 +1453,14 @@ public class AgentRuntime {
     private List<VisualAttachmentInput> visualAttachmentInputs(List<AgentAttachment> attachments, RuntimeModel runtimeModel) {
         if (attachments == null || attachments.isEmpty()) return List.of();
         return attachments.stream()
-                .filter((attachment) ->
-                        ("image".equals(attachment.kind()) && runtimeModel.supportsImageInput())
-                                || ("video".equals(attachment.kind()) && runtimeModel.supportsVideoInput())
-                )
                 .map((attachment) -> new VisualAttachmentInput(attachment.kind(), attachment.dataUrl()))
                 .filter((input) ->
                         StringUtils.hasText(input.dataUrl())
-                                && ("image".equals(input.kind()) ? input.dataUrl().startsWith("data:image/") : input.dataUrl().startsWith("data:video/"))
+                                && (
+                                        ("image".equals(input.kind()) && input.dataUrl().startsWith("data:image/") && runtimeModel.supportsImageInput())
+                                                || ("video".equals(input.kind()) && input.dataUrl().startsWith("data:video/") && runtimeModel.supportsVideoInput())
+                                                || ("video".equals(input.kind()) && input.dataUrl().startsWith("data:image/") && runtimeModel.supportsImageInput())
+                                )
                 )
                 .limit(4)
                 .toList();

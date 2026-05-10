@@ -33,8 +33,8 @@ import {
 } from "lucide-react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { Camera as NativeCamera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { LocalNotifications, type ActionPerformed, type LocalNotificationSchema } from "@capacitor/local-notifications";
+import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import {
   ChangeEvent,
   type CSSProperties,
@@ -49,9 +49,28 @@ import {
   useState,
 } from "react";
 import { compressConversationSummary, runAgentChatStream } from "./agentApi";
+import {
+  ALBUM_CATEGORIES,
+  albumCategoryFromTags,
+  albumCategoryLabel,
+  albumItemFromDecision,
+  albumItemFromStandaloneAttachment,
+  albumMonthLabel,
+  albumPromptFromDecision,
+  albumPromptFromEffectDecision,
+  attachmentListSrc,
+  buildDerivedAlbumItems,
+  decideAlbumMedia,
+  dedupeAlbumItems,
+  isLikelyScreenshotAttachment,
+  isVisibleAlbumMedia,
+  resolveAlbumEffectTarget,
+  type AlbumMediaDecision,
+} from "./albumDomain";
 import { ensureMicrophonePermission } from "./audioPermission";
 import {
   confirmPendingEffectOnServer,
+  deleteAttachment,
   deleteAppRecord,
   discardPendingEffectOnServer,
   importAppState,
@@ -59,13 +78,14 @@ import {
   type AppStateCollection,
   type AppStateResponse,
   upsertAppRecord,
-  uploadDataUrlAttachment,
+  uploadFileAttachment,
 } from "./appStateApi";
 import { AsrStreamController, runAsrStream } from "./asrApi";
 import {
   AuthFamily,
   AuthMember,
   AuthUser,
+  apiBaseUrl,
   clearAuthToken,
   getAuthToken,
   readInviteRoleOptions,
@@ -88,7 +108,10 @@ import {
   scheduleAlarmReminder,
   type NativeAlarmEvent,
 } from "./nativeAlarm";
+import { isNativeMediaPickerAvailable, isNativeMediaPickerCancel, pickNativeMediaFiles } from "./nativeMediaPicker";
+import { MOBILE_UPDATE_NOTICE_EVENT, type MobileUpdateNoticeDetail, type MobileUpdateNoticeTone } from "./mobileUpdates";
 import { useStoredState } from "./storage";
+import { useStableViewport } from "./hooks/useStableViewport";
 import {
   AgentChatResponse,
   AgentBabyProfileContext,
@@ -179,15 +202,6 @@ const MOBILE_TABS = [
 const ROLE_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "月嫂", "保姆", "亲友", "其他"] as const;
 const UNIQUE_ROLE_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆"] as const;
 
-const ALBUM_CATEGORIES: Array<{ id: AlbumItemCategory | "all"; label: string }> = [
-  { id: "all", label: "全部" },
-  { id: "growth", label: "成长" },
-  { id: "feeding", label: "喂养" },
-  { id: "sleep", label: "睡眠" },
-  { id: "health", label: "健康" },
-  { id: "reminder", label: "提醒/疫苗" },
-];
-
 const RECORD_VIEWS: Array<{ id: RecordView; label: string }> = [
   { id: "today", label: "今日" },
   { id: "trend", label: "趋势" },
@@ -222,8 +236,18 @@ const REMINDER_WEB_SOUND_URLS: Record<ReminderSoundId, string> = {
   soft_bell: softBellSoundUrl,
 };
 
+const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
 const MIN_INTERVAL_MINUTES = 10;
 const MAX_INTERVAL_MINUTES = 12 * 60;
+const MAX_MEDIA_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_AGENT_ATTACHMENT_DATA_URL_CHARS = 8 * 1024 * 1024;
+const VIDEO_THUMBNAIL_TIMEOUT_MS = 8000;
+
+const formatFileSize = (bytes: number) => {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+};
 
 const StorybookScene = () => (
   <div className="storybook-scene" aria-hidden="true">
@@ -249,6 +273,41 @@ type VoiceStatus = "idle" | "connecting" | "listening" | "processing" | "unsuppo
 type AuthStatus = "checking" | "authenticated" | "unauthenticated";
 
 type CompressionStatus = "idle" | "checking" | "compressing" | "done" | "failed";
+
+type MediaUploadStatus = "preparing" | "uploading" | "processing" | "done" | "failed";
+type MediaUploadTarget = "chat" | "album";
+
+type MediaUploadItem = {
+  id: string;
+  name: string;
+  kind: AttachmentKind;
+  target: MediaUploadTarget;
+  status: MediaUploadStatus;
+  progress: number;
+  message?: string;
+};
+
+type QueuedMediaFile = {
+  id: string;
+  file: File;
+  kind: AttachmentKind;
+};
+
+type PreviewMotion = "opening" | "idle" | "closing";
+
+type RuntimeVersionInfo = {
+  otaVersion: string;
+  nativeVersion: string;
+  bundleId: string;
+  platform: string;
+  status: string;
+};
+
+type SystemWeakNotice = {
+  id: number;
+  message: string;
+  tone: MobileUpdateNoticeTone;
+};
 
 type RecordEventType = "care" | "growth" | "reminder";
 
@@ -318,29 +377,6 @@ type PendingEffectDraft = {
   careLogPatch?: PendingCareDraft;
   reminders: PendingReminderDraft[];
   memories: PendingMemoryDraft[];
-};
-
-type AlbumMediaDecision = {
-  id: string;
-  mode: "auto_save" | "ask" | "ignore";
-  category: AlbumItemCategory;
-  reason: string;
-  title?: string;
-  tags: string[];
-  attachmentId: string;
-  sourceMessageId: string;
-  createdAt: string;
-};
-
-type AlbumEffectPayload = {
-  intent?: string;
-  targetScope?: "current" | "previous" | "recent" | "unspecified";
-  targetKind?: "image" | "video" | "media" | "any";
-  refHint?: string;
-  category?: AlbumItemCategory;
-  reason?: string;
-  title?: string;
-  tags?: string[];
 };
 
 type SelectOption<T extends string> = {
@@ -728,6 +764,7 @@ const normalizeAttachment = (value: Partial<Attachment> | null | undefined, inde
   thumbnailUrl: textValue(value?.thumbnailUrl) || undefined,
   width: numberValue(value?.width),
   height: numberValue(value?.height),
+  createdAt: textValue(value?.createdAt) || undefined,
 });
 
 const stripAttachmentUrlForStorage = (url?: string) => {
@@ -1782,9 +1819,6 @@ const reminderNotificationLabel = (reminder: Reminder) => {
   return reminder.dueAt ? "待调度系统提醒" : "时间待确认";
 };
 
-const albumCategoryLabel = (category: AlbumItemCategory | "all") =>
-  ALBUM_CATEGORIES.find((item) => item.id === category)?.label ?? "日常";
-
 const albumCategoryIconSrc = (category: AlbumItemCategory) => {
   if (category === "growth") return growthIcon;
   if (category === "feeding") return milkIcon;
@@ -1792,16 +1826,6 @@ const albumCategoryIconSrc = (category: AlbumItemCategory) => {
   if (category === "health") return temperatureIcon;
   if (category === "reminder") return reminderIcon;
   return recordsIcon;
-};
-
-const albumCategoryFromTags = (tags: string[], text = ""): AlbumItemCategory => {
-  const source = [...tags, text].join(" ");
-  if (/奶|喂养|辅食/.test(source)) return "feeding";
-  if (/睡|夜醒|哄睡/.test(source)) return "sleep";
-  if (/体温|发热|药|过敏|疫苗|医院|体检|健康/.test(source)) return "health";
-  if (/提醒|待办|复诊/.test(source)) return "reminder";
-  if (/成长|里程碑|第一次|翻身|抬头|爬|走|笑/.test(source)) return "growth";
-  return "daily";
 };
 
 const careAlbumCategory = (event: CareLogEvent): AlbumItemCategory => {
@@ -1816,307 +1840,6 @@ const careAlbumTitle = (event: CareLogEvent) => {
   if (event.type === "sleep" && event.durationHours) return `睡了 ${event.durationHours} 小时`;
   if (event.type === "temperature" && event.temperature) return `体温 ${event.temperature}°C`;
   return event.title || canonicalCareEventTitle(event.type);
-};
-
-const albumItemKey = (item: AlbumItem) => `${item.kind}|${item.linkedType ?? ""}|${item.linkedId ?? ""}|${item.attachmentId ?? ""}|${item.date}|${item.title}`;
-
-const dedupeAlbumItems = (items: AlbumItem[]) => {
-  const byKey = new Map<string, AlbumItem>();
-  items.forEach((item) => {
-    const key = albumItemKey(item);
-    if (!byKey.has(key)) byKey.set(key, item);
-  });
-  return Array.from(byKey.values()).sort((left, right) => {
-    const leftTime = left.occurredAt ?? `${left.date}T00:00:00`;
-    const rightTime = right.occurredAt ?? `${right.date}T00:00:00`;
-    return rightTime.localeCompare(leftTime);
-  });
-};
-
-const albumAutoSavePattern =
-  /第一次|里程碑|翻身|抬头|爬|站|走路|走了|说话|叫妈妈|叫爸爸|满月|百天|生日|疫苗本|接种证|接种凭证|体检报告|医生通知|病历|留念|纪念|珍贵|成长瞬间|保存到相册|存到相册|收藏/;
-
-const albumAskPattern =
-  /宝宝|小宝|孩子|娃|亲子|妈妈抱|爸爸抱|奶瓶|辅食|玩具|衣服|小床|婴儿床|医院|诊室|候诊|社区医院|疫苗|体检|药|药盒|用品|照片|图片|相册/;
-
-const screenshotTextPattern = /截图|截屏|屏幕|页面|界面|聊天记录|App|APP|网页|浏览器|localhost|图里面有啥|图里有啥|这图里面|这个图里面|这张图里面|图里有什么|看一下图/;
-
-const explicitAlbumSavePattern = /保存到相册|存到相册|加入相册|放进相册|收藏|留念|纪念/;
-
-const likelyScreenshotNamePattern = /screenshot|screen|localhost|截屏|截图|网页|浏览器|simulator|emulator/i;
-
-const imageAspectRatio = (attachment: Attachment) => {
-  if (!attachment.width || !attachment.height) return undefined;
-  return Math.max(attachment.width / attachment.height, attachment.height / attachment.width);
-};
-
-const isLikelyScreenshotAttachment = (attachment: Attachment, text = "") => {
-  if (attachment.kind !== "image") return false;
-  const ratio = imageAspectRatio(attachment);
-  const pngLike = attachment.mimeType === "image/png" || /\.png$/i.test(attachment.name);
-  return (
-    likelyScreenshotNamePattern.test(attachment.name) ||
-    screenshotTextPattern.test(text) ||
-    (pngLike && ratio !== undefined && ratio > 2.15)
-  );
-};
-
-const classifyAlbumCategoryFromText = (text: string): AlbumItemCategory => {
-  if (/疫苗|接种|体检|医生|医院|病历|报告|药|健康/.test(text)) return "health";
-  if (/奶|奶瓶|辅食|米粉|吃/.test(text)) return "feeding";
-  if (/睡|小睡|夜醒|哄睡/.test(text)) return "sleep";
-  if (/提醒|复诊/.test(text)) return "reminder";
-  if (/第一次|里程碑|翻身|抬头|爬|站|走|笑|满月|百天|生日|成长/.test(text)) return "growth";
-  return "daily";
-};
-
-const albumTitleFromText = (text: string, attachment: Attachment, category: AlbumItemCategory = "daily", occurredAt?: string) => {
-  const clean = text
-    .replace(/保存到相册|存到相册|加入相册|放进相册|收藏|留念|纪念|记录到相册/g, "")
-    .replace(/刚才的?|这个|这张|这段|上个|上一条|再看一下|看一下|视频|照片|图片|素材|呢|啦|哦/g, "")
-    .replace(/[，。！？,.!?]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const tooGeneric = !clean || clean.length <= 1 || internalReferencePattern.test(clean);
-  return tooGeneric ? defaultAlbumTitle(category, attachment, occurredAt) : clean.slice(0, 18);
-};
-
-const isAlbumMediaAttachment = (attachment: Attachment) => attachment.kind === "image" || attachment.kind === "video";
-
-const mediaKindLabel = (attachment: Attachment) => (attachment.kind === "video" ? "视频" : "照片");
-
-const attachmentListSrc = (attachment: Attachment) => attachment.thumbnailUrl || attachment.url;
-
-const internalReferencePattern = /\b(?:msg|message|attachment|att|album|decision)-[a-z0-9._-]+\b/i;
-
-const compactDateLabel = (dateText?: string) => {
-  const parsed = dateText ? new Date(dateText) : new Date();
-  if (Number.isNaN(parsed.getTime())) return "";
-  return `${parsed.getMonth() + 1}月${parsed.getDate()}日`;
-};
-
-const defaultAlbumTitle = (category: AlbumItemCategory, attachment: Attachment, occurredAt?: string) => {
-  const date = compactDateLabel(occurredAt);
-  const prefix = date ? `${date}` : "宝宝";
-  const media = mediaKindLabel(attachment);
-  if (category === "growth") return `${prefix}成长${media}`;
-  if (category === "feeding") return `${prefix}喂养${media}`;
-  if (category === "sleep") return `${prefix}睡眠${media}`;
-  if (category === "health") return `${prefix}健康${media}`;
-  if (category === "reminder") return `${prefix}提醒${media}`;
-  return `${prefix}宝宝日常${media}`;
-};
-
-const attachmentExtension = (attachment: Attachment) => {
-  const fromName = attachment.name.match(/\.([a-z0-9]{2,5})$/i)?.[1];
-  if (fromName) return fromName.toLowerCase();
-  if (attachment.mimeType?.includes("mp4")) return "mp4";
-  if (attachment.mimeType?.includes("quicktime")) return "mov";
-  if (attachment.mimeType?.includes("webm")) return "webm";
-  if (attachment.mimeType?.includes("png")) return "png";
-  if (attachment.mimeType?.includes("webp")) return "webp";
-  if (attachment.mimeType?.includes("gif")) return "gif";
-  return attachment.kind === "video" ? "mp4" : "jpg";
-};
-
-const generatedAlbumFileName = (title: string, attachment: Attachment) => {
-  const safeTitle = title.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "").slice(0, 28) || `宝宝${mediaKindLabel(attachment)}`;
-  return `${safeTitle}.${attachmentExtension(attachment)}`;
-};
-
-const decideAlbumMedia = (message: ChatMessage, attachment: Attachment): AlbumMediaDecision => {
-  const text = message.text === "上传了新的成长素材" ? "" : message.text;
-  const source = `${text} ${attachment.name}`;
-  const createdAt = new Date().toISOString();
-  const base = {
-    id: makeId("album-decision"),
-    attachmentId: attachment.id,
-    sourceMessageId: message.id,
-    createdAt,
-  };
-  if (!isAlbumMediaAttachment(attachment)) {
-    return { ...base, mode: "ignore", category: "daily", reason: "第一版相册只自动处理照片和视频。", tags: ["忽略"] };
-  }
-  if (isLikelyScreenshotAttachment(attachment, text)) {
-    return { ...base, mode: "ignore", category: "daily", reason: "这看起来是 App、网页或聊天截图，不会保存到成长相册。", tags: ["截图"] };
-  }
-  const category = classifyAlbumCategoryFromText(source);
-  if (albumAutoSavePattern.test(source) || explicitAlbumSavePattern.test(text)) {
-    return {
-      ...base,
-      mode: "auto_save",
-      category,
-      reason: "用户表达了明确的留念或成长记录意图。",
-      title: albumTitleFromText(text, attachment, category, message.createdAt),
-      tags: [albumCategoryLabel(category), mediaKindLabel(attachment)],
-    };
-  }
-  if (albumAskPattern.test(source)) {
-    return {
-      ...base,
-      mode: "ask",
-      category,
-      reason: "这段素材可能和宝宝照护有关，但还不确定是否值得长期保存。",
-      title: albumTitleFromText(text, attachment, category, message.createdAt),
-      tags: [albumCategoryLabel(category), "待确认"],
-    };
-  }
-  return { ...base, mode: "ignore", category: "daily", reason: "没有识别到值得保存到相册的明确生活或成长信号。", tags: ["忽略"] };
-};
-
-const albumPromptFromDecision = (decision: AlbumMediaDecision): AlbumPrompt => ({
-  id: decision.id,
-  attachmentId: decision.attachmentId,
-  sourceMessageId: decision.sourceMessageId,
-  title: decision.title || "值得收藏的素材",
-  category: decision.category,
-  reason: decision.reason,
-  tags: decision.tags,
-  status: "pending",
-  createdAt: decision.createdAt,
-});
-
-const albumItemFromDecision = (decision: AlbumMediaDecision, message: ChatMessage, attachment: Attachment): AlbumItem => {
-  const title = decision.title || albumTitleFromText(message.text, attachment, decision.category, message.createdAt);
-  return {
-    id: `album-media-${message.id}-${attachment.id}`,
-    kind: "media",
-    title,
-    date: message.createdAt.slice(0, 10),
-    occurredAt: message.createdAt,
-    category: decision.category,
-    tags: decision.tags.length ? decision.tags : [albumCategoryLabel(decision.category), mediaKindLabel(attachment)],
-    attachmentId: attachment.id,
-    attachment: {
-      ...attachment,
-      name: generatedAlbumFileName(title, attachment),
-    },
-    linkedType: "chatMessage",
-    linkedId: message.id,
-    source: "rule",
-  };
-};
-
-const isVisibleAlbumMedia = (item: AlbumItem) =>
-  item.kind === "media" &&
-  Boolean(
-    item.attachment &&
-      isAlbumMediaAttachment(item.attachment) &&
-      (item.attachment.url || item.attachment.publicUrl) &&
-      !isLikelyScreenshotAttachment(item.attachment, item.title),
-  );
-
-const normalizeAlbumCategoryValue = (value: unknown): AlbumItemCategory =>
-  value === "growth" ||
-  value === "feeding" ||
-  value === "sleep" ||
-  value === "health" ||
-  value === "reminder" ||
-  value === "daily"
-    ? value
-    : "daily";
-
-const albumEffectPayload = (decision: EffectDecision): AlbumEffectPayload => {
-  if (!decision.payload || typeof decision.payload !== "object") return {};
-  const raw = decision.payload as Record<string, unknown>;
-  const tags = Array.isArray(raw.tags) ? raw.tags.filter((item): item is string => typeof item === "string") : [];
-  return {
-    intent: typeof raw.intent === "string" ? raw.intent : undefined,
-    targetScope:
-      raw.targetScope === "current" || raw.targetScope === "previous" || raw.targetScope === "recent" || raw.targetScope === "unspecified"
-        ? raw.targetScope
-        : undefined,
-    targetKind:
-      raw.targetKind === "image" || raw.targetKind === "video" || raw.targetKind === "media" || raw.targetKind === "any"
-        ? raw.targetKind
-        : undefined,
-    refHint: typeof raw.refHint === "string" ? raw.refHint : undefined,
-    category: normalizeAlbumCategoryValue(raw.category),
-    reason: typeof raw.reason === "string" ? raw.reason : decision.reason,
-    title: typeof raw.title === "string" ? raw.title : undefined,
-    tags,
-  };
-};
-
-const albumEffectAllowsAttachment = (payload: AlbumEffectPayload, attachment: Attachment) => {
-  if (!isAlbumMediaAttachment(attachment)) return false;
-  if (payload.targetKind === "video" && attachment.kind !== "video") return false;
-  if (payload.targetKind === "image" && attachment.kind !== "image") return false;
-  return true;
-};
-
-const resolveAlbumEffectTarget = (
-  decision: EffectDecision,
-  candidateMessages: ChatMessage[],
-): { message: ChatMessage; attachment: Attachment; payload: AlbumEffectPayload } | null => {
-  const payload = albumEffectPayload(decision);
-  if (payload.intent && payload.intent !== "save_to_album") return null;
-  const orderedMessages = [...candidateMessages].reverse();
-  for (const message of orderedMessages) {
-    const orderedAttachments = [...(message.attachments ?? [])].reverse();
-    for (const attachment of orderedAttachments) {
-      if (!albumEffectAllowsAttachment(payload, attachment)) continue;
-      if (isLikelyScreenshotAttachment(attachment, `${payload.refHint ?? ""} ${message.text}`)) continue;
-      return { message, attachment, payload };
-    }
-  }
-  return null;
-};
-
-const albumPromptFromEffectDecision = (
-  decision: EffectDecision,
-  sourceMessage: ChatMessage,
-  attachment: Attachment,
-): AlbumPrompt => {
-  const payload = albumEffectPayload(decision);
-  const category = payload.category ?? classifyAlbumCategoryFromText(`${sourceMessage.text} ${payload.refHint ?? ""}`);
-  return {
-    id: decision.id || makeId("album-decision"),
-    attachmentId: attachment.id,
-    sourceMessageId: sourceMessage.id,
-    title: albumTitleFromText(payload.title || payload.refHint || sourceMessage.text, attachment, category, sourceMessage.createdAt),
-    category,
-    reason: payload.reason || decision.reason || `这段${mediaKindLabel(attachment)}可能值得保存到相册。`,
-    tags: uniqueTexts([albumCategoryLabel(category), mediaKindLabel(attachment), ...(payload.tags ?? [])]).slice(0, 6),
-    status: "pending",
-    createdAt: new Date().toISOString(),
-  };
-};
-
-const albumItemFromEffectDecision = (
-  decision: EffectDecision,
-  sourceMessage: ChatMessage,
-  attachment: Attachment,
-): AlbumItem => {
-  const prompt = albumPromptFromEffectDecision(decision, sourceMessage, attachment);
-  return {
-    ...albumItemFromDecision({ ...prompt, mode: "auto_save" }, sourceMessage, attachment),
-    source: "agent",
-  };
-};
-
-const buildDerivedAlbumItems = (
-  messages: ChatMessage[],
-  growthEvents: GrowthEvent[],
-  careLogs: CareLog[],
-  reminders: Reminder[],
-): AlbumItem[] => {
-  void growthEvents;
-  void careLogs;
-  void reminders;
-  const messageById = new Map(messages.map((message) => [message.id, message]));
-  const mediaItems = messages.flatMap((message) =>
-    (message.albumPrompts ?? [])
-      .filter((prompt) => prompt.status === "saved")
-      .map((prompt) => {
-        const sourceMessage = messageById.get(prompt.sourceMessageId);
-        const attachment = sourceMessage?.attachments?.find((item) => item.id === prompt.attachmentId);
-        return sourceMessage && attachment ? albumItemFromDecision({ ...prompt, mode: "auto_save" }, sourceMessage, attachment) : null;
-      })
-      .filter((item): item is AlbumItem => Boolean(item)),
-  );
-
-  return dedupeAlbumItems(mediaItems);
 };
 
 const formatTrendValue = (value: number | undefined, unit: string, decimals = 0) => {
@@ -3126,14 +2849,6 @@ const upsertToolActivity = (items: ToolActivity[] | undefined, activity: ToolAct
   return [...current, activity];
 };
 
-const readFileAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-
 const fetchAsDataUrl = async (url: string) => {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`无法读取附件内容（${response.status}）`);
@@ -3145,6 +2860,9 @@ const fetchAsDataUrl = async (url: string) => {
     reader.readAsDataURL(blob);
   });
 };
+
+const dataUrlWithinAgentLimit = (dataUrl?: string) =>
+  dataUrl && dataUrl.length <= MAX_AGENT_ATTACHMENT_DATA_URL_CHARS ? dataUrl : undefined;
 
 const mergeVoiceText = (baseText: string, transcript: string) => {
   const base = baseText.trim();
@@ -3220,6 +2938,7 @@ const extractAiTextPreview = (jsonContent: string) => {
 };
 
 function App() {
+  useStableViewport();
   const legacyLocalStateRef = useRef(hasLegacyLocalState());
   const [storedProfile, setStoredProfile] = useStoredState("baby-companion-profile", blankProfile);
   const [storedMessages, setStoredMessages] = useStoredState<ChatMessage[]>("baby-companion-messages", []);
@@ -3310,8 +3029,20 @@ function App() {
   const [voiceError, setVoiceError] = useState("");
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [mediaUploadItems, setMediaUploadItems] = useState<MediaUploadItem[]>([]);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [previewAlbumItem, setPreviewAlbumItem] = useState<AlbumItem | null>(null);
+  const [previewMotion, setPreviewMotion] = useState<PreviewMotion>("idle");
+  const [albumAnimationSeed, setAlbumAnimationSeed] = useState(0);
   const [previewTransform, setPreviewTransform] = useState({ scale: 1, x: 0, y: 0 });
+  const [runtimeVersion, setRuntimeVersion] = useState<RuntimeVersionInfo>(() => ({
+    otaVersion: BUILD_OTA_VERSION || "内置包",
+    nativeVersion: "检测中",
+    bundleId: "检测中",
+    platform: Capacitor.getPlatform(),
+    status: Capacitor.isNativePlatform() ? "读取中" : "Web 预览",
+  }));
+  const [systemWeakNotice, setSystemWeakNotice] = useState<SystemWeakNotice | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [storageStatus, setStorageStatus] = useState<"loading" | "ready" | "offline">("loading");
@@ -3347,6 +3078,7 @@ function App() {
   const [deleteReminderTarget, setDeleteReminderTarget] = useState<Reminder | null>(null);
   const [ringingReminder, setRingingReminder] = useState<Reminder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const albumFileInputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const asrControllerRef = useRef<AsrStreamController | null>(null);
   const voiceStandbyStreamRef = useRef<MediaStream | null>(null);
@@ -3378,9 +3110,28 @@ function App() {
   const remindersRef = useRef<Reminder[]>([]);
   const handledNativeNotificationKeysRef = useRef<Set<string>>(new Set());
   const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const systemWeakNoticeTimerRef = useRef<number | null>(null);
   const previewPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const previewLastPointRef = useRef({ x: 0, y: 0 });
   const previewPinchRef = useRef<{ distance: number; scale: number } | null>(null);
+  const previewSwipeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    lastTime: number;
+    velocityX: number;
+  } | null>(null);
+  const previewDragOffsetRef = useRef(0);
+  const previewTapGuardRef = useRef(false);
+  const previewCarouselTrackRef = useRef<HTMLDivElement | null>(null);
+  const previewSwipeSettleTimerRef = useRef<number | null>(null);
+  const previewSwipeSettleCleanupRef = useRef<(() => void) | null>(null);
+  const previewAlbumItemsRef = useRef<AlbumItem[]>([]);
+  const previewAlbumItemRef = useRef<AlbumItem | null>(null);
+  const previewOpenTimerRef = useRef<number | null>(null);
+  const previewCloseTimerRef = useRef<number | null>(null);
   const previewVideoCleanupRef = useRef<(() => void) | null>(null);
   const appPlatform = platformLabel();
   const currentModel = MODEL_OPTIONS.find((model) => model.id === selectedModel) ?? MODEL_OPTIONS[0];
@@ -3394,6 +3145,11 @@ function App() {
   const visibleTabs = canCaregive ? MOBILE_TABS : MOBILE_TABS.filter((tab) => tab.id !== "chat");
   const canAttachVisuals = canCaregive && (currentModel.supportsImageInput || currentModel.supportsVideoInput);
   const canUseLowLatency = canCaregive && currentModel.supportsLowLatency;
+  const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
+  const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
+  const albumUploadItems = mediaUploadItems.filter((item) => item.target === "album");
+  const isUploadingChatMedia = chatUploadItems.some((item) => activeUploadStatuses.includes(item.status));
+  const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
   const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
   const loginRoleOptions = useMemo(
     () =>
@@ -3411,15 +3167,150 @@ function App() {
     ? loginCredentialsReady
     : Boolean(loginCredentialsReady && loginRoleName && loginCaregiver !== null && !loginSelectedRoleOccupied);
   const switchMobileTab = (tab: MobileTab) => {
+    if (tab === "album" && activeMobileTab !== "album") {
+      setAlbumAnimationSeed((seed) => seed + 1);
+    }
     setActiveMobileTab(tab);
   };
 
-  const closePreviewAttachment = useCallback(() => {
+  const showSystemWeakNotice = useCallback((message: string, tone: SystemWeakNotice["tone"] = "info", durationMs = 2600) => {
+    if (systemWeakNoticeTimerRef.current !== null) {
+      window.clearTimeout(systemWeakNoticeTimerRef.current);
+    }
+    const notice = {
+      id: Date.now(),
+      message,
+      tone,
+    } satisfies SystemWeakNotice;
+    setSystemWeakNotice(notice);
+    systemWeakNoticeTimerRef.current = window.setTimeout(() => {
+      setSystemWeakNotice((current) => (current?.id === notice.id ? null : current));
+      systemWeakNoticeTimerRef.current = null;
+    }, durationMs);
+  }, []);
+
+  const clearPreviewTimers = useCallback(() => {
+    if (previewOpenTimerRef.current !== null) {
+      window.clearTimeout(previewOpenTimerRef.current);
+      previewOpenTimerRef.current = null;
+    }
+    if (previewCloseTimerRef.current !== null) {
+      window.clearTimeout(previewCloseTimerRef.current);
+      previewCloseTimerRef.current = null;
+    }
+    if (previewSwipeSettleTimerRef.current !== null) {
+      window.clearTimeout(previewSwipeSettleTimerRef.current);
+      previewSwipeSettleTimerRef.current = null;
+    }
+    previewSwipeSettleCleanupRef.current?.();
+    previewSwipeSettleCleanupRef.current = null;
+  }, []);
+
+  const setPreviewCarouselTransform = useCallback((offsetPx = 0, animated = false, durationMs = 220) => {
+    const track = previewCarouselTrackRef.current;
+    if (!track) return;
+    const stableOffset = Math.abs(offsetPx) < 0.4 ? 0 : offsetPx;
+    const offsetText = Math.abs(stableOffset).toFixed(2);
+    const offsetExpression = stableOffset >= 0 ? `+ ${offsetText}px` : `- ${offsetText}px`;
+    track.style.transition = animated ? `transform ${durationMs}ms cubic-bezier(0.2, 0.88, 0.2, 1)` : "none";
+    track.style.transform = `translate3d(calc(-100vw ${offsetExpression}), 0, 0)`;
+  }, []);
+
+  const resetPreviewCarouselTransform = useCallback(() => {
+    previewDragOffsetRef.current = 0;
+    setPreviewCarouselTransform(0, false);
+  }, [setPreviewCarouselTransform]);
+
+  const preloadPreviewAttachment = useCallback(async (attachment: Attachment) => {
+    if (attachment.kind !== "image" || !attachment.url) return;
+    await new Promise<void>((resolve) => {
+      const image = new window.Image();
+      const finish = () => {
+        if (typeof image.decode === "function") {
+          image.decode().then(() => resolve()).catch(() => resolve());
+          return;
+        }
+        resolve();
+      };
+      image.onload = finish;
+      image.onerror = () => resolve();
+      image.src = attachment.url ?? "";
+      if (image.complete) finish();
+    });
+  }, []);
+
+  const openPreviewAttachment = useCallback((attachment: Attachment, albumItem?: AlbumItem | null, motion: PreviewMotion = "opening") => {
+    clearPreviewTimers();
     previewPointersRef.current.clear();
     previewPinchRef.current = null;
+    previewSwipeRef.current = null;
+    previewTapGuardRef.current = false;
+    resetPreviewCarouselTransform();
+    previewAlbumItemRef.current = albumItem ?? null;
     setPreviewTransform({ scale: 1, x: 0, y: 0 });
-    setPreviewAttachment(null);
+    setPreviewAlbumItem(albumItem ?? null);
+    setPreviewAttachment(attachment);
+    setPreviewMotion(motion);
+    if (motion !== "opening") return;
+    previewOpenTimerRef.current = window.setTimeout(() => {
+      setPreviewMotion("idle");
+      previewOpenTimerRef.current = null;
+    }, 260);
+  }, [clearPreviewTimers, resetPreviewCarouselTransform]);
+
+  const closePreviewAttachment = useCallback(() => {
+    clearPreviewTimers();
+    previewPointersRef.current.clear();
+    previewPinchRef.current = null;
+    previewSwipeRef.current = null;
+    previewTapGuardRef.current = false;
+    resetPreviewCarouselTransform();
+    setPreviewTransform({ scale: 1, x: 0, y: 0 });
+    setPreviewMotion("closing");
+    previewCloseTimerRef.current = window.setTimeout(() => {
+      setPreviewAttachment(null);
+      setPreviewAlbumItem(null);
+      previewAlbumItemRef.current = null;
+      setPreviewMotion("idle");
+      previewCloseTimerRef.current = null;
+    }, 180);
+  }, [clearPreviewTimers, resetPreviewCarouselTransform]);
+
+  const handlePreviewClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("figcaption, video, button")) return;
+    if (previewTapGuardRef.current) {
+      previewTapGuardRef.current = false;
+      return;
+    }
+    closePreviewAttachment();
+  }, [closePreviewAttachment]);
+
+  const findAdjacentPreviewAlbumItem = useCallback((direction: -1 | 1) => {
+    const items = previewAlbumItemsRef.current;
+    const current = previewAlbumItemRef.current;
+    if (!current || !items.length) return null;
+    const currentIndex = items.findIndex((item) => item.id === current.id);
+    if (currentIndex < 0) return null;
+    const nextItem = items[currentIndex + direction];
+    return nextItem?.attachment?.url ? nextItem : null;
   }, []);
+
+  const showAdjacentPreviewAlbumItem = useCallback((direction: -1 | 1) => {
+    const nextItem = findAdjacentPreviewAlbumItem(direction);
+    if (!nextItem?.attachment?.url) return false;
+    void preloadPreviewAttachment(nextItem.attachment).then(() => {
+      previewPointersRef.current.clear();
+      previewPinchRef.current = null;
+      previewSwipeRef.current = null;
+      previewAlbumItemRef.current = nextItem;
+      setPreviewTransform({ scale: 1, x: 0, y: 0 });
+      setPreviewAlbumItem(nextItem);
+      setPreviewAttachment(nextItem.attachment as Attachment);
+      setPreviewMotion("idle");
+    });
+    return true;
+  }, [findAdjacentPreviewAlbumItem, preloadPreviewAttachment]);
 
   const bindPreviewVideo = useCallback(
     (node: HTMLVideoElement | null) => {
@@ -3432,7 +3323,9 @@ function App() {
       };
       node.addEventListener("webkitendfullscreen", closeAfterNativeFullscreen);
       document.addEventListener("fullscreenchange", closeAfterStandardFullscreen);
+      node.muted = false;
       previewVideoCleanupRef.current = () => {
+        node.pause();
         node.removeEventListener("webkitendfullscreen", closeAfterNativeFullscreen);
         document.removeEventListener("fullscreenchange", closeAfterStandardFullscreen);
       };
@@ -3445,9 +3338,132 @@ function App() {
     return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
   };
 
+  const dampPreviewSwipeOffset = (deltaX: number, hasAdjacent: boolean) => {
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+    const sign = Math.sign(deltaX) || 1;
+    const distance = Math.abs(deltaX);
+    if (!hasAdjacent) {
+      const resisted = viewportWidth * 0.22 * (1 - Math.exp(-distance / (viewportWidth * 0.26)));
+      return sign * resisted;
+    }
+    const progress = Math.min(distance / viewportWidth, 1);
+    const friction = 0.74 - progress * 0.16;
+    return sign * Math.min(viewportWidth * 0.82, distance * friction);
+  };
+
+  const beginPreviewSwipe = (event: React.PointerEvent<HTMLElement>) => {
+    if (!previewAlbumItemRef.current || previewTransform.scale > 1.05) return;
+    previewSwipeSettleTimerRef.current && window.clearTimeout(previewSwipeSettleTimerRef.current);
+    previewSwipeSettleTimerRef.current = null;
+    previewDragOffsetRef.current = 0;
+    setPreviewCarouselTransform(0, false);
+    previewSwipeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      lastTime: event.timeStamp || window.performance.now(),
+      velocityX: 0,
+    };
+  };
+
+  const updatePreviewSwipe = (event: React.PointerEvent<HTMLElement>) => {
+    const swipe = previewSwipeRef.current;
+    if (!swipe || swipe.pointerId !== event.pointerId) return;
+    const eventTime = event.timeStamp || window.performance.now();
+    const frameDeltaX = event.clientX - swipe.lastX;
+    const elapsedMs = Math.max(1, eventTime - swipe.lastTime);
+    swipe.velocityX = swipe.velocityX * 0.58 + (frameDeltaX / elapsedMs) * 0.42;
+    swipe.lastX = event.clientX;
+    swipe.lastY = event.clientY;
+    swipe.lastTime = eventTime;
+    const rawDeltaX = swipe.lastX - swipe.startX;
+    const rawDeltaY = swipe.lastY - swipe.startY;
+    if (Math.abs(rawDeltaX) < 3 || Math.abs(rawDeltaX) < Math.abs(rawDeltaY) * 0.8) return;
+    if (Math.abs(rawDeltaX) > 8 || Math.abs(rawDeltaY) > 8) previewTapGuardRef.current = true;
+    if (event.cancelable) event.preventDefault();
+    const direction = rawDeltaX < 0 ? 1 : -1;
+    const hasAdjacent = Boolean(findAdjacentPreviewAlbumItem(direction));
+    const offset = dampPreviewSwipeOffset(rawDeltaX, hasAdjacent);
+    previewDragOffsetRef.current = offset;
+    setPreviewCarouselTransform(offset, false);
+  };
+
+  const finishPreviewSwipe = (event: React.PointerEvent<HTMLElement>) => {
+    const swipe = previewSwipeRef.current;
+    if (!swipe || swipe.pointerId !== event.pointerId) return;
+    previewSwipeRef.current = null;
+    const deltaX = swipe.lastX - swipe.startX;
+    const deltaY = swipe.lastY - swipe.startY;
+    const leadingX = Math.abs(deltaX) > 18 ? deltaX : swipe.velocityX;
+    const direction = leadingX < 0 ? 1 : -1;
+    const nextItem = findAdjacentPreviewAlbumItem(direction);
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+    const isFlick = Math.abs(swipe.velocityX) > 0.46 && Math.abs(deltaX) > 24 && Math.sign(swipe.velocityX) === Math.sign(leadingX || deltaX);
+    const hasHorizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) * 1.18 || isFlick;
+    const hasEnoughTravel = Math.abs(deltaX) > Math.max(64, viewportWidth * 0.18) || isFlick;
+    const speedBoost = Math.min(90, Math.abs(swipe.velocityX) * 72);
+    const durationMs = Math.max(210, Math.min(380, 350 - Math.abs(deltaX) * 0.08 - speedBoost));
+    if (!nextItem?.attachment?.url || !hasHorizontalIntent || !hasEnoughTravel) {
+      setPreviewCarouselTransform(0, true, 320);
+      return;
+    }
+    const nextAttachment = nextItem.attachment;
+    previewTapGuardRef.current = true;
+    setPreviewCarouselTransform(direction > 0 ? -viewportWidth : viewportWidth, true, durationMs);
+    void preloadPreviewAttachment(nextAttachment);
+    let settled = false;
+    const track = previewCarouselTrackRef.current;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      previewSwipeSettleCleanupRef.current?.();
+      previewSwipeSettleCleanupRef.current = null;
+      previewPointersRef.current.clear();
+      previewPinchRef.current = null;
+      previewSwipeRef.current = null;
+      previewAlbumItemRef.current = nextItem;
+      setPreviewTransform({ scale: 1, x: 0, y: 0 });
+      setPreviewAlbumItem(nextItem);
+      setPreviewAttachment(nextAttachment);
+      setPreviewMotion("idle");
+      previewSwipeSettleTimerRef.current = null;
+    };
+    if (track) {
+      const handleTransitionEnd = (transitionEvent: TransitionEvent) => {
+        if (transitionEvent.target === track && transitionEvent.propertyName === "transform") settle();
+      };
+      track.addEventListener("transitionend", handleTransitionEnd);
+      previewSwipeSettleCleanupRef.current = () => {
+        track.removeEventListener("transitionend", handleTransitionEnd);
+        if (previewSwipeSettleTimerRef.current !== null) {
+          window.clearTimeout(previewSwipeSettleTimerRef.current);
+          previewSwipeSettleTimerRef.current = null;
+        }
+      };
+    }
+    previewSwipeSettleTimerRef.current = window.setTimeout(settle, durationMs + 120);
+  };
+
+  const onPreviewStagePointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("figcaption, button")) return;
+    beginPreviewSwipe(event);
+  };
+
+  const onPreviewStagePointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    updatePreviewSwipe(event);
+  };
+
+  const onPreviewStagePointerEnd = (event: React.PointerEvent<HTMLElement>) => {
+    finishPreviewSwipe(event);
+  };
+
   const onPreviewImagePointerDown = (event: React.PointerEvent<HTMLImageElement>) => {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
+    beginPreviewSwipe(event);
     const point = { x: event.clientX, y: event.clientY };
     previewPointersRef.current.set(event.pointerId, point);
     previewLastPointRef.current = point;
@@ -3463,6 +3479,7 @@ function App() {
   const onPreviewImagePointerMove = (event: React.PointerEvent<HTMLImageElement>) => {
     if (!previewPointersRef.current.has(event.pointerId)) return;
     event.stopPropagation();
+    updatePreviewSwipe(event);
     const point = { x: event.clientX, y: event.clientY };
     previewPointersRef.current.set(event.pointerId, point);
     const points = Array.from(previewPointersRef.current.values());
@@ -3482,6 +3499,7 @@ function App() {
       const last = previewLastPointRef.current;
       const deltaX = point.x - last.x;
       const deltaY = point.y - last.y;
+      if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) previewTapGuardRef.current = true;
       previewLastPointRef.current = point;
       setPreviewTransform((current) => ({
         ...current,
@@ -3493,30 +3511,23 @@ function App() {
 
   const onPreviewImagePointerEnd = (event: React.PointerEvent<HTMLImageElement>) => {
     event.stopPropagation();
+    finishPreviewSwipe(event);
     previewPointersRef.current.delete(event.pointerId);
     previewPinchRef.current = null;
     const [remaining] = Array.from(previewPointersRef.current.values());
     if (remaining) previewLastPointRef.current = remaining;
   };
 
-  const togglePreviewZoom = (event: React.MouseEvent<HTMLImageElement>) => {
-    event.stopPropagation();
-    setPreviewTransform((current) => (
-      current.scale > 1
-        ? { scale: 1, x: 0, y: 0 }
-        : { scale: 2.4, x: 0, y: 0 }
-    ));
-  };
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     previewPointersRef.current.clear();
     previewPinchRef.current = null;
     setPreviewTransform({ scale: 1, x: 0, y: 0 });
+    resetPreviewCarouselTransform();
     return () => {
       previewVideoCleanupRef.current?.();
       previewVideoCleanupRef.current = null;
     };
-  }, [previewAttachment?.id]);
+  }, [previewAttachment?.id, previewAlbumItem?.id, resetPreviewCarouselTransform]);
 
   const todayDate = todayISO();
   const todayLog = careLogs.find((item) => item.date === todayDate) ?? careLogs[careLogs.length - 1];
@@ -3549,10 +3560,7 @@ function App() {
     () => recordEvents.filter((event) => event.date === selectedDate),
     [recordEvents, selectedDate],
   );
-  const derivedAlbumItems = useMemo(
-    () => buildDerivedAlbumItems(messages, growthEvents, careLogs, reminders),
-    [messages, growthEvents, careLogs, reminders],
-  );
+  const derivedAlbumItems = useMemo(() => buildDerivedAlbumItems(messages), [messages]);
   const albumItems = useMemo(
     () => dedupeAlbumItems([...storedAlbumItemsNormalized, ...derivedAlbumItems]).filter(isVisibleAlbumMedia),
     [storedAlbumItemsNormalized, derivedAlbumItems],
@@ -3561,6 +3569,32 @@ function App() {
     () => albumItems.filter((item) => albumCategory === "all" || item.category === albumCategory),
     [albumItems, albumCategory],
   );
+  const albumGroups = useMemo(() => {
+    const groups = new Map<string, AlbumItem[]>();
+    filteredAlbumItems.forEach((item) => {
+      const key = (item.occurredAt ?? item.date).slice(0, 7) || "unknown";
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    });
+    return Array.from(groups.entries()).map(([key, items]) => ({
+      key,
+      label: albumMonthLabel(key),
+      items,
+    }));
+  }, [filteredAlbumItems]);
+  const albumPreviewItems = useMemo(
+    () => filteredAlbumItems.filter((item) => item.attachment?.url),
+    [filteredAlbumItems],
+  );
+  const previewAlbumIndex = previewAlbumItem
+    ? albumPreviewItems.findIndex((item) => item.id === previewAlbumItem.id)
+    : -1;
+  const previewCarouselItems = previewAlbumIndex >= 0
+    ? [
+        albumPreviewItems[previewAlbumIndex - 1] ?? null,
+        previewAlbumItem,
+        albumPreviewItems[previewAlbumIndex + 1] ?? null,
+      ]
+    : [];
   const albumStats = useMemo(
     () => ({
       media: albumItems.length,
@@ -3569,6 +3603,128 @@ function App() {
     }),
     [albumItems],
   );
+  useEffect(() => {
+    previewAlbumItemsRef.current = albumPreviewItems;
+  }, [albumPreviewItems]);
+
+  useEffect(() => {
+    previewAlbumItemRef.current = previewAlbumItem;
+  }, [previewAlbumItem]);
+
+  useEffect(
+    () => () => {
+      clearPreviewTimers();
+    },
+    [clearPreviewTimers],
+  );
+
+  useEffect(() => {
+    let alive = true;
+    const fallbackVersion = BUILD_OTA_VERSION || "内置包";
+    const platform = Capacitor.getPlatform();
+    if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable("CapacitorUpdater")) {
+      setRuntimeVersion({
+        otaVersion: fallbackVersion,
+        nativeVersion: "Web",
+        bundleId: "web",
+        platform,
+        status: "Web 预览",
+      });
+      return () => {
+        alive = false;
+      };
+    }
+
+    void CapacitorUpdater.current()
+      .then((current) => {
+        if (!alive) return;
+        const bundle = current.bundle;
+        const isBuiltin = !bundle?.id || bundle.id === "builtin";
+        setRuntimeVersion({
+          otaVersion: isBuiltin ? fallbackVersion : bundle.version || fallbackVersion,
+          nativeVersion: current.native || "未知",
+          bundleId: bundle?.id || "builtin",
+          platform,
+          status: isBuiltin ? "内置包" : "OTA 生效",
+        });
+      })
+      .catch(() => {
+        if (!alive) return;
+        setRuntimeVersion({
+          otaVersion: fallbackVersion,
+          nativeVersion: "未知",
+          bundleId: "读取失败",
+          platform,
+          status: "读取失败",
+        });
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMobileUpdateNotice = (event: Event) => {
+      const detail = (event as CustomEvent<MobileUpdateNoticeDetail>).detail;
+      if (!detail?.message) return;
+      if (systemWeakNoticeTimerRef.current !== null) {
+        window.clearTimeout(systemWeakNoticeTimerRef.current);
+      }
+      const notice = {
+        id: Date.now(),
+        message: detail.message,
+        tone: detail.tone ?? "info",
+      } satisfies SystemWeakNotice;
+      setSystemWeakNotice(notice);
+      systemWeakNoticeTimerRef.current = window.setTimeout(() => {
+        setSystemWeakNotice((current) => (current?.id === notice.id ? null : current));
+        systemWeakNoticeTimerRef.current = null;
+      }, detail.durationMs ?? 2400);
+    };
+
+    window.addEventListener(MOBILE_UPDATE_NOTICE_EVENT, handleMobileUpdateNotice);
+    return () => {
+      window.removeEventListener(MOBILE_UPDATE_NOTICE_EVENT, handleMobileUpdateNotice);
+      if (systemWeakNoticeTimerRef.current !== null) {
+        window.clearTimeout(systemWeakNoticeTimerRef.current);
+        systemWeakNoticeTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!previewAttachment) return;
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closePreviewAttachment();
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        if (showAdjacentPreviewAlbumItem(-1)) event.preventDefault();
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        if (showAdjacentPreviewAlbumItem(1)) event.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closePreviewAttachment, previewAttachment, showAdjacentPreviewAlbumItem]);
+
+  useEffect(() => {
+    if (previewAlbumIndex < 0) return;
+    [albumPreviewItems[previewAlbumIndex - 1], albumPreviewItems[previewAlbumIndex + 1]].forEach((item) => {
+      const attachment = item?.attachment;
+      if (!attachment?.url || attachment.kind !== "image") return;
+      const image = new window.Image();
+      image.src = attachment.url;
+      if (attachment.thumbnailUrl) {
+        const thumbnail = new window.Image();
+        thumbnail.src = attachment.thumbnailUrl;
+      }
+    });
+  }, [albumPreviewItems, previewAlbumIndex]);
   const selectedCareLog = careLogs.find((item) => item.date === selectedDate);
   const selectedKeyPointCount = selectedEvents.length;
   const selectedGrowthCount = selectedEvents.filter((event) => event.type === "growth").length;
@@ -4007,6 +4163,7 @@ function App() {
       thumbnailUrl: storedThumbnailUrl,
       width: attachment.width,
       height: attachment.height,
+      createdAt: attachment.createdAt,
     };
   };
 
@@ -4083,6 +4240,7 @@ function App() {
   useEffect(() => {
     if (canAttachVisuals) return;
     setAttachments([]);
+    setMediaUploadItems([]);
   }, [canAttachVisuals]);
 
   useEffect(() => {
@@ -4142,23 +4300,40 @@ function App() {
     setIsCareLogEditing(false);
   }, [selectedCareLog?.id, selectedDate]);
 
-  const readImageDimensions = (dataUrl: string): Promise<Pick<Attachment, "width" | "height">> =>
+  const readImageDimensionsFromFile = (file: File): Promise<Pick<Attachment, "width" | "height">> =>
     new Promise((resolve) => {
       const image = new Image();
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => resolve({});
-      image.src = dataUrl;
+      const objectUrl = URL.createObjectURL(file);
+      const cleanup = () => URL.revokeObjectURL(objectUrl);
+      image.onload = () => {
+        cleanup();
+        resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      };
+      image.onerror = () => {
+        cleanup();
+        resolve({});
+      };
+      image.src = objectUrl;
     });
 
   const createVideoThumbnailDataUrl = (file: File): Promise<string | undefined> =>
     new Promise((resolve) => {
       const video = document.createElement("video");
       const objectUrl = URL.createObjectURL(file);
+      let settled = false;
       const cleanup = () => {
         URL.revokeObjectURL(objectUrl);
         video.removeAttribute("src");
         video.load();
       };
+      const finish = (value: string | undefined) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        cleanup();
+        resolve(value);
+      };
+      const timeout = window.setTimeout(() => finish(undefined), VIDEO_THUMBNAIL_TIMEOUT_MS);
       video.muted = true;
       video.playsInline = true;
       video.preload = "metadata";
@@ -4167,8 +4342,7 @@ function App() {
         try {
           video.currentTime = seekTime;
         } catch {
-          cleanup();
-          resolve(undefined);
+          finish(undefined);
         }
       };
       video.onseeked = () => {
@@ -4181,37 +4355,76 @@ function App() {
           canvas.height = Math.max(1, Math.round(height * scale));
           const context = canvas.getContext("2d");
           if (!context) {
-            cleanup();
-            resolve(undefined);
+            finish(undefined);
             return;
           }
           context.drawImage(video, 0, 0, canvas.width, canvas.height);
           const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-          cleanup();
-          resolve(dataUrl);
+          finish(dataUrl);
         } catch {
-          cleanup();
-          resolve(undefined);
+          finish(undefined);
         }
       };
       video.onerror = () => {
-        cleanup();
-        resolve(undefined);
+        finish(undefined);
       };
       video.src = objectUrl;
     });
 
-  const uploadMediaDataUrl = async (
+  const readAgentAttachmentDataUrl = async (attachment: Attachment) => {
+    if (!canAttachVisuals) return undefined;
+    try {
+      if (attachment.kind === "image") {
+        const dataUrl = attachment.dataUrl ?? (attachment.url ? await fetchAsDataUrl(attachment.url) : undefined);
+        return dataUrlWithinAgentLimit(dataUrl);
+      }
+      if (attachment.kind === "video") {
+        const thumbnailUrl = attachment.thumbnailUrl;
+        if (!thumbnailUrl) return undefined;
+        const dataUrl = thumbnailUrl.startsWith("data:image/")
+          ? thumbnailUrl
+          : await fetchAsDataUrl(thumbnailUrl);
+        return dataUrlWithinAgentLimit(dataUrl);
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  };
+
+  const updateMediaUploadItem = (id: string, patch: Partial<MediaUploadItem>) => {
+    setMediaUploadItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  };
+
+  const removeMediaUploadItem = (id: string) => {
+    setMediaUploadItems((current) => current.filter((item) => item.id !== id));
+  };
+
+  const removeMediaUploadItemLater = (id: string, delay = 1800) => {
+    window.setTimeout(() => {
+      removeMediaUploadItem(id);
+    }, delay);
+  };
+
+  const uploadMediaFile = async (
     id: string,
-    name: string,
+    file: File,
     kind: AttachmentKind,
-    dataUrl: string,
     dimensions?: Pick<Attachment, "width" | "height">,
     thumbnailDataUrl?: string,
   ): Promise<Attachment> => {
     if (!canCaregive) throw new Error("当前身份仅可查看，不能上传附件。");
-    const uploaded = await uploadDataUrlAttachment({ id, name, kind, dataUrl, thumbnailDataUrl });
-    return {
+    updateMediaUploadItem(id, { status: "uploading", progress: 1, message: "上传中" });
+    const uploaded = await uploadFileAttachment({
+      id,
+      name: file.name,
+      kind,
+      file,
+      thumbnailDataUrl,
+      onProgress: (progress) => updateMediaUploadItem(id, { status: "uploading", progress: Math.max(1, Math.min(99, progress)), message: `上传 ${progress}%` }),
+    });
+    updateMediaUploadItem(id, { status: "processing", progress: 100, message: "整理中" });
+    const attachment: Attachment = {
       id: uploaded.id,
       name: uploaded.name,
       kind: uploaded.kind,
@@ -4223,86 +4436,147 @@ function App() {
       mimeType: uploaded.mimeType,
       width: dimensions?.width,
       height: dimensions?.height,
+      createdAt: uploaded.createdAt,
     };
+    return attachment;
   };
 
-  const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!canCaregive || !canAttachVisuals) {
-      event.target.value = "";
-      return;
+  const queueMediaFiles = (files: File[], limit: number): QueuedMediaFile[] =>
+    files
+      .filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"))
+      .slice(0, limit)
+      .map((file) => ({
+        id: makeId("attachment"),
+        file,
+        kind: file.type.startsWith("video/") ? "video" as AttachmentKind : "image" as AttachmentKind,
+      }));
+
+  const processSelectedMediaFiles = async (files: File[], target: MediaUploadTarget) => {
+    const availableSlots = target === "chat" ? Math.max(0, 4 - attachments.length) : 20;
+    const queue = queueMediaFiles(files, availableSlots);
+    if (queue.length) {
+      setMediaUploadItems((current) => [
+        ...current,
+        ...queue.map(({ id, file, kind }) => ({
+          id,
+          name: file.name,
+          kind,
+          target,
+          status: "preparing" as MediaUploadStatus,
+          progress: 0,
+          message: "准备中",
+        })),
+      ]);
     }
 
-    const files = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"));
-    try {
-      const next = await Promise.all(
-        files.map(async (file) => {
-          const id = makeId("attachment");
-          const dataUrl = await readFileAsDataUrl(file);
-          const kind: AttachmentKind = file.type.startsWith("video/") ? "video" : "image";
-          const dimensions = kind === "image" ? await readImageDimensions(dataUrl) : {};
-          const thumbnailDataUrl = kind === "video" ? await createVideoThumbnailDataUrl(file) : undefined;
-          return uploadMediaDataUrl(id, file.name, kind, dataUrl, dimensions, thumbnailDataUrl);
-        }),
-      );
-      setAttachments((current) => [...current, ...next].slice(0, 4));
-    } catch (error) {
+    const failures: string[] = [];
+    for (const item of queue) {
+      if (item.file.size > MAX_MEDIA_UPLOAD_BYTES) {
+        const message = `超过 ${formatFileSize(MAX_MEDIA_UPLOAD_BYTES)} 限制`;
+        failures.push(`${item.file.name} ${message}`);
+        updateMediaUploadItem(item.id, { status: "failed", progress: 0, message });
+        removeMediaUploadItemLater(item.id, 6000);
+        continue;
+      }
+      try {
+        updateMediaUploadItem(item.id, { status: "preparing", progress: 0, message: item.kind === "video" ? "生成预览" : "读取信息" });
+        const dimensions = item.kind === "image" ? await readImageDimensionsFromFile(item.file) : {};
+        const thumbnailDataUrl = item.kind === "video" ? await createVideoThumbnailDataUrl(item.file) : undefined;
+        const attachment = await uploadMediaFile(item.id, item.file, item.kind, dimensions, thumbnailDataUrl);
+        if (target === "chat") {
+          removeMediaUploadItem(item.id);
+          setAttachments((current) => [...current, attachment].slice(0, 4));
+        } else {
+          const albumItem = albumItemFromStandaloneAttachment(attachment);
+          setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
+          updateMediaUploadItem(item.id, { status: "done", progress: 100, message: "已加入相册" });
+          removeMediaUploadItemLater(item.id, 1600);
+          void persistRecord("albumItems", albumItem.id, albumItemForStorage(albumItem)).catch(() => setStorageStatus("offline"));
+          hapticSuccess();
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "上传失败";
+        failures.push(`${item.file.name} ${message}`);
+        updateMediaUploadItem(item.id, { status: "failed", progress: 0, message });
+        removeMediaUploadItemLater(item.id, 6000);
+      }
+    }
+    if (failures.length || (target === "chat" && availableSlots === 0)) {
       setMessages((current) => [
         ...current,
         {
           id: makeId("msg"),
           role: "ai",
-          text: error instanceof Error ? `素材上传失败：${error.message}` : "素材上传失败，请稍后再试。",
+          text: failures.length
+            ? `${target === "chat" ? "素材" : "相册"}上传失败：${failures.slice(0, 2).join("；")}${failures.length > 2 ? " 等" : ""}`
+            : "最多同时添加 4 个素材，先发送当前内容后再继续添加。",
           createdAt: new Date().toISOString(),
           tags: ["系统"],
         },
       ]);
     }
+  };
+
+  const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!canCaregive || !canAttachVisuals || isUploadingChatMedia) {
+      event.target.value = "";
+      return;
+    }
+    await processSelectedMediaFiles(Array.from(event.target.files ?? []), "chat");
+    event.target.value = "";
+  };
+
+  const handleAlbumFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!canCaregive || isUploadingAlbumMedia) {
+      event.target.value = "";
+      return;
+    }
+    await processSelectedMediaFiles(Array.from(event.target.files ?? []), "album");
     event.target.value = "";
   };
 
   const openMediaPicker = async () => {
-    if (!canCaregive || !canAttachVisuals) return;
+    if (!canCaregive || !canAttachVisuals || isUploadingChatMedia) return;
 
-    if (fileInputRef.current) {
-      fileInputRef.current?.click();
+    const availableSlots = Math.max(0, 4 - attachments.length);
+    if (availableSlots <= 0) {
+      await processSelectedMediaFiles([], "chat");
       return;
     }
 
-    try {
-      const photo = await NativeCamera.getPhoto({
-        quality: 82,
-        allowEditing: false,
-        resultType: CameraResultType.DataUrl,
-        source: CameraSource.Prompt,
-        promptLabelHeader: "添加成长素材",
-        promptLabelPhoto: "从相册选择",
-        promptLabelPicture: "拍照",
-        promptLabelCancel: "取消",
-      });
-
-      if (!photo.dataUrl) return;
-
-      const nativeAttachment = await uploadMediaDataUrl(
-        makeId("attachment"),
-        `成长照片-${new Date().toLocaleTimeString("zh-CN", { hour12: false })}.jpeg`,
-        "image",
-        photo.dataUrl,
-        await readImageDimensions(photo.dataUrl),
-      );
-      setAttachments((current) => [...current, nativeAttachment].slice(0, 4));
-    } catch (error) {
-      if (error instanceof Error && /cancel/i.test(error.message)) return;
-      setMessages((current) => [
-        ...current,
-        {
-          id: makeId("msg"),
-          role: "ai",
-          text: error instanceof Error ? `素材上传失败：${error.message}` : "素材上传失败，请稍后再试。",
-          createdAt: new Date().toISOString(),
-          tags: ["系统"],
-        },
-      ]);
+    if (isNativeMediaPickerAvailable()) {
+      try {
+        const files = await pickNativeMediaFiles({ limit: availableSlots });
+        if (files.length) await processSelectedMediaFiles(files, "chat");
+        return;
+      } catch (error) {
+        if (isNativeMediaPickerCancel(error)) return;
+        console.warn("[native-media-picker] failed", error);
+        const message = error instanceof Error ? error.message : "无法读取已选择的素材";
+        showSystemWeakNotice(`素材选择失败：${message}`, "warning", 3600);
+        return;
+      }
     }
+
+    fileInputRef.current?.click();
+  };
+
+  const openAlbumMediaPicker = async () => {
+    if (!canCaregive || isUploadingAlbumMedia) return;
+    if (isNativeMediaPickerAvailable()) {
+      try {
+        const files = await pickNativeMediaFiles({ limit: 20 });
+        if (files.length) await processSelectedMediaFiles(files, "album");
+        return;
+      } catch (error) {
+        if (isNativeMediaPickerCancel(error)) return;
+        console.warn("[native-media-picker] failed", error);
+        const message = error instanceof Error ? error.message : "无法读取已选择的素材";
+        showSystemWeakNotice(`相册选择失败：${message}`, "warning", 3600);
+        return;
+      }
+    }
+    albumFileInputRef.current?.click();
   };
 
   const clearVoiceAutoSubmitTimer = () => {
@@ -4672,7 +4946,7 @@ function App() {
   ) => {
     const text = (textOverride ?? inputValueRef.current).trim();
     if (!canCaregive) return;
-    if ((!text && attachments.length === 0) || isSubmittingRef.current) return;
+    if ((!text && attachments.length === 0) || isSubmittingRef.current || isUploadingChatMedia) return;
     hapticLight();
 
     const submittedAttachments = attachments;
@@ -4684,15 +4958,8 @@ function App() {
       attachments: submittedAttachments,
     };
     const albumDecisions = submittedAttachments.map((attachment) => decideAlbumMedia(parentMessage, attachment));
-    let autoAlbumItems = albumDecisions
-      .filter((decision) => decision.mode === "auto_save")
-      .map((decision) => {
-        const attachment = submittedAttachments.find((item) => item.id === decision.attachmentId);
-        return attachment ? albumItemFromDecision(decision, parentMessage, attachment) : null;
-      })
-      .filter((item): item is AlbumItem => Boolean(item));
     let albumPrompts = albumDecisions
-      .filter((decision) => decision.mode === "ask")
+      .filter((decision) => decision.mode === "auto_save" || decision.mode === "ask")
       .map(albumPromptFromDecision);
     const ignoredScreenshotDecision = albumDecisions.find(
       (decision) => decision.mode === "ignore" && decision.tags.includes("截图"),
@@ -4724,12 +4991,9 @@ function App() {
       const agentAttachments = await Promise.all(
         submittedAttachments.map(async (item) => ({
           id: item.id,
-          name: item.name,
+          name: item.kind === "video" ? `${item.name}（视频缩略图）` : item.name,
           kind: item.kind,
-          dataUrl:
-            canAttachVisuals && (item.kind === "image" || item.kind === "video")
-              ? item.dataUrl ?? (item.url ? await fetchAsDataUrl(item.url) : undefined)
-              : undefined,
+          dataUrl: await readAgentAttachmentDataUrl(item),
         })),
       );
       let reasoningText = "";
@@ -4812,7 +5076,6 @@ function App() {
           ? `${result.aiText}\n\n这看起来是 App、网页或聊天截图，不会保存到成长相册。`
           : result.aiText;
       const hasServerDecisions = result.effectDecisions.length > 0;
-      const albumEffectSavedLabels: string[] = [];
       let albumEffectMissingTarget = false;
 
       if (hasServerDecisions) {
@@ -4824,27 +5087,17 @@ function App() {
             albumEffectMissingTarget = true;
             return;
           }
-          if (decision.mode === "auto") {
-            autoAlbumItems = dedupeAlbumItems([
-              albumItemFromEffectDecision(decision, target.message, target.attachment),
-              ...autoAlbumItems,
-            ]);
-            albumEffectSavedLabels.push(mediaKindLabel(target.attachment));
-            return;
+          const prompt = albumPromptFromEffectDecision(decision, target.message, target.attachment);
+          if (!albumPrompts.some((item) => item.sourceMessageId === prompt.sourceMessageId && item.attachmentId === prompt.attachmentId)) {
+            albumPrompts = [...albumPrompts, prompt];
           }
-          albumPrompts = [
-            ...albumPrompts,
-            albumPromptFromEffectDecision(decision, target.message, target.attachment),
-          ];
         });
       }
 
-      if (albumEffectSavedLabels.length) {
-        const savedLabel = uniqueTexts(albumEffectSavedLabels).join("和") || "素材";
-        const savedText = `已把刚才的${savedLabel}保存到相册啦。`;
-        aiText = /无法|没办法|不能|需要.*确认|前端.*确认/.test(aiText) ? savedText : `${aiText}\n\n${savedText}`;
-      } else if (albumEffectMissingTarget) {
+      if (albumEffectMissingTarget) {
         aiText = `${aiText}\n\n我没有找到要保存的照片或视频，可以重新发一下素材再告诉我保存到相册。`;
+      } else if (albumPrompts.some((prompt) => prompt.status === "pending") && !/点.*保存到相册|确认.*保存到相册|保存到相册.*确认/.test(aiText)) {
+        aiText = `${aiText}\n\n我会等你点「保存到相册」后再收藏这段素材。`;
       }
 
       const aiMessage: ChatMessage = {
@@ -4924,9 +5177,6 @@ function App() {
         setCareLogs(nextLogs);
         setAutoRecordUndos((current) => [...autoUndos, ...current]);
       }
-      if (autoAlbumItems.length) {
-        setAlbumItems((current) => dedupeAlbumItems([...autoAlbumItems, ...current]));
-      }
       const autoScheduledReminders = autoReminderCandidates.length
         ? await scheduleNativeReminders(autoReminderCandidates, { careLogs })
         : [];
@@ -4937,7 +5187,7 @@ function App() {
           return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
         });
       }
-      if (autoUndos.length || autoAlbumItems.length || autoScheduledReminders.length) hapticSuccess();
+      if (autoUndos.length || autoScheduledReminders.length) hapticSuccess();
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
       );
@@ -4960,11 +5210,6 @@ function App() {
       if (autoRecordedCareLogs.length) {
         autoRecordedCareLogs.forEach((log) => {
           persistenceTasks.push(() => persistRecord("careLogs", log.id, log));
-        });
-      }
-      if (autoAlbumItems.length) {
-        autoAlbumItems.forEach((item) => {
-          persistenceTasks.push(() => persistRecord("albumItems", item.id, albumItemForStorage(item)));
         });
       }
       if (autoScheduledReminders.length) {
@@ -5204,7 +5449,45 @@ function App() {
       0,
     );
     setAlbumItems((current) => dedupeAlbumItems([nextItem, ...current.filter((entry) => entry.id !== nextItem.id)]));
+    setPreviewAlbumItem((current) => (current?.id === nextItem.id ? nextItem : current));
     void persistRecord("albumItems", nextItem.id, albumItemForStorage(nextItem)).catch(() => setStorageStatus("offline"));
+  };
+
+  const removeAlbumItem = async (item: AlbumItem) => {
+    if (!canCaregive) return;
+    const confirmed = window.confirm(`删除「${item.title}」？\n\n会同时删除云端/本地存储里的原始素材和缩略图。`);
+    if (!confirmed) return;
+    const attachmentId = item.attachmentId || item.attachment?.id || "";
+    setAlbumItems((current) =>
+      current.filter((entry) => entry.id !== item.id && (!attachmentId || entry.attachmentId !== attachmentId)),
+    );
+    setPreviewAlbumItem((current) => (current?.id === item.id ? null : current));
+    if (attachmentId) {
+      setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
+      setPreviewAttachment((current) => (current?.id === attachmentId ? null : current));
+      setPreviewAlbumItem((current) => (current?.id === item.id || current?.attachmentId === attachmentId ? null : current));
+    }
+    try {
+      if (attachmentId) {
+        const response = await deleteAttachment(attachmentId);
+        applyStateResponse(response);
+      } else {
+        const response = await deleteAppRecord("albumItems", item.id);
+        applyStateResponse(response);
+      }
+    } catch (error) {
+      setStorageStatus("offline");
+      setMessages((current) => [
+        ...current,
+        {
+          id: makeId("msg"),
+          role: "ai",
+          text: error instanceof Error ? `素材删除失败：${error.message}` : "素材删除失败，请稍后再试。",
+          createdAt: new Date().toISOString(),
+          tags: ["系统"],
+        },
+      ]);
+    }
   };
 
   const updateAlbumPromptStatus = (messageId: string, promptId: string, status: AlbumPrompt["status"]) => {
@@ -5225,7 +5508,7 @@ function App() {
     }
   };
 
-  const saveAlbumPrompt = (messageId: string, prompt: AlbumPrompt) => {
+  const saveAlbumPrompt = async (messageId: string, prompt: AlbumPrompt) => {
     if (!canCaregive) return;
     const sourceMessage = messages.find((message) => message.id === prompt.sourceMessageId);
     const attachment = sourceMessage?.attachments?.find((item) => item.id === prompt.attachmentId);
@@ -5235,8 +5518,19 @@ function App() {
     }
     const albumItem = albumItemFromDecision({ ...prompt, mode: "auto_save" }, sourceMessage, attachment);
     setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
-    updateAlbumPromptStatus(messageId, prompt.id, "saved");
-    void persistRecord("albumItems", albumItem.id, albumItemForStorage(albumItem)).catch(() => setStorageStatus("offline"));
+    try {
+      await persistRecord("albumItems", albumItem.id, albumItemForStorage(albumItem));
+      updateAlbumPromptStatus(messageId, prompt.id, "saved");
+      hapticSuccess();
+    } catch (error) {
+      setAlbumItems((current) => current.filter((item) => item.id !== albumItem.id));
+      setStorageStatus("offline");
+      showSystemWeakNotice(
+        error instanceof Error ? `保存到相册失败：${error.message}` : "保存到相册失败，请稍后再试",
+        "warning",
+        3600,
+      );
+    }
   };
 
   const ignoreAlbumPrompt = (messageId: string, prompt: AlbumPrompt) => {
@@ -5606,12 +5900,18 @@ function App() {
         : compressionStatus === "done"
           ? "较早聊天记录已整理进长期摘要。"
           : compressionStatus === "failed"
-            ? "本次聊天记录整理未完成，不影响继续使用。"
-            : "";
+          ? "本次聊天记录整理未完成，不影响继续使用。"
+          : "";
+  const systemWeakNoticeView = systemWeakNotice ? (
+    <div className={`system-weak-toast ${systemWeakNotice.tone}`} role="status" aria-live="polite">
+      <span>{systemWeakNotice.message}</span>
+    </div>
+  ) : null;
 
   if (authStatus === "checking") {
     return (
       <main className="app-shell auth-shell">
+        {systemWeakNoticeView}
         <section className="auth-panel">
           <StorybookScene />
           <h1>小宝记</h1>
@@ -5629,6 +5929,7 @@ function App() {
   if (authStatus === "unauthenticated") {
     return (
       <main className="app-shell auth-shell">
+        {systemWeakNoticeView}
         <section className="auth-panel">
           <StorybookScene />
           <div>
@@ -5725,6 +6026,7 @@ function App() {
     if (!canCaregive) {
       return (
         <main className="app-shell auth-shell">
+          {systemWeakNoticeView}
           <section className="auth-panel onboarding-panel">
             <StorybookScene />
             <div className="onboarding-head">
@@ -5749,6 +6051,7 @@ function App() {
     const progress = onboardingStep + 1;
     return (
       <main className="app-shell auth-shell">
+        {systemWeakNoticeView}
         <section className="auth-panel onboarding-panel">
           <StorybookScene />
           <div className="onboarding-head">
@@ -5878,6 +6181,7 @@ function App() {
 
   return (
     <main className={`app-shell mobile-tab-${activeMobileTab}`}>
+      {systemWeakNoticeView}
       <section className="topbar" aria-label="今日概览">
         <div className="brand-block">
           <div className="brand-mark">
@@ -5977,8 +6281,8 @@ function App() {
               <button
                 type="button"
                 className="icon-button"
-                title={canAttachVisuals ? "照片或视频" : "当前模型不支持视觉理解"}
-                disabled={!canAttachVisuals || isSubmitting}
+                title={isUploadingChatMedia ? "素材正在上传" : canAttachVisuals ? "照片或视频" : "当前模型不支持视觉理解"}
+                disabled={!canAttachVisuals || isSubmitting || isUploadingChatMedia}
                 onClick={openMediaPicker}
               >
                 <CameraIcon size={18} />
@@ -6091,7 +6395,10 @@ function App() {
                         type="button"
                         className="attachment-thumb"
                         key={item.id}
-                        onClick={() => item.url && setPreviewAttachment(item)}
+                        onClick={() => {
+                          if (!item.url) return;
+                          openPreviewAttachment(item, null);
+                        }}
                         disabled={!item.url}
                         title={item.url ? "查看大图" : item.name}
                       >
@@ -6451,8 +6758,22 @@ function App() {
           </div>
 
           <form className="composer" onSubmit={handleSubmit}>
-            {attachments.length ? (
+            {chatUploadItems.length || attachments.length ? (
               <div className="pending-attachments">
+                {chatUploadItems.map((item) => (
+                  <div className={`pending-item upload-item ${item.status}`} key={item.id}>
+                    <div className="pending-preview-button upload-state-icon" aria-hidden="true">
+                      {item.kind === "video" ? <Video size={17} /> : <ImageIcon size={17} />}
+                    </div>
+                    <div className="upload-copy">
+                      <span title={item.name}>{item.name}</span>
+                      <small>{item.message ?? (item.status === "uploading" ? `上传 ${item.progress}%` : "准备中")}</small>
+                      <div className="upload-progress-track" aria-hidden="true">
+                        <div className="upload-progress-bar" style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
                 {attachments.map((item) => (
                   <div className="pending-item" key={item.id}>
                     <button
@@ -6460,7 +6781,10 @@ function App() {
                       className="pending-preview-button"
                       title={item.url ? "查看大图" : item.name}
                       disabled={!item.url}
-                      onClick={() => item.url && setPreviewAttachment(item)}
+                      onClick={() => {
+                        if (!item.url) return;
+                        openPreviewAttachment(item, null);
+                      }}
                     >
                       {item.kind === "image" && attachmentListSrc(item) ? (
                         <img src={attachmentListSrc(item)} alt={item.name} loading="lazy" decoding="async" />
@@ -6490,7 +6814,7 @@ function App() {
                   accept="image/*,video/*"
                   multiple
                   hidden
-                  disabled={!canAttachVisuals || isSubmitting}
+                  disabled={!canAttachVisuals || isSubmitting || isUploadingChatMedia}
                   onChange={handleFiles}
                 />
                 <StorySelect
@@ -6505,8 +6829,8 @@ function App() {
                 <button
                   type="button"
                   className="tool-button"
-                  title={canAttachVisuals ? "上传照片或视频" : "当前模型不支持视觉理解"}
-                  disabled={!canAttachVisuals || isSubmitting}
+                  title={isUploadingChatMedia ? "素材正在上传" : canAttachVisuals ? "上传照片或视频" : "当前模型不支持视觉理解"}
+                  disabled={!canAttachVisuals || isSubmitting || isUploadingChatMedia}
                   onClick={openMediaPicker}
                 >
                   <CameraIcon size={19} />
@@ -6602,7 +6926,7 @@ function App() {
                     disabled={isSubmitting}
                   />
                 )}
-                <button className="send-button" type="submit" title={isSubmitting ? "处理中" : "发送"} disabled={isSubmitting}>
+                <button className="send-button" type="submit" title={isUploadingChatMedia ? "素材上传中" : isSubmitting ? "处理中" : "发送"} disabled={isSubmitting || isUploadingChatMedia}>
                   <Send size={19} />
                 </button>
               </div>
@@ -6940,32 +7264,46 @@ function App() {
               <p className="eyebrow">相册</p>
               <h2>成长回忆库</h2>
             </div>
-            <span className="screen-pill">{albumItems.length} 项素材</span>
+            <div className="screen-head-actions">
+              <input
+                ref={albumFileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                hidden
+                disabled={!canCaregive || isUploadingAlbumMedia}
+                onChange={handleAlbumFiles}
+              />
+              <span className="screen-pill">{albumItems.length} 项素材</span>
+              {canCaregive ? (
+                <button
+                  type="button"
+                  className="screen-action-button album-upload-button"
+                  title={isUploadingAlbumMedia ? "相册素材正在上传" : "上传到相册"}
+                  disabled={isUploadingAlbumMedia}
+                  onClick={openAlbumMediaPicker}
+                >
+                  <CameraIcon size={15} />
+                  上传
+                </button>
+              ) : null}
+            </div>
           </div>
 
-          <section className="album-overview-card">
-            <div className="album-hero-copy">
-              <img src={companionAvatarIcon} alt="" />
-              <div>
-                <strong>只收藏值得回看的照片和视频</strong>
-                <p>根据上传时的文字和媒体元数据做保守判断，截图和普通随手素材不会自动进相册。</p>
-              </div>
-            </div>
-            <div className="album-stats">
-              <span>
-                <b>{albumStats.media}</b>
-                素材
-              </span>
-              <span>
-                <b>{albumStats.videos}</b>
-                视频
-              </span>
-              <span>
-                <b>{albumStats.categories}</b>
-                分类
-              </span>
-            </div>
-          </section>
+          <div className="album-summary-strip">
+            <span>
+              <b>{albumStats.media}</b>
+              素材
+            </span>
+            <span>
+              <b>{albumStats.videos}</b>
+              视频
+            </span>
+            <span>
+              <b>{albumStats.categories}</b>
+              分类
+            </span>
+          </div>
 
           <div className="album-category-row" role="tablist" aria-label="相册分类">
             {ALBUM_CATEGORIES.map((category) => (
@@ -6982,59 +7320,74 @@ function App() {
             ))}
           </div>
 
-          {filteredAlbumItems.length ? (
-            <div className="album-grid">
-              {filteredAlbumItems.map((item) => (
-                <article className={`album-card album-${item.category} ${item.kind}`} key={item.id}>
-                  {item.kind === "media" && item.attachment?.url ? (
-                    <button
-                      type="button"
-                      className="album-thumb"
-                      onClick={() => item.attachment && setPreviewAttachment(item.attachment)}
-                      aria-label={`预览 ${item.title}`}
-                    >
-                      {item.attachment.kind === "video" ? (
-                        item.attachment.thumbnailUrl ? (
-                          <img src={item.attachment.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" />
-                        ) : (
-                          <Video size={24} />
-                        )
-                      ) : (
-                        <img src={attachmentListSrc(item.attachment)} alt={item.title} loading="lazy" decoding="async" />
-                      )}
-                    </button>
-                  ) : (
-                    <span className="album-event-icon" aria-hidden="true">
-                      <img src={albumCategoryIconSrc(item.category)} alt="" />
-                    </span>
-                  )}
-                  <div className="album-card-body">
-                    <span>{formatFullDate(item.date)} · {albumCategoryLabel(item.category)}</span>
-                    <h3>{item.title}</h3>
-                    <div className="tag-row">
-                      {item.tags.slice(0, 3).map((tag) => (
-                        <span key={tag}>{tag}</span>
-                      ))}
-                    </div>
-                    <div className="album-card-actions">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          selectRecordDate(item.date);
-                          setRecordView("calendar");
-                          switchMobileTab("records");
-                        }}
-                      >
-                        查看当天
-                      </button>
-                      {canCaregive ? (
-                        <button type="button" onClick={() => editAlbumItem(item)}>
-                          编辑
-                        </button>
-                      ) : null}
+          {albumUploadItems.length ? (
+            <div className="album-upload-list" aria-live="polite">
+              {albumUploadItems.map((item) => (
+                <div className={`album-upload-item upload-item ${item.status}`} key={item.id}>
+                  <div className="album-upload-icon" aria-hidden="true">
+                    {item.kind === "video" ? <Video size={17} /> : <ImageIcon size={17} />}
+                  </div>
+                  <div className="upload-copy">
+                    <span title={item.name}>{item.name}</span>
+                    <small>{item.message ?? (item.status === "uploading" ? `上传 ${item.progress}%` : "准备中")}</small>
+                    <div className="upload-progress-track" aria-hidden="true">
+                      <div className="upload-progress-bar" style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
                     </div>
                   </div>
-                </article>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {albumGroups.length ? (
+            <div className="album-timeline" key={`album-timeline-${albumAnimationSeed}-${albumCategory}`}>
+              {albumGroups.map((group, groupIndex) => (
+                <section className="album-month-group" key={group.key}>
+                  <div className="album-month-head">
+                    <h3>{group.label}</h3>
+                    <span>{group.items.length} 项</span>
+                  </div>
+                  <div className="album-photo-grid">
+                    {group.items.map((item, itemIndex) => {
+                      const attachment = item.attachment;
+                      return (
+                        <article
+                          className={`album-photo-tile album-${item.category}`}
+                          key={item.id}
+                          style={{ "--tile-index": (groupIndex * 7 + itemIndex) % 18 } as CSSProperties}
+                        >
+                          <button
+                            type="button"
+                            className="album-photo-thumb"
+                            onClick={() => {
+                              if (!attachment?.url) return;
+                              openPreviewAttachment(attachment, item);
+                            }}
+                            aria-label={`预览 ${item.title}`}
+                            disabled={!attachment?.url}
+                          >
+                            {attachment?.kind === "video" ? (
+                              attachment.thumbnailUrl ? (
+                                <img src={attachment.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" />
+                              ) : (
+                                <Video size={24} />
+                              )
+                            ) : attachment ? (
+                              <img src={attachmentListSrc(attachment)} alt={item.title} loading="lazy" decoding="async" />
+                            ) : (
+                              <img src={albumCategoryIconSrc(item.category)} alt="" loading="lazy" decoding="async" />
+                            )}
+                            {attachment?.kind === "video" ? (
+                              <span className="album-video-badge" aria-hidden="true">
+                                <Video size={13} />
+                              </span>
+                            ) : null}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
               ))}
             </div>
           ) : (
@@ -7044,8 +7397,8 @@ function App() {
               </span>
               <p>还没有这个分类的回忆。</p>
               {canCaregive ? (
-                <button type="button" onClick={() => switchMobileTab("chat")}>
-                  去上传值得收藏的素材
+                <button type="button" onClick={openAlbumMediaPicker}>
+                  上传到相册
                 </button>
               ) : null}
             </div>
@@ -7387,6 +7740,22 @@ function App() {
                 <span>我的身份</span>
                 <strong>{authMember?.roleName ?? "家庭成员"} · {canCaregive ? "照护人" : "仅查看"}</strong>
               </div>
+              <div className="profile-detail-row profile-version-row">
+                <span>OTA 版本</span>
+                <strong>{runtimeVersion.otaVersion}</strong>
+              </div>
+              <div className="profile-detail-row profile-version-row">
+                <span>运行状态</span>
+                <strong>{runtimeVersion.status} · {runtimeVersion.platform}</strong>
+              </div>
+              <div className="profile-detail-row profile-version-row">
+                <span>原生版本</span>
+                <strong>{runtimeVersion.nativeVersion}</strong>
+              </div>
+              <div className="profile-detail-row profile-version-row">
+                <span>后端接口</span>
+                <strong>{apiBaseUrl}</strong>
+              </div>
               <div className="profile-detail-group">
                 <span>过敏信息</span>
                 <div className="profile-chip-list">
@@ -7639,18 +8008,63 @@ function App() {
         </div>
       ) : null}
       {previewAttachment?.url ? (
-        <div className="media-preview" role="dialog" aria-modal="true" aria-label="附件预览" onClick={closePreviewAttachment}>
-          <button className="media-preview-close" type="button" aria-label="关闭预览" onClick={closePreviewAttachment}>
-            <X size={20} />
-          </button>
-          <figure>
-            {previewAttachment.kind === "video" ? (
+        <div className={`media-preview ${previewMotion}`} role="dialog" aria-modal="true" aria-label="附件预览" onClick={handlePreviewClick}>
+          <figure
+            className={previewAlbumItem ? "album-preview-figure" : undefined}
+            onPointerDown={onPreviewStagePointerDown}
+            onPointerMove={onPreviewStagePointerMove}
+            onPointerUp={onPreviewStagePointerEnd}
+            onPointerCancel={onPreviewStagePointerEnd}
+          >
+            {previewAlbumItem && previewCarouselItems.length ? (
+              <div className="media-preview-carousel">
+                <div className="media-preview-track" ref={previewCarouselTrackRef}>
+                  {previewCarouselItems.map((item, index) => {
+                    const attachment = item?.attachment;
+                    const isCurrent = item?.id === previewAlbumItem.id;
+                    return (
+                      <div className={`media-preview-slide ${isCurrent ? "current" : ""} ${attachment ? "" : "empty"}`} key={`preview-slide-${index}`}>
+                        {attachment?.url ? (
+                          attachment.kind === "video" ? (
+                            <video
+                              ref={isCurrent ? bindPreviewVideo : undefined}
+                              src={attachment.url}
+                              controls={isCurrent}
+                              playsInline
+                              poster={attachment.thumbnailUrl}
+                              preload={isCurrent ? "auto" : "metadata"}
+                              onClick={(event) => event.stopPropagation()}
+                            />
+                          ) : (
+                            <img
+                              className={isCurrent && previewTransform.scale > 1 ? "is-zoomed" : ""}
+                              src={attachment.url}
+                              alt={attachment.name}
+                              draggable={false}
+                              style={isCurrent
+                                ? {
+                                    transform: `translate3d(${previewTransform.x}px, ${previewTransform.y}px, 0) scale(${previewTransform.scale})`,
+                                  }
+                                : undefined}
+                              onPointerDown={isCurrent ? onPreviewImagePointerDown : undefined}
+                              onPointerMove={isCurrent ? onPreviewImagePointerMove : undefined}
+                              onPointerUp={isCurrent ? onPreviewImagePointerEnd : undefined}
+                              onPointerCancel={isCurrent ? onPreviewImagePointerEnd : undefined}
+                            />
+                          )
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : previewAttachment.kind === "video" ? (
               <video
                 ref={bindPreviewVideo}
                 src={previewAttachment.url}
                 controls
-                autoPlay
                 playsInline
+                poster={previewAttachment.thumbnailUrl}
                 preload="auto"
                 onClick={(event) => event.stopPropagation()}
               />
@@ -7663,15 +8077,54 @@ function App() {
                 style={{
                   transform: `translate3d(${previewTransform.x}px, ${previewTransform.y}px, 0) scale(${previewTransform.scale})`,
                 }}
-                onClick={(event) => event.stopPropagation()}
-                onDoubleClick={togglePreviewZoom}
                 onPointerDown={onPreviewImagePointerDown}
                 onPointerMove={onPreviewImagePointerMove}
                 onPointerUp={onPreviewImagePointerEnd}
                 onPointerCancel={onPreviewImagePointerEnd}
               />
             )}
-            <figcaption>{previewAttachment.name}</figcaption>
+            {previewAlbumItem ? (
+              <figcaption className="media-preview-details" onClick={(event) => event.stopPropagation()}>
+                <div className="media-preview-meta">
+                  <strong>{previewAlbumItem.title}</strong>
+                  <span>{formatFullDate(previewAlbumItem.date)} · {albumCategoryLabel(previewAlbumItem.category)}</span>
+                </div>
+                {previewAlbumItem.tags.length ? (
+                  <div className="media-preview-tags">
+                    {previewAlbumItem.tags.slice(0, 4).map((tag) => (
+                      <span key={tag}>{tag}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {canCaregive ? (
+                  <div className="media-preview-actions">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        editAlbumItem(previewAlbumItem);
+                      }}
+                    >
+                      <PencilLine size={14} />
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void removeAlbumItem(previewAlbumItem);
+                      }}
+                    >
+                      <Trash2 size={14} />
+                      删除
+                    </button>
+                  </div>
+                ) : null}
+              </figcaption>
+            ) : (
+              <figcaption>{previewAttachment.name}</figcaption>
+            )}
           </figure>
         </div>
       ) : null}

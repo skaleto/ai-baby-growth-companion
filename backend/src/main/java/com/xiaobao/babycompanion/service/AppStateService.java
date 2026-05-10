@@ -120,7 +120,7 @@ public class AppStateService {
                 readPrivateList(reminderService, familyId, userId),
                 readPrivateList(memoryService, familyId, userId),
                 readPrivateList(pendingEffectService, familyId, userId),
-                readList(albumItemService, familyId),
+                readAlbumItems(familyId),
                 readConversationSummary(familyId, userId),
                 null,
                 null
@@ -214,6 +214,18 @@ public class AppStateService {
             case "conversationSummary" -> conversationSummaryService.remove(privateQuery(ConversationSummaryRecord.class, familyId, userId));
             default -> throw new IllegalArgumentException("Unsupported state collection: " + collection);
         }
+        return readForUser(familyId, userId);
+    }
+
+    @Transactional
+    public AppStateResponse deleteAttachment(String id) {
+        currentUser.requireCaregiver();
+        AuthPrincipal principal = currentUser.requirePrincipal();
+        String familyId = principal.familyId();
+        String userId = principal.userId();
+        removeAlbumItemsForAttachment(familyId, id);
+        removeAttachmentReferencesFromRecords(familyId, id);
+        attachmentStorageService.deleteAttachment(id, familyId);
         return readForUser(familyId, userId);
     }
 
@@ -334,6 +346,108 @@ public class AppStateService {
                 .toList();
     }
 
+    private List<JsonNode> readAlbumItems(String familyId) {
+        return new ArrayList<>(readList(albumItemService, familyId));
+    }
+
+    private void collectAlbumAttachmentIds(JsonNode node, Set<String> attachmentIds) {
+        if (node == null || node.isNull()) return;
+        if (node instanceof ObjectNode object) {
+            String attachmentId = text(object, "attachmentId", "");
+            if (StringUtils.hasText(attachmentId)) attachmentIds.add(attachmentId);
+            JsonNode attachment = object.get("attachment");
+            if (attachment instanceof ObjectNode attachmentObject) {
+                String id = text(attachmentObject, "id", "");
+                if (StringUtils.hasText(id)) attachmentIds.add(id);
+            }
+            object.fields().forEachRemaining((entry) -> collectAlbumAttachmentIds(entry.getValue(), attachmentIds));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) collectAlbumAttachmentIds(child, attachmentIds);
+        }
+    }
+
+    private void removeAlbumItemsForAttachment(String familyId, String attachmentId) {
+        if (!StringUtils.hasText(attachmentId)) return;
+        QueryWrapper<AlbumItemRecord> query = familyQuery(AlbumItemRecord.class, familyId);
+        for (AlbumItemRecord record : albumItemService.list(query)) {
+            Set<String> attachmentIds = new LinkedHashSet<>();
+            collectAlbumAttachmentIds(parse(record.getPayloadJson()), attachmentIds);
+            if (attachmentIds.contains(attachmentId)) {
+                albumItemService.remove(familyQuery(AlbumItemRecord.class, familyId).eq("id", record.getId()));
+            }
+        }
+    }
+
+    private void removeAttachmentReferencesFromRecords(String familyId, String attachmentId) {
+        if (!StringUtils.hasText(attachmentId)) return;
+        removeAttachmentReferencesFromRecords(profileService, familyId, attachmentId);
+        removeAttachmentReferencesFromRecords(messageService, familyId, attachmentId);
+        removeAttachmentReferencesFromRecords(growthService, familyId, attachmentId);
+        removeAttachmentReferencesFromRecords(careLogService, familyId, attachmentId);
+        removeAttachmentReferencesFromRecords(pendingEffectService, familyId, attachmentId);
+    }
+
+    private <T extends AppRecordEntity> void removeAttachmentReferencesFromRecords(IService<T> service, String familyId, String attachmentId) {
+        QueryWrapper<T> query = familyQuery(null, familyId);
+        String now = Instant.now().toString();
+        for (T record : service.list(query)) {
+            JsonNode payload = parse(record.getPayloadJson());
+            if (!pruneAttachmentReferences(payload, attachmentId)) continue;
+            record.setPayloadJson(write(payload));
+            record.setUpdatedAt(now);
+            service.updateById(record);
+        }
+    }
+
+    private boolean pruneAttachmentReferences(JsonNode node, String attachmentId) {
+        if (node == null || node.isNull()) return false;
+        boolean changed = false;
+        if (node instanceof ObjectNode object) {
+            JsonNode attachment = object.get("attachment");
+            if (matchesAttachmentReference(attachment, attachmentId)) {
+                object.remove("attachment");
+                changed = true;
+            }
+
+            JsonNode attachments = object.get("attachments");
+            if (attachments instanceof ArrayNode array) {
+                for (int index = array.size() - 1; index >= 0; index--) {
+                    JsonNode item = array.get(index);
+                    if (matchesAttachmentReference(item, attachmentId)) {
+                        array.remove(index);
+                        changed = true;
+                    } else if (pruneAttachmentReferences(item, attachmentId)) {
+                        changed = true;
+                    }
+                }
+            }
+
+            List<String> fieldNames = new ArrayList<>();
+            object.fieldNames().forEachRemaining(fieldNames::add);
+            for (String fieldName : fieldNames) {
+                if ("attachment".equals(fieldName) || "attachments".equals(fieldName)) continue;
+                if (pruneAttachmentReferences(object.get(fieldName), attachmentId)) {
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+        if (node instanceof ArrayNode array) {
+            for (JsonNode child : array) {
+                if (pruneAttachmentReferences(child, attachmentId)) {
+                    changed = true;
+                }
+            }
+        }
+        return changed;
+    }
+
+    private boolean matchesAttachmentReference(JsonNode node, String attachmentId) {
+        if (!(node instanceof ObjectNode object)) return false;
+        return attachmentId.equals(text(object, "id", ""))
+                || attachmentId.equals(text(object, "attachmentId", ""));
+    }
+
     private List<JsonNode> readCareLogs(String familyId) {
         QueryWrapper<CareLogRecord> query = familyQuery(CareLogRecord.class, familyId);
         query.orderByAsc("sort_key").orderByAsc("created_at");
@@ -394,7 +508,9 @@ public class AppStateService {
             String userId
     ) {
         if (node == null || node.isNull()) return;
-        saveList(service, supplier, List.of(node), ownerType, now, familyId, userId);
+        String id = text(node, "id", ownerType + "-0");
+        ObjectNode payload = mutable(node, ownerType, id, familyId, userId);
+        service.saveOrUpdate(record(supplier, id, payload, ownerType, sortKey(payload, ownerType, 0), now, familyId, userId));
     }
 
     private void saveCareLogPatch(JsonNode patch, String now, String familyId, String userId) {
@@ -588,14 +704,18 @@ public class AppStateService {
         if (attachment == null) return;
         if (!StringUtils.hasText(text(object, "name", ""))) object.put("name", attachment.name());
         if (!StringUtils.hasText(text(object, "mimeType", ""))) object.put("mimeType", attachment.mimeType());
-        if (!StringUtils.hasText(text(object, "filePath", ""))) object.put("filePath", attachment.filePath());
-        if (!StringUtils.hasText(text(object, "publicUrl", ""))) object.put("publicUrl", attachment.publicUrl());
+        if (StringUtils.hasText(attachment.filePath())) object.put("filePath", attachment.filePath());
+        if (StringUtils.hasText(attachment.publicUrl())) object.put("publicUrl", attachment.publicUrl());
         if (StringUtils.hasText(attachment.url())) object.put("url", attachment.url());
-        if (StringUtils.hasText(attachment.thumbnailPath()) && !StringUtils.hasText(text(object, "thumbnailPath", ""))) {
+        if (StringUtils.hasText(attachment.thumbnailPath())) {
             object.put("thumbnailPath", attachment.thumbnailPath());
+        } else {
+            object.remove("thumbnailPath");
         }
         if (StringUtils.hasText(attachment.thumbnailUrl())) {
             object.put("thumbnailUrl", attachment.thumbnailUrl());
+        } else {
+            object.remove("thumbnailUrl");
         }
     }
 

@@ -1,5 +1,5 @@
 import { AgentChatRequest, AgentChatResponse, ConversationSummary, ToolActivity } from "./types";
-import { apiBaseUrl, authHeaders } from "./authApi";
+import { apiBaseUrl, apiFetch, authHeaders } from "./authApi";
 
 type ApiErrorResponse = {
   code?: string;
@@ -7,7 +7,7 @@ type ApiErrorResponse = {
 };
 
 export async function runAgentChat(request: AgentChatRequest): Promise<AgentChatResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/agent/chat`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/agent/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -52,7 +52,7 @@ export async function runAgentChatStream(
   request: AgentChatRequest,
   handlers: StreamHandlers = {},
 ): Promise<AgentChatResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/agent/chat/stream`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/agent/chat/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -146,7 +146,7 @@ export type ConversationSummaryResponse = {
 };
 
 export async function compressConversationSummary(): Promise<ConversationSummaryResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/agent/conversation-summary/compress`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/agent/conversation-summary/compress`, {
     method: "POST",
     headers: authHeaders(),
   });

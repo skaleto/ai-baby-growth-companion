@@ -7,7 +7,7 @@ public class AppStorageProperties {
 
     private String dataDir = "";
     private String mode = "local";
-    private long maxUploadBytes = 15L * 1024L * 1024L;
+    private long maxUploadBytes = 100L * 1024L * 1024L;
     private final Oss oss = new Oss();
 
     public String getDataDir() {

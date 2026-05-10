@@ -54,6 +54,11 @@ public class AppStateController {
         return appStateService.deleteRecord(collection, id);
     }
 
+    @DeleteMapping("/attachments/{id}")
+    public AppStateResponse deleteAttachment(@PathVariable String id) {
+        return appStateService.deleteAttachment(id);
+    }
+
     @PostMapping("/pending-effects/{id}/confirm")
     public AppStateResponse confirmPendingEffect(@PathVariable String id) {
         return appStateService.confirmPendingEffect(id);

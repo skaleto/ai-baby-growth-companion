@@ -1,9 +1,17 @@
 server:
   port: ${PORT:8080}
 
+logging:
+  pattern:
+    level: "%5p [requestId=%X{requestId}]"
+
 spring:
   application:
     name: baby-companion-backend
+  servlet:
+    multipart:
+      max-file-size: ${APP_MAX_UPLOAD_BYTES:104857600}
+      max-request-size: ${APP_MAX_UPLOAD_BYTES:104857600}
 
 app:
   cors:
@@ -11,7 +19,7 @@ app:
   storage:
     data-dir: ${APP_DATA_DIR:}
     mode: ${APP_STORAGE_MODE:local}
-    max-upload-bytes: ${APP_MAX_UPLOAD_BYTES:15728640}
+    max-upload-bytes: ${APP_MAX_UPLOAD_BYTES:104857600}
     oss:
       endpoint: ${ALIYUN_OSS_ENDPOINT:}
       bucket: ${ALIYUN_OSS_BUCKET:}

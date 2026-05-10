@@ -13,6 +13,7 @@ export interface Attachment {
   thumbnailUrl?: string;
   width?: number;
   height?: number;
+  createdAt?: string;
 }
 
 export type AlbumItemCategory = "growth" | "feeding" | "sleep" | "health" | "reminder" | "daily";

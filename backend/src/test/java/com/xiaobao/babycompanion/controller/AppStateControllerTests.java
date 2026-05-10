@@ -1,5 +1,8 @@
 package com.xiaobao.babycompanion.controller;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -22,6 +25,9 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.xiaobao.babycompanion.persistence.entity.AttachmentRecord;
+import com.xiaobao.babycompanion.persistence.service.AttachmentRecordService;
+
 @SpringBootTest(properties = {
         "app.storage.data-dir=target/test-data/app-state",
         "auth.jwt.secret-file=target/test-data/app-state/auth/jwt_secret",
@@ -36,6 +42,9 @@ class AppStateControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private AttachmentRecordService attachmentRecordService;
 
     private String token;
 
@@ -124,6 +133,24 @@ class AppStateControllerTests {
     }
 
     @Test
+    void rejectsDirectUploadWhenOssModeIsDisabled() throws Exception {
+        mockMvc.perform(post("/api/uploads/presign")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "direct-local",
+                                  "name": "photo.png",
+                                  "kind": "image",
+                                  "mimeType": "image/png",
+                                  "sizeBytes": 3
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Direct upload requires OSS storage mode"));
+    }
+
+    @Test
     void savesMultipartUploadsAsFiles() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "voice.wav", "audio/wav", new byte[] {1, 2, 3});
 
@@ -171,6 +198,179 @@ class AppStateControllerTests {
                         .header(HttpHeaders.AUTHORIZATION, bearer()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_JPEG));
+    }
+
+    @Test
+    void readsLocalFilesWhenStoredPathStillHasOssPrefix() throws Exception {
+        mockMvc.perform(post("/api/uploads")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "legacy-prefixed-path",
+                                  "name": "photo.png",
+                                  "kind": "image",
+                                  "dataUrl": "data:image/png;base64,YWJj"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        AttachmentRecord record = attachmentRecordService.getById("legacy-prefixed-path");
+        record.setFilePath("baby-companion/" + record.getFilePath());
+        attachmentRecordService.updateById(record);
+
+        mockMvc.perform(get("/api/uploads/legacy-prefixed-path")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+    }
+
+    @Test
+    void regeneratesImageThumbnailWhenStoredThumbnailFileIsMissing() throws Exception {
+        mockMvc.perform(post("/api/uploads")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "missing-thumb-image",
+                                  "name": "photo.png",
+                                  "kind": "image",
+                                  "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        AttachmentRecord record = attachmentRecordService.getById("missing-thumb-image");
+        Files.deleteIfExists(Path.of("target/test-data/app-state").resolve(record.getThumbnailPath()));
+
+        mockMvc.perform(get("/api/uploads/missing-thumb-image/thumbnail")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_JPEG));
+    }
+
+    @Test
+    void missingSourceFileDoesNotTurnThumbnailRequestIntoServiceUnavailable() throws Exception {
+        mockMvc.perform(post("/api/uploads")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "missing-source-image",
+                                  "name": "photo.png",
+                                  "kind": "image",
+                                  "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        AttachmentRecord record = attachmentRecordService.getById("missing-source-image");
+        Files.deleteIfExists(Path.of("target/test-data/app-state").resolve(record.getFilePath()));
+        Files.deleteIfExists(Path.of("target/test-data/app-state").resolve(record.getThumbnailPath()));
+
+        mockMvc.perform(get("/api/uploads/missing-source-image/thumbnail")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Thumbnail not available: missing-source-image"));
+
+        AttachmentRecord updated = attachmentRecordService.getById("missing-source-image");
+        assertNull(updated.getThumbnailPath());
+        assertNull(updated.getThumbnailUrl());
+    }
+
+    @Test
+    void albumAttachmentsReturnCanonicalUploadUrls() throws Exception {
+        mockMvc.perform(post("/api/uploads")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "stale-album-url",
+                                  "name": "photo.png",
+                                  "kind": "image",
+                                  "dataUrl": "data:image/png;base64,YWJj"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/app/state/albumItems/stale-album")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "stale-album",
+                                  "kind": "media",
+                                  "title": "旧地址照片",
+                                  "date": "2026-05-09",
+                                  "category": "daily",
+                                  "attachmentId": "stale-album-url",
+                                  "attachment": {
+                                    "id": "stale-album-url",
+                                    "name": "photo.png",
+                                    "kind": "image",
+                                    "url": "http://8.210.235.155:8300/api/uploads/stale-album-url?token=expired",
+                                    "publicUrl": "http://8.210.235.155:8300/api/uploads/stale-album-url?token=expired"
+                                  },
+                                  "source": "manual"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.albumItems[0].attachment.url").value("/api/uploads/stale-album-url"))
+                .andExpect(jsonPath("$.state.albumItems[0].attachment.publicUrl").value("/api/uploads/stale-album-url"));
+    }
+
+    @Test
+    void standaloneMediaUploadsDoNotAppearInAlbumState() throws Exception {
+        mockMvc.perform(post("/api/uploads")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "standalone-album-upload",
+                                  "name": "album-photo.png",
+                                  "kind": "image",
+                                  "dataUrl": "data:image/png;base64,YWJj"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/app/state")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.albumItems.length()").value(0));
+    }
+
+    @Test
+    void deletesStandaloneAlbumAttachmentFilesAndRecord() throws Exception {
+        mockMvc.perform(post("/api/uploads")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "delete-album-upload",
+                                  "name": "album-photo.png",
+                                  "kind": "image",
+                                  "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        AttachmentRecord record = attachmentRecordService.getById("delete-album-upload");
+        Path dataDir = Path.of("target/test-data/app-state");
+        Path file = dataDir.resolve(record.getFilePath());
+        Path thumbnail = dataDir.resolve(record.getThumbnailPath());
+        assertTrue(Files.exists(file));
+        assertTrue(Files.exists(thumbnail));
+
+        mockMvc.perform(delete("/api/app/state/attachments/delete-album-upload")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.albumItems.length()").value(0));
+
+        assertNull(attachmentRecordService.getById("delete-album-upload"));
+        assertFalse(Files.exists(file));
+        assertFalse(Files.exists(thumbnail));
     }
 
     @Test

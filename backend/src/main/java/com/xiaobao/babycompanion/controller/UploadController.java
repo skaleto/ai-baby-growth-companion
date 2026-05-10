@@ -1,6 +1,9 @@
 package com.xiaobao.babycompanion.controller;
 
 import com.xiaobao.babycompanion.dto.app.AttachmentDto;
+import com.xiaobao.babycompanion.dto.app.UploadCompleteRequest;
+import com.xiaobao.babycompanion.dto.app.UploadPresignRequest;
+import com.xiaobao.babycompanion.dto.app.UploadPresignResponse;
 import com.xiaobao.babycompanion.dto.app.UploadRequest;
 import com.xiaobao.babycompanion.service.AttachmentStorageService;
 import jakarta.validation.Valid;
@@ -34,13 +37,24 @@ public class UploadController {
         return attachmentStorageService.saveDataUrl(request);
     }
 
+    @PostMapping(path = "/presign", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public UploadPresignResponse presignUpload(@RequestBody UploadPresignRequest request) {
+        return attachmentStorageService.createDirectUpload(request);
+    }
+
+    @PostMapping(path = "/complete", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public AttachmentDto completeUpload(@RequestBody UploadCompleteRequest request) {
+        return attachmentStorageService.completeDirectUpload(request);
+    }
+
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttachmentDto uploadFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "id", required = false) String id,
-            @RequestParam(value = "kind", required = false) String kind
+            @RequestParam(value = "kind", required = false) String kind,
+            @RequestParam(value = "thumbnailDataUrl", required = false) String thumbnailDataUrl
     ) {
-        return attachmentStorageService.saveMultipart(file, id, kind);
+        return attachmentStorageService.saveMultipart(file, id, kind, thumbnailDataUrl);
     }
 
     @GetMapping("/{id}")

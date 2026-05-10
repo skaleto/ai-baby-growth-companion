@@ -40,7 +40,7 @@ class AgentControllerTests {
         String body = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"phone":"13800000002","inviteCode":"AGENT-CODE"}
+                                {"phone":"13800000002","inviteCode":"AGENT-CODE","roleName":"妈妈","caregiver":true}
                                 """))
                 .andExpect(status().isOk())
                 .andReturn()

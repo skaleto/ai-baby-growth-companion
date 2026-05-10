@@ -93,6 +93,52 @@ export function withAuthQuery(url: string) {
   return parsed.toString();
 }
 
+export const REQUEST_ID_HEADER = "X-Request-Id";
+
+export function createRequestId(prefix = "web") {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${random}`;
+}
+
+function apiLogPath(input: RequestInfo | URL) {
+  const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+  try {
+    return new URL(raw).pathname;
+  } catch {
+    return raw;
+  }
+}
+
+export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  const requestId = headers.get(REQUEST_ID_HEADER) || createRequestId();
+  headers.set(REQUEST_ID_HEADER, requestId);
+  const method = (init.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+  const path = apiLogPath(input);
+  const startedAt = performance.now();
+  console.info("[api] ->", { requestId, method, path });
+  try {
+    const response = await fetch(input, { ...init, headers });
+    const responseRequestId = response.headers.get(REQUEST_ID_HEADER) || requestId;
+    const durationMs = Math.round(performance.now() - startedAt);
+    const logger = response.ok ? console.info : console.warn;
+    logger("[api] <-", { requestId: responseRequestId, method, path, status: response.status, durationMs });
+    return response;
+  } catch (error) {
+    console.warn("[api] xx", {
+      requestId,
+      method,
+      path,
+      durationMs: Math.round(performance.now() - startedAt),
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
 async function parseError(response: Response, fallback: string) {
   try {
     const body = (await response.json()) as ApiErrorResponse;
@@ -108,7 +154,7 @@ export async function loginWithInvite(
   roleName?: string,
   caregiver?: boolean | null,
 ): Promise<AuthLoginResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone, inviteCode, roleName, caregiver }),
@@ -122,13 +168,13 @@ export async function loginWithInvite(
 export async function readInviteRoleOptions(inviteCode: string, phone?: string): Promise<InviteRoleOptionsResponse> {
   const params = new URLSearchParams({ inviteCode });
   if (phone) params.set("phone", phone);
-  const response = await fetch(`${apiBaseUrl}/api/auth/invite/roles?${params.toString()}`);
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/invite/roles?${params.toString()}`);
   if (!response.ok) throw new Error(await parseError(response, "邀请码暂时无法确认，请稍后再试。"));
   return (await response.json()) as InviteRoleOptionsResponse;
 }
 
 export async function readCurrentUser(): Promise<AuthMeResponse> {
-  const response = await fetch(`${apiBaseUrl}/api/auth/me`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/me`, {
     headers: authHeaders(),
   });
   if (!response.ok) throw new Error(await parseError(response, "登录已失效，请重新登录。"));
@@ -136,7 +182,7 @@ export async function readCurrentUser(): Promise<AuthMeResponse> {
 }
 
 export async function updateFamilyName(name: string): Promise<AuthFamily> {
-  const response = await fetch(`${apiBaseUrl}/api/auth/family`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/family`, {
     method: "PUT",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ name } satisfies UpdateFamilyRequest),
@@ -146,7 +192,7 @@ export async function updateFamilyName(name: string): Promise<AuthFamily> {
 }
 
 export async function logoutCurrentUser() {
-  await fetch(`${apiBaseUrl}/api/auth/logout`, {
+  await apiFetch(`${apiBaseUrl}/api/auth/logout`, {
     method: "POST",
     headers: authHeaders(),
   }).catch(() => undefined);

@@ -3,6 +3,7 @@ package com.xiaobao.babycompanion.controller;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -378,8 +379,10 @@ class AuthControllerTests {
 
     @Test
     void requiresAuthForStateApi() throws Exception {
-        mockMvc.perform(get("/api/app/state"))
+        mockMvc.perform(get("/api/app/state")
+                        .header("X-Request-Id", "web-test-request"))
                 .andExpect(status().isUnauthorized())
+                .andExpect(header().string("X-Request-Id", "web-test-request"))
                 .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
     }
 
