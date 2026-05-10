@@ -151,7 +151,7 @@ class AppStateControllerTests {
     }
 
     @Test
-    void savesMultipartUploadsAsFiles() throws Exception {
+    void rejectsMultipartUploads() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "voice.wav", "audio/wav", new byte[] {1, 2, 3});
 
         mockMvc.perform(multipart("/api/uploads")
@@ -159,18 +159,7 @@ class AppStateControllerTests {
                         .header(HttpHeaders.AUTHORIZATION, bearer())
                         .param("id", "voice-test")
                         .param("kind", "audio"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value("voice-test"))
-                .andExpect(jsonPath("$.kind").value("audio"))
-                .andExpect(jsonPath("$.filePath").value(org.hamcrest.Matchers.startsWith("uploads/")));
-
-        mockMvc.perform(get("/api/uploads/voice-test"))
-                .andExpect(status().isUnauthorized());
-
-        mockMvc.perform(get("/api/uploads/voice-test")
-                        .header(HttpHeaders.AUTHORIZATION, bearer()))
-                .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith("audio/wav"));
+                .andExpect(status().isUnsupportedMediaType());
     }
 
     @Test

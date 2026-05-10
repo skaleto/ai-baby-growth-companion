@@ -8,6 +8,7 @@ public class AppStorageProperties {
     private String dataDir = "";
     private String mode = "local";
     private long maxUploadBytes = 100L * 1024L * 1024L;
+    private long maxVideoUploadBytes = 300L * 1024L * 1024L;
     private final Oss oss = new Oss();
 
     public String getDataDir() {
@@ -32,6 +33,14 @@ public class AppStorageProperties {
 
     public void setMaxUploadBytes(long maxUploadBytes) {
         this.maxUploadBytes = maxUploadBytes;
+    }
+
+    public long getMaxVideoUploadBytes() {
+        return maxVideoUploadBytes;
+    }
+
+    public void setMaxVideoUploadBytes(long maxVideoUploadBytes) {
+        this.maxVideoUploadBytes = maxVideoUploadBytes;
     }
 
     public Oss getOss() {

@@ -17,10 +17,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/uploads")
@@ -45,16 +43,6 @@ public class UploadController {
     @PostMapping(path = "/complete", consumes = MediaType.APPLICATION_JSON_VALUE)
     public AttachmentDto completeUpload(@RequestBody UploadCompleteRequest request) {
         return attachmentStorageService.completeDirectUpload(request);
-    }
-
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public AttachmentDto uploadFile(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "id", required = false) String id,
-            @RequestParam(value = "kind", required = false) String kind,
-            @RequestParam(value = "thumbnailDataUrl", required = false) String thumbnailDataUrl
-    ) {
-        return attachmentStorageService.saveMultipart(file, id, kind, thumbnailDataUrl);
     }
 
     @GetMapping("/{id}")

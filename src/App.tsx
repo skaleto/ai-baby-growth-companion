@@ -239,9 +239,12 @@ const REMINDER_WEB_SOUND_URLS: Record<ReminderSoundId, string> = {
 const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
 const MIN_INTERVAL_MINUTES = 10;
 const MAX_INTERVAL_MINUTES = 12 * 60;
-const MAX_MEDIA_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_IMAGE_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_VIDEO_UPLOAD_BYTES = 300 * 1024 * 1024;
 const MAX_AGENT_ATTACHMENT_DATA_URL_CHARS = 8 * 1024 * 1024;
 const VIDEO_THUMBNAIL_TIMEOUT_MS = 8000;
+
+const maxMediaUploadBytes = (kind: AttachmentKind) => (kind === "video" ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES);
 
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
@@ -4471,8 +4474,9 @@ function App() {
 
     const failures: string[] = [];
     for (const item of queue) {
-      if (item.file.size > MAX_MEDIA_UPLOAD_BYTES) {
-        const message = `超过 ${formatFileSize(MAX_MEDIA_UPLOAD_BYTES)} 限制`;
+      const maxUploadBytes = maxMediaUploadBytes(item.kind);
+      if (item.file.size > maxUploadBytes) {
+        const message = `超过 ${formatFileSize(maxUploadBytes)} 限制`;
         failures.push(`${item.file.name} ${message}`);
         updateMediaUploadItem(item.id, { status: "failed", progress: 0, message });
         removeMediaUploadItemLater(item.id, 6000);

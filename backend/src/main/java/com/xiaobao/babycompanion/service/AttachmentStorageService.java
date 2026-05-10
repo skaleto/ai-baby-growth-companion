@@ -55,7 +55,6 @@ import org.springframework.http.MediaType;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class AttachmentStorageService {
@@ -211,36 +210,6 @@ public class AttachmentStorageService {
         return saveBytes(id, name, kind, payload.mimeType(), payload.bytes(), thumbnailPayload, null, null, principal.familyId(), principal.userId());
     }
 
-    public AttachmentDto saveMultipart(MultipartFile file, String id, String kind) {
-        return saveMultipart(file, id, kind, null);
-    }
-
-    public AttachmentDto saveMultipart(MultipartFile file, String id, String kind, String thumbnailDataUrl) {
-        currentUser.requireCaregiver();
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("Uploaded file is empty");
-        }
-        String mimeType = StringUtils.hasText(file.getContentType()) ? file.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
-        AuthPrincipal principal = currentUser.requirePrincipal();
-        DataUrlPayload thumbnailPayload = parseOptionalImageDataUrl(thumbnailDataUrl);
-        try {
-            return saveBytes(
-                    normalizedId(id),
-                    StringUtils.hasText(file.getOriginalFilename()) ? file.getOriginalFilename() : "attachment",
-                    normalizedKind(kind, mimeType),
-                    mimeType,
-                    file.getBytes(),
-                    thumbnailPayload,
-                    null,
-                    null,
-                    principal.familyId(),
-                    principal.userId()
-            );
-        } catch (IOException exception) {
-            throw new IllegalStateException("Failed to read uploaded file", exception);
-        }
-    }
-
     public UploadPresignResponse createDirectUpload(UploadPresignRequest request) {
         currentUser.requireCaregiver();
         if (!isOssMode()) {
@@ -252,6 +221,7 @@ public class AttachmentStorageService {
         String id = normalizedId(request.id());
         String mimeType = normalizedMimeType(request.mimeType());
         validateMetadata(mimeType, request.sizeBytes());
+        long maxUploadBytes = maxUploadBytesFor(mimeType);
         Path relativeDir = Path.of("uploads", LocalDate.now().toString());
         String objectKey = storedPath(relativeDir.resolve(id + "." + extension(mimeType)));
         Date expiration = new Date(System.currentTimeMillis() + DIRECT_UPLOAD_TTL_SECONDS * 1000L);
@@ -271,7 +241,7 @@ public class AttachmentStorageService {
                 "/api/uploads/" + id,
                 expiration.toInstant().toString(),
                 headers,
-                properties.getMaxUploadBytes()
+                maxUploadBytes
         );
     }
 
@@ -868,7 +838,7 @@ public class AttachmentStorageService {
         if (bytes.length <= 0) {
             throw new IllegalArgumentException("Attachment is empty");
         }
-        if (bytes.length > properties.getMaxUploadBytes()) {
+        if (bytes.length > maxUploadBytesFor(mimeType)) {
             throw new IllegalArgumentException("Attachment exceeds size limit");
         }
     }
@@ -881,9 +851,15 @@ public class AttachmentStorageService {
         if (size <= 0) {
             throw new IllegalArgumentException("Attachment is empty");
         }
-        if (size > properties.getMaxUploadBytes()) {
+        if (size > maxUploadBytesFor(mimeType)) {
             throw new IllegalArgumentException("Attachment exceeds size limit");
         }
+    }
+
+    private long maxUploadBytesFor(String mimeType) {
+        return mimeType != null && mimeType.startsWith("video/")
+                ? properties.getMaxVideoUploadBytes()
+                : properties.getMaxUploadBytes();
     }
 
     private String validatedDirectObjectKey(String id, String mimeType, String objectKey) {

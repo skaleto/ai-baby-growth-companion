@@ -1,5 +1,5 @@
 import { AppStateSnapshot, Attachment, AttachmentKind } from "./types";
-import { apiBaseUrl, apiFetch, authHeaders, createRequestId, REQUEST_ID_HEADER, withAuthQuery } from "./authApi";
+import { apiBaseUrl, apiFetch, authHeaders, withAuthQuery } from "./authApi";
 
 export type AppStateCollection =
   | "profile"
@@ -202,15 +202,8 @@ function xhrUpload(options: {
 }): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    const isBackendRequest = options.url.startsWith(apiBaseUrl);
-    const startedAt = performance.now();
-    const requestId = isBackendRequest ? createRequestId("xhr") : "";
     xhr.open(options.method, options.url);
     const headers = new Headers(options.headers);
-    if (isBackendRequest) {
-      headers.set(REQUEST_ID_HEADER, requestId);
-      console.info("[api] ->", { requestId, method: options.method, path: new URL(options.url).pathname });
-    }
     headers.forEach((value, key) => {
       if (value) xhr.setRequestHeader(key, value);
     });
@@ -221,53 +214,13 @@ function xhrUpload(options: {
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        if (isBackendRequest) {
-          console.info("[api] <-", {
-            requestId: xhr.getResponseHeader(REQUEST_ID_HEADER) || requestId,
-            method: options.method,
-            path: new URL(options.url).pathname,
-            status: xhr.status,
-            durationMs: Math.round(performance.now() - startedAt),
-          });
-        }
         resolve(xhr.responseText || "");
         return;
       }
-      if (isBackendRequest) {
-        console.warn("[api] <-", {
-          requestId: xhr.getResponseHeader(REQUEST_ID_HEADER) || requestId,
-          method: options.method,
-          path: new URL(options.url).pathname,
-          status: xhr.status,
-          durationMs: Math.round(performance.now() - startedAt),
-        });
-      }
-      reject(new Error(`上传失败（${xhr.status}）`));
+      reject(new Error(`OSS 上传失败（${xhr.status}）`));
     };
-    xhr.onerror = () => {
-      if (isBackendRequest) {
-        console.warn("[api] xx", {
-          requestId,
-          method: options.method,
-          path: new URL(options.url).pathname,
-          durationMs: Math.round(performance.now() - startedAt),
-          message: "上传网络异常",
-        });
-      }
-      reject(new Error("上传网络异常"));
-    };
-    xhr.ontimeout = () => {
-      if (isBackendRequest) {
-        console.warn("[api] xx", {
-          requestId,
-          method: options.method,
-          path: new URL(options.url).pathname,
-          durationMs: Math.round(performance.now() - startedAt),
-          message: "上传超时",
-        });
-      }
-      reject(new Error("上传超时"));
-    };
+    xhr.onerror = () => reject(new Error("OSS 上传网络异常"));
+    xhr.ontimeout = () => reject(new Error("OSS 上传超时"));
     xhr.send(options.body);
   });
 }
@@ -286,30 +239,6 @@ async function uploadToPresignedUrl(
   });
 }
 
-async function uploadMultipartAttachment(input: {
-  id: string;
-  name: string;
-  kind: AttachmentKind;
-  file: File;
-  thumbnailDataUrl?: string;
-  onProgress?: UploadProgressHandler;
-}): Promise<UploadResponse> {
-  const formData = new FormData();
-  formData.append("file", input.file, input.name);
-  formData.append("id", input.id);
-  formData.append("kind", input.kind);
-  if (input.thumbnailDataUrl) formData.append("thumbnailDataUrl", input.thumbnailDataUrl);
-  const body = await xhrUpload({
-    method: "POST",
-    url: `${apiBaseUrl}/api/uploads`,
-    body: formData,
-    headers: authHeaders(),
-    onProgress: input.onProgress,
-  });
-  const payload = JSON.parse(body) as UploadResponse;
-  return { ...payload, url: toAbsoluteUrl(payload.url || payload.publicUrl), thumbnailUrl: toAbsoluteUrl(payload.thumbnailUrl) };
-}
-
 export async function uploadFileAttachment(input: {
   id: string;
   name: string;
@@ -319,34 +248,24 @@ export async function uploadFileAttachment(input: {
   onProgress?: UploadProgressHandler;
 }): Promise<UploadResponse> {
   const mimeType = input.file.type || "application/octet-stream";
-  let presign: UploadPresignResponse;
-  try {
-    presign = await presignAttachmentUpload({
-      id: input.id,
-      name: input.name,
-      kind: input.kind,
-      mimeType,
-      sizeBytes: input.file.size,
-    });
-  } catch {
-    return uploadMultipartAttachment(input);
-  }
-  try {
-    await uploadToPresignedUrl(presign, input.file, input.onProgress);
-    input.onProgress?.(100);
-    return await completeAttachmentUpload({
-      id: presign.id || input.id,
-      name: input.name,
-      kind: input.kind,
-      mimeType,
-      objectKey: presign.objectKey,
-      sizeBytes: input.file.size,
-      thumbnailDataUrl: input.thumbnailDataUrl,
-    });
-  } catch {
-    input.onProgress?.(1);
-    return uploadMultipartAttachment(input);
-  }
+  const presign = await presignAttachmentUpload({
+    id: input.id,
+    name: input.name,
+    kind: input.kind,
+    mimeType,
+    sizeBytes: input.file.size,
+  });
+  await uploadToPresignedUrl(presign, input.file, input.onProgress);
+  input.onProgress?.(100);
+  return completeAttachmentUpload({
+    id: presign.id || input.id,
+    name: input.name,
+    kind: input.kind,
+    mimeType,
+    objectKey: presign.objectKey,
+    sizeBytes: input.file.size,
+    thumbnailDataUrl: input.thumbnailDataUrl,
+  });
 }
 
 export async function confirmPendingEffectOnServer(id: string): Promise<AppStateResponse> {
