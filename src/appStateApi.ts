@@ -10,6 +10,7 @@ export type AppStateCollection =
   | "memories"
   | "pendingEffects"
   | "albumItems"
+  | "expenses"
   | "conversationSummary";
 
 export type AppStateResponse = {

@@ -18,7 +18,9 @@ import {
   Mic,
   Music2,
   PencilLine,
+  ReceiptText,
   Save,
+  ScanBarcode,
   Send,
   ShieldAlert,
   Smartphone,
@@ -28,6 +30,7 @@ import {
   UserRound,
   Users,
   Video,
+  WalletCards,
   X,
   Zap,
 } from "lucide-react";
@@ -109,7 +112,9 @@ import {
   type NativeAlarmEvent,
 } from "./nativeAlarm";
 import { isNativeMediaPickerAvailable, isNativeMediaPickerCancel, pickNativeMediaFiles } from "./nativeMediaPicker";
+import { isBarcodeScanCancel, isNativeBarcodeScannerAvailable, scanBarcode } from "./nativeBarcodeScanner";
 import { MOBILE_UPDATE_NOTICE_EVENT, type MobileUpdateNoticeDetail, type MobileUpdateNoticeTone } from "./mobileUpdates";
+import { lookupBarcodeProduct, type ProductCandidate } from "./productApi";
 import { useStoredState } from "./storage";
 import { useStableViewport } from "./hooks/useStableViewport";
 import {
@@ -131,6 +136,8 @@ import {
   ChatMessage,
   ConversationSummary,
   EffectDecision,
+  ExpenseCategory,
+  ExpenseItem,
   GrowthEvent,
   MemoryItem,
   PendingEffect,
@@ -194,6 +201,7 @@ const DEFAULT_MODEL: AgentModelId = "deepseek-v4-pro";
 const MOBILE_TABS = [
   { id: "chat", label: "聊天", icon: MessageCircle },
   { id: "records", label: "记录", icon: CalendarDays },
+  { id: "ledger", label: "账本", icon: ReceiptText },
   { id: "album", label: "相册", icon: ImageIcon },
   { id: "reminders", label: "提醒", icon: Bell },
   { id: "profile", label: "我的", icon: UserRound },
@@ -206,6 +214,25 @@ const RECORD_VIEWS: Array<{ id: RecordView; label: string }> = [
   { id: "today", label: "今日" },
   { id: "trend", label: "趋势" },
   { id: "calendar", label: "日历" },
+];
+
+const LEDGER_VIEWS: Array<{ id: LedgerView; label: string }> = [
+  { id: "month", label: "本月" },
+  { id: "year", label: "年度" },
+  { id: "details", label: "明细" },
+];
+
+const EXPENSE_CATEGORIES: Array<{ id: ExpenseCategory; label: string }> = [
+  { id: "formula", label: "奶粉" },
+  { id: "diaper", label: "尿裤" },
+  { id: "food", label: "辅食" },
+  { id: "clothing", label: "衣物" },
+  { id: "toy", label: "玩具" },
+  { id: "health", label: "医疗健康" },
+  { id: "vaccine", label: "疫苗体检" },
+  { id: "daily", label: "日用品" },
+  { id: "education", label: "教育娱乐" },
+  { id: "other", label: "其他" },
 ];
 
 const REMINDER_QUICK_ACTIONS = [
@@ -270,6 +297,7 @@ type MobileTab = (typeof MOBILE_TABS)[number]["id"];
 type ComposerMode = "keyboard" | "voice";
 
 type RecordView = "today" | "trend" | "calendar";
+type LedgerView = "month" | "year" | "details";
 
 type VoiceStatus = "idle" | "connecting" | "listening" | "processing" | "unsupported" | "error";
 
@@ -348,6 +376,29 @@ type ReminderDraft = {
   soundId: ReminderSoundId;
 };
 
+type ExpenseDraft = {
+  title: string;
+  amount: string;
+  category: ExpenseCategory;
+  date: string;
+  quantity: string;
+  unitPrice: string;
+  merchant: string;
+  note: string;
+  barcode: string;
+  brand: string;
+  spec: string;
+  productImageUrl: string;
+  source: ExpenseItem["source"];
+};
+
+type ExpenseLookupState = {
+  status: "idle" | "scanning" | "querying" | "done" | "failed";
+  message: string;
+  candidates: ProductCandidate[];
+  barcode: string;
+};
+
 type PendingReminderDraft = {
   id: string;
   draft: ReminderDraft;
@@ -380,6 +431,7 @@ type PendingEffectDraft = {
   careLogPatch?: PendingCareDraft;
   reminders: PendingReminderDraft[];
   memories: PendingMemoryDraft[];
+  expenses: ExpenseDraft[];
 };
 
 type SelectOption<T extends string> = {
@@ -469,6 +521,11 @@ const REMINDER_SOUND_OPTIONS: Array<SelectOption<ReminderSoundId>> = [
   { value: "soft_chime", label: "柔和叮咚", hint: "短促、轻一点" },
   { value: "soft_bell", label: "轻铃声", hint: "更清脆一点" },
 ];
+
+const EXPENSE_CATEGORY_OPTIONS: Array<SelectOption<ExpenseCategory>> = EXPENSE_CATEGORIES.map((category) => ({
+  value: category.id,
+  label: category.label,
+}));
 
 type StorySelectProps<T extends string> = {
   value: T;
@@ -664,6 +721,7 @@ const LEGACY_STORAGE_KEYS = [
   "baby-companion-memories",
   "baby-companion-pending-effects",
   "baby-companion-album-items",
+  "baby-companion-expenses",
   "baby-companion-conversation-summary",
 ];
 
@@ -695,7 +753,8 @@ const hasLegacyLocalState = () => {
       hasLocalArrayItems("baby-companion-care") ||
       hasLocalArrayItems("baby-companion-reminders") ||
       hasLocalArrayItems("baby-companion-memories") ||
-      hasLocalArrayItems("baby-companion-pending-effects")
+      hasLocalArrayItems("baby-companion-pending-effects") ||
+      hasLocalArrayItems("baby-companion-expenses")
     );
   } catch {
     return false;
@@ -817,6 +876,34 @@ const normalizeAlbumItem = (value: Partial<AlbumItem> | null | undefined, index:
   linkedId: textValue(value?.linkedId) || undefined,
   source: value?.source === "agent" || value?.source === "manual" ? value.source : "rule",
 });
+
+const normalizeExpenseCategory = (value: unknown): ExpenseCategory =>
+  EXPENSE_CATEGORIES.some((category) => category.id === value) ? (value as ExpenseCategory) : "other";
+
+const normalizeExpenseItem = (value: Partial<ExpenseItem> | null | undefined, index: number): ExpenseItem => {
+  const now = new Date().toISOString();
+  const amount = numberValue(value?.amount) ?? 0;
+  return {
+    id: textValue(value?.id, `expense-${index}`),
+    title: textValue(value?.title, "小宝支出"),
+    amount: Number.isFinite(amount) ? amount : 0,
+    currency: textValue(value?.currency, "CNY"),
+    category: normalizeExpenseCategory(value?.category),
+    date: textValue(value?.date, todayISO()),
+    quantity: numberValue(value?.quantity),
+    unitPrice: numberValue(value?.unitPrice),
+    merchant: textValue(value?.merchant) || undefined,
+    note: textValue(value?.note) || undefined,
+    barcode: textValue(value?.barcode) || undefined,
+    brand: textValue(value?.brand) || undefined,
+    spec: textValue(value?.spec) || undefined,
+    productImageUrl: textValue(value?.productImageUrl) || undefined,
+    attachmentIds: stringList(value?.attachmentIds),
+    source: value?.source === "barcode" || value?.source === "agent" || value?.source === "web" ? value.source : "manual",
+    createdAt: textValue(value?.createdAt, now),
+    updatedAt: textValue(value?.updatedAt, now),
+  };
+};
 
 const normalizeAlbumPrompt = (value: Partial<AlbumPrompt> | null | undefined, index: number): AlbumPrompt => ({
   id: textValue(value?.id, `album-prompt-${index}`),
@@ -1341,6 +1428,7 @@ const normalizePendingEffect = (value: Partial<PendingEffect> | null | undefined
   careLogPatch: value?.careLogPatch ? normalizeCareLog(value.careLogPatch, index) : undefined,
   reminders: Array.isArray(value?.reminders) ? value.reminders.map(normalizeReminder) : [],
   memories: Array.isArray(value?.memories) ? value.memories.map(normalizeMemoryItem) : [],
+  expenses: Array.isArray(value?.expenses) ? value.expenses.map(normalizeExpenseItem) : [],
   safetyAlerts: Array.isArray(value?.safetyAlerts) ? value.safetyAlerts : [],
 });
 
@@ -2465,6 +2553,74 @@ function reminderFromDraft(draft: ReminderDraft, existing?: Reminder): Reminder 
   return normalizeReminderSchedule(base);
 }
 
+function createExpenseDraft(baseDate = todayISO()): ExpenseDraft {
+  return {
+    title: "",
+    amount: "",
+    category: "other",
+    date: baseDate,
+    quantity: "",
+    unitPrice: "",
+    merchant: "",
+    note: "",
+    barcode: "",
+    brand: "",
+    spec: "",
+    productImageUrl: "",
+    source: "manual",
+  };
+}
+
+function expenseDraftFromExpense(expense: ExpenseItem): ExpenseDraft {
+  return {
+    title: expense.title,
+    amount: expense.amount ? String(expense.amount) : "",
+    category: expense.category,
+    date: expense.date,
+    quantity: expense.quantity ? String(expense.quantity) : "",
+    unitPrice: expense.unitPrice ? String(expense.unitPrice) : "",
+    merchant: expense.merchant ?? "",
+    note: expense.note ?? "",
+    barcode: expense.barcode ?? "",
+    brand: expense.brand ?? "",
+    spec: expense.spec ?? "",
+    productImageUrl: expense.productImageUrl ?? "",
+    source: expense.source,
+  };
+}
+
+function expenseFromDraft(draft: ExpenseDraft, existing?: ExpenseItem): ExpenseItem {
+  const now = new Date().toISOString();
+  const amount = Number(draft.amount);
+  const quantity = draft.quantity ? Number(draft.quantity) : undefined;
+  const unitPrice = draft.unitPrice ? Number(draft.unitPrice) : undefined;
+  return normalizeExpenseItem(
+    {
+      id: existing?.id ?? makeId("expense"),
+      title: draft.title.trim() || "小宝支出",
+      amount: Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0,
+      currency: "CNY",
+      category: draft.category,
+      date: draft.date || todayISO(),
+      quantity: quantity && Number.isFinite(quantity) ? quantity : undefined,
+      unitPrice: unitPrice && Number.isFinite(unitPrice) ? Math.round(unitPrice * 100) / 100 : undefined,
+      merchant: draft.merchant.trim() || undefined,
+      note: draft.note.trim() || undefined,
+      barcode: draft.barcode.trim() || undefined,
+      brand: draft.brand.trim() || undefined,
+      spec: draft.spec.trim() || undefined,
+      productImageUrl: draft.productImageUrl.trim() || undefined,
+      attachmentIds: existing?.attachmentIds ?? [],
+      source: draft.source,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    },
+    0,
+  );
+}
+
+const pendingExpenseDraftFromExpense = (expense: ExpenseItem): ExpenseDraft => expenseDraftFromExpense(expense);
+
 const pendingDraftFromEffect = (effect: PendingEffect): PendingEffectDraft => ({
   growthEvent: effect.growthEvent
     ? {
@@ -2493,6 +2649,7 @@ const pendingDraftFromEffect = (effect: PendingEffect): PendingEffectDraft => ({
     id: memory.id,
     text: memory.text,
   })),
+  expenses: (effect.expenses ?? []).map(pendingExpenseDraftFromExpense),
 });
 
 const selectedDateFallback = (effect: PendingEffect) =>
@@ -2533,6 +2690,12 @@ const memoriesFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDra
   effect.memories.map((memory) => {
     const nextDraft = draft.memories.find((item) => item.id === memory.id);
     return nextDraft ? { ...memory, text: nextDraft.text.trim() || memory.text } : memory;
+  });
+
+const expensesFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
+  (effect.expenses ?? []).map((expense, index) => {
+    const nextDraft = draft.expenses[index];
+    return nextDraft ? expenseFromDraft(nextDraft, expense) : expense;
   });
 
 function normalizeReminderCategory(category: string | undefined): Reminder["category"] {
@@ -2776,15 +2939,17 @@ const decisionSummary = (decision: EffectDecision) => {
   if (decision.type === "careLog") return "照护日志";
   if (decision.type === "reminder") return "提醒";
   if (decision.type === "growthEvent") return "成长事件";
+  if (decision.type === "expenseItem") return "账本支出";
   return "长期记忆";
 };
 
-const hasPendingEffectContent = (effect: Pick<PendingEffect, "growthEvent" | "careLogPatch" | "reminders" | "memories">) =>
+const hasPendingEffectContent = (effect: Pick<PendingEffect, "growthEvent" | "careLogPatch" | "reminders" | "memories" | "expenses">) =>
   Boolean(
     effect.growthEvent ||
       (effect.careLogPatch && hasCareLogContent(effect.careLogPatch)) ||
       effect.reminders.length ||
-      effect.memories.length,
+      effect.memories.length ||
+      (effect.expenses?.length ?? 0) > 0,
   );
 
 const pendingEffectSummary = (effect: PendingEffect) => [
@@ -2792,6 +2957,7 @@ const pendingEffectSummary = (effect: PendingEffect) => [
   effect.careLogPatch && hasCareLogContent(effect.careLogPatch) ? "照护日志" : "",
   effect.reminders.length ? `提醒 ${effect.reminders.length} 条` : "",
   effect.memories.length ? `记忆 ${effect.memories.length} 条` : "",
+  effect.expenses?.length ? `支出 ${effect.expenses.length} 笔` : "",
 ].filter(Boolean);
 
 const MISSING_FIELD_LABELS: Record<string, string> = {
@@ -2805,6 +2971,10 @@ const MISSING_FIELD_LABELS: Record<string, string> = {
   intervalMinutes: "提醒间隔",
   time: "具体时间",
   date: "日期",
+  title: "买了什么",
+  amount: "实际花了多少钱",
+  expenseTitle: "买了什么",
+  expenseAmount: "实际花了多少钱",
   temperatureC: "体温",
   poop: "便便情况",
   solids: "辅食内容",
@@ -2842,6 +3012,25 @@ const hostLabel = (url: string) => {
   } catch {
     return "";
   }
+};
+
+const expenseCategoryLabel = (category: ExpenseCategory) =>
+  EXPENSE_CATEGORIES.find((item) => item.id === category)?.label ?? "其他";
+
+const formatMoney = (amount: number) =>
+  new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: amount % 1 === 0 ? 0 : 2 }).format(amount || 0);
+
+const expenseMonthKey = (date: string) => (date && date.length >= 7 ? date.slice(0, 7) : todayISO().slice(0, 7));
+
+const expenseYearKey = (date: string) => (date && date.length >= 4 ? date.slice(0, 4) : todayISO().slice(0, 4));
+
+const sumExpenses = (items: ExpenseItem[]) => items.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
+
+const expenseSourceLabel = (source: ExpenseItem["source"]) => {
+  if (source === "barcode") return "扫码";
+  if (source === "agent") return "AI";
+  if (source === "web") return "联网";
+  return "手动";
 };
 
 const upsertToolActivity = (items: ToolActivity[] | undefined, activity: ToolActivity) => {
@@ -2951,6 +3140,7 @@ function App() {
   const [storedMemories, setStoredMemories] = useStoredState<MemoryItem[]>("baby-companion-memories", []);
   const [storedPendingEffects, setStoredPendingEffects] = useStoredState<PendingEffect[]>("baby-companion-pending-effects", []);
   const [storedAlbumItems, setStoredAlbumItems] = useStoredState<AlbumItem[]>("baby-companion-album-items", []);
+  const [storedExpenses, setStoredExpenses] = useStoredState<ExpenseItem[]>("baby-companion-expenses", []);
   const [storedConversationSummary, setStoredConversationSummary] = useStoredState<ConversationSummary | null>(
     "baby-companion-conversation-summary",
     null,
@@ -2966,6 +3156,7 @@ function App() {
   const memories = useMemo(() => storedMemories.map(normalizeMemoryItem), [storedMemories]);
   const pendingEffects = useMemo(() => storedPendingEffects.map(normalizePendingEffect), [storedPendingEffects]);
   const storedAlbumItemsNormalized = useMemo(() => storedAlbumItems.map(normalizeAlbumItem), [storedAlbumItems]);
+  const expenses = useMemo(() => storedExpenses.map(normalizeExpenseItem), [storedExpenses]);
   const conversationSummary = useMemo(
     () => normalizeConversationSummary(storedConversationSummary),
     [storedConversationSummary],
@@ -2988,6 +3179,8 @@ function App() {
     );
   const setAlbumItems = (action: SetStateAction<AlbumItem[]>) =>
     setStoredAlbumItems((current) => resolveStateAction(action, current.map(normalizeAlbumItem)).map(normalizeAlbumItem));
+  const setExpenses = (action: SetStateAction<ExpenseItem[]>) =>
+    setStoredExpenses((current) => resolveStateAction(action, current.map(normalizeExpenseItem)).map(normalizeExpenseItem));
   const setConversationSummary = (action: SetStateAction<ConversationSummary | null>) =>
     setStoredConversationSummary((current) =>
       normalizeConversationSummary(resolveStateAction(action, normalizeConversationSummary(current))),
@@ -3019,6 +3212,17 @@ function App() {
   const [onboardingAllergiesText, setOnboardingAllergiesText] = useState("暂未发现");
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("chat");
   const [recordView, setRecordView] = useState<RecordView>("today");
+  const [ledgerView, setLedgerView] = useState<LedgerView>("month");
+  const [expenseEditorOpen, setExpenseEditorOpen] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState("");
+  const [expenseDraft, setExpenseDraft] = useState<ExpenseDraft>(() => createExpenseDraft());
+  const [expenseLookup, setExpenseLookup] = useState<ExpenseLookupState>({
+    status: "idle",
+    message: "",
+    candidates: [],
+    barcode: "",
+  });
+  const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<ExpenseItem | null>(null);
   const [albumCategory, setAlbumCategory] = useState<AlbumItemCategory | "all">("all");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
@@ -3606,6 +3810,45 @@ function App() {
     }),
     [albumItems],
   );
+  const ledgerMonthKey = todayDate.slice(0, 7);
+  const ledgerYearKey = todayDate.slice(0, 4);
+  const sortedExpenses = useMemo(
+    () => [...expenses].sort((left, right) => `${right.date}-${right.updatedAt}`.localeCompare(`${left.date}-${left.updatedAt}`)),
+    [expenses],
+  );
+  const monthExpenses = useMemo(
+    () => sortedExpenses.filter((expense) => expenseMonthKey(expense.date) === ledgerMonthKey),
+    [sortedExpenses, ledgerMonthKey],
+  );
+  const yearExpenses = useMemo(
+    () => sortedExpenses.filter((expense) => expenseYearKey(expense.date) === ledgerYearKey),
+    [sortedExpenses, ledgerYearKey],
+  );
+  const ledgerStats = useMemo(() => {
+    const categoryTotals = EXPENSE_CATEGORIES.map((category) => ({
+      ...category,
+      total: sumExpenses(monthExpenses.filter((expense) => expense.category === category.id)),
+    })).filter((item) => item.total > 0);
+    const maxCategoryTotal = Math.max(1, ...categoryTotals.map((item) => item.total));
+    const monthlyTotals = Array.from({ length: 12 }, (_, index) => {
+      const month = `${ledgerYearKey}-${String(index + 1).padStart(2, "0")}`;
+      return {
+        month,
+        label: `${index + 1}月`,
+        total: sumExpenses(yearExpenses.filter((expense) => expenseMonthKey(expense.date) === month)),
+      };
+    });
+    const maxMonthlyTotal = Math.max(1, ...monthlyTotals.map((item) => item.total));
+    return {
+      monthTotal: sumExpenses(monthExpenses),
+      yearTotal: sumExpenses(yearExpenses),
+      categoryTotals,
+      maxCategoryTotal,
+      monthlyTotals,
+      maxMonthlyTotal,
+      largest: monthExpenses.slice().sort((left, right) => right.amount - left.amount).slice(0, 3),
+    };
+  }, [ledgerYearKey, monthExpenses, yearExpenses]);
   useEffect(() => {
     previewAlbumItemsRef.current = albumPreviewItems;
   }, [albumPreviewItems]);
@@ -3757,6 +4000,7 @@ function App() {
     todayCareLog: careLogs.find((item) => item.date === todayISO()),
     recentCareLogs: careLogs.slice(-7),
     openReminders: openReminders.slice(0, 8),
+    recentExpenses: sortedExpenses.slice(0, 8),
     pendingEffectSummaries: pendingEffects.slice(0, 6).map((effect) => ({
       id: effect.id,
       createdAt: effect.createdAt,
@@ -3889,6 +4133,7 @@ function App() {
         publicUrl: stripAttachmentUrlForStorage(item.attachment.publicUrl),
       } : undefined,
     })),
+    expenses,
     conversationSummary,
     thinkingEnabled,
     selectedModel,
@@ -3903,6 +4148,7 @@ function App() {
     if (state.memories) setMemories(state.memories);
     if (state.pendingEffects) setPendingEffects(state.pendingEffects);
     if (state.albumItems) setAlbumItems(state.albumItems);
+    if (state.expenses) setExpenses(state.expenses);
     if ("conversationSummary" in state) {
       setConversationSummary((state.conversationSummary ?? null) as ConversationSummary | null);
     }
@@ -3920,6 +4166,8 @@ function App() {
       memories: [],
       pendingEffects: [],
       conversationSummary: null,
+      albumItems: [],
+      expenses: [],
       thinkingEnabled,
       selectedModel,
     });
@@ -5123,8 +5371,10 @@ function App() {
       let pendingCareLogPatch: Partial<CareLog> | undefined = hasServerDecisions ? undefined : result.careLogPatch;
       let pendingReminders: Reminder[] = hasServerDecisions ? [] : result.reminders;
       let pendingMemories: MemoryItem[] = hasServerDecisions ? [] : result.memories;
+      let pendingExpenses: ExpenseItem[] = [];
       const autoCareLogPatches: Partial<CareLog>[] = [];
       let autoReminderCandidates: Reminder[] = [];
+      let autoExpenseCandidates: ExpenseItem[] = [];
 
       if (hasServerDecisions) {
         result.effectDecisions.forEach((decision, index) => {
@@ -5149,6 +5399,11 @@ function App() {
           if (decision.type === "memory") {
             const memory = normalizeMemoryItem(decision.payload as Partial<MemoryItem>, index);
             if (decision.mode === "pending") pendingMemories = [...pendingMemories, memory];
+          }
+          if (decision.type === "expenseItem") {
+            const expense = normalizeExpenseItem(decision.payload as Partial<ExpenseItem>, index);
+            if (decision.mode === "auto") autoExpenseCandidates = [...autoExpenseCandidates, expense];
+            if (decision.mode === "pending") pendingExpenses = [...pendingExpenses, expense];
           }
         });
       } else if (isAutoRecordableCareLog(result.careLogPatch, result.safetyAlerts) && result.careLogPatch) {
@@ -5191,7 +5446,10 @@ function App() {
           return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
         });
       }
-      if (autoUndos.length || autoScheduledReminders.length) hapticSuccess();
+      if (autoExpenseCandidates.length) {
+        setExpenses((current) => [...autoExpenseCandidates, ...current]);
+      }
+      if (autoUndos.length || autoScheduledReminders.length || autoExpenseCandidates.length) hapticSuccess();
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
       );
@@ -5205,6 +5463,7 @@ function App() {
         careLogPatch: pendingCareLogPatch,
         reminders: pendingReminders,
         memories: pendingMemories,
+        expenses: pendingExpenses,
         safetyAlerts: result.safetyAlerts,
       };
       const persistenceTasks: Array<() => Promise<unknown>> = [
@@ -5219,6 +5478,11 @@ function App() {
       if (autoScheduledReminders.length) {
         autoScheduledReminders.forEach((reminder) => {
           persistenceTasks.push(() => persistRecord("reminders", reminder.id, reminder));
+        });
+      }
+      if (autoExpenseCandidates.length) {
+        autoExpenseCandidates.forEach((expense) => {
+          persistenceTasks.push(() => persistRecord("expenses", expense.id, expense));
         });
       }
       if (hasPendingEffectContent(pendingEffect)) {
@@ -5437,6 +5701,163 @@ function App() {
     void deleteAppRecord("reminders", target.id).catch(() => setStorageStatus("offline"));
   };
 
+  const openNewExpenseEditor = () => {
+    if (!canCaregive) return;
+    setEditingExpenseId("");
+    setExpenseDraft(createExpenseDraft(todayDate));
+    setExpenseLookup({ status: "idle", message: "", candidates: [], barcode: "" });
+    setExpenseEditorOpen(true);
+  };
+
+  const openEditExpenseEditor = (expense: ExpenseItem) => {
+    if (!canCaregive) return;
+    setEditingExpenseId(expense.id);
+    setExpenseDraft(expenseDraftFromExpense(expense));
+    setExpenseLookup({ status: "idle", message: "", candidates: [], barcode: expense.barcode ?? "" });
+    setExpenseEditorOpen(true);
+  };
+
+  const closeExpenseEditor = () => {
+    setExpenseEditorOpen(false);
+    setEditingExpenseId("");
+    setExpenseDraft(createExpenseDraft(todayDate));
+    setExpenseLookup({ status: "idle", message: "", candidates: [], barcode: "" });
+  };
+
+  const applyProductCandidate = (candidate: ProductCandidate) => {
+    setExpenseDraft((current) => ({
+      ...current,
+      title: candidate.title || current.title,
+      category: normalizeExpenseCategory(candidate.category),
+      barcode: candidate.barcode || current.barcode,
+      brand: candidate.brand ?? current.brand,
+      spec: candidate.spec ?? current.spec,
+      productImageUrl: candidate.imageUrl ?? current.productImageUrl,
+      source: "barcode",
+    }));
+    setExpenseLookup((current) => ({
+      ...current,
+      status: "done",
+      message: "已填入商品候选，金额仍需要按实际支付填写。",
+    }));
+  };
+
+  const lookupExpenseBarcode = async (barcodeOverride?: string) => {
+    if (!canCaregive) return;
+    const barcode = (barcodeOverride ?? expenseDraft.barcode).replace(/\s+/g, "").trim();
+    if (!barcode) {
+      setExpenseLookup({ status: "failed", message: "请先输入或扫描条形码。", candidates: [], barcode: "" });
+      return;
+    }
+    setExpenseDraft((current) => ({ ...current, barcode }));
+    setExpenseLookup({ status: "querying", message: "正在查询商品信息...", candidates: [], barcode });
+    try {
+      const response = await lookupBarcodeProduct(barcode);
+      setExpenseLookup({
+        status: "done",
+        message: response.message || (response.candidates.length ? "已找到商品候选，请确认后填写金额。" : "暂未查到商品信息。"),
+        candidates: response.candidates,
+        barcode: response.barcode,
+      });
+      if (response.candidates.length === 1) applyProductCandidate(response.candidates[0]);
+    } catch (error) {
+      setExpenseLookup({
+        status: "failed",
+        message: error instanceof Error ? error.message : "商品查询失败，请手动填写。",
+        candidates: [],
+        barcode,
+      });
+    }
+  };
+
+  const scanExpenseBarcode = async () => {
+    if (!canCaregive) return;
+    if (!isNativeBarcodeScannerAvailable()) {
+      setExpenseLookup({
+        status: "failed",
+        message: "当前环境不能直接扫码，可以手动输入条形码。",
+        candidates: [],
+        barcode: expenseDraft.barcode,
+      });
+      return;
+    }
+    setExpenseLookup({ status: "scanning", message: "请对准商品条形码。", candidates: [], barcode: expenseDraft.barcode });
+    try {
+      const barcode = await scanBarcode();
+      if (!barcode) {
+        setExpenseLookup({ status: "idle", message: "已取消扫码。", candidates: [], barcode: "" });
+        return;
+      }
+      await lookupExpenseBarcode(barcode);
+    } catch (error) {
+      setExpenseLookup({
+        status: "failed",
+        message: isBarcodeScanCancel(error)
+          ? "已取消扫码。"
+          : error instanceof Error
+            ? error.message
+            : "扫码失败，可以手动输入条形码。",
+        candidates: [],
+        barcode: expenseDraft.barcode,
+      });
+    }
+  };
+
+  const saveExpenseDraft = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canCaregive) return;
+    const amount = Number(expenseDraft.amount);
+    if (!expenseDraft.title.trim()) {
+      window.alert("请填写商品名或用途。");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      window.alert("请填写实际支付金额。");
+      return;
+    }
+    const existing = editingExpenseId ? expenses.find((item) => item.id === editingExpenseId) : undefined;
+    if (existing) {
+      const delta = Math.abs(amount - existing.amount);
+      const needsConfirm = amount >= 1000 || (existing.amount > 0 && delta / existing.amount >= 0.5 && delta >= 100);
+      if (needsConfirm && !window.confirm(`确认把「${existing.title}」的金额改为 ${formatMoney(amount)} 吗？`)) return;
+    }
+    const nextExpense = expenseFromDraft(expenseDraft, existing);
+    setExpenses((current) => {
+      const withoutCurrent = current.filter((item) => item.id !== nextExpense.id);
+      return [nextExpense, ...withoutCurrent].sort((left, right) =>
+        `${right.date}-${right.updatedAt}`.localeCompare(`${left.date}-${left.updatedAt}`),
+      );
+    });
+    try {
+      await persistRecord("expenses", nextExpense.id, nextExpense, { applyResponse: true, mode: "replace" });
+      closeExpenseEditor();
+    } catch {
+      setStorageStatus("offline");
+      closeExpenseEditor();
+    }
+  };
+
+  const requestDeleteExpense = (expense: ExpenseItem) => {
+    if (!canCaregive) return;
+    setDeleteExpenseTarget(expense);
+  };
+
+  const closeDeleteExpenseConfirm = () => {
+    setDeleteExpenseTarget(null);
+  };
+
+  const confirmDeleteExpense = async () => {
+    if (!canCaregive || !deleteExpenseTarget) return;
+    const target = deleteExpenseTarget;
+    setDeleteExpenseTarget(null);
+    setExpenses((current) => current.filter((item) => item.id !== target.id));
+    try {
+      await deleteAppRecord("expenses", target.id);
+    } catch {
+      setStorageStatus("offline");
+    }
+  };
+
   const editAlbumItem = (item: AlbumItem) => {
     if (!canCaregive) return;
     const title = window.prompt("给这段回忆起个名字", item.title);
@@ -5613,6 +6034,7 @@ function App() {
       careLogPatch: careLogPatchFromPendingDraft(effect, pendingDraft.careLogPatch),
       reminders: remindersFromPendingDraft(effect, pendingDraft),
       memories: memoriesFromPendingDraft(effect, pendingDraft),
+      expenses: expensesFromPendingDraft(effect, pendingDraft),
     };
     setPendingEffects((current) =>
       current.map((item) => (item.id === effect.id ? nextEffect : item)),
@@ -5657,6 +6079,17 @@ function App() {
         ? {
             ...current,
             memories: current.memories.map((item) => (item.id === id ? { ...item, text } : item)),
+          }
+        : current,
+    );
+  };
+
+  const updatePendingExpenseDraft = (index: number, patch: Partial<ExpenseDraft>) => {
+    setPendingDraft((current) =>
+      current
+        ? {
+            ...current,
+            expenses: current.expenses.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
           }
         : current,
     );
@@ -6706,6 +7139,61 @@ function App() {
                                     </label>
                                   </fieldset>
                                 ))}
+                                {pendingDraft.expenses.map((item, index) => (
+                                  <fieldset key={`pending-expense-${index}`}>
+                                    <legend>账本支出</legend>
+                                    <label>
+                                      商品或用途
+                                      <input
+                                        value={item.title}
+                                        onChange={(event) => updatePendingExpenseDraft(index, { title: event.target.value })}
+                                      />
+                                    </label>
+                                    <div className="pending-effect-grid">
+                                      <label>
+                                        金额
+                                        <input
+                                          inputMode="decimal"
+                                          value={item.amount}
+                                          onChange={(event) => updatePendingExpenseDraft(index, { amount: event.target.value })}
+                                        />
+                                      </label>
+                                      <label>
+                                        日期
+                                        <input
+                                          type="date"
+                                          value={item.date}
+                                          onChange={(event) => updatePendingExpenseDraft(index, { date: event.target.value })}
+                                        />
+                                      </label>
+                                    </div>
+                                    <div className="pending-effect-grid">
+                                      <label>
+                                        分类
+                                        <StorySelect
+                                          value={item.category}
+                                          options={EXPENSE_CATEGORY_OPTIONS}
+                                          ariaLabel="待确认支出分类"
+                                          onChange={(category) => updatePendingExpenseDraft(index, { category })}
+                                        />
+                                      </label>
+                                      <label>
+                                        商家
+                                        <input
+                                          value={item.merchant}
+                                          onChange={(event) => updatePendingExpenseDraft(index, { merchant: event.target.value })}
+                                        />
+                                      </label>
+                                    </div>
+                                    <label>
+                                      备注
+                                      <textarea
+                                        value={item.note}
+                                        onChange={(event) => updatePendingExpenseDraft(index, { note: event.target.value })}
+                                      />
+                                    </label>
+                                  </fieldset>
+                                ))}
                               </div>
                             ) : null
                           ) : (
@@ -6717,6 +7205,9 @@ function App() {
                               ))}
                               {effect.memories.map((memory) => (
                                 <p key={memory.id}>记忆：{memory.text}</p>
+                              ))}
+                              {(effect.expenses ?? []).map((expense) => (
+                                <p key={expense.id}>支出：{expense.title} {formatMoney(expense.amount)}</p>
                               ))}
                             </div>
                           )}
@@ -7259,6 +7750,361 @@ function App() {
               </div>
             )}
           </section>
+          ) : null}
+        </section>
+
+        <section className="ledger-screen" aria-label="账本">
+          <div className="screen-head">
+            <div className="screen-heading-with-icon">
+              <WalletCards size={24} className="screen-head-lucide" />
+              <div>
+                <p className="eyebrow">账本</p>
+                <h2>{babyNickname}的家庭花费</h2>
+              </div>
+            </div>
+            <div className="screen-head-actions">
+              <span className="screen-pill">{monthExpenses.length} 笔本月支出</span>
+              {canCaregive ? (
+                <button className="screen-action-button" type="button" onClick={openNewExpenseEditor}>
+                  <ReceiptText size={16} />
+                  记一笔
+                </button>
+              ) : (
+                <span className="readonly-pill">仅查看</span>
+              )}
+            </div>
+          </div>
+
+          <div className="segmented-tabs ledger-tabs" role="tablist" aria-label="账本视图">
+            {LEDGER_VIEWS.map((view) => (
+              <button
+                type="button"
+                className={ledgerView === view.id ? "active" : ""}
+                aria-selected={ledgerView === view.id}
+                role="tab"
+                key={view.id}
+                onClick={() => setLedgerView(view.id)}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+
+          <section className="ledger-summary-card">
+            <div>
+              <span>本月支出</span>
+              <strong>{formatMoney(ledgerStats.monthTotal)}</strong>
+              <small>{ledgerMonthKey} · {monthExpenses.length} 笔</small>
+            </div>
+            <div>
+              <span>年度累计</span>
+              <strong>{formatMoney(ledgerStats.yearTotal)}</strong>
+              <small>{ledgerYearKey} 年</small>
+            </div>
+          </section>
+
+          {ledgerView === "month" ? (
+            <>
+              <section className="ledger-card">
+                <div className="section-title">
+                  <LineChart size={18} />
+                  <h2>本月分类占比</h2>
+                </div>
+                {ledgerStats.categoryTotals.length ? (
+                  <div className="expense-category-list">
+                    {ledgerStats.categoryTotals.map((category) => (
+                      <article className={`expense-category-row expense-${category.id}`} key={category.id}>
+                        <div>
+                          <span>{category.label}</span>
+                          <strong>{formatMoney(category.total)}</strong>
+                        </div>
+                        <i aria-hidden="true">
+                          <b style={{ width: `${Math.max(8, (category.total / ledgerStats.maxCategoryTotal) * 100)}%` }} />
+                        </i>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="ledger-empty-copy">本月还没有账本支出。</p>
+                )}
+              </section>
+
+              <section className="ledger-card">
+                <div className="section-title">
+                  <ReceiptText size={18} />
+                  <h2>本月较大支出</h2>
+                </div>
+                {ledgerStats.largest.length ? (
+                  <div className="expense-list compact">
+                    {ledgerStats.largest.map((expense) => (
+                      <article className="expense-item" key={expense.id}>
+                        {expense.productImageUrl ? <img src={expense.productImageUrl} alt="" loading="lazy" decoding="async" /> : <span>{expenseCategoryLabel(expense.category).slice(0, 1)}</span>}
+                        <div>
+                          <h3>{expense.title}</h3>
+                          <p>{formatFullDate(expense.date)} · {expenseCategoryLabel(expense.category)}</p>
+                        </div>
+                        <strong>{formatMoney(expense.amount)}</strong>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="ledger-empty-copy">记几笔之后，这里会自动列出本月最大支出。</p>
+                )}
+              </section>
+            </>
+          ) : null}
+
+          {ledgerView === "year" ? (
+            <section className="ledger-card">
+              <div className="section-title">
+                <LineChart size={18} />
+                <h2>年度月度对比</h2>
+              </div>
+              <div className="expense-year-chart" aria-label="年度支出柱状图">
+                {ledgerStats.monthlyTotals.map((month) => (
+                  <div className="expense-month-bar" key={month.month}>
+                    <span>{month.total ? formatMoney(month.total).replace("¥", "") : "0"}</span>
+                    <i aria-hidden="true">
+                      <b style={{ height: `${month.total ? Math.max(8, (month.total / ledgerStats.maxMonthlyTotal) * 100) : 0}%` }} />
+                    </i>
+                    <em>{month.label}</em>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {ledgerView === "details" ? (
+            <section className="ledger-card">
+              <div className="section-title">
+                <ReceiptText size={18} />
+                <h2>支出明细</h2>
+              </div>
+              {sortedExpenses.length ? (
+                <div className="expense-list">
+                  {sortedExpenses.map((expense) => (
+                    <article className="expense-item detail" key={expense.id}>
+                      {expense.productImageUrl ? (
+                        <img src={expense.productImageUrl} alt="" loading="lazy" decoding="async" />
+                      ) : (
+                        <span>{expenseCategoryLabel(expense.category).slice(0, 1)}</span>
+                      )}
+                      <div>
+                        <h3>{expense.title}</h3>
+                        <p>
+                          {formatFullDate(expense.date)} · {expenseCategoryLabel(expense.category)}
+                          {expense.merchant ? ` · ${expense.merchant}` : ""}
+                        </p>
+                        <small>
+                          {expense.brand ? `${expense.brand} ` : ""}
+                          {expense.spec ?? ""}
+                          {expense.barcode ? ` · ${expense.barcode}` : ""}
+                          {expenseSourceLabel(expense.source) ? ` · ${expenseSourceLabel(expense.source)}` : ""}
+                        </small>
+                      </div>
+                      <strong>{formatMoney(expense.amount)}</strong>
+                      {canCaregive ? (
+                        <div className="expense-actions">
+                          <button type="button" title="编辑支出" onClick={() => openEditExpenseEditor(expense)}>
+                            <PencilLine size={16} />
+                          </button>
+                          <button type="button" title="删除支出" onClick={() => requestDeleteExpense(expense)}>
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state ledger-empty">
+                  <span className="empty-sticker" aria-hidden="true">
+                    <ReceiptText size={28} />
+                  </span>
+                  <p>还没有支出记录。</p>
+                  {canCaregive ? <button type="button" onClick={openNewExpenseEditor}>记第一笔</button> : null}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {expenseEditorOpen ? (
+            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeExpenseEditor}>
+              <form className="story-modal expense-editor" onSubmit={saveExpenseDraft} onMouseDown={(event) => event.stopPropagation()}>
+                <div className="story-modal-head">
+                  <div>
+                    <p className="eyebrow">账本</p>
+                    <h3>{editingExpenseId ? "编辑支出" : "记一笔支出"}</h3>
+                  </div>
+                  <button type="button" className="icon-button" onClick={closeExpenseEditor} aria-label="关闭">
+                    <X size={18} />
+                  </button>
+                </div>
+                <label>
+                  商品名或用途
+                  <input
+                    value={expenseDraft.title}
+                    onChange={(event) => setExpenseDraft((current) => ({ ...current, title: event.target.value }))}
+                    placeholder="比如 奶粉、尿裤、体检"
+                  />
+                </label>
+                <div className="expense-editor-grid">
+                  <label>
+                    金额
+                    <input
+                      inputMode="decimal"
+                      value={expenseDraft.amount}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, amount: event.target.value }))}
+                      placeholder="实际支付金额"
+                    />
+                  </label>
+                  <label>
+                    日期
+                    <input
+                      type="date"
+                      value={expenseDraft.date}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, date: event.target.value }))}
+                    />
+                  </label>
+                </div>
+                <div className="expense-editor-grid">
+                  <label>
+                    分类
+                    <StorySelect
+                      value={expenseDraft.category}
+                      options={EXPENSE_CATEGORY_OPTIONS}
+                      ariaLabel="支出分类"
+                      onChange={(category) => setExpenseDraft((current) => ({ ...current, category }))}
+                    />
+                  </label>
+                  <label>
+                    商家
+                    <input
+                      value={expenseDraft.merchant}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, merchant: event.target.value }))}
+                      placeholder="可选"
+                    />
+                  </label>
+                </div>
+                <div className="expense-editor-grid">
+                  <label>
+                    数量
+                    <input
+                      inputMode="decimal"
+                      value={expenseDraft.quantity}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, quantity: event.target.value }))}
+                      placeholder="可选"
+                    />
+                  </label>
+                  <label>
+                    单价
+                    <input
+                      inputMode="decimal"
+                      value={expenseDraft.unitPrice}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, unitPrice: event.target.value }))}
+                      placeholder="可选"
+                    />
+                  </label>
+                </div>
+                <label>
+                  条形码
+                  <div className="barcode-input-row">
+                    <input
+                      inputMode="numeric"
+                      value={expenseDraft.barcode}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, barcode: event.target.value }))}
+                      placeholder="扫码或手动输入"
+                    />
+                    <button type="button" title="扫码" onClick={() => void scanExpenseBarcode()}>
+                      <ScanBarcode size={17} />
+                    </button>
+                    <button type="button" onClick={() => void lookupExpenseBarcode()}>
+                      查询
+                    </button>
+                  </div>
+                </label>
+                {expenseLookup.message ? (
+                  <p className={`expense-lookup-message ${expenseLookup.status}`}>{expenseLookup.message}</p>
+                ) : null}
+                {expenseLookup.candidates.length ? (
+                  <div className="product-candidate-list">
+                    {expenseLookup.candidates.map((candidate) => (
+                      <button type="button" className="product-candidate" key={candidate.id} onClick={() => applyProductCandidate(candidate)}>
+                        {candidate.imageUrl ? <img src={candidate.imageUrl} alt="" loading="lazy" decoding="async" /> : <ScanBarcode size={18} />}
+                        <span>
+                          <strong>{candidate.title}</strong>
+                          <small>{[candidate.brand, candidate.spec, candidate.source].filter(Boolean).join(" · ")}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="expense-editor-grid">
+                  <label>
+                    品牌
+                    <input
+                      value={expenseDraft.brand}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, brand: event.target.value }))}
+                      placeholder="可选"
+                    />
+                  </label>
+                  <label>
+                    规格
+                    <input
+                      value={expenseDraft.spec}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, spec: event.target.value }))}
+                      placeholder="可选"
+                    />
+                  </label>
+                </div>
+                <label>
+                  备注
+                  <textarea
+                    value={expenseDraft.note}
+                    onChange={(event) => setExpenseDraft((current) => ({ ...current, note: event.target.value }))}
+                    placeholder="比如 活动价、朋友代买、医生建议购买"
+                  />
+                </label>
+                <div className="story-modal-actions">
+                  <button type="button" className="screen-action-button quiet" onClick={closeExpenseEditor}>
+                    取消
+                  </button>
+                  <button type="submit" className="screen-action-button">
+                    <Save size={16} />
+                    保存
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
+          {deleteExpenseTarget ? (
+            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeDeleteExpenseConfirm}>
+              <div
+                className="story-modal delete-confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-expense-title"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="delete-confirm-badge" aria-hidden="true">
+                  <ReceiptText size={22} />
+                </div>
+                <div className="delete-confirm-copy">
+                  <p className="eyebrow">删除支出</p>
+                  <h3 id="delete-expense-title">确定删除这笔支出吗？</h3>
+                  <p>“{deleteExpenseTarget.title} · {formatMoney(deleteExpenseTarget.amount)}”会从家庭账本里移除。</p>
+                </div>
+                <div className="story-modal-actions delete-confirm-actions">
+                  <button type="button" className="screen-action-button quiet" onClick={closeDeleteExpenseConfirm}>
+                    先保留
+                  </button>
+                  <button type="button" className="screen-action-button danger" onClick={() => void confirmDeleteExpense()}>
+                    <Trash2 size={16} />
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : null}
         </section>
 

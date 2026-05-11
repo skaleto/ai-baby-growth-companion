@@ -415,6 +415,15 @@ class AppStateControllerTests {
                         """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value("当前身份仅可查看，不能记录或修改。"));
+
+        mockMvc.perform(put("/api/app/state/expenses/viewer-expense")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + viewerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"viewer-expense","title":"奶粉","amount":268,"currency":"CNY","category":"formula","date":"2026-05-01"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("当前身份仅可查看，不能记录或修改。"));
     }
 
     @Test
@@ -490,6 +499,13 @@ class AppStateControllerTests {
                                 {"id":"album-shared","kind":"media","title":"共享照片","date":"2026-05-01","category":"growth","tags":["成长"],"source":"manual"}
                                 """))
                 .andExpect(status().isOk());
+        mockMvc.perform(put("/api/app/state/expenses/expense-shared")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"expense-shared","title":"奶粉","amount":268,"currency":"CNY","category":"formula","date":"2026-05-01","source":"manual"}
+                                """))
+                .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/app/state")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondToken))
@@ -500,7 +516,8 @@ class AppStateControllerTests {
                 .andExpect(jsonPath("$.state.memories.length()").value(0))
                 .andExpect(jsonPath("$.state.conversationSummary").doesNotExist())
                 .andExpect(jsonPath("$.state.careLogs[0].id").value("care-shared"))
-                .andExpect(jsonPath("$.state.albumItems[0].id").value("album-shared"));
+                .andExpect(jsonPath("$.state.albumItems[0].id").value("album-shared"))
+                .andExpect(jsonPath("$.state.expenses[0].id").value("expense-shared"));
     }
 
     @Test
@@ -581,6 +598,40 @@ class AppStateControllerTests {
                         .header(HttpHeaders.AUTHORIZATION, bearer()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state.albumItems.length()").value(0));
+    }
+
+    @Test
+    void upsertsAndDeletesExpenses() throws Exception {
+        mockMvc.perform(put("/api/app/state/expenses/expense-test")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "expense-test",
+                                  "title": "奶粉",
+                                  "amount": 268,
+                                  "currency": "CNY",
+                                  "category": "formula",
+                                  "date": "2026-05-01",
+                                  "quantity": 1,
+                                  "unitPrice": 268,
+                                  "merchant": "母婴店",
+                                  "source": "manual"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.expenses[0].id").value("expense-test"))
+                .andExpect(jsonPath("$.state.expenses[0].amount").value(268));
+
+        mockMvc.perform(get("/api/app/state")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.expenses[0].category").value("formula"));
+
+        mockMvc.perform(delete("/api/app/state/expenses/expense-test")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.expenses.length()").value(0));
     }
 
     @Test

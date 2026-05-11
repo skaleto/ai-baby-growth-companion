@@ -622,6 +622,36 @@ class EffectPolicyTests {
         assertThat(decisions.get(0).payload().path("repeatRule").path("intervalMinutes").asInt()).isEqualTo(120);
     }
 
+    @Test
+    void autoRecordsConcreteExpense() {
+        var decisions = policy.decide(response(List.of(), List.of()), extractor.extract("今天给小宝买奶粉花了268"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).type()).isEqualTo("expenseItem");
+        assertThat(decisions.get(0).payload().path("title").asText()).isEqualTo("奶粉");
+        assertThat(decisions.get(0).payload().path("amount").asDouble()).isEqualTo(268);
+        assertThat(decisions.get(0).payload().path("category").asText()).isEqualTo("formula");
+    }
+
+    @Test
+    void asksForActualAmountBeforeRecordingExpense() {
+        var decisions = policy.decide(response(List.of(), List.of()), extractor.extract("今天给小宝买了奶粉"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("ask");
+        assertThat(decisions.get(0).type()).isEqualTo("expenseItem");
+        assertThat(decisions.get(0).payload().path("missingFields"))
+                .anyMatch((field) -> field.asText().equals("实际花了多少钱"));
+    }
+
+    @Test
+    void doesNotTurnBarcodePriceQueryIntoExpense() {
+        var decisions = policy.decide(response(List.of(), List.of()), extractor.extract("这个条形码多少钱"));
+
+        assertThat(decisions).isEmpty();
+    }
+
     private AgentChatResponse response(AgentCareLog careLog, List<AgentSafetyAlert> alerts) {
         return response(careLog, List.of(), alerts);
     }

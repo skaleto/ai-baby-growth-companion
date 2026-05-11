@@ -13,7 +13,8 @@ public record RecordSignals(
         boolean explicitReminderTime,
         List<CareRecordClarification> clarifications,
         boolean unsupportedMutationRequest,
-        ReminderSignal reminderSignal
+        ReminderSignal reminderSignal,
+        ExpenseSignal expenseSignal
 ) {
     public RecordSignals(
             List<String> targetDates,
@@ -25,7 +26,7 @@ public record RecordSignals(
             List<CareRecordClarification> clarifications,
             boolean unsupportedMutationRequest
     ) {
-        this(targetDates, topics, riskHints, careLogPatch, concreteCareLog, explicitReminderTime, clarifications, unsupportedMutationRequest, null);
+        this(targetDates, topics, riskHints, careLogPatch, concreteCareLog, explicitReminderTime, clarifications, unsupportedMutationRequest, null, null);
     }
 
     public RecordSignals {

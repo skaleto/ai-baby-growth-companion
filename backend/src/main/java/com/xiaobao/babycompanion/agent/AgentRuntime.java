@@ -70,6 +70,7 @@ public class AgentRuntime {
             你必须遵守上下文里的 capabilities。不能在聊天里假装完成系统不支持的动作，例如撤销、删除、修改历史记录；这类请求只能说明边界并引导用户使用记录卡片的撤销按钮或记录页编辑。
             selectedSkills 只是可用技能目录；只有上下文包含 disclosedSkillContexts 时，才代表相关 skill 小节已被渐进式加载。不要声称已经逐字学习、复制或复述任何受版权保护的育儿书内容。
             图片/视频描述、相册保存、照护日志是三件不同的事。上传图片或视频本身不能单独生成喂养、睡眠、便便、体温等 careLog；只有用户文本/语音明确说了奶量、睡眠时长、体温等字段，才允许输出照护日志。
+            记账是独立能力，只记录为宝宝产生的真实支出。商品条码或联网查询只能辅助识别商品信息和参考价格，不能把参考价格当成实际支出；只有用户明确说出实际花费金额和用途时，才可以让系统记到账本。
             App 截图、网页截图、聊天截图、记录页截图、纯 UI/文字界面图只可以描述，不得输出 careLogPatch、growthEvent、reminders 或 memories，也不要说已保存到相册。
             相册保存由系统根据 albumItem effectDecision 和前端准入校验完成；没有 albumItem effectDecision 时，你不能承诺“已保存到相册”。如果用户只是问“这图/视频里有啥”，只描述附件内容；如果明显是截图，可以温和补一句这类图片不会保存到成长相册。
             当用户只是要求“把刚才/这个图片或视频保存到相册”时，只处理相册保存，不要顺带追问或生成成长、照护、记忆、提醒记录，也不要说“提交审核/审核通过”。
@@ -151,6 +152,28 @@ public class AgentRuntime {
                   "updatedAt": null
                 }
               ],
+              "expenses": [
+                {
+                  "id": null,
+                  "title": "string",
+                  "amount": 268.0,
+                  "currency": "CNY",
+                  "category": "formula|diaper|food|clothing|toy|health|vaccine|daily|education|other",
+                  "date": "YYYY-MM-DD",
+                  "quantity": null,
+                  "unitPrice": null,
+                  "merchant": null,
+                  "note": "string",
+                  "barcode": null,
+                  "brand": null,
+                  "spec": null,
+                  "productImageUrl": null,
+                  "attachmentIds": [],
+                  "source": "agent",
+                  "createdAt": null,
+                  "updatedAt": null
+                }
+              ],
               "sources": [
                 {
                   "title": "string",
@@ -174,6 +197,8 @@ public class AgentRuntime {
             其他循环提醒默认 scheduleMode=interval + alertMode=notification，repeatRule 使用 {"mode":"fixedInterval","intervalMinutes":N,"anchorType":"now"}；只有用户明确说“闹钟/响铃/铃声”时，才把 alertMode 设为 ringing。
             “每隔 N 小时/每 N 分钟提醒……”都属于循环提醒；intervalMinutes 必须是明确数字，不能臆造。
             用户只是设置提醒或闹钟时，不要输出 memories；不要把已存在的小宝资料、喂养方式、过敏信息重复写成待确认记忆。
+            用户只是询问条码、商品信息、参考价格时，不要输出 expenses；必须提醒用户确认实际支付金额后再记账。
+            用户明确说“给宝宝买奶粉花了268元、今天尿裤支出129”等支出时，可以输出 expenses 或让系统规则自动记账；缺商品/用途或缺实际金额时要追问，不要暴露内部字段名。
             如果同一句话里包含多个照护行为（例如喝奶、睡眠、便便、体温、辅食同时出现），必须拆成多个独立的 careLogPatch.events；不要把多件事混合成一条 note 或一个笼统事件。
             每个 events 元素只描述一件事：喝奶事件只放奶量，睡眠事件只放睡眠时长，体温事件只放体温，便便事件只放便便描述。
             喂奶记录必须至少有奶量；“开始吃奶、准备喂奶、要喝奶了”这类只有开始意图的输入不要输出 careLogPatch，要追问喝完后的奶量。
@@ -844,7 +869,7 @@ public class AgentRuntime {
 
     private boolean likelyNeedsExternalLookup(String message) {
         if (!StringUtils.hasText(message)) return false;
-        return message.matches(".*(查|查询|搜|搜索|联网|最新|政策|规定|官方|通知|价格|天气|哪里|地址|电话|办理|流程).*")
+        return message.matches(".*(查|查询|搜|搜索|联网|最新|政策|规定|官方|通知|价格|多少钱|条形码|天气|哪里|地址|电话|办理|流程).*")
                 || message.matches(".*(现在|当前|今天).*(天气|政策|规定|价格|新闻|通知).*");
     }
 

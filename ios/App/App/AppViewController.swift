@@ -18,6 +18,7 @@ class AppViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(AlarmReminderPlugin())
+        bridge?.registerPluginInstance(BarcodeScannerPlugin())
         bridge?.registerPluginInstance(NativeMediaPickerPlugin())
     }
 }

@@ -32,6 +32,14 @@ app:
     directory: ${APP_MOBILE_UPDATES_DIR:mobile-updates}
     public-base-url: ${APP_MOBILE_UPDATES_PUBLIC_BASE_URL:}
 
+product:
+  lookup:
+    free-enabled: ${PRODUCT_LOOKUP_FREE_ENABLED:true}
+    domestic-provider: ${PRODUCT_LOOKUP_DOMESTIC_PROVIDER:none}
+    domestic-api-key: ${PRODUCT_LOOKUP_DOMESTIC_API_KEY:}
+    connect-timeout: ${PRODUCT_LOOKUP_CONNECT_TIMEOUT:5s}
+    read-timeout: ${PRODUCT_LOOKUP_READ_TIMEOUT:12s}
+
 auth:
   jwt:
     secret-file: ${AUTH_JWT_SECRET_FILE:backend/data/auth/jwt_secret}

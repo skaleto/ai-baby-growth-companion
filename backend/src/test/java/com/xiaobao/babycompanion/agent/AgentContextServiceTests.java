@@ -34,6 +34,7 @@ class AgentContextServiceTests {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 null,
                 null,
                 null
@@ -89,6 +90,7 @@ class AgentContextServiceTests {
                 List.of(reminder),
                 List.of(),
                 List.of(pending),
+                List.of(),
                 List.of(),
                 summary,
                 null,

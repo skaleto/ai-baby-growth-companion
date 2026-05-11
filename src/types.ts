@@ -45,6 +45,39 @@ export interface AlbumPrompt {
   createdAt: string;
 }
 
+export type ExpenseCategory =
+  | "formula"
+  | "diaper"
+  | "food"
+  | "clothing"
+  | "toy"
+  | "health"
+  | "vaccine"
+  | "daily"
+  | "education"
+  | "other";
+
+export interface ExpenseItem {
+  id: string;
+  title: string;
+  amount: number;
+  currency: "CNY" | string;
+  category: ExpenseCategory;
+  date: string;
+  quantity?: number;
+  unitPrice?: number;
+  merchant?: string;
+  note?: string;
+  barcode?: string;
+  brand?: string;
+  spec?: string;
+  productImageUrl?: string;
+  attachmentIds: string[];
+  source: "manual" | "barcode" | "agent" | "web";
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type AgentModelId =
   | "deepseek-v4-pro"
   | "deepseek-v4-flash"
@@ -209,6 +242,7 @@ export interface PendingEffect {
   careLogPatch?: Partial<CareLog>;
   reminders: Reminder[];
   memories: MemoryItem[];
+  expenses?: ExpenseItem[];
   safetyAlerts: SafetyAlert[];
 }
 
@@ -221,6 +255,7 @@ export interface AppStateSnapshot {
   memories: MemoryItem[];
   pendingEffects: PendingEffect[];
   albumItems: AlbumItem[];
+  expenses: ExpenseItem[];
   conversationSummary?: ConversationSummary | null;
   thinkingEnabled?: boolean;
   selectedModel?: AgentModelId;
@@ -280,6 +315,7 @@ export interface AgentPageContext {
     tags: string[];
     summary: string[];
   }>;
+  recentExpenses?: ExpenseItem[];
 }
 
 export interface AgentChatResponse {
@@ -301,7 +337,7 @@ export interface AgentChatResponse {
 export interface EffectDecision {
   id: string;
   mode: "auto" | "pending" | "ask" | "ignore";
-  type: "careLog" | "reminder" | "growthEvent" | "memory" | "albumItem";
+  type: "careLog" | "reminder" | "growthEvent" | "memory" | "albumItem" | "expenseItem";
   payload?: unknown;
   confidence?: number;
   reason?: string;

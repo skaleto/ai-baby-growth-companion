@@ -37,7 +37,9 @@ public class DatabaseInitializer implements ApplicationRunner {
             createRecordTable(connection, statement, "memory_item");
             createRecordTable(connection, statement, "pending_effect");
             createRecordTable(connection, statement, "album_item");
+            createRecordTable(connection, statement, "expense_item");
             createRecordTable(connection, statement, "conversation_summary");
+            createRecordTable(connection, statement, "product_lookup_cache");
             createAuthTables(connection, statement);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS attachment (
@@ -285,6 +287,7 @@ public class DatabaseInitializer implements ApplicationRunner {
                 "memory_item",
                 "pending_effect",
                 "album_item",
+                "expense_item",
                 "conversation_summary"
         };
     }

@@ -42,6 +42,8 @@ public class EffectPolicy {
         boolean highRisk = highRisk(response.safetyAlerts(), signals);
         decisions.addAll(completenessPolicy.boundaryDecisions(signals));
         if (signals.unsupportedMutationRequest()) return decisions;
+        AgentEffectDecision expenseDecision = expenseSignalDecision(signals);
+        if (expenseDecision != null) decisions.add(expenseDecision);
         AgentEffectDecision mixedFeedingClarification = mixedFeedingClarification(response, signals, babyProfile, userMessage);
         if (mixedFeedingClarification != null) decisions.add(mixedFeedingClarification);
         boolean needsClarification = decisions.stream().anyMatch((decision) -> "ask".equals(decision.mode()));
@@ -77,6 +79,50 @@ public class EffectPolicy {
             );
         }
         return decisions;
+    }
+
+    private AgentEffectDecision expenseSignalDecision(RecordSignals signals) {
+        ExpenseSignal signal = signals.expenseSignal();
+        if (signal == null) return null;
+        boolean hasTitle = StringUtils.hasText(signal.title());
+        boolean hasAmount = signal.amount() != null && signal.amount() > 0;
+        if (!hasTitle || !hasAmount) {
+            ObjectNode ask = objectMapper.createObjectNode();
+            ask.put("topic", "expense");
+            ArrayNode missing = objectMapper.createArrayNode();
+            if (!hasTitle) missing.add("花在什么上");
+            if (!hasAmount) missing.add("实际花了多少钱");
+            ask.set("missingFields", missing);
+            ask.put("question", !hasTitle
+                    ? "这笔钱是买了什么？告诉我商品或用途和实际金额后，我再帮你记到账本里。"
+                    : "这笔支出实际花了多少钱？确认金额后我再帮你记到账本里。");
+            return decision("ask", "expenseItem", ask, 0.82, "记账信息还缺少商品或金额。", "rule");
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putNull("id");
+        payload.put("title", signal.title());
+        payload.put("amount", roundMoney(signal.amount()));
+        payload.put("currency", "CNY");
+        payload.put("category", StringUtils.hasText(signal.category()) ? signal.category() : "other");
+        payload.put("date", StringUtils.hasText(signal.date()) ? signal.date() : "");
+        payload.putNull("quantity");
+        payload.putNull("unitPrice");
+        payload.putNull("merchant");
+        payload.put("note", signal.sourceText());
+        payload.putNull("barcode");
+        payload.putNull("brand");
+        payload.putNull("spec");
+        payload.putNull("productImageUrl");
+        payload.set("attachmentIds", objectMapper.createArrayNode());
+        payload.put("source", "agent");
+        payload.putNull("createdAt");
+        payload.putNull("updatedAt");
+        return decision("auto", "expenseItem", payload, 0.9, "识别到明确的小宝支出，已记到账本。", "rule");
+    }
+
+    private double roundMoney(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     private AgentEffectDecision reminderSignalDecision(RecordSignals signals, boolean highRisk) {

@@ -2,6 +2,9 @@ package com.xiaobao.babycompanion.dto.agent;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record AgentChatResponse(
         String aiText,
         List<String> tags,

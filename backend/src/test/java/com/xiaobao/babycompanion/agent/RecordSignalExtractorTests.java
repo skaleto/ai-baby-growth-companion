@@ -190,4 +190,24 @@ class RecordSignalExtractorTests {
         assertThat(signals.topics()).contains("reminder");
         assertThat(signals.explicitReminderTime()).isTrue();
     }
+
+    @Test
+    void extractsExpenseSignalForBabyPurchase() {
+        RecordSignals signals = extractor.extract("今天给小宝买奶粉花了268");
+
+        assertThat(signals.topics()).contains("expense");
+        assertThat(signals.expenseSignal()).isNotNull();
+        assertThat(signals.expenseSignal().title()).isEqualTo("奶粉");
+        assertThat(signals.expenseSignal().amount()).isEqualTo(268);
+        assertThat(signals.expenseSignal().category()).isEqualTo("formula");
+    }
+
+    @Test
+    void treatsBarcodePriceQueryAsLookupOnly() {
+        RecordSignals signals = extractor.extract("这个条形码多少钱");
+
+        assertThat(signals.topics()).contains("expense");
+        assertThat(signals.expenseSignal()).isNull();
+        assertThat(signals.concreteCareLog()).isFalse();
+    }
 }

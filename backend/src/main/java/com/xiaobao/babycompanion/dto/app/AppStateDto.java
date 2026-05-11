@@ -13,6 +13,7 @@ public record AppStateDto(
         List<JsonNode> memories,
         List<JsonNode> pendingEffects,
         List<JsonNode> albumItems,
+        List<JsonNode> expenses,
         JsonNode conversationSummary,
         Boolean thinkingEnabled,
         String selectedModel

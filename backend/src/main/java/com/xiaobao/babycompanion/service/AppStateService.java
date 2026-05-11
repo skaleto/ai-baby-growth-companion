@@ -31,6 +31,7 @@ import com.xiaobao.babycompanion.persistence.entity.BabyProfileRecord;
 import com.xiaobao.babycompanion.persistence.entity.CareLogRecord;
 import com.xiaobao.babycompanion.persistence.entity.ChatMessageRecord;
 import com.xiaobao.babycompanion.persistence.entity.ConversationSummaryRecord;
+import com.xiaobao.babycompanion.persistence.entity.ExpenseItemRecord;
 import com.xiaobao.babycompanion.persistence.entity.GrowthEventRecord;
 import com.xiaobao.babycompanion.persistence.entity.MemoryItemRecord;
 import com.xiaobao.babycompanion.persistence.entity.PendingEffectRecord;
@@ -42,6 +43,7 @@ import com.xiaobao.babycompanion.persistence.service.BabyProfileRecordService;
 import com.xiaobao.babycompanion.persistence.service.CareLogRecordService;
 import com.xiaobao.babycompanion.persistence.service.ChatMessageRecordService;
 import com.xiaobao.babycompanion.persistence.service.ConversationSummaryRecordService;
+import com.xiaobao.babycompanion.persistence.service.ExpenseItemRecordService;
 import com.xiaobao.babycompanion.persistence.service.GrowthEventRecordService;
 import com.xiaobao.babycompanion.persistence.service.MemoryItemRecordService;
 import com.xiaobao.babycompanion.persistence.service.PendingEffectRecordService;
@@ -63,6 +65,7 @@ public class AppStateService {
     private final MemoryItemRecordService memoryService;
     private final PendingEffectRecordService pendingEffectService;
     private final AlbumItemRecordService albumItemService;
+    private final ExpenseItemRecordService expenseItemService;
     private final ConversationSummaryRecordService conversationSummaryService;
     private final AttachmentRecordService attachmentRecordService;
     private final AuthFamilyMemberRecordService familyMemberService;
@@ -79,6 +82,7 @@ public class AppStateService {
             MemoryItemRecordService memoryService,
             PendingEffectRecordService pendingEffectService,
             AlbumItemRecordService albumItemService,
+            ExpenseItemRecordService expenseItemService,
             ConversationSummaryRecordService conversationSummaryService,
             AttachmentRecordService attachmentRecordService,
             AuthFamilyMemberRecordService familyMemberService,
@@ -94,6 +98,7 @@ public class AppStateService {
         this.memoryService = memoryService;
         this.pendingEffectService = pendingEffectService;
         this.albumItemService = albumItemService;
+        this.expenseItemService = expenseItemService;
         this.conversationSummaryService = conversationSummaryService;
         this.attachmentRecordService = attachmentRecordService;
         this.familyMemberService = familyMemberService;
@@ -121,6 +126,7 @@ public class AppStateService {
                 readPrivateList(memoryService, familyId, userId),
                 readPrivateList(pendingEffectService, familyId, userId),
                 readAlbumItems(familyId),
+                readList(expenseItemService, familyId),
                 readConversationSummary(familyId, userId),
                 null,
                 null
@@ -151,6 +157,7 @@ public class AppStateService {
         saveList(memoryService, MemoryItemRecord::new, state.memories(), "memory", now, familyId, userId);
         saveList(pendingEffectService, PendingEffectRecord::new, state.pendingEffects(), "pending", now, familyId, userId);
         saveList(albumItemService, AlbumItemRecord::new, state.albumItems(), "album", now, familyId, userId);
+        saveList(expenseItemService, ExpenseItemRecord::new, state.expenses(), "expense", now, familyId, userId);
         saveConversationSummary(state.conversationSummary(), now, familyId, userId);
         return readForUser(familyId, userId);
     }
@@ -192,6 +199,7 @@ public class AppStateService {
             case "memories" -> saveEffectObject(memoryService, MemoryItemRecord::new, withId(item, id), "memory", now, familyId, userId);
             case "pendingEffects" -> saveEffectObject(pendingEffectService, PendingEffectRecord::new, withId(item, id), "pending", now, familyId, userId);
             case "albumItems" -> saveEffectObject(albumItemService, AlbumItemRecord::new, withId(item, id), "album", now, familyId, userId);
+            case "expenses" -> saveEffectObject(expenseItemService, ExpenseItemRecord::new, withId(item, id), "expense", now, familyId, userId);
             case "conversationSummary" -> saveConversationSummary(item, now, familyId, userId);
             default -> throw new IllegalArgumentException("Unsupported state collection: " + collection);
         }
@@ -211,6 +219,7 @@ public class AppStateService {
             case "memories" -> memoryService.remove(privateQuery(MemoryItemRecord.class, familyId, userId).eq("id", id));
             case "pendingEffects" -> pendingEffectService.remove(privateQuery(PendingEffectRecord.class, familyId, userId).eq("id", id));
             case "albumItems" -> albumItemService.remove(familyQuery(AlbumItemRecord.class, familyId).eq("id", id));
+            case "expenses" -> expenseItemService.remove(familyQuery(ExpenseItemRecord.class, familyId).eq("id", id));
             case "conversationSummary" -> conversationSummaryService.remove(privateQuery(ConversationSummaryRecord.class, familyId, userId));
             default -> throw new IllegalArgumentException("Unsupported state collection: " + collection);
         }
@@ -245,6 +254,7 @@ public class AppStateService {
         saveCareLogPatch(effect.get("careLogPatch"), now, familyId, userId);
         saveEffectArray(reminderService, ReminderRecord::new, effect.get("reminders"), "reminder", now, familyId, userId);
         saveEffectArray(memoryService, MemoryItemRecord::new, effect.get("memories"), "memory", now, familyId, userId);
+        saveEffectArray(expenseItemService, ExpenseItemRecord::new, effect.get("expenses"), "expense", now, familyId, userId);
         pendingEffectService.remove(privateQuery(PendingEffectRecord.class, familyId, userId).eq("id", id));
         return readForUser(familyId, userId);
     }
@@ -269,6 +279,7 @@ public class AppStateService {
         claimOwnerless(memoryService, familyId, userId);
         claimOwnerless(pendingEffectService, familyId, userId);
         claimOwnerless(albumItemService, familyId, userId);
+        claimOwnerless(expenseItemService, familyId, userId);
         claimOwnerless(conversationSummaryService, familyId, userId);
         UpdateWrapper<AttachmentRecord> attachmentUpdate = new UpdateWrapper<>();
         attachmentUpdate.and((wrapper) -> wrapper.isNull("family_id").or().eq("family_id", ""));
@@ -385,6 +396,7 @@ public class AppStateService {
         removeAttachmentReferencesFromRecords(growthService, familyId, attachmentId);
         removeAttachmentReferencesFromRecords(careLogService, familyId, attachmentId);
         removeAttachmentReferencesFromRecords(pendingEffectService, familyId, attachmentId);
+        removeAttachmentReferencesFromRecords(expenseItemService, familyId, attachmentId);
     }
 
     private <T extends AppRecordEntity> void removeAttachmentReferencesFromRecords(IService<T> service, String familyId, String attachmentId) {
@@ -809,6 +821,7 @@ public class AppStateService {
         memoryService.remove(familyQuery(MemoryItemRecord.class, familyId));
         pendingEffectService.remove(familyQuery(PendingEffectRecord.class, familyId));
         albumItemService.remove(familyQuery(AlbumItemRecord.class, familyId));
+        expenseItemService.remove(familyQuery(ExpenseItemRecord.class, familyId));
         conversationSummaryService.remove(familyQuery(ConversationSummaryRecord.class, familyId));
         attachmentRecordService.remove(new QueryWrapper<AttachmentRecord>().eq("family_id", familyId));
     }
@@ -818,6 +831,7 @@ public class AppStateService {
         growthService.remove(familyQuery(GrowthEventRecord.class, familyId));
         careLogService.remove(familyQuery(CareLogRecord.class, familyId));
         albumItemService.remove(familyQuery(AlbumItemRecord.class, familyId));
+        expenseItemService.remove(familyQuery(ExpenseItemRecord.class, familyId));
         messageService.remove(privateQuery(ChatMessageRecord.class, familyId, userId));
         reminderService.remove(privateQuery(ReminderRecord.class, familyId, userId));
         memoryService.remove(privateQuery(MemoryItemRecord.class, familyId, userId));
@@ -826,7 +840,7 @@ public class AppStateService {
         QueryWrapper<AttachmentRecord> attachments = new QueryWrapper<AttachmentRecord>()
                 .eq("family_id", familyId)
                 .and((wrapper) -> wrapper
-                        .in("owner_type", List.of("profile", "growth", "care", "album"))
+                        .in("owner_type", List.of("profile", "growth", "care", "album", "expense"))
                         .or()
                         .eq("owner_user_id", userId));
         attachmentRecordService.remove(attachments);
@@ -888,6 +902,7 @@ public class AppStateService {
                 && empty(state.memories())
                 && empty(state.pendingEffects())
                 && empty(state.albumItems())
+                && empty(state.expenses())
                 && (state.conversationSummary() == null || state.conversationSummary().isNull());
     }
 
@@ -924,6 +939,7 @@ public class AppStateService {
             case "memory" -> text(node, "updatedAt", "%08d".formatted(index));
             case "pending" -> text(node, "createdAt", "%08d".formatted(index));
             case "album" -> text(node, "occurredAt", text(node, "date", "%08d".formatted(index)));
+            case "expense" -> text(node, "date", text(node, "createdAt", "%08d".formatted(index)));
             case "conversationSummary" -> text(node, "updatedAt", "%08d".formatted(index));
             default -> "%08d".formatted(index);
         };

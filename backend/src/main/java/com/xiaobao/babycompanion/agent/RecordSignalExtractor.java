@@ -32,6 +32,7 @@ public class RecordSignalExtractor {
     private static final Pattern WAKES = Pattern.compile("(?:夜醒|醒了|醒来)\\s*(\\d{1,2})\\s*次");
     private static final Pattern TEMPERATURE = Pattern.compile("(3[5-9](?:\\.\\d)?)\\s*(?:度|℃)");
     private static final Pattern INTERVAL_REMINDER = Pattern.compile("(?:每隔|每)\\s*(半|\\d+(?:\\.\\d+)?|[一二两三四五六七八九十]+)\\s*(?:个)?\\s*(分钟|分|小时)");
+    private static final Pattern MONEY = Pattern.compile("(?:¥|￥)?\\s*(\\d+(?:\\.\\d{1,2})?)\\s*(?:元|块|rmb|RMB)?");
     private static final Pattern PART_SEPARATOR = Pattern.compile("[。；;\\n，,]");
 
     private final ObjectMapper objectMapper;
@@ -62,6 +63,7 @@ public class RecordSignalExtractor {
         List<CareRecordClarification> clarifications = new ArrayList<>();
         boolean concreteCare = false;
         ReminderSignal reminderSignal = reminderSignal(text);
+        ExpenseSignal expenseSignal = expenseSignal(text, date);
 
         if (matches(text, feedingPattern())) topics.add("feeding");
         if (matches(text, "睡|夜醒|哄睡")) topics.add("sleep");
@@ -69,6 +71,7 @@ public class RecordSignalExtractor {
         if (matches(text, "体温|发烧|发热|度|退烧")) topics.add("temperature");
         if (matches(text, "疫苗|接种")) topics.add("vaccine");
         if (matches(text, "提醒|闹钟|记得|定时|每隔\\s*(\\d+|[一二两三四五六七八九十半]+)\\s*(分钟|分|小时)")) topics.add("reminder");
+        if (expenseSignal != null || matches(text, "记账|花了|花费|支出|买了|购买|付款|多少钱|价格|条形码|扫码")) topics.add("expense");
 
         if (matches(text, "发烧|发热|退烧|体温")) risks.add("fever");
         if (matches(text, "药|用药|吃药|剂量")) risks.add("medicine");
@@ -173,8 +176,56 @@ public class RecordSignalExtractor {
                 explicitReminderTime,
                 clarifications,
                 AgentCapabilityContract.unsupportedMutationRequest(text),
-                reminderSignal
+                reminderSignal,
+                expenseSignal
         );
+    }
+
+    private ExpenseSignal expenseSignal(String text, String date) {
+        if (!StringUtils.hasText(text)) return null;
+        boolean intent = matches(text, "记账|花了|花费|支出|买了|购买|付款|给.*买|为.*买");
+        if (!intent) return null;
+        Double amount = expenseAmount(text);
+        String title = expenseTitle(text);
+        if (amount == null && !StringUtils.hasText(title)) return null;
+        return new ExpenseSignal(title, amount, date, expenseCategory(title + " " + text), compact(text));
+    }
+
+    private Double expenseAmount(String text) {
+        Matcher matcher = MONEY.matcher(text);
+        Double best = null;
+        while (matcher.find()) {
+            Double value = doubleValue(matcher.group(1));
+            if (value == null || value <= 0) continue;
+            String around = text.substring(Math.max(0, matcher.start() - 8), Math.min(text.length(), matcher.end() + 4));
+            if (around.matches(".*(点|:|：|分钟|小时|ml|毫升|次).*")) continue;
+            best = value;
+        }
+        return best;
+    }
+
+    private String expenseTitle(String text) {
+        String title = text
+                .replaceAll("(今天|昨天|前天|明天|刚刚|刚才|给小宝|给宝宝|为小宝|为宝宝)", " ")
+                .replaceAll("(帮我)?记账|记录(一下)?|花了|花费|支出|付款|支付|买了|购买|给.*?买|为.*?买|买", " ")
+                .replaceAll("(?:¥|￥)?\\s*\\d+(?:\\.\\d{1,2})?\\s*(?:元|块|rmb|RMB)?", " ")
+                .replaceAll("[，。,.；;！!？?]", " ")
+                .trim();
+        if (!StringUtils.hasText(title)) return "";
+        return title.length() > 30 ? title.substring(0, 30) : title;
+    }
+
+    private String expenseCategory(String raw) {
+        String text = raw == null ? "" : raw;
+        if (matches(text, "奶粉|配方奶|水奶|液态奶")) return "formula";
+        if (matches(text, "尿裤|纸尿裤|拉拉裤|尿不湿")) return "diaper";
+        if (matches(text, "辅食|米粉|果泥|肉泥|零食")) return "food";
+        if (matches(text, "衣服|裤子|帽子|袜|鞋|围兜|睡袋")) return "clothing";
+        if (matches(text, "玩具|绘本|摇铃|积木")) return "toy";
+        if (matches(text, "体检|疫苗|挂号|医院|药|护理|退烧|体温计")) return "health";
+        if (matches(text, "湿巾|棉柔巾|洗护|沐浴|润肤|日用")) return "daily";
+        if (matches(text, "早教|课程|摄影|游泳|娱乐")) return "education";
+        return "other";
     }
 
     private ReminderSignal reminderSignal(String text) {
@@ -419,6 +470,14 @@ public class RecordSignalExtractor {
     private Double firstDouble(Pattern pattern, String text) {
         Matcher matcher = pattern.matcher(text);
         return matcher.find() ? Double.parseDouble(matcher.group(1)) : null;
+    }
+
+    private Double doubleValue(String value) {
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException exception) {
+            return null;
+        }
     }
 
     private double roundOneDecimal(double value) {
