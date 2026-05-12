@@ -20,7 +20,6 @@
 		73A620542CB37A6900B7D201 /* xiaobao_chime.wav in Resources */ = {isa = PBXBuildFile; fileRef = 73A620532CB37A6900B7D201 /* xiaobao_chime.wav */; };
 		73A620562CB37A6900B7D201 /* xiaobao_bell.wav in Resources */ = {isa = PBXBuildFile; fileRef = 73A620552CB37A6900B7D201 /* xiaobao_bell.wav */; };
 		73A620582CB37A6900B7D201 /* NativeMediaPickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A620572CB37A6900B7D201 /* NativeMediaPickerPlugin.swift */; };
-		73A6205A2CB37A6900B7D201 /* BarcodeScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A620592CB37A6900B7D201 /* BarcodeScannerPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,7 +37,6 @@
 		73A620532CB37A6900B7D201 /* xiaobao_chime.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = xiaobao_chime.wav; sourceTree = "<group>"; };
 		73A620552CB37A6900B7D201 /* xiaobao_bell.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = xiaobao_bell.wav; sourceTree = "<group>"; };
 		73A620572CB37A6900B7D201 /* NativeMediaPickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMediaPickerPlugin.swift; sourceTree = "<group>"; };
-		73A620592CB37A6900B7D201 /* BarcodeScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerPlugin.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -78,7 +76,6 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				73A6204F2CB37A6900B7D201 /* AppViewController.swift */,
 				73A620512CB37A6900B7D201 /* AlarmReminderPlugin.swift */,
-				73A620592CB37A6900B7D201 /* BarcodeScannerPlugin.swift */,
 				73A620572CB37A6900B7D201 /* NativeMediaPickerPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -176,7 +173,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				73A620522CB37A6900B7D201 /* AlarmReminderPlugin.swift in Sources */,
-				73A6205A2CB37A6900B7D201 /* BarcodeScannerPlugin.swift in Sources */,
 				73A620582CB37A6900B7D201 /* NativeMediaPickerPlugin.swift in Sources */,
 				73A620502CB37A6900B7D201 /* AppViewController.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,

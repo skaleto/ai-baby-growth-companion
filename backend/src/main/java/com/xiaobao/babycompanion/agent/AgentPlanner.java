@@ -41,7 +41,7 @@ public class AgentPlanner {
               }
             }
             需要最新政策、地点信息、官方通知、疫苗政策、办事流程、天气等外部资料时，加入 web_search。
-            需要查询商品条码、商品信息或参考价格时，加入 web_search，但实际记账金额必须由用户确认。
+            需要查询商品信息或参考价格时，加入 web_search，但实际记账金额必须由用户确认。
             日常记录优先保留目标日期和主题，不要编造用户没说的事实。
             selectedSkills 只是可用技能目录。若看到 pediatric-care-guide，只代表系统可在后续最终回复中按需渐进式加载育儿基础知识；planner 不要把技能目录当成已经执行或已经加载的事实。
             用户可能用 12 小时制描述时间；没有上午/下午时，结合 currentTime 判断今天最近已经发生过的候选时间。
@@ -94,7 +94,7 @@ public class AgentPlanner {
 
     public AgentPlan heuristic(AgentChatRequest request, RecordSignals signals) {
         String message = request.message() == null ? "" : request.message();
-        boolean needsWeb = message.matches(".*(查|查询|搜|搜索|联网|最新|政策|规定|官方|通知|天气|哪里|地址|电话|办理|流程|价格|多少钱|条形码).*");
+        boolean needsWeb = message.matches(".*(查|查询|搜|搜索|联网|最新|政策|规定|官方|通知|天气|哪里|地址|电话|办理|流程|价格|多少钱).*");
         boolean reminder = message.matches(".*(提醒|闹钟|记得|定时|每隔\\s*[\\d一二两三四五六七八九十半]+\\s*(分钟|分|小时)).*");
         boolean record = signals.concreteCareLog() ||
                 signals.topics().stream().anyMatch((topic) -> List.of("feeding", "sleep", "poop", "temperature", "growth", "memory", "expense").contains(topic));

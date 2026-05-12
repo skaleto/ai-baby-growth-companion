@@ -107,6 +107,7 @@ class AgentRuntimeTests {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 List.of("default-baby-companion"),
                 "agent-test",
                 "model-test",

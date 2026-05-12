@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentEffectDecision;
+import com.xiaobao.babycompanion.dto.agent.AgentExpense;
 import com.xiaobao.babycompanion.dto.agent.AgentReminder;
 import com.xiaobao.babycompanion.dto.agent.AgentSafetyAlert;
 import org.springframework.stereotype.Component;
@@ -44,6 +45,13 @@ public class EffectPolicy {
         if (signals.unsupportedMutationRequest()) return decisions;
         AgentEffectDecision expenseDecision = expenseSignalDecision(signals);
         if (expenseDecision != null) decisions.add(expenseDecision);
+        boolean expenseAlreadyCapturedByRule = "pending".equals(expenseDecision == null ? "" : expenseDecision.mode());
+        if (!expenseAlreadyCapturedByRule) {
+            listOrEmpty(response.expenses()).forEach((expense) -> {
+                AgentEffectDecision decision = expenseDecision(expense, signals);
+                if (decision != null) decisions.add(decision);
+            });
+        }
         AgentEffectDecision mixedFeedingClarification = mixedFeedingClarification(response, signals, babyProfile, userMessage);
         if (mixedFeedingClarification != null) decisions.add(mixedFeedingClarification);
         boolean needsClarification = decisions.stream().anyMatch((decision) -> "ask".equals(decision.mode()));
@@ -110,15 +118,70 @@ public class EffectPolicy {
         payload.putNull("unitPrice");
         payload.putNull("merchant");
         payload.put("note", signal.sourceText());
-        payload.putNull("barcode");
         payload.putNull("brand");
         payload.putNull("spec");
-        payload.putNull("productImageUrl");
         payload.set("attachmentIds", objectMapper.createArrayNode());
         payload.put("source", "agent");
         payload.putNull("createdAt");
         payload.putNull("updatedAt");
-        return decision("auto", "expenseItem", payload, 0.9, "识别到明确的小宝支出，已记到账本。", "rule");
+        return decision("pending", "expenseItem", payload, 0.9, "识别到明确的小宝支出，请确认后记到账本。", "rule");
+    }
+
+    private AgentEffectDecision expenseDecision(AgentExpense expense, RecordSignals signals) {
+        if (expense == null) return null;
+        boolean hasTitle = StringUtils.hasText(expense.title());
+        boolean hasAmount = expense.amount() != null && expense.amount() > 0;
+        boolean hasCategory = StringUtils.hasText(expense.category());
+        String date = StringUtils.hasText(expense.date())
+                ? expense.date()
+                : signals.targetDates().stream().findFirst().orElse("");
+        if (!hasTitle || !hasAmount || !hasCategory || !StringUtils.hasText(date)) {
+            ObjectNode ask = objectMapper.createObjectNode();
+            ask.put("topic", "expense");
+            ArrayNode missing = objectMapper.createArrayNode();
+            if (!hasTitle) missing.add("买了什么或花在什么上");
+            if (!hasAmount) missing.add("实际花了多少钱");
+            if (!hasCategory) missing.add("支出分类");
+            if (!StringUtils.hasText(date)) missing.add("日期");
+            ask.set("missingFields", missing);
+            ask.put("question", "这笔账还缺少" + missingText(missing) + "，补充后我再整理成待确认草稿。");
+            return decision("ask", "expenseItem", ask, 0.82, "记账信息还缺少必要字段。", "model");
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putNull("id");
+        payload.put("title", expense.title().trim());
+        payload.put("amount", roundMoney(expense.amount()));
+        payload.put("currency", StringUtils.hasText(expense.currency()) ? expense.currency() : "CNY");
+        payload.put("category", expense.category());
+        payload.put("date", date);
+        if (expense.quantity() == null) payload.putNull("quantity");
+        else payload.put("quantity", expense.quantity());
+        if (expense.unitPrice() == null) payload.putNull("unitPrice");
+        else payload.put("unitPrice", roundMoney(expense.unitPrice()));
+        if (StringUtils.hasText(expense.merchant())) payload.put("merchant", expense.merchant().trim());
+        else payload.putNull("merchant");
+        if (StringUtils.hasText(expense.note())) payload.put("note", expense.note().trim());
+        else payload.putNull("note");
+        if (StringUtils.hasText(expense.brand())) payload.put("brand", expense.brand().trim());
+        else payload.putNull("brand");
+        if (StringUtils.hasText(expense.spec())) payload.put("spec", expense.spec().trim());
+        else payload.putNull("spec");
+        ArrayNode attachmentIds = objectMapper.createArrayNode();
+        listOrEmpty(expense.attachmentIds()).stream()
+                .filter(StringUtils::hasText)
+                .forEach(attachmentIds::add);
+        payload.set("attachmentIds", attachmentIds);
+        payload.put("source", "agent");
+        payload.putNull("createdAt");
+        payload.putNull("updatedAt");
+        return decision("pending", "expenseItem", payload, 0.84, "AI 已整理出待确认账本草稿。", "model");
+    }
+
+    private String missingText(ArrayNode missing) {
+        List<String> fields = new ArrayList<>();
+        missing.forEach((node) -> fields.add(node.asText()));
+        return String.join("、", fields);
     }
 
     private double roundMoney(double value) {

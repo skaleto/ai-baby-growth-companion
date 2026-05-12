@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLog;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLogEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
+import com.xiaobao.babycompanion.dto.agent.AgentExpense;
 import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.dto.agent.AgentReminder;
 import com.xiaobao.babycompanion.dto.agent.AgentSafetyAlert;
@@ -435,6 +436,7 @@ class EffectPolicyTests {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 List.of("default-baby-companion"),
                 "trace",
                 "model",
@@ -528,6 +530,7 @@ class EffectPolicyTests {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 List.of("default-baby-companion"),
                 "trace",
                 "model",
@@ -579,6 +582,7 @@ class EffectPolicyTests {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 List.of("default-baby-companion"),
                 "trace",
                 "model",
@@ -623,20 +627,96 @@ class EffectPolicyTests {
     }
 
     @Test
-    void autoRecordsConcreteExpense() {
+    void createsPendingDraftForConcreteExpense() {
         var decisions = policy.decide(response(List.of(), List.of()), extractor.extract("今天给小宝买奶粉花了268"));
 
         assertThat(decisions).hasSize(1);
-        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).mode()).isEqualTo("pending");
         assertThat(decisions.get(0).type()).isEqualTo("expenseItem");
         assertThat(decisions.get(0).payload().path("title").asText()).isEqualTo("奶粉");
         assertThat(decisions.get(0).payload().path("amount").asDouble()).isEqualTo(268);
         assertThat(decisions.get(0).payload().path("category").asText()).isEqualTo("formula");
+        assertThat(decisions.get(0).payload().has("barcode")).isFalse();
+        assertThat(decisions.get(0).payload().has("productImageUrl")).isFalse();
     }
 
     @Test
     void asksForActualAmountBeforeRecordingExpense() {
         var decisions = policy.decide(response(List.of(), List.of()), extractor.extract("今天给小宝买了奶粉"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("ask");
+        assertThat(decisions.get(0).type()).isEqualTo("expenseItem");
+        assertThat(decisions.get(0).payload().path("missingFields"))
+                .anyMatch((field) -> field.asText().equals("实际花了多少钱"));
+    }
+
+    @Test
+    void createsPendingDraftForModelExpense() {
+        AgentChatResponse response = new AgentChatResponse(
+                "我整理了一笔待确认支出。",
+                List.of(),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(new AgentExpense(
+                        null,
+                        "纸尿裤",
+                        129.9,
+                        "CNY",
+                        "diapers",
+                        "2026-05-01",
+                        null,
+                        null,
+                        "天猫",
+                        "订单截图识别",
+                        "帮宝适",
+                        "M",
+                        List.of("attachment-1"),
+                        "agent",
+                        null,
+                        null
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        var decisions = policy.decide(response, extractor.extract("这张订单截图帮我记到账本"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("pending");
+        assertThat(decisions.get(0).type()).isEqualTo("expenseItem");
+        assertThat(decisions.get(0).payload().path("title").asText()).isEqualTo("纸尿裤");
+        assertThat(decisions.get(0).payload().path("amount").asDouble()).isEqualTo(129.9);
+        assertThat(decisions.get(0).payload().path("source").asText()).isEqualTo("agent");
+    }
+
+    @Test
+    void asksForMissingFieldsOnModelExpense() {
+        AgentChatResponse response = new AgentChatResponse(
+                "我还需要确认一下金额。",
+                List.of(),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(new AgentExpense(null, "奶粉", null, "CNY", "formula", "2026-05-01", null, null, null, null, null, null, List.of(), "agent", null, null)),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        var decisions = policy.decide(response, extractor.extract("看一下这张商品照片"));
 
         assertThat(decisions).hasSize(1);
         assertThat(decisions.get(0).mode()).isEqualTo("ask");
@@ -667,6 +747,7 @@ class EffectPolicyTests {
                 null,
                 careLog,
                 reminders,
+                List.of(),
                 List.of(),
                 List.of(),
                 alerts,

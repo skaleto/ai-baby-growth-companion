@@ -12,6 +12,7 @@ public record AgentChatResponse(
         AgentCareLog careLogPatch,
         List<AgentReminder> reminders,
         List<AgentMemory> memories,
+        List<AgentExpense> expenses,
         List<AgentSource> sources,
         List<AgentSafetyAlert> safetyAlerts,
         List<AgentEffectDecision> effectDecisions,

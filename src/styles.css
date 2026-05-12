@@ -2069,6 +2069,10 @@ body {
   touch-action: pan-y;
 }
 
+body.ledger-modal-open {
+  touch-action: none;
+}
+
 input,
 select,
 button,
@@ -2996,8 +3000,7 @@ canvas {
 }
 
 .expense-category-list,
-.expense-list,
-.product-candidate-list {
+.expense-list {
   display: grid;
   gap: 8px;
 }
@@ -3156,8 +3159,7 @@ canvas {
   gap: 4px;
 }
 
-.expense-actions button,
-.barcode-input-row button {
+.expense-actions button {
   display: grid;
   place-items: center;
   min-height: 36px;
@@ -3171,13 +3173,84 @@ canvas {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  align-items: end;
 }
 
-.barcode-input-row {
+.ledger-form-backdrop {
+  padding: 0 10px max(10px, env(safe-area-inset-bottom));
+}
+
+.ledger-form-sheet {
+  width: min(100%, 410px);
+  max-height: min(82dvh, calc(var(--app-viewport-height, 100vh) - 26px));
+  overflow: hidden;
+  border-radius: 18px;
+  touch-action: pan-y;
+}
+
+.expense-editor {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px;
+}
+
+.expense-editor-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px 58px;
-  gap: 7px;
-  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 1px 2px 4px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.expense-editor .story-modal-head h3,
+.ledger-smart-drawer .story-modal-head h3 {
+  font-size: 20px;
+}
+
+.expense-editor .expense-editor-grid,
+.ledger-smart-drafts .expense-editor-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.expense-editor label,
+.ledger-smart-drafts label {
+  gap: 6px;
+  font-size: 12px;
+}
+
+.expense-editor input,
+.expense-editor textarea,
+.expense-editor .story-select-trigger,
+.ledger-smart-drafts input,
+.ledger-smart-drafts textarea,
+.ledger-smart-drafts .story-select-trigger {
+  min-height: 44px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.expense-editor textarea,
+.ledger-smart-drafts textarea {
+  min-height: 64px;
+}
+
+.expense-editor .story-modal-actions,
+.ledger-smart-drawer .story-modal-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.expense-editor .story-modal-actions .screen-action-button,
+.ledger-smart-drawer .story-modal-actions .screen-action-button {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 10px;
+  font-weight: 900;
 }
 
 .expense-lookup-message {
@@ -3195,36 +3268,133 @@ canvas {
   color: #8f3048;
 }
 
-.product-candidate {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
+.ledger-smart-backdrop {
+  align-items: end;
+  padding: 0 10px max(10px, env(safe-area-inset-bottom));
+}
+
+.ledger-smart-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 410px);
+  max-height: min(82dvh, calc(var(--app-viewport-height, 100vh) - 26px));
   gap: 10px;
-  align-items: center;
-  padding: 8px;
-  border: 1px solid rgba(234, 223, 208, 0.95);
+  overflow: hidden;
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.ledger-smart-messages {
+  display: grid;
+  gap: 8px;
+  flex: 0 1 auto;
+  max-height: 116px;
+  min-height: 48px;
+  overflow-y: auto;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ledger-smart-message {
+  width: fit-content;
+  max-width: 88%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(234, 223, 208, 0.9);
   border-radius: 8px;
   background: #fffdf8;
   color: var(--ink);
-  text-align: left;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-line;
 }
 
-.product-candidate img,
-.product-candidate > svg {
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  object-fit: cover;
-  background: #eef6ef;
+.ledger-smart-message.parent {
+  justify-self: end;
+  border-color: rgba(88, 127, 168, 0.28);
+  background: #f3f8fb;
 }
 
-.product-candidate span {
+.ledger-smart-message.ai {
+  justify-self: start;
+  border-color: rgba(91, 127, 109, 0.28);
+  background: #f6faf4;
+}
+
+.ledger-smart-attachments {
+  flex: 0 0 auto;
+  max-height: 104px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ledger-smart-drafts {
   display: grid;
-  gap: 3px;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
-.product-candidate small {
-  color: var(--muted);
-  font-size: 11px;
+.ledger-smart-drafts fieldset {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 11px;
+  border: 1px solid rgba(234, 223, 208, 0.95);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.74);
+}
+
+.ledger-smart-drafts legend {
+  padding: 0 5px;
+  color: var(--sage-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ledger-smart-composer {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: stretch;
+  padding: 6px;
+  border: 1px solid rgba(234, 223, 208, 0.92);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.94);
+}
+
+.ledger-smart-composer textarea {
+  min-height: 50px;
+  max-height: 84px;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  resize: none;
+  box-shadow: none;
+}
+
+.ledger-smart-composer-actions {
+  display: grid;
+  grid-template-columns: 42px 48px;
+  gap: 6px;
+}
+
+.ledger-smart-composer-actions .tool-button,
+.ledger-smart-composer-actions .send-button {
+  width: 100%;
+  min-width: 0;
+  height: 50px;
+  min-height: 50px;
+  border-radius: 10px;
 }
 
 .ledger-empty-copy {
@@ -3553,24 +3723,71 @@ canvas {
   min-width: 0;
 }
 
+.ledger-head-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: end;
+  gap: 6px;
+}
+
+.ledger-head-actions .screen-pill {
+  max-width: min(176px, 48vw);
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.86);
+  color: rgba(91, 127, 109, 0.86);
+  font-size: 11px;
+}
+
+.ledger-action-cluster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: min(188px, 48vw);
+}
+
+.ledger-action-button {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(47, 64, 55, 0.07);
+}
+
+.ledger-action-button.quiet {
+  border-color: rgba(91, 127, 109, 0.2);
+  background: #fffdf8;
+  color: #507262;
+}
+
 .story-modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 120;
+  width: 100%;
+  height: var(--app-viewport-height, 100vh);
+  max-height: var(--app-viewport-height, 100vh);
   display: grid;
   place-items: end center;
+  overflow: hidden;
   padding: 18px 12px max(18px, env(safe-area-inset-bottom));
+  overscroll-behavior: none;
   background: rgba(45, 36, 28, 0.22);
   backdrop-filter: blur(8px);
+  touch-action: none;
 }
 
 .story-modal {
   width: min(100%, 410px);
-  max-height: min(86dvh, 680px);
+  max-height: min(86dvh, calc(var(--app-viewport-height, 100vh) - 36px), 680px);
   display: grid;
   gap: 14px;
   padding: 16px;
   overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid rgba(234, 223, 208, 0.95);
   border-radius: 22px;
   background:
@@ -3617,7 +3834,7 @@ canvas {
 .story-modal textarea {
   min-height: 84px;
   padding: 12px 13px;
-  resize: vertical;
+  resize: none;
 }
 
 .story-modal input:focus,
@@ -6170,6 +6387,21 @@ body {
     gap: 6px;
   }
 
+  .ledger-action-cluster {
+    width: min(166px, 50vw);
+    gap: 5px;
+  }
+
+  .ledger-action-button {
+    min-height: 36px;
+    padding: 0 6px;
+    font-size: 11px;
+  }
+
+  .ledger-head-actions .screen-pill {
+    max-width: min(166px, 50vw);
+  }
+
   .story-modal-backdrop {
     padding: 10px 8px max(10px, env(safe-area-inset-bottom));
   }
@@ -6177,6 +6409,15 @@ body {
   .story-modal {
     border-radius: 18px;
     padding: 14px;
+  }
+
+  .ledger-form-sheet {
+    max-height: min(84dvh, calc(var(--app-viewport-height, 100vh) - 18px));
+  }
+
+  .expense-editor .expense-editor-grid,
+  .ledger-smart-drafts .expense-editor-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .reminder-editor-grid {

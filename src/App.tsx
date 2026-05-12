@@ -20,7 +20,6 @@ import {
   PencilLine,
   ReceiptText,
   Save,
-  ScanBarcode,
   Send,
   ShieldAlert,
   Smartphone,
@@ -112,9 +111,7 @@ import {
   type NativeAlarmEvent,
 } from "./nativeAlarm";
 import { isNativeMediaPickerAvailable, isNativeMediaPickerCancel, pickNativeMediaFiles } from "./nativeMediaPicker";
-import { isBarcodeScanCancel, isNativeBarcodeScannerAvailable, scanBarcode } from "./nativeBarcodeScanner";
 import { MOBILE_UPDATE_NOTICE_EVENT, type MobileUpdateNoticeDetail, type MobileUpdateNoticeTone } from "./mobileUpdates";
-import { lookupBarcodeProduct, type ProductCandidate } from "./productApi";
 import { useStoredState } from "./storage";
 import { useStableViewport } from "./hooks/useStableViewport";
 import {
@@ -306,7 +303,7 @@ type AuthStatus = "checking" | "authenticated" | "unauthenticated";
 type CompressionStatus = "idle" | "checking" | "compressing" | "done" | "failed";
 
 type MediaUploadStatus = "preparing" | "uploading" | "processing" | "done" | "failed";
-type MediaUploadTarget = "chat" | "album";
+type MediaUploadTarget = "chat" | "album" | "ledger";
 
 type MediaUploadItem = {
   id: string;
@@ -385,18 +382,15 @@ type ExpenseDraft = {
   unitPrice: string;
   merchant: string;
   note: string;
-  barcode: string;
   brand: string;
   spec: string;
-  productImageUrl: string;
   source: ExpenseItem["source"];
 };
 
-type ExpenseLookupState = {
-  status: "idle" | "scanning" | "querying" | "done" | "failed";
-  message: string;
-  candidates: ProductCandidate[];
-  barcode: string;
+type LedgerAssistantMessage = {
+  id: string;
+  role: "parent" | "ai";
+  text: string;
 };
 
 type PendingReminderDraft = {
@@ -894,12 +888,10 @@ const normalizeExpenseItem = (value: Partial<ExpenseItem> | null | undefined, in
     unitPrice: numberValue(value?.unitPrice),
     merchant: textValue(value?.merchant) || undefined,
     note: textValue(value?.note) || undefined,
-    barcode: textValue(value?.barcode) || undefined,
     brand: textValue(value?.brand) || undefined,
     spec: textValue(value?.spec) || undefined,
-    productImageUrl: textValue(value?.productImageUrl) || undefined,
     attachmentIds: stringList(value?.attachmentIds),
-    source: value?.source === "barcode" || value?.source === "agent" || value?.source === "web" ? value.source : "manual",
+    source: value?.source === "agent" ? "agent" : "manual",
     createdAt: textValue(value?.createdAt, now),
     updatedAt: textValue(value?.updatedAt, now),
   };
@@ -2563,10 +2555,8 @@ function createExpenseDraft(baseDate = todayISO()): ExpenseDraft {
     unitPrice: "",
     merchant: "",
     note: "",
-    barcode: "",
     brand: "",
     spec: "",
-    productImageUrl: "",
     source: "manual",
   };
 }
@@ -2581,10 +2571,8 @@ function expenseDraftFromExpense(expense: ExpenseItem): ExpenseDraft {
     unitPrice: expense.unitPrice ? String(expense.unitPrice) : "",
     merchant: expense.merchant ?? "",
     note: expense.note ?? "",
-    barcode: expense.barcode ?? "",
     brand: expense.brand ?? "",
     spec: expense.spec ?? "",
-    productImageUrl: expense.productImageUrl ?? "",
     source: expense.source,
   };
 }
@@ -2606,10 +2594,8 @@ function expenseFromDraft(draft: ExpenseDraft, existing?: ExpenseItem): ExpenseI
       unitPrice: unitPrice && Number.isFinite(unitPrice) ? Math.round(unitPrice * 100) / 100 : undefined,
       merchant: draft.merchant.trim() || undefined,
       note: draft.note.trim() || undefined,
-      barcode: draft.barcode.trim() || undefined,
       brand: draft.brand.trim() || undefined,
       spec: draft.spec.trim() || undefined,
-      productImageUrl: draft.productImageUrl.trim() || undefined,
       attachmentIds: existing?.attachmentIds ?? [],
       source: draft.source,
       createdAt: existing?.createdAt ?? now,
@@ -2876,6 +2862,22 @@ const normalizeAgentResponse = (result: AgentChatResponse, parentText: string) =
       updatedAt: item.updatedAt ?? now,
     }));
 
+  const expenses: ExpenseItem[] = (result.expenses ?? [])
+    .filter((item) => item.title?.trim() || item.amount)
+    .map((item, index) =>
+      normalizeExpenseItem(
+        {
+          ...item,
+          id: item.id ?? makeId("expense"),
+          date: item.date || todayISO(),
+          source: "agent",
+          createdAt: item.createdAt ?? now,
+          updatedAt: item.updatedAt ?? now,
+        },
+        index,
+      ),
+    );
+
   return {
     aiText: result.aiText,
     tags: result.tags ?? [],
@@ -2883,6 +2885,7 @@ const normalizeAgentResponse = (result: AgentChatResponse, parentText: string) =
     careLogPatch,
     reminders,
     memories,
+    expenses,
     sources: normalizeSources(result.sources ?? []),
     safetyAlerts: normalizeSafetyAlerts(result.safetyAlerts),
     effectDecisions: result.effectDecisions ?? [],
@@ -3027,9 +3030,7 @@ const expenseYearKey = (date: string) => (date && date.length >= 4 ? date.slice(
 const sumExpenses = (items: ExpenseItem[]) => items.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
 
 const expenseSourceLabel = (source: ExpenseItem["source"]) => {
-  if (source === "barcode") return "扫码";
   if (source === "agent") return "AI";
-  if (source === "web") return "联网";
   return "手动";
 };
 
@@ -3216,13 +3217,13 @@ function App() {
   const [expenseEditorOpen, setExpenseEditorOpen] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState("");
   const [expenseDraft, setExpenseDraft] = useState<ExpenseDraft>(() => createExpenseDraft());
-  const [expenseLookup, setExpenseLookup] = useState<ExpenseLookupState>({
-    status: "idle",
-    message: "",
-    candidates: [],
-    barcode: "",
-  });
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<ExpenseItem | null>(null);
+  const [ledgerAssistantOpen, setLedgerAssistantOpen] = useState(false);
+  const [ledgerAssistantInput, setLedgerAssistantInput] = useState("");
+  const [ledgerAssistantMessages, setLedgerAssistantMessages] = useState<LedgerAssistantMessage[]>([]);
+  const [ledgerAssistantAttachments, setLedgerAssistantAttachments] = useState<Attachment[]>([]);
+  const [ledgerAssistantDrafts, setLedgerAssistantDrafts] = useState<ExpenseDraft[]>([]);
+  const [ledgerAssistantStatus, setLedgerAssistantStatus] = useState<"idle" | "thinking" | "saving">("idle");
   const [albumCategory, setAlbumCategory] = useState<AlbumItemCategory | "all">("all");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
@@ -3286,6 +3287,7 @@ function App() {
   const [ringingReminder, setRingingReminder] = useState<Reminder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const albumFileInputRef = useRef<HTMLInputElement>(null);
+  const ledgerFileInputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const asrControllerRef = useRef<AsrStreamController | null>(null);
   const voiceStandbyStreamRef = useRef<MediaStream | null>(null);
@@ -3355,9 +3357,12 @@ function App() {
   const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
   const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
   const albumUploadItems = mediaUploadItems.filter((item) => item.target === "album");
+  const ledgerUploadItems = mediaUploadItems.filter((item) => item.target === "ledger");
   const isUploadingChatMedia = chatUploadItems.some((item) => activeUploadStatuses.includes(item.status));
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
+  const isUploadingLedgerMedia = ledgerUploadItems.some((item) => activeUploadStatuses.includes(item.status));
   const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
+  const ledgerModalOpen = expenseEditorOpen || ledgerAssistantOpen || Boolean(deleteExpenseTarget);
   const loginRoleOptions = useMemo(
     () =>
       ROLE_SELECT_OPTIONS.map((option) => {
@@ -3852,6 +3857,13 @@ function App() {
   useEffect(() => {
     previewAlbumItemsRef.current = albumPreviewItems;
   }, [albumPreviewItems]);
+
+  useEffect(() => {
+    document.body.classList.toggle("ledger-modal-open", ledgerModalOpen);
+    return () => {
+      document.body.classList.remove("ledger-modal-open");
+    };
+  }, [ledgerModalOpen]);
 
   useEffect(() => {
     previewAlbumItemRef.current = previewAlbumItem;
@@ -4703,7 +4715,12 @@ function App() {
       }));
 
   const processSelectedMediaFiles = async (files: File[], target: MediaUploadTarget) => {
-    const availableSlots = target === "chat" ? Math.max(0, 4 - attachments.length) : 20;
+    const availableSlots =
+      target === "chat"
+        ? Math.max(0, 4 - attachments.length)
+        : target === "ledger"
+          ? Math.max(0, 4 - ledgerAssistantAttachments.length)
+          : 20;
     const queue = queueMediaFiles(files, availableSlots);
     if (queue.length) {
       setMediaUploadItems((current) => [
@@ -4738,6 +4755,9 @@ function App() {
         if (target === "chat") {
           removeMediaUploadItem(item.id);
           setAttachments((current) => [...current, attachment].slice(0, 4));
+        } else if (target === "ledger") {
+          removeMediaUploadItem(item.id);
+          setLedgerAssistantAttachments((current) => [...current, attachment].slice(0, 4));
         } else {
           const albumItem = albumItemFromStandaloneAttachment(attachment);
           setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
@@ -4753,15 +4773,20 @@ function App() {
         removeMediaUploadItemLater(item.id, 6000);
       }
     }
-    if (failures.length || (target === "chat" && availableSlots === 0)) {
+    if (failures.length || ((target === "chat" || target === "ledger") && availableSlots === 0)) {
+      const message = failures.length
+        ? `${target === "album" ? "相册" : "素材"}上传失败：${failures.slice(0, 2).join("；")}${failures.length > 2 ? " 等" : ""}`
+        : "最多同时添加 4 个素材，先处理当前内容后再继续添加。";
+      if (target === "ledger") {
+        showSystemWeakNotice(message, "warning", 3600);
+        return;
+      }
       setMessages((current) => [
         ...current,
         {
           id: makeId("msg"),
           role: "ai",
-          text: failures.length
-            ? `${target === "chat" ? "素材" : "相册"}上传失败：${failures.slice(0, 2).join("；")}${failures.length > 2 ? " 等" : ""}`
-            : "最多同时添加 4 个素材，先发送当前内容后再继续添加。",
+          text: message,
           createdAt: new Date().toISOString(),
           tags: ["系统"],
         },
@@ -4784,6 +4809,15 @@ function App() {
       return;
     }
     await processSelectedMediaFiles(Array.from(event.target.files ?? []), "album");
+    event.target.value = "";
+  };
+
+  const handleLedgerFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!canCaregive || !canAttachVisuals || isUploadingLedgerMedia) {
+      event.target.value = "";
+      return;
+    }
+    await processSelectedMediaFiles(Array.from(event.target.files ?? []), "ledger");
     event.target.value = "";
   };
 
@@ -4829,6 +4863,29 @@ function App() {
       }
     }
     albumFileInputRef.current?.click();
+  };
+
+  const openLedgerMediaPicker = async () => {
+    if (!canCaregive || !canAttachVisuals || isUploadingLedgerMedia) return;
+    const availableSlots = Math.max(0, 4 - ledgerAssistantAttachments.length);
+    if (availableSlots <= 0) {
+      await processSelectedMediaFiles([], "ledger");
+      return;
+    }
+    if (isNativeMediaPickerAvailable()) {
+      try {
+        const files = await pickNativeMediaFiles({ limit: availableSlots });
+        if (files.length) await processSelectedMediaFiles(files, "ledger");
+        return;
+      } catch (error) {
+        if (isNativeMediaPickerCancel(error)) return;
+        console.warn("[native-media-picker] failed", error);
+        const message = error instanceof Error ? error.message : "无法读取已选择的素材";
+        showSystemWeakNotice(`素材选择失败：${message}`, "warning", 3600);
+        return;
+      }
+    }
+    ledgerFileInputRef.current?.click();
   };
 
   const clearVoiceAutoSubmitTimer = () => {
@@ -5374,7 +5431,6 @@ function App() {
       let pendingExpenses: ExpenseItem[] = [];
       const autoCareLogPatches: Partial<CareLog>[] = [];
       let autoReminderCandidates: Reminder[] = [];
-      let autoExpenseCandidates: ExpenseItem[] = [];
 
       if (hasServerDecisions) {
         result.effectDecisions.forEach((decision, index) => {
@@ -5402,8 +5458,7 @@ function App() {
           }
           if (decision.type === "expenseItem") {
             const expense = normalizeExpenseItem(decision.payload as Partial<ExpenseItem>, index);
-            if (decision.mode === "auto") autoExpenseCandidates = [...autoExpenseCandidates, expense];
-            if (decision.mode === "pending") pendingExpenses = [...pendingExpenses, expense];
+            if (decision.mode === "auto" || decision.mode === "pending") pendingExpenses = [...pendingExpenses, expense];
           }
         });
       } else if (isAutoRecordableCareLog(result.careLogPatch, result.safetyAlerts) && result.careLogPatch) {
@@ -5446,10 +5501,7 @@ function App() {
           return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
         });
       }
-      if (autoExpenseCandidates.length) {
-        setExpenses((current) => [...autoExpenseCandidates, ...current]);
-      }
-      if (autoUndos.length || autoScheduledReminders.length || autoExpenseCandidates.length) hapticSuccess();
+      if (autoUndos.length || autoScheduledReminders.length) hapticSuccess();
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
       );
@@ -5478,11 +5530,6 @@ function App() {
       if (autoScheduledReminders.length) {
         autoScheduledReminders.forEach((reminder) => {
           persistenceTasks.push(() => persistRecord("reminders", reminder.id, reminder));
-        });
-      }
-      if (autoExpenseCandidates.length) {
-        autoExpenseCandidates.forEach((expense) => {
-          persistenceTasks.push(() => persistRecord("expenses", expense.id, expense));
         });
       }
       if (hasPendingEffectContent(pendingEffect)) {
@@ -5705,7 +5752,6 @@ function App() {
     if (!canCaregive) return;
     setEditingExpenseId("");
     setExpenseDraft(createExpenseDraft(todayDate));
-    setExpenseLookup({ status: "idle", message: "", candidates: [], barcode: "" });
     setExpenseEditorOpen(true);
   };
 
@@ -5713,7 +5759,6 @@ function App() {
     if (!canCaregive) return;
     setEditingExpenseId(expense.id);
     setExpenseDraft(expenseDraftFromExpense(expense));
-    setExpenseLookup({ status: "idle", message: "", candidates: [], barcode: expense.barcode ?? "" });
     setExpenseEditorOpen(true);
   };
 
@@ -5721,85 +5766,184 @@ function App() {
     setExpenseEditorOpen(false);
     setEditingExpenseId("");
     setExpenseDraft(createExpenseDraft(todayDate));
-    setExpenseLookup({ status: "idle", message: "", candidates: [], barcode: "" });
   };
 
-  const applyProductCandidate = (candidate: ProductCandidate) => {
-    setExpenseDraft((current) => ({
-      ...current,
-      title: candidate.title || current.title,
-      category: normalizeExpenseCategory(candidate.category),
-      barcode: candidate.barcode || current.barcode,
-      brand: candidate.brand ?? current.brand,
-      spec: candidate.spec ?? current.spec,
-      productImageUrl: candidate.imageUrl ?? current.productImageUrl,
-      source: "barcode",
-    }));
-    setExpenseLookup((current) => ({
-      ...current,
-      status: "done",
-      message: "已填入商品候选，金额仍需要按实际支付填写。",
-    }));
-  };
-
-  const lookupExpenseBarcode = async (barcodeOverride?: string) => {
+  const openLedgerAssistant = () => {
     if (!canCaregive) return;
-    const barcode = (barcodeOverride ?? expenseDraft.barcode).replace(/\s+/g, "").trim();
-    if (!barcode) {
-      setExpenseLookup({ status: "failed", message: "请先输入或扫描条形码。", candidates: [], barcode: "" });
-      return;
+    setLedgerAssistantOpen(true);
+    if (!ledgerAssistantMessages.length) {
+      setLedgerAssistantMessages([
+        {
+          id: makeId("ledger-ai"),
+          role: "ai",
+          text: "我会先整理待确认草稿。",
+        },
+      ]);
     }
-    setExpenseDraft((current) => ({ ...current, barcode }));
-    setExpenseLookup({ status: "querying", message: "正在查询商品信息...", candidates: [], barcode });
+  };
+
+  const closeLedgerAssistant = () => {
+    if (ledgerAssistantStatus !== "idle" || isUploadingLedgerMedia) return;
+    setLedgerAssistantOpen(false);
+  };
+
+  const resetLedgerAssistant = () => {
+    if (ledgerAssistantStatus !== "idle" || isUploadingLedgerMedia) return;
+    setLedgerAssistantInput("");
+    setLedgerAssistantAttachments([]);
+    setLedgerAssistantDrafts([]);
+    setLedgerAssistantMessages([
+      {
+        id: makeId("ledger-ai"),
+        role: "ai",
+        text: "重新开始。",
+      },
+    ]);
+  };
+
+  const ledgerExpenseDraftsFromResult = (result: ReturnType<typeof normalizeAgentResponse>) => {
+    const decisionDrafts = result.effectDecisions
+      .filter((decision) => decision.type === "expenseItem" && decision.mode === "pending" && decision.payload && typeof decision.payload === "object")
+      .map((decision, index) => expenseDraftFromExpense(normalizeExpenseItem(decision.payload as Partial<ExpenseItem>, index)));
+    if (decisionDrafts.length) return decisionDrafts;
+    return result.expenses.map((expense) => expenseDraftFromExpense(expense));
+  };
+
+  const runLedgerAssistant = async () => {
+    if (!canCaregive || ledgerAssistantStatus !== "idle" || isUploadingLedgerMedia) return;
+    const text = ledgerAssistantInput.trim();
+    if (!text && ledgerAssistantAttachments.length === 0) return;
+    hapticLight();
+    const submittedAttachments = ledgerAssistantAttachments;
+    const parentMessage: LedgerAssistantMessage = {
+      id: makeId("ledger-parent"),
+      role: "parent",
+      text: text || "请从这些图片里整理宝宝支出",
+    };
+    const pendingMessage: LedgerAssistantMessage = {
+      id: makeId("ledger-ai"),
+      role: "ai",
+      text: "正在整理账本草稿...",
+    };
+    setLedgerAssistantInput("");
+    setLedgerAssistantStatus("thinking");
+    setLedgerAssistantMessages((current) => [...current, parentMessage, pendingMessage]);
     try {
-      const response = await lookupBarcodeProduct(barcode);
-      setExpenseLookup({
-        status: "done",
-        message: response.message || (response.candidates.length ? "已找到商品候选，请确认后填写金额。" : "暂未查到商品信息。"),
-        candidates: response.candidates,
-        barcode: response.barcode,
-      });
-      if (response.candidates.length === 1) applyProductCandidate(response.candidates[0]);
+      const agentAttachments = await Promise.all(
+        submittedAttachments.map(async (item) => ({
+          id: item.id,
+          name: item.kind === "video" ? `${item.name}（视频缩略图）` : item.name,
+          kind: item.kind,
+          dataUrl: await readAgentAttachmentDataUrl(item),
+        })),
+      );
+      let contentText = "";
+      const agentResponse = await runAgentChatStream(
+        {
+          message: text || "请从这些图片里识别宝宝相关支出，只整理待确认账本草稿；缺少实际支付金额、商品或用途、分类、日期时请追问。",
+          model: currentModel.id,
+          babyProfile: babyProfileForAgent(profile),
+          recentMessages: [
+            ...messages.slice(-6),
+            ...ledgerAssistantMessages.slice(-8).map((message) => ({
+              id: message.id,
+              role: message.role,
+              text: message.text,
+              createdAt: new Date().toISOString(),
+            })),
+          ],
+          careLogs: careLogs.slice(-6),
+          memories: memories.slice(0, 8),
+          pageContext: { ...buildAgentPageContext(), activeTab: "ledger-smart" },
+          thinkingEnabled: false,
+          lowLatencyEnabled: effectiveLowLatencyEnabled,
+          attachments: agentAttachments,
+        },
+        {
+          onContent: (delta) => {
+            contentText += delta;
+            const preview = extractAiTextPreview(contentText);
+            if (!preview) return;
+            setLedgerAssistantMessages((current) =>
+              current.map((message) => (message.id === pendingMessage.id ? { ...message, text: preview } : message)),
+            );
+          },
+          onStatus: (status) => {
+            if (contentText) return;
+            setLedgerAssistantMessages((current) =>
+              current.map((message) => (message.id === pendingMessage.id ? { ...message, text: status.message } : message)),
+            );
+          },
+        },
+      );
+      const result = normalizeAgentResponse(agentResponse, parentMessage.text);
+      const drafts = ledgerExpenseDraftsFromResult(result);
+      const questions = askDecisions(result.effectDecisions);
+      const questionText = questions.map((question) => question.question).join("\n");
+      const finalText = drafts.length
+        ? `${result.aiText || "我整理好了账本草稿。"}\n\n请确认下面的草稿，确认后才会入账。`
+        : questionText || result.aiText || "这笔账还缺一点信息，补充后我再整理草稿。";
+      setLedgerAssistantDrafts(drafts);
+      setLedgerAssistantMessages((current) =>
+        current.map((message) => (message.id === pendingMessage.id ? { ...message, text: finalText } : message)),
+      );
+      if (drafts.length) hapticSuccess();
     } catch (error) {
-      setExpenseLookup({
-        status: "failed",
-        message: error instanceof Error ? error.message : "商品查询失败，请手动填写。",
-        candidates: [],
-        barcode,
-      });
+      setLedgerAssistantMessages((current) =>
+        current.map((message) =>
+          message.id === pendingMessage.id
+            ? { ...message, text: error instanceof Error ? `智能记账暂时不可用：${error.message}` : "智能记账暂时不可用，请稍后再试。" }
+            : message,
+        ),
+      );
+      hapticWarning();
+    } finally {
+      setLedgerAssistantStatus("idle");
     }
   };
 
-  const scanExpenseBarcode = async () => {
-    if (!canCaregive) return;
-    if (!isNativeBarcodeScannerAvailable()) {
-      setExpenseLookup({
-        status: "failed",
-        message: "当前环境不能直接扫码，可以手动输入条形码。",
-        candidates: [],
-        barcode: expenseDraft.barcode,
-      });
+  const updateLedgerAssistantDraft = (index: number, patch: Partial<ExpenseDraft>) => {
+    setLedgerAssistantDrafts((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  };
+
+  const confirmLedgerAssistantDrafts = async () => {
+    if (!canCaregive || ledgerAssistantStatus !== "idle" || !ledgerAssistantDrafts.length) return;
+    const invalid = ledgerAssistantDrafts.find((draft) => {
+      const amount = Number(draft.amount);
+      return !draft.title.trim() || !Number.isFinite(amount) || amount <= 0 || !draft.category || !draft.date;
+    });
+    if (invalid) {
+      showSystemWeakNotice("请补齐商品或用途、金额、分类和日期。", "warning", 2600);
       return;
     }
-    setExpenseLookup({ status: "scanning", message: "请对准商品条形码。", candidates: [], barcode: expenseDraft.barcode });
+    setLedgerAssistantStatus("saving");
+    const nextExpenses = ledgerAssistantDrafts.map((draft) => expenseFromDraft({ ...draft, source: "agent" }));
+    setExpenses((current) => {
+      const nextIds = new Set(nextExpenses.map((expense) => expense.id));
+      return [...nextExpenses, ...current.filter((expense) => !nextIds.has(expense.id))].sort((left, right) =>
+        `${right.date}-${right.updatedAt}`.localeCompare(`${left.date}-${left.updatedAt}`),
+      );
+    });
     try {
-      const barcode = await scanBarcode();
-      if (!barcode) {
-        setExpenseLookup({ status: "idle", message: "已取消扫码。", candidates: [], barcode: "" });
-        return;
+      for (const expense of nextExpenses) {
+        await persistRecord("expenses", expense.id, expense, { applyResponse: true, mode: "replace" });
       }
-      await lookupExpenseBarcode(barcode);
-    } catch (error) {
-      setExpenseLookup({
-        status: "failed",
-        message: isBarcodeScanCancel(error)
-          ? "已取消扫码。"
-          : error instanceof Error
-            ? error.message
-            : "扫码失败，可以手动输入条形码。",
-        candidates: [],
-        barcode: expenseDraft.barcode,
-      });
+      setLedgerAssistantDrafts([]);
+      setLedgerAssistantAttachments([]);
+      setLedgerAssistantMessages((current) => [
+        ...current,
+        {
+          id: makeId("ledger-ai"),
+          role: "ai",
+          text: `已保存 ${nextExpenses.length} 笔支出到账本。`,
+        },
+      ]);
+      hapticSuccess();
+    } catch {
+      setStorageStatus("offline");
+      showSystemWeakNotice("账本已先保存在本机，云端同步稍后重试。", "warning", 3000);
+    } finally {
+      setLedgerAssistantStatus("idle");
     }
   };
 
@@ -7762,13 +7906,19 @@ function App() {
                 <h2>{babyNickname}的家庭花费</h2>
               </div>
             </div>
-            <div className="screen-head-actions">
+            <div className="screen-head-actions ledger-head-actions">
               <span className="screen-pill">{monthExpenses.length} 笔本月支出</span>
               {canCaregive ? (
-                <button className="screen-action-button" type="button" onClick={openNewExpenseEditor}>
-                  <ReceiptText size={16} />
-                  记一笔
-                </button>
+                <div className="ledger-action-cluster">
+                  <button className="screen-action-button quiet ledger-action-button" type="button" onClick={openLedgerAssistant}>
+                    <Sparkles size={16} />
+                    智能记账
+                  </button>
+                  <button className="screen-action-button ledger-action-button" type="button" onClick={openNewExpenseEditor}>
+                    <ReceiptText size={16} />
+                    记一笔
+                  </button>
+                </div>
               ) : (
                 <span className="readonly-pill">仅查看</span>
               )}
@@ -7838,7 +7988,7 @@ function App() {
                   <div className="expense-list compact">
                     {ledgerStats.largest.map((expense) => (
                       <article className="expense-item" key={expense.id}>
-                        {expense.productImageUrl ? <img src={expense.productImageUrl} alt="" loading="lazy" decoding="async" /> : <span>{expenseCategoryLabel(expense.category).slice(0, 1)}</span>}
+                        <span>{expenseCategoryLabel(expense.category).slice(0, 1)}</span>
                         <div>
                           <h3>{expense.title}</h3>
                           <p>{formatFullDate(expense.date)} · {expenseCategoryLabel(expense.category)}</p>
@@ -7884,11 +8034,7 @@ function App() {
                 <div className="expense-list">
                   {sortedExpenses.map((expense) => (
                     <article className="expense-item detail" key={expense.id}>
-                      {expense.productImageUrl ? (
-                        <img src={expense.productImageUrl} alt="" loading="lazy" decoding="async" />
-                      ) : (
-                        <span>{expenseCategoryLabel(expense.category).slice(0, 1)}</span>
-                      )}
+                      <span>{expenseCategoryLabel(expense.category).slice(0, 1)}</span>
                       <div>
                         <h3>{expense.title}</h3>
                         <p>
@@ -7898,7 +8044,6 @@ function App() {
                         <small>
                           {expense.brand ? `${expense.brand} ` : ""}
                           {expense.spec ?? ""}
-                          {expense.barcode ? ` · ${expense.barcode}` : ""}
                           {expenseSourceLabel(expense.source) ? ` · ${expenseSourceLabel(expense.source)}` : ""}
                         </small>
                       </div>
@@ -7929,8 +8074,8 @@ function App() {
           ) : null}
 
           {expenseEditorOpen ? (
-            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeExpenseEditor}>
-              <form className="story-modal expense-editor" onSubmit={saveExpenseDraft} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="story-modal-backdrop ledger-form-backdrop" role="presentation" onMouseDown={closeExpenseEditor}>
+              <form className="story-modal ledger-form-sheet expense-editor" onSubmit={saveExpenseDraft} onMouseDown={(event) => event.stopPropagation()}>
                 <div className="story-modal-head">
                   <div>
                     <p className="eyebrow">账本</p>
@@ -7940,131 +8085,100 @@ function App() {
                     <X size={18} />
                   </button>
                 </div>
-                <label>
-                  商品名或用途
-                  <input
-                    value={expenseDraft.title}
-                    onChange={(event) => setExpenseDraft((current) => ({ ...current, title: event.target.value }))}
-                    placeholder="比如 奶粉、尿裤、体检"
-                  />
-                </label>
-                <div className="expense-editor-grid">
+                <div className="expense-editor-body">
                   <label>
-                    金额
+                    商品名或用途
                     <input
-                      inputMode="decimal"
-                      value={expenseDraft.amount}
-                      onChange={(event) => setExpenseDraft((current) => ({ ...current, amount: event.target.value }))}
-                      placeholder="实际支付金额"
+                      value={expenseDraft.title}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, title: event.target.value }))}
+                      placeholder="比如 奶粉、尿裤、体检"
                     />
                   </label>
-                  <label>
-                    日期
-                    <input
-                      type="date"
-                      value={expenseDraft.date}
-                      onChange={(event) => setExpenseDraft((current) => ({ ...current, date: event.target.value }))}
-                    />
-                  </label>
-                </div>
-                <div className="expense-editor-grid">
-                  <label>
-                    分类
-                    <StorySelect
-                      value={expenseDraft.category}
-                      options={EXPENSE_CATEGORY_OPTIONS}
-                      ariaLabel="支出分类"
-                      onChange={(category) => setExpenseDraft((current) => ({ ...current, category }))}
-                    />
-                  </label>
-                  <label>
-                    商家
-                    <input
-                      value={expenseDraft.merchant}
-                      onChange={(event) => setExpenseDraft((current) => ({ ...current, merchant: event.target.value }))}
-                      placeholder="可选"
-                    />
-                  </label>
-                </div>
-                <div className="expense-editor-grid">
-                  <label>
-                    数量
-                    <input
-                      inputMode="decimal"
-                      value={expenseDraft.quantity}
-                      onChange={(event) => setExpenseDraft((current) => ({ ...current, quantity: event.target.value }))}
-                      placeholder="可选"
-                    />
-                  </label>
-                  <label>
-                    单价
-                    <input
-                      inputMode="decimal"
-                      value={expenseDraft.unitPrice}
-                      onChange={(event) => setExpenseDraft((current) => ({ ...current, unitPrice: event.target.value }))}
-                      placeholder="可选"
-                    />
-                  </label>
-                </div>
-                <label>
-                  条形码
-                  <div className="barcode-input-row">
-                    <input
-                      inputMode="numeric"
-                      value={expenseDraft.barcode}
-                      onChange={(event) => setExpenseDraft((current) => ({ ...current, barcode: event.target.value }))}
-                      placeholder="扫码或手动输入"
-                    />
-                    <button type="button" title="扫码" onClick={() => void scanExpenseBarcode()}>
-                      <ScanBarcode size={17} />
-                    </button>
-                    <button type="button" onClick={() => void lookupExpenseBarcode()}>
-                      查询
-                    </button>
+                  <div className="expense-editor-grid">
+                    <label>
+                      金额
+                      <input
+                        inputMode="decimal"
+                        value={expenseDraft.amount}
+                        onChange={(event) => setExpenseDraft((current) => ({ ...current, amount: event.target.value }))}
+                        placeholder="实际支付金额"
+                      />
+                    </label>
+                    <label>
+                      日期
+                      <input
+                        type="date"
+                        value={expenseDraft.date}
+                        onChange={(event) => setExpenseDraft((current) => ({ ...current, date: event.target.value }))}
+                      />
+                    </label>
                   </div>
-                </label>
-                {expenseLookup.message ? (
-                  <p className={`expense-lookup-message ${expenseLookup.status}`}>{expenseLookup.message}</p>
-                ) : null}
-                {expenseLookup.candidates.length ? (
-                  <div className="product-candidate-list">
-                    {expenseLookup.candidates.map((candidate) => (
-                      <button type="button" className="product-candidate" key={candidate.id} onClick={() => applyProductCandidate(candidate)}>
-                        {candidate.imageUrl ? <img src={candidate.imageUrl} alt="" loading="lazy" decoding="async" /> : <ScanBarcode size={18} />}
-                        <span>
-                          <strong>{candidate.title}</strong>
-                          <small>{[candidate.brand, candidate.spec, candidate.source].filter(Boolean).join(" · ")}</small>
-                        </span>
-                      </button>
-                    ))}
+                  <div className="expense-editor-grid">
+                    <label>
+                      分类
+                      <StorySelect
+                        value={expenseDraft.category}
+                        options={EXPENSE_CATEGORY_OPTIONS}
+                        ariaLabel="支出分类"
+                        onChange={(category) => setExpenseDraft((current) => ({ ...current, category }))}
+                      />
+                    </label>
+                    <label>
+                      商家
+                      <input
+                        value={expenseDraft.merchant}
+                        onChange={(event) => setExpenseDraft((current) => ({ ...current, merchant: event.target.value }))}
+                        placeholder="可选"
+                      />
+                    </label>
                   </div>
-                ) : null}
-                <div className="expense-editor-grid">
+                  <div className="expense-editor-grid">
+                    <label>
+                      数量
+                      <input
+                        inputMode="decimal"
+                        value={expenseDraft.quantity}
+                        onChange={(event) => setExpenseDraft((current) => ({ ...current, quantity: event.target.value }))}
+                        placeholder="可选"
+                      />
+                    </label>
+                    <label>
+                      单价
+                      <input
+                        inputMode="decimal"
+                        value={expenseDraft.unitPrice}
+                        onChange={(event) => setExpenseDraft((current) => ({ ...current, unitPrice: event.target.value }))}
+                        placeholder="可选"
+                      />
+                    </label>
+                  </div>
+                  <div className="expense-editor-grid">
+                    <label>
+                      品牌
+                      <input
+                        value={expenseDraft.brand}
+                        onChange={(event) => setExpenseDraft((current) => ({ ...current, brand: event.target.value }))}
+                        placeholder="可选"
+                      />
+                    </label>
+                    <label>
+                      规格
+                      <input
+                        value={expenseDraft.spec}
+                        onChange={(event) => setExpenseDraft((current) => ({ ...current, spec: event.target.value }))}
+                        placeholder="可选"
+                      />
+                    </label>
+                  </div>
                   <label>
-                    品牌
-                    <input
-                      value={expenseDraft.brand}
-                      onChange={(event) => setExpenseDraft((current) => ({ ...current, brand: event.target.value }))}
-                      placeholder="可选"
-                    />
-                  </label>
-                  <label>
-                    规格
-                    <input
-                      value={expenseDraft.spec}
-                      onChange={(event) => setExpenseDraft((current) => ({ ...current, spec: event.target.value }))}
-                      placeholder="可选"
+                    备注
+                    <textarea
+                      value={expenseDraft.note}
+                      onChange={(event) => setExpenseDraft((current) => ({ ...current, note: event.target.value }))}
+                      placeholder="比如 活动价、朋友代买、医生建议购买"
                     />
                   </label>
                 </div>
-                <label>
-                  备注
-                  <textarea
-                    value={expenseDraft.note}
-                    onChange={(event) => setExpenseDraft((current) => ({ ...current, note: event.target.value }))}
-                    placeholder="比如 活动价、朋友代买、医生建议购买"
-                  />
-                </label>
                 <div className="story-modal-actions">
                   <button type="button" className="screen-action-button quiet" onClick={closeExpenseEditor}>
                     取消
@@ -8075,6 +8189,170 @@ function App() {
                   </button>
                 </div>
               </form>
+            </div>
+          ) : null}
+          {ledgerAssistantOpen ? (
+            <div className="story-modal-backdrop ledger-form-backdrop ledger-smart-backdrop" role="presentation" onMouseDown={closeLedgerAssistant}>
+              <section className="story-modal ledger-form-sheet ledger-smart-drawer" role="dialog" aria-modal="true" aria-label="智能记账" onMouseDown={(event) => event.stopPropagation()}>
+                <div className="story-modal-head">
+                  <div>
+                    <p className="eyebrow">账本</p>
+                    <h3>智能记账</h3>
+                  </div>
+                  <button type="button" className="icon-button" onClick={closeLedgerAssistant} aria-label="关闭">
+                    <X size={18} />
+                  </button>
+                </div>
+                <input
+                  ref={ledgerFileInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  hidden
+                  disabled={!canAttachVisuals || isUploadingLedgerMedia || ledgerAssistantStatus !== "idle"}
+                  onChange={handleLedgerFiles}
+                />
+                <div className="ledger-smart-messages">
+                  {ledgerAssistantMessages.map((message) => (
+                    <p className={`ledger-smart-message ${message.role}`} key={message.id}>{message.text}</p>
+                  ))}
+                </div>
+                {ledgerUploadItems.length || ledgerAssistantAttachments.length ? (
+                  <div className="pending-attachments ledger-smart-attachments">
+                    {ledgerUploadItems.map((item) => (
+                      <div className="upload-chip" key={item.id}>
+                        <span className="upload-thumb">{item.kind === "video" ? <Video size={15} /> : <ImageIcon size={15} />}</span>
+                        <div className="upload-copy">
+                          <strong>{item.name}</strong>
+                          <small>{item.message ?? "处理中"}</small>
+                          <i aria-hidden="true"><b style={{ width: `${item.progress}%` }} /></i>
+                        </div>
+                      </div>
+                    ))}
+                    {ledgerAssistantAttachments.map((item) => (
+                      <div className="pending-attachment" key={item.id}>
+                        <button type="button" className="attachment-thumb" onClick={() => openPreviewAttachment(item)}>
+                          {item.kind === "image" && attachmentListSrc(item) ? (
+                            <img src={attachmentListSrc(item)} alt={item.name} loading="lazy" decoding="async" />
+                          ) : item.kind === "video" ? (
+                            <Video size={18} />
+                          ) : (
+                            <ImageIcon size={18} />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="attachment-remove"
+                          aria-label={`移除 ${item.name}`}
+                          disabled={ledgerAssistantStatus !== "idle"}
+                          onClick={() => setLedgerAssistantAttachments((current) => current.filter((attachment) => attachment.id !== item.id))}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {ledgerAssistantDrafts.length ? (
+                  <div className="ledger-smart-drafts">
+                    {ledgerAssistantDrafts.map((draft, index) => (
+                      <fieldset key={`ledger-draft-${index}`}>
+                        <legend>待确认支出</legend>
+                        <label>
+                          商品或用途
+                          <input value={draft.title} onChange={(event) => updateLedgerAssistantDraft(index, { title: event.target.value })} />
+                        </label>
+                        <div className="expense-editor-grid">
+                          <label>
+                            金额
+                            <input inputMode="decimal" value={draft.amount} onChange={(event) => updateLedgerAssistantDraft(index, { amount: event.target.value })} />
+                          </label>
+                          <label>
+                            日期
+                            <input type="date" value={draft.date} onChange={(event) => updateLedgerAssistantDraft(index, { date: event.target.value })} />
+                          </label>
+                        </div>
+                        <div className="expense-editor-grid">
+                          <label>
+                            分类
+                            <StorySelect
+                              value={draft.category}
+                              options={EXPENSE_CATEGORY_OPTIONS}
+                              ariaLabel="智能记账支出分类"
+                              onChange={(category) => updateLedgerAssistantDraft(index, { category })}
+                            />
+                          </label>
+                          <label>
+                            商家
+                            <input value={draft.merchant} onChange={(event) => updateLedgerAssistantDraft(index, { merchant: event.target.value })} />
+                          </label>
+                        </div>
+                        <div className="expense-editor-grid">
+                          <label>
+                            品牌
+                            <input value={draft.brand} onChange={(event) => updateLedgerAssistantDraft(index, { brand: event.target.value })} />
+                          </label>
+                          <label>
+                            规格
+                            <input value={draft.spec} onChange={(event) => updateLedgerAssistantDraft(index, { spec: event.target.value })} />
+                          </label>
+                        </div>
+                        <label>
+                          备注
+                          <textarea value={draft.note} onChange={(event) => updateLedgerAssistantDraft(index, { note: event.target.value })} />
+                        </label>
+                      </fieldset>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="ledger-smart-composer">
+                  <textarea
+                    value={ledgerAssistantInput}
+                    disabled={ledgerAssistantStatus !== "idle"}
+                    onChange={(event) => setLedgerAssistantInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void runLedgerAssistant();
+                      }
+                    }}
+                  />
+                  <div className="ledger-smart-composer-actions">
+                    <button
+                      type="button"
+                      className="tool-button"
+                      title={isUploadingLedgerMedia ? "素材正在上传" : canAttachVisuals ? "上传图片" : "当前模型不支持视觉理解"}
+                      disabled={!canAttachVisuals || isUploadingLedgerMedia || ledgerAssistantStatus !== "idle"}
+                      onClick={openLedgerMediaPicker}
+                    >
+                      <ImageIcon size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      className="send-button"
+                      title={ledgerAssistantStatus === "thinking" ? "整理中" : "发送"}
+                      disabled={ledgerAssistantStatus !== "idle" || isUploadingLedgerMedia || (!ledgerAssistantInput.trim() && !ledgerAssistantAttachments.length)}
+                      onClick={() => void runLedgerAssistant()}
+                    >
+                      <Send size={18} />
+                    </button>
+                  </div>
+                </div>
+                <div className="story-modal-actions">
+                  <button type="button" className="screen-action-button quiet" disabled={ledgerAssistantStatus !== "idle" || isUploadingLedgerMedia} onClick={resetLedgerAssistant}>
+                    重新开始
+                  </button>
+                  <button
+                    type="button"
+                    className="screen-action-button"
+                    disabled={!ledgerAssistantDrafts.length || ledgerAssistantStatus !== "idle" || isUploadingLedgerMedia}
+                    onClick={() => void confirmLedgerAssistantDrafts()}
+                  >
+                    <Save size={16} />
+                    确认入账
+                  </button>
+                </div>
+              </section>
             </div>
           ) : null}
           {deleteExpenseTarget ? (
@@ -8799,7 +9077,7 @@ function App() {
             </div>
             <div className="assistant-card native-card">
               <Smartphone size={20} />
-              <p>已按移动 App 架构准备：手机端使用原生相机/相册和本地通知，浏览器端保留预览能力。</p>
+              <p>已按移动 App 架构准备：手机端使用原生相册和本地通知，浏览器端保留预览能力。</p>
             </div>
             <div className="assistant-actions">
               <button type="button" onClick={() => quickFill(`下周二提醒我带${babyNickname}去社区医院打疫苗`)}>

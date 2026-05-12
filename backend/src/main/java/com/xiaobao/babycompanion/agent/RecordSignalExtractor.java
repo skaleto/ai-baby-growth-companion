@@ -71,7 +71,7 @@ public class RecordSignalExtractor {
         if (matches(text, "体温|发烧|发热|度|退烧")) topics.add("temperature");
         if (matches(text, "疫苗|接种")) topics.add("vaccine");
         if (matches(text, "提醒|闹钟|记得|定时|每隔\\s*(\\d+|[一二两三四五六七八九十半]+)\\s*(分钟|分|小时)")) topics.add("reminder");
-        if (expenseSignal != null || matches(text, "记账|花了|花费|支出|买了|购买|付款|多少钱|价格|条形码|扫码")) topics.add("expense");
+        if (expenseSignal != null || matches(text, "记账|花了|花费|支出|买了|购买|付款|多少钱|价格")) topics.add("expense");
 
         if (matches(text, "发烧|发热|退烧|体温")) risks.add("fever");
         if (matches(text, "药|用药|吃药|剂量")) risks.add("medicine");

@@ -68,12 +68,10 @@ export interface ExpenseItem {
   unitPrice?: number;
   merchant?: string;
   note?: string;
-  barcode?: string;
   brand?: string;
   spec?: string;
-  productImageUrl?: string;
   attachmentIds: string[];
-  source: "manual" | "barcode" | "agent" | "web";
+  source: "manual" | "agent";
   createdAt: string;
   updatedAt: string;
 }
@@ -325,6 +323,7 @@ export interface AgentChatResponse {
   careLogPatch?: Partial<CareLog> | null;
   reminders?: Array<Partial<Reminder>> | null;
   memories?: Array<Partial<MemoryItem>> | null;
+  expenses?: Array<Partial<ExpenseItem>> | null;
   sources?: AgentSource[] | null;
   safetyAlerts?: SafetyAlert[] | null;
   effectDecisions?: EffectDecision[] | null;

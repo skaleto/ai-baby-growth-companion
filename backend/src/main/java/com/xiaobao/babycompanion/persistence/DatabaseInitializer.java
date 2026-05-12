@@ -1,11 +1,16 @@
 package com.xiaobao.babycompanion.persistence;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
 import javax.sql.DataSource;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -17,9 +22,11 @@ public class DatabaseInitializer implements ApplicationRunner {
     public static final String DEFAULT_FAMILY_NAME = "小宝家";
 
     private final DataSource dataSource;
+    private final ObjectMapper objectMapper;
 
-    public DatabaseInitializer(DataSource dataSource) {
+    public DatabaseInitializer(DataSource dataSource, ObjectMapper objectMapper) {
         this.dataSource = dataSource;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -39,7 +46,6 @@ public class DatabaseInitializer implements ApplicationRunner {
             createRecordTable(connection, statement, "album_item");
             createRecordTable(connection, statement, "expense_item");
             createRecordTable(connection, statement, "conversation_summary");
-            createRecordTable(connection, statement, "product_lookup_cache");
             createAuthTables(connection, statement);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS attachment (
@@ -69,6 +75,7 @@ public class DatabaseInitializer implements ApplicationRunner {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_attachment_owner_user ON attachment(owner_user_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_attachment_family ON attachment(family_id)");
             migrateDefaultFamily(statement);
+            migrateExpenseBarcodeData(connection);
         }
     }
 
@@ -275,6 +282,91 @@ public class DatabaseInitializer implements ApplicationRunner {
             }
         }
         statement.execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + type);
+    }
+
+    private void migrateExpenseBarcodeData(Connection connection) throws Exception {
+        migrateExpenseTablePayloads(connection);
+        migratePendingEffectExpensePayloads(connection);
+    }
+
+    private void migrateExpenseTablePayloads(Connection connection) throws Exception {
+        try (
+                PreparedStatement select = connection.prepareStatement("""
+                        SELECT id, payload_json FROM expense_item
+                        WHERE payload_json LIKE '%barcode%'
+                           OR payload_json LIKE '%productImageUrl%'
+                           OR payload_json LIKE '%"source":"barcode"%'
+                           OR payload_json LIKE '%"source":"web"%'
+                        """);
+                PreparedStatement update = connection.prepareStatement("UPDATE expense_item SET payload_json = ? WHERE id = ?")
+        ) {
+            try (ResultSet resultSet = select.executeQuery()) {
+                while (resultSet.next()) {
+                    String id = resultSet.getString("id");
+                    String payload = resultSet.getString("payload_json");
+                    JsonNode node = objectMapper.readTree(payload);
+                    if (!scrubExpenseNode(node)) continue;
+                    update.setString(1, objectMapper.writeValueAsString(node));
+                    update.setString(2, id);
+                    update.addBatch();
+                }
+            }
+            update.executeBatch();
+        }
+    }
+
+    private void migratePendingEffectExpensePayloads(Connection connection) throws Exception {
+        try (
+                PreparedStatement select = connection.prepareStatement("""
+                        SELECT id, payload_json FROM pending_effect
+                        WHERE payload_json LIKE '%"expenses"%'
+                          AND (
+                            payload_json LIKE '%barcode%'
+                            OR payload_json LIKE '%productImageUrl%'
+                            OR payload_json LIKE '%"source":"barcode"%'
+                            OR payload_json LIKE '%"source":"web"%'
+                          )
+                        """);
+                PreparedStatement update = connection.prepareStatement("UPDATE pending_effect SET payload_json = ? WHERE id = ?")
+        ) {
+            try (ResultSet resultSet = select.executeQuery()) {
+                while (resultSet.next()) {
+                    String id = resultSet.getString("id");
+                    String payload = resultSet.getString("payload_json");
+                    JsonNode node = objectMapper.readTree(payload);
+                    JsonNode expenses = node.path("expenses");
+                    if (!(expenses instanceof ArrayNode expenseArray)) continue;
+                    boolean changed = false;
+                    for (JsonNode expense : expenseArray) {
+                        changed = scrubExpenseNode(expense) || changed;
+                    }
+                    if (!changed) continue;
+                    update.setString(1, objectMapper.writeValueAsString(node));
+                    update.setString(2, id);
+                    update.addBatch();
+                }
+            }
+            update.executeBatch();
+        }
+    }
+
+    private boolean scrubExpenseNode(JsonNode node) {
+        if (!(node instanceof ObjectNode object)) return false;
+        boolean changed = false;
+        if (object.has("barcode")) {
+            object.remove("barcode");
+            changed = true;
+        }
+        if (object.has("productImageUrl")) {
+            object.remove("productImageUrl");
+            changed = true;
+        }
+        String source = object.path("source").asText("");
+        if ("barcode".equals(source) || "web".equals(source)) {
+            object.put("source", "manual");
+            changed = true;
+        }
+        return changed;
     }
 
     private String[] recordTables() {

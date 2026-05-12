@@ -2,53 +2,48 @@
 
 ## Summary
 
-新增独立底部 Tab `账本`，用于记录家庭为小宝产生的支出。账本数据按家庭共享，照护人可新增、编辑、删除，仅查看成员只读。第一版覆盖手动记账、原生条形码扫码、商品信息候选查询、AI 辅助记账，以及月度/年度支出分析。
+账本从“扫码查商品”重构为“手动速记 + AI 多轮确认记账”。账本数据仍按家庭共享，照护人可新增、编辑、删除，仅查看成员只读。AI 和聊天页都不自动入账，只生成待确认支出草稿；用户确认后才写入家庭账本。
 
 ## Scope
 
-- 前端新增 `账本` Tab，包含 `本月 / 年度 / 明细` 分段视图。
-- 支出表单支持商品名、金额、分类、日期、数量、单价、商家、备注、条形码、品牌、规格、商品图候选。
-- 后端新增 `expense_item` 家庭共享记录表，并纳入 `GET /api/app/state`、状态 upsert/delete 和权限控制。
-- 后端新增 `product_lookup_cache` 与 `GET /api/products/barcode/{barcode}`，优先缓存，再查 Open Food Facts 和 UPCitemdb 免费源。
-- Android/iOS 新增 `BarcodeScanner` 原生插件，扫码结果回填账本表单。
-- Agent 新增支出识别：明确“买了什么 + 实际花了多少钱”自动记账；缺商品名或金额时追问；条码和参考价查询不自动入账。
+- 前端 `账本` Tab 保留 `本月 / 年度 / 明细` 视图，新增底部智能记账面板。
+- 智能记账面板支持文字、订单截图、小票、支付截图和商品照片，缺少必备字段时继续追问。
+- 手动表单保留商品/用途、金额、分类、日期、数量、单价、商家、品牌、规格、备注，删除条码输入、扫码按钮、查询按钮和商品候选。
+- 聊天页自然语言或图片记账统一生成待确认支出卡，不再走自动保存路径。
+- Android/iOS 删除原生条码扫描插件、CameraX/ML Kit 条码依赖和相机权限；原生媒体选择继续保留。
+- 后端删除商品库查询接口和 product lookup 代码，新库不再创建 `product_lookup_cache`。
 
 ## Data Model
 
 `ExpenseItem` 字段：
 
-- `id/title/amount/currency/category/date`
-- `quantity/unitPrice/merchant/note`
-- `barcode/brand/spec/productImageUrl/attachmentIds`
-- `source/createdAt/updatedAt`
+- 必填：`id/title/amount/currency/category/date`
+- 可选：`quantity/unitPrice/merchant/note`
+- 可选详情：`brand/spec/attachmentIds`
+- 元数据：`source/createdAt/updatedAt`
 
-默认分类：
+`source` 只保留：
 
-- 奶粉、尿裤、辅食、衣物、玩具、医疗健康、疫苗体检、日用品、教育娱乐、其他
+- `manual`：用户在账本页手动创建或历史条码/web 来源迁移后的记录
+- `agent`：AI 生成待确认草稿并由用户确认后的记录
 
-## Product Lookup Policy
+## AI 记账策略
 
-- 条码查询只辅助填充商品名、品牌、规格、分类和图片候选。
-- 商品查询结果不自动生成消费金额。
-- AI 联网或商品参考价只能作为候选信息，真实入账金额必须来自用户输入或确认。
-- 免费源命中率和国内商品覆盖有限，后续可接入 TianAPI、探数等国内付费条码源。
+- 商品/用途、金额、分类、日期齐全时，只生成 `pending expenseItem`。
+- 日期未明确时默认今天；用户表达“前几天/上周”但无法确定具体日期时追问。
+- 商品实物照片没有实际支付金额时必须追问，不允许用参考价入账。
+- 订单、小票、支付截图可以提取金额，但仍必须展示草稿并等待用户确认。
+- 旧 `barcode`、`productImageUrl` 字段由幂等迁移从账本记录和待确认草稿中清理。
 
-## Permissions
+## UI 要求
 
-- 账本属于家庭共享数据。
-- 照护人可新增、编辑、删除账本记录。
-- 仅查看成员可浏览账本和分析，不可写入。
-- 大额修改和删除在前端需要确认，避免误操作。
+- 账本页保持清爽、固定视口，页面主体不随意整体滚动。
+- 智能记账使用底部抽屉，消息、附件和草稿列表在抽屉内部滚动。
+- 草稿卡只展示必要编辑项，确认后立即进入家庭账本。
 
 ## Verification
 
-- 后端 `mvn test` 覆盖支出语义抽取、EffectPolicy 记账边界、家庭共享和只读权限。
+- 后端 `mvn test` 覆盖支出语义抽取、EffectPolicy 待确认边界、家庭共享和只读权限。
 - 前端 `npm run build` 覆盖类型和生产构建。
-- Android debug 构建覆盖原生扫码插件编译。
-- iOS simulator debug 构建覆盖 Swift 扫码插件编译。
-
-## Follow-Ups
-
-- 国内商品条码 API key 配置后可提升国内母婴商品命中率。
-- 可扩展发票/OCR、电商订单导入、预算提醒和更多维度支出趋势。
-- 真机需验证扫码识别率、摄像头权限文案、不同条码格式和弱网商品查询体验。
+- Android debug 构建覆盖移除扫码后的原生工程。
+- iOS simulator debug 构建覆盖移除扫码后的 Swift/Xcode 工程。

@@ -7,7 +7,6 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(android.os.Bundle savedInstanceState) {
         registerPlugin(AudioPermissionPlugin.class);
         registerPlugin(AlarmReminderPlugin.class);
-        registerPlugin(BarcodeScannerPlugin.class);
         registerPlugin(NativeMediaPickerPlugin.class);
         super.onCreate(savedInstanceState);
     }
