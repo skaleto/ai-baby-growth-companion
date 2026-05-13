@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
+  <title id="title">小宝记技术架构图</title>
+  <desc id="desc">展示客户端、API、业务服务、Agent Runtime、存储和外部服务的技术分层。</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .bg { fill: #f8fafc; }
+      .layer { fill: #ffffff; stroke: #d7dee8; stroke-width: 1.8; rx: 18; filter: url(#shadow); }
+      .box { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.8; rx: 10; }
+      .client { fill: #eaf2ff; stroke: #2b6cb0; }
+      .api { fill: #eef8f2; stroke: #2f855a; }
+      .agent { fill: #fff5eb; stroke: #c05621; }
+      .data { fill: #f3efff; stroke: #6b46c1; }
+      .external { fill: #fefce8; stroke: #ca8a04; }
+      .text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+      .title { font-size: 40px; font-weight: 850; }
+      .subtitle { font-size: 18px; fill: #4b5563; }
+      .label { font-size: 13px; font-weight: 800; fill: #64748b; letter-spacing: 1.2px; }
+      .h { font-size: 20px; font-weight: 800; }
+      .p { font-size: 14px; fill: #374151; }
+      .small { font-size: 12.5px; fill: #4b5563; }
+      .arrow { stroke: #64748b; stroke-width: 2.6; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 7 7; }
+    </style>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9.5" refY="5.5" orient="auto">
+      <path d="M0,0 L11,5.5 L0,11 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1800" height="1120"/>
+  <text class="text title" x="70" y="76">技术架构</text>
+  <text class="text subtitle" x="72" y="110">以 React/Capacitor 为统一客户端，Spring Boot 承接认证、状态、Agent、媒体、OTA 和原生能力协同。</text>
+
+  <rect class="layer" x="60" y="150" width="1680" height="150" rx="18"/>
+  <text class="text label" x="90" y="185">CLIENT LAYER</text>
+  <rect class="box client" x="90" y="210" width="260" height="58" rx="10"/>
+  <text class="text h" x="115" y="246">React + TypeScript</text>
+  <rect class="box client" x="390" y="210" width="250" height="58" rx="10"/>
+  <text class="text h" x="415" y="246">Vite Web Bundle</text>
+  <rect class="box client" x="680" y="210" width="300" height="58" rx="10"/>
+  <text class="text h" x="705" y="246">Capacitor Android / iOS</text>
+  <rect class="box client" x="1020" y="210" width="310" height="58" rx="10"/>
+  <text class="text h" x="1045" y="246">Native Plugins</text>
+  <text class="text small" x="1190" y="246">Alarm / Media / Haptics</text>
+  <rect class="box client" x="1370" y="210" width="320" height="58" rx="10"/>
+  <text class="text h" x="1395" y="246">Capgo OTA Runtime</text>
+
+  <rect class="layer" x="60" y="350" width="1680" height="170" rx="18"/>
+  <text class="text label" x="90" y="385">API AND ACCESS LAYER</text>
+  <rect class="box api" x="90" y="415" width="250" height="70" rx="10"/>
+  <text class="text h" x="115" y="445">AuthController</text>
+  <text class="text p" x="115" y="468">JWT / Invite / Family Role</text>
+  <rect class="box api" x="380" y="415" width="280" height="70" rx="10"/>
+  <text class="text h" x="405" y="445">AppStateController</text>
+  <text class="text p" x="405" y="468">shared + private state API</text>
+  <rect class="box api" x="700" y="415" width="250" height="70" rx="10"/>
+  <text class="text h" x="725" y="445">AgentController</text>
+  <text class="text p" x="725" y="468">REST + SSE stream</text>
+  <rect class="box api" x="990" y="415" width="250" height="70" rx="10"/>
+  <text class="text h" x="1015" y="445">UploadController</text>
+  <text class="text p" x="1015" y="468">dataURL / presign / read</text>
+  <rect class="box api" x="1280" y="415" width="250" height="70" rx="10"/>
+  <text class="text h" x="1305" y="445">ASR / OTA</text>
+  <text class="text p" x="1305" y="468">WebSocket + mobile updates</text>
+
+  <rect class="layer" x="60" y="570" width="1035" height="300" rx="18"/>
+  <text class="text label" x="90" y="605">DOMAIN SERVICES</text>
+  <rect class="box api" x="90" y="635" width="220" height="82" rx="10"/>
+  <text class="text h" x="115" y="668">AuthService</text>
+  <text class="text p" x="115" y="692">session / member / role</text>
+  <rect class="box api" x="340" y="635" width="250" height="82" rx="10"/>
+  <text class="text h" x="365" y="668">AppStateService</text>
+  <text class="text p" x="365" y="692">collection merge / boundary</text>
+  <rect class="box api" x="620" y="635" width="250" height="82" rx="10"/>
+  <text class="text h" x="645" y="668">AttachmentStorage</text>
+  <text class="text p" x="645" y="692">local / OSS / thumbnail</text>
+  <rect class="box api" x="90" y="755" width="220" height="82" rx="10"/>
+  <text class="text h" x="115" y="788">MobileUpdate</text>
+  <text class="text p" x="115" y="812">bundle check / download</text>
+  <rect class="box api" x="340" y="755" width="250" height="82" rx="10"/>
+  <text class="text h" x="365" y="788">Persistence Services</text>
+  <text class="text p" x="365" y="812">MyBatis-Plus wrappers</text>
+  <rect class="box api" x="620" y="755" width="250" height="82" rx="10"/>
+  <text class="text h" x="645" y="788">Security / Config</text>
+  <text class="text p" x="645" y="812">JWT filter / CORS / clock</text>
+
+  <rect class="layer" x="1140" y="570" width="600" height="300" rx="18"/>
+  <text class="text label" x="1170" y="605">AGENT RUNTIME</text>
+  <rect class="box agent" x="1170" y="635" width="245" height="72" rx="10"/>
+  <text class="text h" x="1195" y="665">Rule Signals</text>
+  <text class="text p" x="1195" y="688">Record / Reminder / Expense</text>
+  <rect class="box agent" x="1450" y="635" width="245" height="72" rx="10"/>
+  <text class="text h" x="1475" y="665">Planner</text>
+  <text class="text p" x="1475" y="688">intent / topics / tools</text>
+  <rect class="box agent" x="1170" y="740" width="245" height="72" rx="10"/>
+  <text class="text h" x="1195" y="770">Context + Skills</text>
+  <text class="text p" x="1195" y="793">shared/private + progressive</text>
+  <rect class="box agent" x="1450" y="740" width="245" height="72" rx="10"/>
+  <text class="text h" x="1475" y="770">EffectPolicy</text>
+  <text class="text p" x="1475" y="793">auto / pending / ask / ignore</text>
+
+  <rect class="layer" x="60" y="920" width="1680" height="145" rx="18"/>
+  <text class="text label" x="90" y="955">DATA AND EXTERNAL SERVICES</text>
+  <rect class="box data" x="90" y="985" width="280" height="55" rx="10"/>
+  <text class="text h" x="115" y="1020">SQLite WAL</text>
+  <rect class="box data" x="410" y="985" width="320" height="55" rx="10"/>
+  <text class="text h" x="435" y="1020">Attachment Metadata</text>
+  <rect class="box external" x="770" y="985" width="260" height="55" rx="10"/>
+  <text class="text h" x="795" y="1020">Aliyun OSS</text>
+  <rect class="box external" x="1070" y="985" width="300" height="55" rx="10"/>
+  <text class="text h" x="1095" y="1020">DeepSeek / Doubao</text>
+  <rect class="box external" x="1410" y="985" width="280" height="55" rx="10"/>
+  <text class="text h" x="1435" y="1020">Web Search / ASR</text>
+
+  <path class="arrow" d="M870 268V415"/>
+  <path class="arrow" d="M820 485V570"/>
+  <path class="arrow" d="M1115 450H1280"/>
+  <path class="arrow" d="M1295 870V985"/>
+  <path class="arrow" d="M520 870V985"/>
+  <path class="arrow dash" d="M1510 870V985"/>
+</svg>

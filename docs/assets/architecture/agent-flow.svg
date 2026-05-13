@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
+  <title id="title">Agent 执行链路图</title>
+  <desc id="desc">展示小宝记 Agent 从输入到决策、渲染、落库和回归验证的完整链路。</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .bg { fill: #f8fafc; }
+      .lane { fill: #ffffff; stroke: #d7dee8; stroke-width: 1.8; rx: 18; filter: url(#shadow); }
+      .box { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.8; rx: 10; }
+      .input { fill: #eaf2ff; stroke: #2b6cb0; }
+      .rule { fill: #eef8f2; stroke: #2f855a; }
+      .model { fill: #fff5eb; stroke: #c05621; }
+      .policy { fill: #f3efff; stroke: #6b46c1; }
+      .output { fill: #fefce8; stroke: #ca8a04; }
+      .text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+      .title { font-size: 40px; font-weight: 850; }
+      .subtitle { font-size: 18px; fill: #4b5563; }
+      .label { font-size: 13px; font-weight: 800; fill: #64748b; letter-spacing: 1.2px; }
+      .h { font-size: 20px; font-weight: 800; }
+      .p { font-size: 14px; fill: #374151; }
+      .small { font-size: 12.5px; fill: #4b5563; }
+      .arrow { stroke: #64748b; stroke-width: 2.7; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 7 7; }
+    </style>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9.5" refY="5.5" orient="auto">
+      <path d="M0,0 L11,5.5 L0,11 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1800" height="1120"/>
+  <text class="text title" x="70" y="76">Agent 执行链路</text>
+  <text class="text subtitle" x="72" y="110">以规则信号和 EffectPolicy 为控制面，模型负责理解与表达，所有业务写入都经过显式决策。</text>
+
+  <rect class="lane" x="60" y="155" width="1680" height="170" rx="18"/>
+  <text class="text label" x="90" y="192">REQUEST AND RULE SIGNALS</text>
+  <rect class="box input" x="90" y="225" width="250" height="72" rx="10"/>
+  <text class="text h" x="115" y="255">用户输入</text>
+  <text class="text p" x="115" y="278">文本 / ASR / 图片 / 视频</text>
+  <rect class="box rule" x="390" y="225" width="290" height="72" rx="10"/>
+  <text class="text h" x="415" y="255">RecordSignalExtractor</text>
+  <text class="text p" x="415" y="278">时间、记录、提醒、支出、风险</text>
+  <rect class="box rule" x="730" y="225" width="260" height="72" rx="10"/>
+  <text class="text h" x="755" y="255">Capability Contract</text>
+  <text class="text p" x="755" y="278">声明支持/不支持动作</text>
+  <rect class="box input" x="1040" y="225" width="270" height="72" rx="10"/>
+  <text class="text h" x="1065" y="255">RuntimeModel</text>
+  <text class="text p" x="1065" y="278">模型能力、视觉、低延迟</text>
+  <rect class="box input" x="1360" y="225" width="300" height="72" rx="10"/>
+  <text class="text h" x="1385" y="255">Trace / Request ID</text>
+  <text class="text p" x="1385" y="278">日志和 SSE 事件关联</text>
+
+  <rect class="lane" x="60" y="370" width="1680" height="250" rx="18"/>
+  <text class="text label" x="90" y="407">PLANNING, CONTEXT AND TOOLS</text>
+  <rect class="box model" x="90" y="440" width="285" height="118" rx="10"/>
+  <text class="text h" x="115" y="470">AgentPlanner</text>
+  <text class="text p" x="115" y="498">intent / topics / contextNeeds</text>
+  <text class="text p" x="115" y="523">toolRequests / mediaAction</text>
+  <rect class="box rule" x="425" y="440" width="315" height="118" rx="10"/>
+  <text class="text h" x="450" y="470">AgentContextService</text>
+  <text class="text p" x="450" y="498">家庭共享事实 + 账号私有上下文</text>
+  <text class="text p" x="450" y="523">宝宝年龄、当前时间、近期记录</text>
+  <rect class="box rule" x="790" y="440" width="290" height="118" rx="10"/>
+  <text class="text h" x="815" y="470">SkillDisclosureService</text>
+  <text class="text p" x="815" y="498">selectedSkills 目录</text>
+  <text class="text p" x="815" y="523">按主题/风险披露小节</text>
+  <rect class="box model" x="1130" y="440" width="250" height="118" rx="10"/>
+  <text class="text h" x="1155" y="470">ToolRegistry</text>
+  <text class="text p" x="1155" y="498">web_search</text>
+  <text class="text p" x="1155" y="523">工具运行状态回传</text>
+  <rect class="box model" x="1430" y="440" width="250" height="118" rx="10"/>
+  <text class="text h" x="1455" y="470">Prompt Assembly</text>
+  <text class="text p" x="1455" y="498">schema、上下文、工具结果</text>
+  <text class="text p" x="1455" y="523">多模态 content</text>
+
+  <rect class="lane" x="60" y="665" width="1680" height="250" rx="18"/>
+  <text class="text label" x="90" y="702">MODEL, POLICY AND STATE COMMIT</text>
+  <rect class="box model" x="90" y="735" width="295" height="118" rx="10"/>
+  <text class="text h" x="115" y="765">Model Provider</text>
+  <text class="text p" x="115" y="793">DeepSeek / Doubao</text>
+  <text class="text p" x="115" y="818">JSON schema 输出</text>
+  <rect class="box policy" x="435" y="735" width="320" height="118" rx="10"/>
+  <text class="text h" x="460" y="765">EffectPolicy</text>
+  <text class="text p" x="460" y="793">auto / pending / ask / ignore</text>
+  <text class="text p" x="460" y="818">过滤无关 memory、不支持操作</text>
+  <rect class="box policy" x="805" y="735" width="315" height="118" rx="10"/>
+  <text class="text h" x="830" y="765">Completeness Policies</text>
+  <text class="text p" x="830" y="793">喂奶/睡眠准入、提醒策略</text>
+  <text class="text p" x="830" y="818">相册/账本边界</text>
+  <rect class="box output" x="1170" y="735" width="245" height="118" rx="10"/>
+  <text class="text h" x="1195" y="765">Frontend Cards</text>
+  <text class="text p" x="1195" y="793">自动记录、待确认、追问</text>
+  <text class="text p" x="1195" y="818">来源、安全提示</text>
+  <rect class="box output" x="1465" y="735" width="245" height="118" rx="10"/>
+  <text class="text h" x="1490" y="765">AppStateService</text>
+  <text class="text p" x="1490" y="793">共享/私有集合落库</text>
+  <text class="text p" x="1490" y="818">canonical state 返回</text>
+
+  <rect class="lane" x="60" y="955" width="1680" height="90" rx="18"/>
+  <text class="text label" x="90" y="990">REGRESSION GUARD</text>
+  <text class="text h" x="250" y="1010">Agent Benchmark</text>
+  <text class="text p" x="455" y="1010">时间理解、记录准入、提醒策略、账本草稿、Skill 披露、联网兜底、能力边界</text>
+
+  <path class="arrow" d="M340 261H390"/>
+  <path class="arrow" d="M680 261H730"/>
+  <path class="arrow" d="M990 261H1040"/>
+  <path class="arrow" d="M1310 261H1360"/>
+  <path class="arrow" d="M1510 297V370"/>
+  <path class="arrow" d="M375 499H425"/>
+  <path class="arrow" d="M740 499H790"/>
+  <path class="arrow" d="M1080 499H1130"/>
+  <path class="arrow" d="M1380 499H1430"/>
+  <path class="arrow" d="M1555 558V665"/>
+  <path class="arrow" d="M385 794H435"/>
+  <path class="arrow" d="M755 794H805"/>
+  <path class="arrow" d="M1120 794H1170"/>
+  <path class="arrow" d="M1415 794H1465"/>
+  <path class="arrow dash" d="M1590 853V955"/>
+</svg>

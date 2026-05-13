@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1050" viewBox="0 0 1800 1050" role="img" aria-labelledby="title desc">
+  <title id="title">小宝记部署架构图</title>
+  <desc id="desc">只展示部署选型和组件关系，不包含 IP、路径或机器级参数。</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .bg { fill: #f8fafc; }
+      .panel { fill: #ffffff; stroke: #d7dee8; stroke-width: 1.8; rx: 18; filter: url(#shadow); }
+      .box { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.8; rx: 10; }
+      .dev { fill: #eaf2ff; stroke: #2b6cb0; }
+      .runtime { fill: #eef8f2; stroke: #2f855a; }
+      .data { fill: #f3efff; stroke: #6b46c1; }
+      .mobile { fill: #fff5eb; stroke: #c05621; }
+      .external { fill: #fefce8; stroke: #ca8a04; }
+      .text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+      .title { font-size: 40px; font-weight: 850; }
+      .subtitle { font-size: 18px; fill: #4b5563; }
+      .label { font-size: 13px; font-weight: 800; fill: #64748b; letter-spacing: 1.2px; }
+      .h { font-size: 21px; font-weight: 800; }
+      .b { font-size: 16px; font-weight: 750; }
+      .p { font-size: 14px; fill: #374151; }
+      .arrow { stroke: #64748b; stroke-width: 2.8; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 7 7; }
+    </style>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9.5" refY="5.5" orient="auto">
+      <path d="M0,0 L11,5.5 L0,11 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1800" height="1050"/>
+  <text class="text title" x="70" y="76">部署架构选型</text>
+  <text class="text subtitle" x="72" y="110">本图只列部署组件和技术选型；主机地址、目录、密钥文件等运维参数以部署脚本和环境配置为准。</text>
+
+  <rect class="panel" x="70" y="165" width="410" height="690" rx="18"/>
+  <text class="text label" x="105" y="205">DEVELOPMENT AND BUILD</text>
+  <rect class="box dev" x="105" y="245" width="330" height="100" rx="10"/>
+  <text class="text h" x="130" y="280">开发工作站</text>
+  <text class="text p" x="130" y="310">Node.js / Vite / Maven / Xcode / Android Studio</text>
+  <rect class="box dev" x="105" y="385" width="330" height="105" rx="10"/>
+  <text class="text h" x="130" y="420">构建产物</text>
+  <text class="text p" x="130" y="450">Web Bundle、Spring Boot JAR、Android APK、iOS 工程</text>
+  <rect class="box dev" x="105" y="530" width="330" height="105" rx="10"/>
+  <text class="text h" x="130" y="565">验证门禁</text>
+  <text class="text p" x="130" y="595">frontend smoke、agent benchmark、native build</text>
+  <rect class="box dev" x="105" y="675" width="330" height="100" rx="10"/>
+  <text class="text h" x="130" y="710">发布脚本</text>
+  <text class="text p" x="130" y="740">代码部署、移动 OTA 包构建、数据安全开关</text>
+
+  <rect class="panel" x="560" y="165" width="475" height="690" rx="18"/>
+  <text class="text label" x="595" y="205">SERVER RUNTIME</text>
+  <rect class="box runtime" x="595" y="245" width="390" height="100" rx="10"/>
+  <text class="text h" x="620" y="280">计算环境</text>
+  <text class="text p" x="620" y="310">阿里云 ECS 单机部署</text>
+  <rect class="box runtime" x="595" y="385" width="390" height="105" rx="10"/>
+  <text class="text h" x="620" y="420">运行方式</text>
+  <text class="text p" x="620" y="450">systemd 托管 Spring Boot JAR</text>
+  <rect class="box runtime" x="595" y="530" width="390" height="105" rx="10"/>
+  <text class="text h" x="620" y="565">后端能力</text>
+  <text class="text p" x="620" y="595">Auth、AppState、Agent、Upload、ASR、OTA API</text>
+  <rect class="box runtime" x="595" y="675" width="390" height="100" rx="10"/>
+  <text class="text h" x="620" y="710">接口协议</text>
+  <text class="text p" x="620" y="740">REST、SSE、WebSocket、预签名上传</text>
+
+  <rect class="panel" x="1115" y="165" width="610" height="345" rx="18"/>
+  <text class="text label" x="1150" y="205">DATA AND STORAGE</text>
+  <rect class="box data" x="1150" y="245" width="255" height="100" rx="10"/>
+  <text class="text h" x="1175" y="280">关系数据</text>
+  <text class="text p" x="1175" y="310">SQLite WAL，本地事务，MyBatis-Plus</text>
+  <rect class="box data" x="1430" y="245" width="250" height="100" rx="10"/>
+  <text class="text h" x="1455" y="280">对象存储</text>
+  <text class="text p" x="1455" y="310">Aliyun OSS，图片/视频/缩略图</text>
+  <rect class="box data" x="1150" y="375" width="255" height="90" rx="10"/>
+  <text class="text h" x="1175" y="410">本地开发存储</text>
+  <text class="text p" x="1175" y="438">local filesystem</text>
+  <rect class="box data" x="1430" y="375" width="250" height="90" rx="10"/>
+  <text class="text h" x="1455" y="410">云端媒体策略</text>
+  <text class="text p" x="1455" y="438">前端直传，后端签名读取</text>
+
+  <rect class="panel" x="1115" y="555" width="610" height="300" rx="18"/>
+  <text class="text label" x="1150" y="595">MOBILE DELIVERY AND EXTERNAL SERVICES</text>
+  <rect class="box mobile" x="1150" y="635" width="255" height="100" rx="10"/>
+  <text class="text h" x="1175" y="670">移动端原生包</text>
+  <text class="text p" x="1175" y="700">Android APK / iOS Debug Build</text>
+  <rect class="box mobile" x="1430" y="635" width="250" height="100" rx="10"/>
+  <text class="text h" x="1455" y="670">OTA 更新</text>
+  <text class="text p" x="1455" y="700">Capgo Updater + 后端 Bundle API</text>
+  <rect class="box external" x="1150" y="765" width="255" height="65" rx="10"/>
+  <text class="text h" x="1175" y="805">模型与语音</text>
+  <text class="text p" x="1300" y="805">DeepSeek / Doubao / Doubao ASR</text>
+  <rect class="box external" x="1430" y="765" width="250" height="65" rx="10"/>
+  <text class="text h" x="1455" y="805">联网工具</text>
+  <text class="text p" x="1555" y="805">Web Search</text>
+
+  <path class="arrow" d="M480 435H560"/>
+  <path class="arrow" d="M1035 430H1115"/>
+  <path class="arrow" d="M1035 705H1115"/>
+  <path class="arrow dash" d="M1278 635V510"/>
+  <path class="arrow dash" d="M1555 635V510"/>
+</svg>

@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1050" viewBox="0 0 1800 1050" role="img" aria-labelledby="title desc">
+  <title id="title">小宝记业务架构图</title>
+  <desc id="desc">展示用户角色、业务能力、核心流程、数据边界和治理规则。</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .bg { fill: #f8fafc; }
+      .frame { fill: #ffffff; stroke: #d7dee8; stroke-width: 1.8; rx: 18; filter: url(#shadow); }
+      .section { fill: #f9fbfd; stroke: #dbe3ee; stroke-width: 1.5; rx: 14; }
+      .role { fill: #eaf2ff; stroke: #2b6cb0; }
+      .feature { fill: #eef8f2; stroke: #2f855a; }
+      .shared { fill: #f3efff; stroke: #6b46c1; }
+      .private { fill: #fff5eb; stroke: #c05621; }
+      .guard { fill: #fefce8; stroke: #ca8a04; }
+      .text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+      .title { font-size: 40px; font-weight: 850; }
+      .subtitle { font-size: 18px; fill: #4b5563; }
+      .label { font-size: 13px; font-weight: 800; fill: #64748b; letter-spacing: 1.2px; }
+      .h { font-size: 22px; font-weight: 800; }
+      .b { font-size: 17px; font-weight: 750; }
+      .p { font-size: 15px; fill: #374151; }
+      .small { font-size: 13px; fill: #4b5563; }
+      .arrow { stroke: #64748b; stroke-width: 2.8; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 7 7; }
+    </style>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9.5" refY="5.5" orient="auto">
+      <path d="M0,0 L11,5.5 L0,11 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1800" height="1050"/>
+  <text class="text title" x="70" y="76">业务架构</text>
+  <text class="text subtitle" x="72" y="110">家庭成员通过权限受控的业务入口生成、确认和查看宝宝相关事实数据；聊天上下文与提醒保持账号隔离。</text>
+
+  <rect class="frame" x="55" y="145" width="1690" height="830" rx="22"/>
+
+  <rect class="section" x="95" y="195" width="315" height="700" rx="16"/>
+  <text class="text label" x="125" y="232">ACTORS</text>
+  <rect class="frame role" x="125" y="260" width="255" height="115" rx="12"/>
+  <text class="text h" x="150" y="300">照护人</text>
+  <text class="text small" x="150" y="330">写入、确认、编辑、上传、Agent</text>
+  <text class="text small" x="150" y="354">爸爸/妈妈/长辈/月嫂等</text>
+  <rect class="frame role" x="125" y="405" width="255" height="105" rx="12"/>
+  <text class="text h" x="150" y="445">仅查看成员</text>
+  <text class="text small" x="150" y="475">查看共享资料、记录、相册、账本</text>
+  <rect class="frame role" x="125" y="540" width="255" height="130" rx="12"/>
+  <text class="text h" x="150" y="580">家庭邀请码</text>
+  <text class="text small" x="150" y="610">新成员加入家庭</text>
+  <text class="text small" x="150" y="634">角色预检与核心角色唯一</text>
+  <rect class="frame guard" x="125" y="700" width="255" height="120" rx="12"/>
+  <text class="text h" x="150" y="740">权限约束</text>
+  <text class="text small" x="150" y="770">读写前后端双重控制</text>
+  <text class="text small" x="150" y="794">只读成员不调用 Agent/上传/写入</text>
+
+  <rect class="section" x="475" y="195" width="605" height="700" rx="16"/>
+  <text class="text label" x="505" y="232">CAPABILITY MAP</text>
+  <g transform="translate(505 260)">
+    <rect class="frame feature" x="0" y="0" width="250" height="105" rx="12"/>
+    <text class="text h" x="24" y="40">聊天 Agent</text>
+    <text class="text small" x="24" y="70">记录、问答、联网、媒体描述</text>
+    <rect class="frame feature" x="305" y="0" width="250" height="105" rx="12"/>
+    <text class="text h" x="329" y="40">照护记录</text>
+    <text class="text small" x="329" y="70">今日、趋势、日历、时间线编辑</text>
+    <rect class="frame feature" x="0" y="140" width="250" height="105" rx="12"/>
+    <text class="text h" x="24" y="180">相册回忆</text>
+    <text class="text small" x="24" y="210">图片/视频准入、分类、预览</text>
+    <rect class="frame feature" x="305" y="140" width="250" height="105" rx="12"/>
+    <text class="text h" x="329" y="180">提醒闹铃</text>
+    <text class="text small" x="329" y="210">一次/循环 × 通知/闹铃</text>
+    <rect class="frame feature" x="0" y="280" width="250" height="105" rx="12"/>
+    <text class="text h" x="24" y="320">账本支出</text>
+    <text class="text small" x="24" y="350">手动记账、AI 草稿、分析</text>
+    <rect class="frame feature" x="305" y="280" width="250" height="105" rx="12"/>
+    <text class="text h" x="329" y="320">我的资料</text>
+    <text class="text small" x="329" y="350">宝宝资料、家庭成员、版本信息</text>
+    <rect class="frame guard" x="0" y="450" width="555" height="120" rx="12"/>
+    <text class="text h" x="24" y="490">核心流程闭环</text>
+    <text class="text p" x="24" y="522">输入 → AI/表单生成草稿 → 用户确认/自动准入 → 家庭共享数据或账号私有数据落库 → 页面分析展示</text>
+  </g>
+
+  <rect class="section" x="1145" y="195" width="560" height="700" rx="16"/>
+  <text class="text label" x="1175" y="232">DATA OWNERSHIP</text>
+  <rect class="frame shared" x="1175" y="260" width="490" height="210" rx="12"/>
+  <text class="text h" x="1205" y="302">家庭共享事实数据</text>
+  <text class="text p" x="1205" y="340">小宝资料 profile</text>
+  <text class="text p" x="1205" y="370">照护日志 careLogs / 成长事件 growthEvents</text>
+  <text class="text p" x="1205" y="400">相册 albumItems / 账本 expenses</text>
+  <text class="text p" x="1205" y="430">附件 attachments 按 family_id 授权读取</text>
+  <rect class="frame private" x="1175" y="520" width="490" height="205" rx="12"/>
+  <text class="text h" x="1205" y="562">账号私有上下文</text>
+  <text class="text p" x="1205" y="600">聊天 messages / 提醒 reminders</text>
+  <text class="text p" x="1205" y="630">待确认 pendingEffects / 记忆 memories</text>
+  <text class="text p" x="1205" y="660">会话摘要 conversationSummary</text>
+  <rect class="frame guard" x="1175" y="760" width="490" height="85" rx="12"/>
+  <text class="text b" x="1205" y="797">治理规则</text>
+  <text class="text small" x="1205" y="825">AI 只能提交 EffectDecision；写入受权限、准入策略和用户确认控制。</text>
+
+  <path class="arrow" d="M410 520H475"/>
+  <path class="arrow" d="M1080 450H1145"/>
+  <path class="arrow dash" d="M1080 710H1145"/>
+</svg>
