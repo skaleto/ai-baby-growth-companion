@@ -4,10 +4,12 @@ import java.net.http.HttpClient;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -16,6 +18,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -47,6 +52,8 @@ import com.xiaobao.babycompanion.service.deepseek.DeepSeekToolCall;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -243,6 +250,8 @@ public class AgentRuntime {
     private final SkillDisclosureService skillDisclosureService;
     private final ToolRegistry toolRegistry;
     private final SafetyGuard safetyGuard;
+    private final Executor agentStreamExecutor;
+    private final Clock clock;
     private final HttpClient httpClient;
     private final RestClient restClient;
     private final RestClient doubaoRestClient;
@@ -262,6 +271,43 @@ public class AgentRuntime {
             ToolRegistry toolRegistry,
             SafetyGuard safetyGuard
     ) {
+        this(
+                properties,
+                doubaoProperties,
+                objectMapper,
+                agentPlanner,
+                agentContextService,
+                appStateService,
+                recordSignalExtractor,
+                effectPolicy,
+                currentUser,
+                skillRegistry,
+                skillDisclosureService,
+                toolRegistry,
+                safetyGuard,
+                Runnable::run,
+                Clock.system(ZoneId.of("Asia/Shanghai"))
+        );
+    }
+
+    @Autowired
+    public AgentRuntime(
+            DeepSeekProperties properties,
+            DoubaoProperties doubaoProperties,
+            ObjectMapper objectMapper,
+            AgentPlanner agentPlanner,
+            AgentContextService agentContextService,
+            AppStateService appStateService,
+            RecordSignalExtractor recordSignalExtractor,
+            EffectPolicy effectPolicy,
+            CurrentUser currentUser,
+            SkillRegistry skillRegistry,
+            SkillDisclosureService skillDisclosureService,
+            ToolRegistry toolRegistry,
+            SafetyGuard safetyGuard,
+            @Qualifier("agentStreamExecutor") Executor agentStreamExecutor,
+            Clock clock
+    ) {
         this.properties = properties;
         this.doubaoProperties = doubaoProperties;
         this.objectMapper = objectMapper;
@@ -275,6 +321,8 @@ public class AgentRuntime {
         this.skillDisclosureService = skillDisclosureService;
         this.toolRegistry = toolRegistry;
         this.safetyGuard = safetyGuard;
+        this.agentStreamExecutor = agentStreamExecutor;
+        this.clock = clock;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getConnectTimeout())
                 .build();
@@ -377,25 +425,44 @@ public class AgentRuntime {
         SseEmitter emitter = new SseEmitter(runtimeModel.readTimeout().plusSeconds(45).toMillis());
 
         String requestId = MDC.get("requestId");
-        CompletableFuture.runAsync(() -> {
-            if (StringUtils.hasText(requestId)) MDC.put("requestId", requestId);
-            try {
-                streamAgentResponse(
-                        request,
-                        emitter,
-                        traceId,
-                        familyId,
-                        principal,
-                        selectedSkills,
-                        runtimeModel,
-                        apiKey,
-                        plannerRuntimeModel,
-                        plannerApiKey
-                );
-            } finally {
-                if (StringUtils.hasText(requestId)) MDC.remove("requestId");
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        AtomicReference<CompletableFuture<Void>> streamTask = new AtomicReference<>();
+        Runnable cancelStreamTask = () -> {
+            cancelled.set(true);
+            CompletableFuture<Void> task = streamTask.get();
+            if (task != null) {
+                task.cancel(true);
             }
-        });
+        };
+        emitter.onCompletion(() -> cancelled.set(true));
+        emitter.onTimeout(cancelStreamTask);
+        emitter.onError((error) -> cancelStreamTask.run());
+        try {
+            CompletableFuture<Void> task = CompletableFuture.runAsync(() -> {
+                if (cancelled.get()) return;
+                if (StringUtils.hasText(requestId)) MDC.put("requestId", requestId);
+                try {
+                    streamAgentResponse(
+                            request,
+                            emitter,
+                            traceId,
+                            familyId,
+                            principal,
+                            selectedSkills,
+                            runtimeModel,
+                            apiKey,
+                            plannerRuntimeModel,
+                            plannerApiKey
+                    );
+                } finally {
+                    if (StringUtils.hasText(requestId)) MDC.remove("requestId");
+                }
+            }, agentStreamExecutor);
+            streamTask.set(task);
+        } catch (RejectedExecutionException exception) {
+            LOGGER.warn("Agent stream executor is saturated; rejecting traceId={}", traceId);
+            emitter.completeWithError(new IllegalStateException("AI 服务繁忙，请稍后再试。", exception));
+        }
         return emitter;
     }
 
@@ -1325,7 +1392,7 @@ public class AgentRuntime {
         if ("born".equals(profile.stage()) && StringUtils.hasText(profile.birthDate())) {
             try {
                 LocalDate birthDate = LocalDate.parse(profile.birthDate().trim());
-                long days = ChronoUnit.DAYS.between(birthDate, LocalDate.now());
+                long days = ChronoUnit.DAYS.between(birthDate, LocalDate.now(clock));
                 if (days >= 0 && days <= 3660) {
                     ageDays = Math.toIntExact(days);
                     ageWeeks = ageDays / 7;
@@ -1453,7 +1520,7 @@ public class AgentRuntime {
     }
 
     private void putCurrentTime(Map<String, Object> context) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         context.put("today", now.toLocalDate().toString());
         context.put("currentDateTime", now.truncatedTo(ChronoUnit.MINUTES).toString());
         context.put("currentTime", now.toLocalTime().truncatedTo(ChronoUnit.MINUTES).toString());

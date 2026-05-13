@@ -36,6 +36,7 @@ backend/*.pid
 *.p12
 *.jks
 deploy.local.*
+scripts/cloud-feature-e2e.env.local
 
 # iOS build output
 ios/App/Pods/

@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "setup:frontend-smoke": "playwright install chromium",
     "smoke:frontend": "node scripts/frontend-smoke.mjs",
+    "test:cloud-e2e": "node scripts/cloud-feature-e2e.mjs",
+    "test:agent-benchmark": "node scripts/agent-benchmark.mjs",
     "verify:frontend": "npm run build && npm run smoke:frontend",
     "build:mobile:update": "bash scripts/build-mobile-update.sh",
     "build:android:debug": "bash scripts/build-android-debug.sh",

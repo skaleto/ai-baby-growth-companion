@@ -1,6 +1,8 @@
 package com.xiaobao.babycompanion.agent;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -12,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.app.AppStateDto;
 import com.xiaobao.babycompanion.service.AppStateService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -20,10 +23,17 @@ public class AgentContextService {
 
     private final AppStateService appStateService;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
     public AgentContextService(AppStateService appStateService, ObjectMapper objectMapper) {
+        this(appStateService, objectMapper, Clock.system(ZoneId.of("Asia/Shanghai")));
+    }
+
+    @Autowired
+    public AgentContextService(AppStateService appStateService, ObjectMapper objectMapper, Clock clock) {
         this.appStateService = appStateService;
         this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     public AgentContextSnapshot build(AgentChatRequest request, AgentPlan plan, RecordSignals signals) {
@@ -69,7 +79,7 @@ public class AgentContextService {
 
     private Map<String, Object> recordContext(AgentChatRequest request, AppStateDto state, Map<String, Object> trends) {
         JsonNode page = request.pageContext();
-        String today = LocalDate.now().toString();
+        String today = LocalDate.now(clock).toString();
         String selectedDate = text(page, "selectedDate");
         if (!StringUtils.hasText(selectedDate)) selectedDate = today;
 
@@ -237,7 +247,7 @@ public class AgentContextService {
         if (!StringUtils.hasText(value) || value.length() < 10) return false;
         try {
             LocalDate date = LocalDate.parse(value.substring(0, 10));
-            LocalDate today = LocalDate.now();
+            LocalDate today = LocalDate.now(clock);
             return !date.isAfter(today) && !date.isBefore(today.minusDays(days));
         } catch (Exception ignored) {
             return false;

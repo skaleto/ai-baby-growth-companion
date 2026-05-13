@@ -10,6 +10,11 @@ spring:
     name: baby-companion-backend
 
 app:
+  time-zone: ${APP_TIME_ZONE:Asia/Shanghai}
+  agent:
+    stream-core-threads: ${APP_AGENT_STREAM_CORE_THREADS:2}
+    stream-max-threads: ${APP_AGENT_STREAM_MAX_THREADS:8}
+    stream-queue-capacity: ${APP_AGENT_STREAM_QUEUE_CAPACITY:32}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost,https://localhost,capacitor://localhost}
   storage:

@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.Clock;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -38,12 +39,12 @@ public class RecordSignalExtractor {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
-    @Autowired
     public RecordSignalExtractor(ObjectMapper objectMapper) {
-        this(objectMapper, Clock.systemDefaultZone());
+        this(objectMapper, Clock.system(ZoneId.of("Asia/Shanghai")));
     }
 
-    RecordSignalExtractor(ObjectMapper objectMapper, Clock clock) {
+    @Autowired
+    public RecordSignalExtractor(ObjectMapper objectMapper, Clock clock) {
         this.objectMapper = objectMapper;
         this.clock = clock;
     }

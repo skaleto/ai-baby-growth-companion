@@ -74,6 +74,7 @@ export function useStableViewport() {
     viewport?.addEventListener("resize", resetViewportPosition);
     viewport?.addEventListener("scroll", resetViewportPosition);
     window.addEventListener("resize", resetViewportPosition);
+    window.addEventListener("focusin", resetAfterKeyboardSettles);
     window.addEventListener("orientationchange", resetAfterKeyboardSettles);
     window.addEventListener("focusout", resetAfterKeyboardSettles);
     window.addEventListener("blur", resetAfterKeyboardSettles);
@@ -84,6 +85,7 @@ export function useStableViewport() {
       viewport?.removeEventListener("resize", resetViewportPosition);
       viewport?.removeEventListener("scroll", resetViewportPosition);
       window.removeEventListener("resize", resetViewportPosition);
+      window.removeEventListener("focusin", resetAfterKeyboardSettles);
       window.removeEventListener("orientationchange", resetAfterKeyboardSettles);
       window.removeEventListener("focusout", resetAfterKeyboardSettles);
       window.removeEventListener("blur", resetAfterKeyboardSettles);

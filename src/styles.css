@@ -408,6 +408,10 @@ h3 {
   top: max(14px, env(safe-area-inset-top));
   left: 50%;
   z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
   max-width: min(360px, calc(100vw - 32px));
   padding: 9px 13px;
   border: 1px solid rgba(91, 127, 109, 0.18);
@@ -425,6 +429,12 @@ h3 {
   backdrop-filter: blur(14px);
 }
 
+.system-weak-toast.with-progress {
+  width: min(320px, calc(100vw - 32px));
+  padding: 10px 13px 11px;
+  border-radius: 14px;
+}
+
 .system-weak-toast.success {
   color: #315d48;
   background: rgba(243, 250, 241, 0.94);
@@ -433,6 +443,27 @@ h3 {
 .system-weak-toast.warning {
   color: #7b5840;
   background: rgba(255, 248, 236, 0.94);
+}
+
+.system-weak-progress {
+  width: 100%;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(91, 127, 109, 0.14);
+}
+
+.system-weak-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #5aaf7f;
+  transition: width 180ms ease;
+}
+
+.system-weak-progress.indeterminate i {
+  width: 42%;
+  animation: systemWeakProgressIndeterminate 960ms ease-in-out infinite;
 }
 
 .quick-row {
@@ -1572,12 +1603,18 @@ h3 {
   html,
   body,
   #root {
+    width: 100%;
+    max-width: 100vw;
     height: 100%;
     overflow: hidden;
   }
 
   body {
+    position: fixed;
+    inset: 0;
     overscroll-behavior: none;
+    overscroll-behavior-x: none;
+    touch-action: pan-y;
   }
 
   .app-shell {
@@ -2069,8 +2106,19 @@ body {
   touch-action: pan-y;
 }
 
+body.app-modal-open,
 body.ledger-modal-open {
   touch-action: none;
+}
+
+body.app-modal-open .workspace {
+  z-index: 60;
+}
+
+body.app-modal-open .mobile-tabbar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(100%);
 }
 
 body.ledger-modal-open .mobile-tab-ledger .ledger-screen {
@@ -2110,6 +2158,7 @@ textarea {
   min-height: var(--app-viewport-height, 100vh);
   max-height: var(--app-viewport-height, 100vh);
   overflow: hidden;
+  overflow-x: clip;
 }
 
 .app-shell {
@@ -2125,6 +2174,7 @@ textarea {
   min-height: var(--app-viewport-height, 100vh);
   margin: 0 auto;
   overflow: hidden;
+  overflow-x: clip;
   padding:
     calc(var(--mobile-gutter) + env(safe-area-inset-top))
     calc(var(--mobile-gutter) + env(safe-area-inset-right))
@@ -2162,7 +2212,7 @@ textarea {
 .upload-copy,
 .auth-panel {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .composer,
@@ -3203,13 +3253,17 @@ canvas {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  inset: 0 0 calc(var(--mobile-tabbar-height, 72px) + env(safe-area-inset-bottom) + 14px) 0;
+  inset:
+    max(8px, env(safe-area-inset-top))
+    0
+    calc(var(--mobile-tabbar-height, 72px) + env(safe-area-inset-bottom) + 6px)
+    0;
   height: auto;
   max-height: none;
   padding:
-    max(10px, env(safe-area-inset-top))
+    6px
     max(10px, env(safe-area-inset-right))
-    8px
+    4px
     max(10px, env(safe-area-inset-left));
   background: transparent;
   backdrop-filter: none;
@@ -3217,11 +3271,12 @@ canvas {
 
 .story-modal.ledger-form-sheet {
   width: min(100%, 410px);
-  height: auto;
-  max-height: min(760px, calc(100% - 12px));
+  height: min(800px, calc(100% - 10px));
+  max-height: calc(100% - 10px);
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: 18px;
   touch-action: pan-y;
+  animation: ledger-sheet-in 150ms ease-out;
 }
 
 body.keyboard-open .story-modal-backdrop.ledger-form-backdrop {
@@ -3240,8 +3295,8 @@ body.keyboard-open .story-modal.ledger-form-sheet {
 .story-modal.expense-editor {
   display: flex;
   flex-direction: column;
-  height: auto;
-  max-height: min(680px, calc(100% - 12px));
+  height: 100%;
+  max-height: none;
   gap: 14px;
   padding: 16px;
 }
@@ -3252,13 +3307,19 @@ body.keyboard-open .story-modal.ledger-form-sheet {
   gap: 12px;
   flex: 1 1 auto;
   min-height: 0;
-  max-height: min(430px, calc(var(--app-viewport-height, 100vh) - var(--mobile-tabbar-height, 72px) - 210px));
+  max-height: none;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 2px 1px 6px;
+  padding: 2px 1px 18px;
   overscroll-behavior: contain;
+  scroll-padding-bottom: 96px;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+}
+
+body.keyboard-open .expense-editor-body {
+  padding-bottom: 28px;
+  scroll-padding-bottom: 136px;
 }
 
 .expense-editor .story-modal-head h3 {
@@ -3380,14 +3441,24 @@ body.keyboard-open .story-modal.ledger-form-sheet {
 }
 
 .expense-editor textarea {
-  min-height: 72px;
+  box-sizing: border-box;
+  min-height: 88px;
+  resize: none;
+  scroll-margin-bottom: 132px;
 }
 
 .expense-optional-panel {
   overflow: hidden;
+  margin-bottom: 6px;
   border: 1px solid rgba(234, 223, 208, 0.85);
   border-radius: 16px;
   background: rgba(255, 253, 248, 0.72);
+}
+
+.expense-optional-panel[open] {
+  overflow: visible;
+  margin-bottom: 16px;
+  background: rgba(255, 253, 248, 0.9);
 }
 
 .expense-optional-panel summary {
@@ -3433,23 +3504,34 @@ body.keyboard-open .story-modal.ledger-form-sheet {
 
 .expense-optional-fields {
   display: grid;
-  gap: 10px;
-  padding: 0 12px 12px;
+  gap: 12px;
+  padding: 0 12px 18px;
 }
 
 .expense-optional-panel[open] .expense-optional-fields {
-  max-height: min(28vh, 240px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
+  max-height: none;
+  overflow: visible;
+}
+
+body.keyboard-open .expense-optional-panel[open] {
+  margin-bottom: 22px;
+}
+
+body.keyboard-open .expense-optional-fields {
+  padding-bottom: 22px;
 }
 
 .expense-editor .story-modal-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(234, 223, 208, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.9), rgba(255, 249, 236, 0.98)),
+    #fffdf8;
 }
 
 .expense-editor .story-modal-actions .screen-action-button {
@@ -4045,6 +4127,17 @@ body.keyboard-open .story-modal.ledger-form-sheet {
   from {
     opacity: 0;
     transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ledger-sheet-in {
+  from {
+    opacity: 0.96;
+    transform: translateY(6px) scale(0.995);
   }
   to {
     opacity: 1;
@@ -6154,6 +6247,18 @@ body {
   to {
     opacity: 1;
     transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes systemWeakProgressIndeterminate {
+  0% {
+    transform: translateX(-115%);
+  }
+  50% {
+    transform: translateX(72%);
+  }
+  100% {
+    transform: translateX(238%);
   }
 }
 

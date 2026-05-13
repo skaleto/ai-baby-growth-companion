@@ -1,0 +1,103 @@
+{
+  "project": "ai-baby-growth-companion",
+  "lastUpdated": "2026-05-13",
+  "sourceOfTruth": {
+    "rootEntrypoint": "AGENTS.md",
+    "harnessDirectory": "harness",
+    "progressLog": "harness/claude-progress.md",
+    "qualityDocument": "harness/quality-document.md"
+  },
+  "rules": {
+    "singleActiveFeature": true,
+    "passingRequiresEvidence": true,
+    "doNotSkipVerification": true,
+    "doNotOverwriteCloudDataWithoutExplicitRequest": true,
+    "majorIterationsNeedDocsRecord": true
+  },
+  "statusLegend": {
+    "not_started": "The feature has not started.",
+    "in_progress": "This is active or partially implemented and still needs evidence.",
+    "blocked": "A recorded blocker prevents safe progress.",
+    "passing": "Required verification passed and evidence is recorded."
+  },
+  "features": [
+    {
+      "id": "harness-001",
+      "priority": 1,
+      "area": "harness",
+      "title": "Repository harness baseline",
+      "userVisibleBehavior": "Future agent sessions can restart from AGENTS.md, run one standard init command, and know the current verification contract.",
+      "status": "passing",
+      "verification": [
+        "Read root AGENTS.md and harness/README.md.",
+        "Run bash harness/init.sh.",
+        "Confirm npm run build and npm run test:agent-benchmark complete in the smoke gate."
+      ],
+      "evidence": [
+        "2026-05-13 bash harness/init.sh passed: git diff --check, npm run build, npm run test:agent-benchmark."
+      ],
+      "notes": "Created from the Learn Harness Engineering template structure with project-specific commands and safety rules."
+    },
+    {
+      "id": "agent-001",
+      "priority": 2,
+      "area": "agent",
+      "title": "Agent deterministic benchmark gate",
+      "userVisibleBehavior": "Core Agent behaviors such as feeding records, reminder parsing, expense extraction, skill disclosure, and unsafe mutation boundaries are protected by repeatable tests.",
+      "status": "passing",
+      "verification": [
+        "Run npm run test:agent-benchmark."
+      ],
+      "evidence": [
+        "docs/agent-benchmark-results.md reports PASS, 13 tests, 0 failures, generated 2026-05-13T09:05:58.452Z."
+      ],
+      "notes": "New Agent work should add at least one positive and one boundary benchmark case."
+    },
+    {
+      "id": "frontend-001",
+      "priority": 3,
+      "area": "frontend",
+      "title": "Mobile frontend verification gate",
+      "userVisibleBehavior": "UI changes are checked across phone-sized viewports and common mobile interaction failure modes instead of relying on build success only.",
+      "status": "in_progress",
+      "verification": [
+        "Run npm run verify:frontend for UI or layout changes.",
+        "Inspect generated artifacts under .verification/frontend-smoke when failures occur."
+      ],
+      "evidence": [
+        "docs/frontend-verification.md defines the viewport matrix and waiver rule."
+      ],
+      "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
+    },
+    {
+      "id": "cloud-001",
+      "priority": 4,
+      "area": "cloud",
+      "title": "Aliyun deployment and live smoke discipline",
+      "userVisibleBehavior": "Cloud releases update code and OTA assets without accidentally overwriting production SQLite data or uploads.",
+      "status": "in_progress",
+      "verification": [
+        "Run SYNC_DATA=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun for code-only deploys.",
+        "Verify http://120.55.188.242:8300/api/health returns ok.",
+        "When behavior changed, run a live probe or documented test account flow."
+      ],
+      "evidence": [],
+      "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
+    },
+    {
+      "id": "mobile-001",
+      "priority": 5,
+      "area": "mobile",
+      "title": "Native Android and iOS parity gate",
+      "userVisibleBehavior": "Native media, reminders, haptics, ASR, OTA, and safe-area behavior are verified on the platform they affect.",
+      "status": "in_progress",
+      "verification": [
+        "Run npm run mobile:sync after native-risk changes.",
+        "Run npm run build:android:debug for Android package changes.",
+        "Run npm run build:ios:debug for iOS package changes when Xcode signing/build environment is ready."
+      ],
+      "evidence": [],
+      "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
+    }
+  ]
+}

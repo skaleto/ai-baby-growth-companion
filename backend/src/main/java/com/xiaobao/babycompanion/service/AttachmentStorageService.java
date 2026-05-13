@@ -11,6 +11,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -81,6 +82,7 @@ public class AttachmentStorageService {
     private final AttachmentRecordService attachmentService;
     private final ObjectMapper objectMapper;
     private final CurrentUser currentUser;
+    private final Clock clock;
     private final OSS ossClient;
     private final String ossAccessKeyId;
     private final String ossAccessKeySecret;
@@ -90,13 +92,15 @@ public class AttachmentStorageService {
             AppStorageProperties properties,
             AttachmentRecordService attachmentService,
             ObjectMapper objectMapper,
-            CurrentUser currentUser
+            CurrentUser currentUser,
+            Clock clock
     ) throws IOException {
         this.dataDir = appDataDir;
         this.properties = properties;
         this.attachmentService = attachmentService;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
+        this.clock = clock;
         this.ossAccessKeyId = readSecret(properties.getOss().getAccessKeyId(), properties.getOss().getAccessKeyIdFile());
         this.ossAccessKeySecret = readSecret(properties.getOss().getAccessKeySecret(), properties.getOss().getAccessKeySecretFile());
         if (isOssMode()) {
@@ -222,7 +226,7 @@ public class AttachmentStorageService {
         String mimeType = normalizedMimeType(request.mimeType());
         validateMetadata(mimeType, request.sizeBytes());
         long maxUploadBytes = maxUploadBytesFor(mimeType);
-        Path relativeDir = Path.of("uploads", LocalDate.now().toString());
+        Path relativeDir = todayUploadDir();
         String objectKey = storedPath(relativeDir.resolve(id + "." + extension(mimeType)));
         Date expiration = new Date(System.currentTimeMillis() + DIRECT_UPLOAD_TTL_SECONDS * 1000L);
         GeneratePresignedUrlRequest presignRequest = new GeneratePresignedUrlRequest(
@@ -373,7 +377,7 @@ public class AttachmentStorageService {
         validate(mimeType, bytes);
         try {
             String extension = extension(mimeType);
-            Path relativeDir = Path.of("uploads", LocalDate.now().toString());
+            Path relativeDir = todayUploadDir();
             String relativePath = storedPath(relativeDir.resolve(id + "." + extension));
             String publicUrl = "/api/uploads/" + id;
             AttachmentRecord record = new AttachmentRecord();
@@ -512,7 +516,11 @@ public class AttachmentStorageService {
     private Path parentPath(String storedPath) {
         String value = stripOssPrefix(storedPath);
         Path path = Path.of(value).normalize().getParent();
-        return path == null ? Path.of("uploads", LocalDate.now().toString()) : path;
+        return path == null ? todayUploadDir() : path;
+    }
+
+    private Path todayUploadDir() {
+        return Path.of("uploads", LocalDate.now(clock).toString());
     }
 
     private void writeStoredObject(String storedPath, byte[] bytes, String mimeType) throws IOException {

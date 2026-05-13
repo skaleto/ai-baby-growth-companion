@@ -1,6 +1,8 @@
 package com.xiaobao.babycompanion.agent;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,6 +16,7 @@ import com.xiaobao.babycompanion.dto.agent.AgentChatMessage;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekMessage;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekResponseFormat;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -54,9 +57,16 @@ public class AgentPlanner {
             """;
 
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
     public AgentPlanner(ObjectMapper objectMapper) {
+        this(objectMapper, Clock.system(ZoneId.of("Asia/Shanghai")));
+    }
+
+    @Autowired
+    public AgentPlanner(ObjectMapper objectMapper, Clock clock) {
         this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     public DeepSeekChatRequest buildRequest(
@@ -114,7 +124,7 @@ public class AgentPlanner {
 
     private String buildPrompt(AgentChatRequest request, List<Skill> selectedSkills, RecordSignals signals) {
         Map<String, Object> context = new LinkedHashMap<>();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         context.put("today", now.toLocalDate().toString());
         context.put("currentDateTime", now.truncatedTo(ChronoUnit.MINUTES).toString());
         context.put("currentTime", now.toLocalTime().truncatedTo(ChronoUnit.MINUTES).toString());

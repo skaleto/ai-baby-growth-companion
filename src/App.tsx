@@ -335,6 +335,8 @@ type SystemWeakNotice = {
   id: number;
   message: string;
   tone: MobileUpdateNoticeTone;
+  progress?: number | null;
+  progressMode?: MobileUpdateNoticeDetail["progressMode"];
 };
 
 type RecordEventType = "care" | "growth" | "reminder";
@@ -3308,6 +3310,8 @@ function App() {
   const [ringingReminder, setRingingReminder] = useState<Reminder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const albumFileInputRef = useRef<HTMLInputElement>(null);
+  const expenseEditorBodyRef = useRef<HTMLDivElement>(null);
+  const expenseOptionalPanelRef = useRef<HTMLDetailsElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const asrControllerRef = useRef<AsrStreamController | null>(null);
   const voiceStandbyStreamRef = useRef<MediaStream | null>(null);
@@ -3370,6 +3374,26 @@ function App() {
     (text: string) => text.split("小宝").join(babyNickname),
     [babyNickname],
   );
+  const settleExpenseOptionalPanel = useCallback(() => {
+    const body = expenseEditorBodyRef.current;
+    const panel = expenseOptionalPanelRef.current;
+    if (!body || !panel || !panel.open) return;
+    const target = panel.querySelector("textarea") ?? panel;
+    const alignTarget = () => {
+      const bodyRect = body.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const safeBottom = bodyRect.bottom - 22;
+      const safeTop = bodyRect.top + 12;
+      if (targetRect.bottom > safeBottom) {
+        body.scrollTop += targetRect.bottom - safeBottom;
+      } else if (targetRect.top < safeTop) {
+        body.scrollTop -= safeTop - targetRect.top;
+      }
+    };
+    window.requestAnimationFrame(alignTarget);
+    window.setTimeout(alignTarget, 90);
+    window.setTimeout(alignTarget, 240);
+  }, []);
   const canCaregive = authMember?.caregiver ?? true;
   const visibleTabs = canCaregive ? MOBILE_TABS : MOBILE_TABS.filter((tab) => tab.id !== "chat");
   const canAttachVisuals = canCaregive && (currentModel.supportsImageInput || currentModel.supportsVideoInput);
@@ -3381,6 +3405,7 @@ function App() {
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
   const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
   const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget);
+  const appModalOpen = Boolean(deleteExpenseTarget) || reminderEditorOpen || Boolean(completeReminderTarget) || Boolean(deleteReminderTarget);
   const loginRoleOptions = useMemo(
     () =>
       ROLE_SELECT_OPTIONS.map((option) => {
@@ -3877,11 +3902,13 @@ function App() {
   }, [albumPreviewItems]);
 
   useEffect(() => {
+    document.body.classList.toggle("app-modal-open", appModalOpen);
     document.body.classList.toggle("ledger-modal-open", ledgerModalOpen);
     return () => {
+      document.body.classList.remove("app-modal-open");
       document.body.classList.remove("ledger-modal-open");
     };
-  }, [ledgerModalOpen]);
+  }, [appModalOpen, ledgerModalOpen]);
 
   useEffect(() => {
     previewAlbumItemRef.current = previewAlbumItem;
@@ -3951,12 +3978,18 @@ function App() {
         id: Date.now(),
         message: detail.message,
         tone: detail.tone ?? "info",
+        progress: typeof detail.progress === "number" ? Math.max(0, Math.min(100, detail.progress)) : null,
+        progressMode: detail.progressMode ?? (typeof detail.progress === "number" ? "determinate" : null),
       } satisfies SystemWeakNotice;
       setSystemWeakNotice(notice);
-      systemWeakNoticeTimerRef.current = window.setTimeout(() => {
-        setSystemWeakNotice((current) => (current?.id === notice.id ? null : current));
+      if (detail.durationMs !== 0) {
+        systemWeakNoticeTimerRef.current = window.setTimeout(() => {
+          setSystemWeakNotice((current) => (current?.id === notice.id ? null : current));
+          systemWeakNoticeTimerRef.current = null;
+        }, detail.durationMs ?? 2400);
+      } else {
         systemWeakNoticeTimerRef.current = null;
-      }, detail.durationMs ?? 2400);
+      }
     };
 
     window.addEventListener(MOBILE_UPDATE_NOTICE_EVENT, handleMobileUpdateNotice);
@@ -6279,8 +6312,159 @@ function App() {
           ? "本次聊天记录整理未完成，不影响继续使用。"
           : "";
   const systemWeakNoticeView = systemWeakNotice ? (
-    <div className={`system-weak-toast ${systemWeakNotice.tone}`} role="status" aria-live="polite">
+    <div
+      className={`system-weak-toast ${systemWeakNotice.tone} ${systemWeakNotice.progressMode ? "with-progress" : ""}`}
+      role="status"
+      aria-live="polite"
+    >
       <span>{systemWeakNotice.message}</span>
+      {systemWeakNotice.progressMode ? (
+        <div
+          className={`system-weak-progress ${systemWeakNotice.progressMode}`}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          {...(typeof systemWeakNotice.progress === "number" ? { "aria-valuenow": Math.round(systemWeakNotice.progress) } : {})}
+        >
+          <i style={typeof systemWeakNotice.progress === "number" ? { width: `${systemWeakNotice.progress}%` } : undefined} />
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+  const expenseEditorDialog = expenseEditorOpen ? (
+    <div className="story-modal-backdrop ledger-form-backdrop" role="presentation" onMouseDown={closeExpenseEditor}>
+      <form className="story-modal ledger-form-sheet expense-editor" onSubmit={saveExpenseDraft} onMouseDown={(event) => event.stopPropagation()}>
+        <div className="story-modal-head">
+          <div>
+            <p className="eyebrow">账本</p>
+            <h3>{editingExpenseId ? "编辑支出" : "记一笔支出"}</h3>
+          </div>
+          <button type="button" className="icon-button" onClick={closeExpenseEditor} aria-label="关闭">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="expense-editor-body" ref={expenseEditorBodyRef}>
+          <section className="expense-core-card" aria-label="支出核心信息">
+            <label className="expense-title-field">
+              商品名或用途
+              <input
+                value={expenseDraft.title}
+                onChange={(event) => setExpenseDraft((current) => ({ ...current, title: event.target.value }))}
+                placeholder="比如 奶粉、尿裤、体检"
+              />
+            </label>
+            <label className="expense-money-field">
+              金额
+              <span className="expense-money-input">
+                <span aria-hidden="true">¥</span>
+                <input
+                  inputMode="decimal"
+                  value={expenseDraft.amount}
+                  onChange={(event) => setExpenseDraft((current) => ({ ...current, amount: event.target.value }))}
+                  placeholder="0.00"
+                />
+              </span>
+            </label>
+            <div className="expense-editor-grid expense-required-grid">
+              <label>
+                分类
+                <StorySelect
+                  value={expenseDraft.category}
+                  options={EXPENSE_CATEGORY_OPTIONS}
+                  ariaLabel="支出分类"
+                  onChange={(category) => setExpenseDraft((current) => ({ ...current, category }))}
+                />
+              </label>
+              <label>
+                日期
+                <span className="expense-date-field">
+                  <span>{formatExpenseDateLabel(expenseDraft.date)}</span>
+                  <input
+                    className="expense-date-input"
+                    type="date"
+                    value={expenseDraft.date}
+                    aria-label="支出日期"
+                    onChange={(event) => setExpenseDraft((current) => ({ ...current, date: event.target.value }))}
+                  />
+                </span>
+              </label>
+            </div>
+          </section>
+          <details
+            className="expense-optional-panel"
+            ref={expenseOptionalPanelRef}
+            onToggle={(event) => {
+              if (event.currentTarget.open) settleExpenseOptionalPanel();
+            }}
+          >
+            <summary>
+              <span>
+                <strong>补充说明</strong>
+                <small>商家、备注</small>
+              </span>
+              <ChevronDown size={17} />
+            </summary>
+            <div className="expense-optional-fields">
+              <label>
+                商家
+                <input
+                  value={expenseDraft.merchant}
+                  onFocus={settleExpenseOptionalPanel}
+                  onChange={(event) => setExpenseDraft((current) => ({ ...current, merchant: event.target.value }))}
+                  placeholder="比如 医院、母婴店、朋友代买"
+                />
+              </label>
+              <label>
+                备注
+                <textarea
+                  value={expenseDraft.note}
+                  onFocus={settleExpenseOptionalPanel}
+                  onChange={(event) => setExpenseDraft((current) => ({ ...current, note: event.target.value }))}
+                  placeholder="比如 活动价、医生建议购买"
+                />
+              </label>
+            </div>
+          </details>
+        </div>
+        <div className="story-modal-actions">
+          <button type="button" className="screen-action-button quiet" onClick={closeExpenseEditor}>
+            取消
+          </button>
+          <button type="submit" className="screen-action-button">
+            <Save size={16} />
+            保存
+          </button>
+        </div>
+      </form>
+    </div>
+  ) : null;
+  const deleteExpenseDialog = deleteExpenseTarget ? (
+    <div className="story-modal-backdrop" role="presentation" onMouseDown={closeDeleteExpenseConfirm}>
+      <div
+        className="story-modal delete-confirm-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-expense-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="delete-confirm-badge" aria-hidden="true">
+          <ReceiptText size={22} />
+        </div>
+        <div className="delete-confirm-copy">
+          <p className="eyebrow">删除支出</p>
+          <h3 id="delete-expense-title">确定删除这笔支出吗？</h3>
+          <p>“{deleteExpenseTarget.title} · {formatMoney(deleteExpenseTarget.amount)}”会从家庭账本里移除。</p>
+        </div>
+        <div className="story-modal-actions delete-confirm-actions">
+          <button type="button" className="screen-action-button quiet" onClick={closeDeleteExpenseConfirm}>
+            先保留
+          </button>
+          <button type="button" className="screen-action-button danger" onClick={() => void confirmDeleteExpense()}>
+            <Trash2 size={16} />
+            删除
+          </button>
+        </div>
+      </div>
     </div>
   ) : null;
 
@@ -7869,134 +8053,6 @@ function App() {
             </section>
           ) : null}
 
-          {expenseEditorOpen ? (
-            <div className="story-modal-backdrop ledger-form-backdrop" role="presentation" onMouseDown={closeExpenseEditor}>
-              <form className="story-modal ledger-form-sheet expense-editor" onSubmit={saveExpenseDraft} onMouseDown={(event) => event.stopPropagation()}>
-                <div className="story-modal-head">
-                  <div>
-                    <p className="eyebrow">账本</p>
-                    <h3>{editingExpenseId ? "编辑支出" : "记一笔支出"}</h3>
-                  </div>
-                  <button type="button" className="icon-button" onClick={closeExpenseEditor} aria-label="关闭">
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="expense-editor-body">
-                  <section className="expense-core-card" aria-label="支出核心信息">
-                    <label className="expense-title-field">
-                      商品名或用途
-                      <input
-                        value={expenseDraft.title}
-                        onChange={(event) => setExpenseDraft((current) => ({ ...current, title: event.target.value }))}
-                        placeholder="比如 奶粉、尿裤、体检"
-                      />
-                    </label>
-                    <label className="expense-money-field">
-                      金额
-                      <span className="expense-money-input">
-                        <span aria-hidden="true">¥</span>
-                        <input
-                          inputMode="decimal"
-                          value={expenseDraft.amount}
-                          onChange={(event) => setExpenseDraft((current) => ({ ...current, amount: event.target.value }))}
-                          placeholder="0.00"
-                        />
-                      </span>
-                    </label>
-                    <div className="expense-editor-grid expense-required-grid">
-                      <label>
-                        分类
-                        <StorySelect
-                          value={expenseDraft.category}
-                          options={EXPENSE_CATEGORY_OPTIONS}
-                          ariaLabel="支出分类"
-                          onChange={(category) => setExpenseDraft((current) => ({ ...current, category }))}
-                        />
-                      </label>
-                      <label>
-                        日期
-                        <span className="expense-date-field">
-                          <span>{formatExpenseDateLabel(expenseDraft.date)}</span>
-                          <input
-                            className="expense-date-input"
-                            type="date"
-                            value={expenseDraft.date}
-                            aria-label="支出日期"
-                            onChange={(event) => setExpenseDraft((current) => ({ ...current, date: event.target.value }))}
-                          />
-                        </span>
-                      </label>
-                    </div>
-                  </section>
-                  <details className="expense-optional-panel">
-                    <summary>
-                      <span>
-                        <strong>补充说明</strong>
-                        <small>商家、备注</small>
-                      </span>
-                      <ChevronDown size={17} />
-                    </summary>
-                    <div className="expense-optional-fields">
-                      <label>
-                        商家
-                        <input
-                          value={expenseDraft.merchant}
-                          onChange={(event) => setExpenseDraft((current) => ({ ...current, merchant: event.target.value }))}
-                          placeholder="比如 医院、母婴店、朋友代买"
-                        />
-                      </label>
-                      <label>
-                        备注
-                        <textarea
-                          value={expenseDraft.note}
-                          onChange={(event) => setExpenseDraft((current) => ({ ...current, note: event.target.value }))}
-                          placeholder="比如 活动价、医生建议购买"
-                        />
-                      </label>
-                    </div>
-                  </details>
-                </div>
-                <div className="story-modal-actions">
-                  <button type="button" className="screen-action-button quiet" onClick={closeExpenseEditor}>
-                    取消
-                  </button>
-                  <button type="submit" className="screen-action-button">
-                    <Save size={16} />
-                    保存
-                  </button>
-                </div>
-              </form>
-            </div>
-          ) : null}
-          {deleteExpenseTarget ? (
-            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeDeleteExpenseConfirm}>
-              <div
-                className="story-modal delete-confirm-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="delete-expense-title"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <div className="delete-confirm-badge" aria-hidden="true">
-                  <ReceiptText size={22} />
-                </div>
-                <div className="delete-confirm-copy">
-                  <p className="eyebrow">删除支出</p>
-                  <h3 id="delete-expense-title">确定删除这笔支出吗？</h3>
-                  <p>“{deleteExpenseTarget.title} · {formatMoney(deleteExpenseTarget.amount)}”会从家庭账本里移除。</p>
-                </div>
-                <div className="story-modal-actions delete-confirm-actions">
-                  <button type="button" className="screen-action-button quiet" onClick={closeDeleteExpenseConfirm}>
-                    先保留
-                  </button>
-                  <button type="button" className="screen-action-button danger" onClick={() => void confirmDeleteExpense()}>
-                    <Trash2 size={16} />
-                    删除
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </section>
 
         <section className="album-screen" aria-label="相册">
@@ -8720,6 +8776,8 @@ function App() {
           );
         })}
       </nav>
+      {expenseEditorDialog}
+      {deleteExpenseDialog}
       {ringingReminder ? (
         <div className="alarm-ringing-overlay" role="dialog" aria-modal="true" aria-labelledby="alarm-ringing-title">
           <div className="alarm-ringing-scene" aria-hidden="true">
