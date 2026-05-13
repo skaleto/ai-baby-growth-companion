@@ -435,6 +435,30 @@ h3 {
   border-radius: 14px;
 }
 
+.system-weak-toast-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.system-weak-message {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-weak-percent {
+  flex: 0 0 auto;
+  color: #457765;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
 .system-weak-toast.success {
   color: #315d48;
   background: rgba(243, 250, 241, 0.94);
@@ -3306,6 +3330,45 @@ body.keyboard-open .story-modal.ledger-form-sheet.expense-editor {
   max-height: calc(100% - 16px);
 }
 
+.story-modal-backdrop.reminder-form-backdrop {
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  inset:
+    max(8px, env(safe-area-inset-top))
+    0
+    calc(var(--mobile-tabbar-height, 72px) + env(safe-area-inset-bottom) + 6px)
+    0;
+  height: auto;
+  max-height: none;
+  padding:
+    6px
+    max(10px, env(safe-area-inset-right))
+    4px
+    max(10px, env(safe-area-inset-left));
+}
+
+.story-modal.reminder-form-sheet {
+  width: min(100%, 410px);
+  max-height: min(640px, calc(100% - 12px));
+  overflow: auto;
+  touch-action: pan-y;
+}
+
+body.keyboard-open .story-modal-backdrop.reminder-form-backdrop {
+  inset: 0 0 max(0px, var(--keyboard-inset, 0px)) 0;
+  padding:
+    max(8px, env(safe-area-inset-top))
+    max(8px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom))
+    max(8px, env(safe-area-inset-left));
+}
+
+body.keyboard-open .story-modal.reminder-form-sheet {
+  max-height: calc(100% - 16px);
+}
+
 .expense-editor-body {
   display: grid;
   align-content: start;
@@ -4109,6 +4172,14 @@ body.keyboard-open .expense-optional-fields {
   width: 100%;
 }
 
+.reminder-postpone-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+}
+
 .reminder-editor-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -4384,7 +4455,7 @@ body.keyboard-open .expense-optional-fields {
 
 .reminder-card-actions {
   display: grid;
-  grid-template-columns: repeat(3, 34px);
+  grid-template-columns: repeat(2, 34px);
   gap: 5px;
 }
 
@@ -6612,8 +6683,12 @@ body {
   .ledger-summary-card,
   .expense-editor-grid,
   .profile-grid,
-  .reminder-card-actions {
+  .reminder-postpone-fields {
     grid-template-columns: 1fr;
+  }
+
+  .reminder-card-actions {
+    grid-template-columns: repeat(2, 34px);
   }
 
   .screen-head-actions {

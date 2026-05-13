@@ -375,6 +375,11 @@ type ReminderDraft = {
   soundId: ReminderSoundId;
 };
 
+type ReminderPostponeDraft = {
+  dueDate: string;
+  dueTime: string;
+};
+
 type ExpenseDraft = {
   title: string;
   amount: string;
@@ -2530,6 +2535,22 @@ function reminderDraftFromReminder(reminder: Reminder): ReminderDraft {
   };
 }
 
+function reminderPostponeDraftFromReminder(reminder?: Reminder): ReminderPostponeDraft {
+  const fallback = new Date(Date.now() + 30 * 60 * 1000);
+  fallback.setSeconds(0, 0);
+  const parsed = reminder ? parseReminderDueAt(reminder) : undefined;
+  const dueAt = parsed && parsed.getTime() > Date.now() ? new Date(parsed) : fallback;
+  return {
+    dueDate: localDateKey(dueAt),
+    dueTime: localTimeKey(dueAt),
+  };
+}
+
+function dateFromReminderPostponeDraft(draft: ReminderPostponeDraft) {
+  const dueAt = new Date(`${draft.dueDate || todayISO()}T${draft.dueTime || "09:00"}:00`);
+  return Number.isNaN(dueAt.getTime()) ? undefined : dueAt;
+}
+
 function reminderFromDraft(draft: ReminderDraft, existing?: Reminder): Reminder {
   const scheduleMode = normalizeReminderScheduleMode(draft.scheduleMode);
   const alertMode = normalizeReminderAlertMode(draft.alertMode);
@@ -3306,6 +3327,8 @@ function App() {
   const [editingReminderId, setEditingReminderId] = useState("");
   const [reminderDraft, setReminderDraft] = useState<ReminderDraft>(() => createReminderDraft());
   const [completeReminderTarget, setCompleteReminderTarget] = useState<Reminder | null>(null);
+  const [postponeReminderTarget, setPostponeReminderTarget] = useState<Reminder | null>(null);
+  const [postponeReminderDraft, setPostponeReminderDraft] = useState<ReminderPostponeDraft>(() => reminderPostponeDraftFromReminder());
   const [deleteReminderTarget, setDeleteReminderTarget] = useState<Reminder | null>(null);
   const [ringingReminder, setRingingReminder] = useState<Reminder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -3405,7 +3428,11 @@ function App() {
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
   const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
   const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget);
-  const appModalOpen = Boolean(deleteExpenseTarget) || reminderEditorOpen || Boolean(completeReminderTarget) || Boolean(deleteReminderTarget);
+  const appModalOpen =
+    Boolean(deleteExpenseTarget) ||
+    Boolean(completeReminderTarget) ||
+    Boolean(postponeReminderTarget) ||
+    Boolean(deleteReminderTarget);
   const loginRoleOptions = useMemo(
     () =>
       ROLE_SELECT_OPTIONS.map((option) => {
@@ -5711,16 +5738,19 @@ function App() {
     await completeReminder(target);
   };
 
-  const postponeReminder = async (target: Reminder) => {
+  const requestPostponeReminder = (target: Reminder) => {
+    if (!canCaregive) return;
+    setPostponeReminderDraft(reminderPostponeDraftFromReminder(target));
+    setPostponeReminderTarget(target);
+  };
+
+  const closePostponeReminderConfirm = () => {
+    setPostponeReminderTarget(null);
+  };
+
+  const postponeReminder = async (target: Reminder, postponedAt: Date) => {
     if (!canCaregive) return;
     await cancelNativeReminder(target);
-    const sourceDueAt = parseReminderDueAt(target) ?? new Date();
-    const postponedAt = new Date(sourceDueAt);
-    if (target.alertMode === "ringing" || target.scheduleMode === "interval") {
-      postponedAt.setMinutes(postponedAt.getMinutes() + 30);
-    } else {
-      postponedAt.setDate(postponedAt.getDate() + 1);
-    }
     const baseReminder: Reminder = {
       ...target,
       status: "open",
@@ -5728,7 +5758,7 @@ function App() {
       dueText: formatReminderDueText(postponedAt),
       notificationStatus: "pending",
       notificationError: undefined,
-      history: [`${new Intl.DateTimeFormat("zh-CN").format(new Date())} 顺延到 ${formatReminderDueText(postponedAt)}`, ...target.history],
+      history: [`${new Intl.DateTimeFormat("zh-CN").format(new Date())} 延后到 ${formatReminderDueText(postponedAt)}`, ...target.history],
     };
     const [scheduledReminder] = await scheduleNativeReminders([baseReminder], {
       careLogs: target.scheduleMode === "interval" ? [] : careLogs,
@@ -5737,6 +5767,18 @@ function App() {
     const nextReminder = scheduledReminder ?? baseReminder;
     setReminders((current) => current.map((item) => (item.id === target.id ? nextReminder : item)));
     void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
+  };
+
+  const confirmPostponeReminder = async () => {
+    if (!canCaregive || !postponeReminderTarget) return;
+    const postponedAt = dateFromReminderPostponeDraft(postponeReminderDraft);
+    if (!postponedAt || postponedAt.getTime() <= Date.now()) {
+      window.alert("请选择晚于现在的提醒时间。");
+      return;
+    }
+    const target = postponeReminderTarget;
+    setPostponeReminderTarget(null);
+    await postponeReminder(target, postponedAt);
   };
 
   const requestDeleteReminder = (target: Reminder) => {
@@ -6319,7 +6361,14 @@ function App() {
       role="status"
       aria-live="polite"
     >
-      <span>{systemWeakNotice.message}</span>
+      <div className="system-weak-toast-row">
+        <span className="system-weak-message">{systemWeakNotice.message}</span>
+        {systemWeakNotice.progressMode ? (
+          <span className="system-weak-percent">
+            {typeof systemWeakNotice.progress === "number" ? `${Math.round(systemWeakNotice.progress)}%` : "准备中"}
+          </span>
+        ) : null}
+      </div>
       {systemWeakNotice.progressMode ? (
         <div
           className={`system-weak-progress ${systemWeakNotice.progressMode}`}
@@ -8264,16 +8313,16 @@ function App() {
                       </div>
                       {canCaregive && reminder.status !== "done" ? (
                         <div className="reminder-card-actions">
-                          <button type="button" title="标记完成" onClick={() => requestCompleteReminder(reminder)}>
+                          <button type="button" title="标记完成" aria-label={`标记完成 ${reminder.title}`} onClick={() => requestCompleteReminder(reminder)}>
                             <CheckCircle2 size={18} />
                           </button>
-                          <button type="button" title={reminder.scheduleMode === "interval" || reminder.alertMode === "ringing" ? "稍后 30 分钟" : "顺延一天"} onClick={() => void postponeReminder(reminder)}>
+                          <button type="button" title="延后提醒" aria-label={`延后提醒 ${reminder.title}`} onClick={() => requestPostponeReminder(reminder)}>
                             <Clock3 size={18} />
                           </button>
-                          <button type="button" title="编辑提醒" onClick={() => openEditReminderEditor(reminder)}>
+                          <button type="button" title="编辑提醒" aria-label={`编辑提醒 ${reminder.title}`} onClick={() => openEditReminderEditor(reminder)}>
                             <PencilLine size={18} />
                           </button>
-                          <button type="button" title="删除提醒" onClick={() => requestDeleteReminder(reminder)}>
+                          <button type="button" title="删除提醒" aria-label={`删除提醒 ${reminder.title}`} onClick={() => requestDeleteReminder(reminder)}>
                             <Trash2 size={18} />
                           </button>
                         </div>
@@ -8287,12 +8336,19 @@ function App() {
             </section>
           ))}
           {reminderEditorOpen ? (
-            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeReminderEditor}>
-              <form className="story-modal reminder-editor" onSubmit={saveReminderDraft} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="story-modal-backdrop reminder-form-backdrop" role="presentation" onMouseDown={closeReminderEditor}>
+              <form
+                className="story-modal reminder-editor reminder-form-sheet"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="reminder-editor-title"
+                onSubmit={saveReminderDraft}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
                 <div className="story-modal-head">
                   <div>
                     <p className="eyebrow">提醒设置</p>
-                    <h3>{editingReminderId ? "编辑提醒" : "新建提醒"}</h3>
+                    <h3 id="reminder-editor-title">{editingReminderId ? "编辑提醒" : "新建提醒"}</h3>
                   </div>
                   <button type="button" className="icon-button" onClick={closeReminderEditor} aria-label="关闭">
                     <X size={18} />
@@ -8396,6 +8452,53 @@ function App() {
               </form>
             </div>
           ) : null}
+          {postponeReminderTarget ? (
+            <div className="story-modal-backdrop" role="presentation" onMouseDown={closePostponeReminderConfirm}>
+              <div
+                className="story-modal reminder-postpone-modal delete-confirm-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="postpone-reminder-title"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="delete-confirm-badge complete-confirm-badge" aria-hidden="true">
+                  <Clock3 size={22} />
+                </div>
+                <div className="delete-confirm-copy">
+                  <p className="eyebrow">延后提醒</p>
+                  <h3 id="postpone-reminder-title">延后到什么时候？</h3>
+                  <p>选择新的提醒时间后，会取消当前已安排的手机通知并重新安排。</p>
+                </div>
+                <div className="reminder-postpone-fields">
+                  <label>
+                    日期
+                    <input
+                      type="date"
+                      value={postponeReminderDraft.dueDate}
+                      onChange={(event) => setPostponeReminderDraft((current) => ({ ...current, dueDate: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    时间
+                    <input
+                      type="time"
+                      value={postponeReminderDraft.dueTime}
+                      onChange={(event) => setPostponeReminderDraft((current) => ({ ...current, dueTime: event.target.value }))}
+                    />
+                  </label>
+                </div>
+                <div className="story-modal-actions delete-confirm-actions">
+                  <button type="button" className="screen-action-button quiet" onClick={closePostponeReminderConfirm}>
+                    先不延后
+                  </button>
+                  <button type="button" className="screen-action-button" onClick={() => void confirmPostponeReminder()}>
+                    <Clock3 size={16} />
+                    确认延后
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {completeReminderTarget ? (
             <div className="story-modal-backdrop" role="presentation" onMouseDown={closeCompleteReminderConfirm}>
               <div
@@ -8446,9 +8549,7 @@ function App() {
                 <div className="delete-confirm-copy">
                   <p className="eyebrow">删除提醒</p>
                   <h3 id="delete-reminder-title">确定不再提醒吗？</h3>
-                  <p>
-                    “{deleteReminderTarget.title}”会从提醒列表移除，已经安排的手机通知或闹铃也会一起取消。
-                  </p>
+                  <p>“{deleteReminderTarget.title}”会从提醒列表移除，已经安排的手机通知或闹铃也会一起取消。</p>
                 </div>
                 <div className="story-modal-actions delete-confirm-actions">
                   <button type="button" className="screen-action-button quiet" onClick={closeDeleteReminderConfirm}>

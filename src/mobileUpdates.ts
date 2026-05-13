@@ -94,18 +94,18 @@ async function checkAndQueueMobileUpdate() {
 
 async function downloadBundleWithProgress(version: string, url: string, checksum?: string | null): Promise<BundleInfo> {
   let listener: { remove: () => Promise<void> } | undefined;
-  let lastProgress = 0;
+  let lastProgress = 1;
   try {
     listener = await CapacitorUpdater.addListener("download", (state) => {
-      const progress = clampProgress(state.percent);
+      const progress = normalizeDownloadProgress(state.percent);
       if (progress > lastProgress) {
         lastProgress = progress;
       }
-      if (progress > 0 && progress < 100) {
-        emitMobileUpdateNotice(`正在下载新版本 ${version} · ${progress}%`, "info", 0, progress, "determinate");
+      if (lastProgress < 100) {
+        emitMobileUpdateNotice(`正在下载新版本 ${version}`, "info", 0, lastProgress, "determinate");
       }
     });
-    emitMobileUpdateNotice(`正在下载新版本 ${version}`, "info", 0, null, "indeterminate");
+    emitMobileUpdateNotice(`正在下载新版本 ${version}`, "info", 0, lastProgress, "determinate");
     const bundle = await CapacitorUpdater.download({
       version,
       url,
@@ -161,6 +161,12 @@ function emitMobileUpdateNotice(
 function clampProgress(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function normalizeDownloadProgress(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  if (value > 0 && value <= 1) return clampProgress(value * 100);
+  return Math.max(1, clampProgress(value));
 }
 
 function sleep(ms: number) {

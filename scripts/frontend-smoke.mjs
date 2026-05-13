@@ -147,6 +147,14 @@ const smokeState = {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function futureDateTimeParts(minutesFromNow = 90) {
+  const target = new Date(Date.now() + minutesFromNow * 60 * 1000);
+  return {
+    date: `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`,
+    time: `${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")}`,
+  };
+}
+
 async function waitForServer(preview, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   let lastError;
@@ -404,7 +412,7 @@ async function checkElementAboveKeyboardOverlay(page, locator, label) {
     const style = window.getComputedStyle(element);
     const keyboardInset = Number.parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue("--keyboard-inset")) || 0;
     const keyboardTop = window.innerHeight - keyboardInset;
-    const modal = element.closest(".ledger-form-sheet");
+    const modal = element.closest(".ledger-form-sheet, .reminder-form-sheet");
     const composer = element.closest(".composer");
     const modalRect = modal instanceof HTMLElement ? modal.getBoundingClientRect() : null;
     const composerRect = composer instanceof HTMLElement ? composer.getBoundingClientRect() : null;
@@ -419,7 +427,7 @@ async function checkElementAboveKeyboardOverlay(page, locator, label) {
       issues.push(`focused field is covered by keyboard overlay: fieldBottom=${Math.round(rect.bottom)}, keyboardTop=${Math.round(keyboardTop)}`);
     }
     if (modalRect && modalRect.bottom > keyboardTop - 6) {
-      issues.push(`ledger sheet is covered by keyboard overlay: sheetBottom=${Math.round(modalRect.bottom)}, keyboardTop=${Math.round(keyboardTop)}`);
+      issues.push(`modal sheet is covered by keyboard overlay: sheetBottom=${Math.round(modalRect.bottom)}, keyboardTop=${Math.round(keyboardTop)}`);
     }
     if (composerRect && composerRect.bottom > keyboardTop - 6) {
       issues.push(`chat composer is covered by keyboard overlay: composerBottom=${Math.round(composerRect.bottom)}, keyboardTop=${Math.round(keyboardTop)}`);
@@ -438,7 +446,7 @@ async function checkElementAboveKeyboardOverlay(page, locator, label) {
 async function checkMobileTabbarVisible(page, label) {
   const result = await page.evaluate(() => {
     const tabbar = document.querySelector(".mobile-tabbar");
-    const modal = document.querySelector(".ledger-form-sheet");
+    const modal = document.querySelector(".ledger-form-sheet, .reminder-form-sheet");
     const issues = [];
     if (!(tabbar instanceof HTMLElement)) {
       issues.push("mobile tabbar is missing");
@@ -455,7 +463,7 @@ async function checkMobileTabbarVisible(page, label) {
     if (modal instanceof HTMLElement) {
       const modalRect = modal.getBoundingClientRect();
       if (modalRect.bottom > rect.top + 1) {
-        issues.push(`ledger sheet overlaps tabbar: sheetBottom=${Math.round(modalRect.bottom)}, tabbarTop=${Math.round(rect.top)}`);
+        issues.push(`modal sheet overlaps tabbar: sheetBottom=${Math.round(modalRect.bottom)}, tabbarTop=${Math.round(rect.top)}`);
       }
     }
     return { issues };
@@ -656,6 +664,35 @@ async function exerciseLedgerKeyboardFlow(page, viewport) {
   return { ledgerManualEntryChecked: true };
 }
 
+async function exerciseReminderFlow(page, viewport) {
+  if (authMode !== "mock") return null;
+
+  await page.getByRole("button", { name: "提醒" }).last().click();
+  await page.waitForTimeout(160);
+
+  await page.getByRole("button", { name: /延后提醒 体检疫苗/ }).click();
+  const postponeDialog = page.getByRole("dialog", { name: "延后到什么时候？" });
+  await postponeDialog.waitFor({ timeout: 5000 });
+  const future = futureDateTimeParts(120);
+  await postponeDialog.locator('input[type="date"]').fill(future.date);
+  await postponeDialog.locator('input[type="time"]').fill(future.time);
+  await postponeDialog.getByRole("button", { name: /确认延后/ }).click();
+  await postponeDialog.waitFor({ state: "hidden", timeout: 5000 });
+
+  await page.getByRole("button", { name: /新建/ }).click();
+  const editor = page.getByRole("dialog", { name: "新建提醒" });
+  await editor.waitFor({ timeout: 5000 });
+  if (viewport.mobile) {
+    await checkMobileTabbarVisible(page, `${viewport.name} reminder editor open`);
+    await simulateKeyboardCycle(page, viewport, editor.locator("input").first());
+    await checkAppShellAligned(page, `${viewport.name} reminder editor after keyboard`);
+  }
+  await editor.getByRole("button", { name: "关闭" }).click();
+  await page.waitForTimeout(180);
+
+  return { reminderConfirmFlowChecked: true };
+}
+
 async function exerciseAppShell(page, viewport) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("main.app-shell", { timeout: 15000 });
@@ -682,13 +719,14 @@ async function exerciseAppShell(page, viewport) {
   const albumVideoFallback = await exerciseAlbumVideoFallback(page);
   const chatExpenseShortcut = await exerciseChatExpenseShortcut(page, viewport);
   const ledgerKeyboard = await exerciseLedgerKeyboardFlow(page, viewport);
+  const reminderFlow = await exerciseReminderFlow(page, viewport);
 
   if (viewport.mobile) {
     await page.getByRole("button", { name: "聊天" }).last().click();
     await page.waitForTimeout(120);
   }
 
-  return { mode: "authenticated", tabsChecked: checkedTabs, albumVideoFallback, chatExpenseShortcut, ledgerKeyboard };
+  return { mode: "authenticated", tabsChecked: checkedTabs, albumVideoFallback, chatExpenseShortcut, ledgerKeyboard, reminderFlow };
 }
 
 async function runViewport(browser, viewport) {
