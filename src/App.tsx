@@ -3428,11 +3428,8 @@ function App() {
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
   const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
   const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget);
-  const appModalOpen =
-    Boolean(deleteExpenseTarget) ||
-    Boolean(completeReminderTarget) ||
-    Boolean(postponeReminderTarget) ||
-    Boolean(deleteReminderTarget);
+  const reminderModalOpen = reminderEditorOpen || Boolean(completeReminderTarget) || Boolean(postponeReminderTarget) || Boolean(deleteReminderTarget);
+  const appModalOpen = Boolean(deleteExpenseTarget);
   const loginRoleOptions = useMemo(
     () =>
       ROLE_SELECT_OPTIONS.map((option) => {
@@ -3933,11 +3930,13 @@ function App() {
   useEffect(() => {
     document.body.classList.toggle("app-modal-open", appModalOpen);
     document.body.classList.toggle("ledger-modal-open", ledgerModalOpen);
+    document.body.classList.toggle("reminder-modal-open", reminderModalOpen);
     return () => {
       document.body.classList.remove("app-modal-open");
       document.body.classList.remove("ledger-modal-open");
+      document.body.classList.remove("reminder-modal-open");
     };
-  }, [appModalOpen, ledgerModalOpen]);
+  }, [appModalOpen, ledgerModalOpen, reminderModalOpen]);
 
   useEffect(() => {
     previewAlbumItemRef.current = previewAlbumItem;
@@ -8336,7 +8335,7 @@ function App() {
             </section>
           ))}
           {reminderEditorOpen ? (
-            <div className="story-modal-backdrop reminder-form-backdrop" role="presentation" onMouseDown={closeReminderEditor}>
+            <div className="story-modal-backdrop reminder-sheet-backdrop" role="presentation" onMouseDown={closeReminderEditor}>
               <form
                 className="story-modal reminder-editor reminder-form-sheet"
                 role="dialog"
@@ -8453,9 +8452,9 @@ function App() {
             </div>
           ) : null}
           {postponeReminderTarget ? (
-            <div className="story-modal-backdrop" role="presentation" onMouseDown={closePostponeReminderConfirm}>
+            <div className="story-modal-backdrop reminder-sheet-backdrop" role="presentation" onMouseDown={closePostponeReminderConfirm}>
               <div
-                className="story-modal reminder-postpone-modal delete-confirm-modal"
+                className="story-modal reminder-action-modal reminder-postpone-modal delete-confirm-modal"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="postpone-reminder-title"
@@ -8500,9 +8499,9 @@ function App() {
             </div>
           ) : null}
           {completeReminderTarget ? (
-            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeCompleteReminderConfirm}>
+            <div className="story-modal-backdrop reminder-sheet-backdrop" role="presentation" onMouseDown={closeCompleteReminderConfirm}>
               <div
-                className="story-modal delete-confirm-modal"
+                className="story-modal reminder-action-modal delete-confirm-modal"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="complete-reminder-title"
@@ -8535,9 +8534,9 @@ function App() {
             </div>
           ) : null}
           {deleteReminderTarget ? (
-            <div className="story-modal-backdrop" role="presentation" onMouseDown={closeDeleteReminderConfirm}>
+            <div className="story-modal-backdrop reminder-sheet-backdrop" role="presentation" onMouseDown={closeDeleteReminderConfirm}>
               <div
-                className="story-modal delete-confirm-modal"
+                className="story-modal reminder-action-modal delete-confirm-modal"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="delete-reminder-title"

@@ -446,7 +446,7 @@ async function checkElementAboveKeyboardOverlay(page, locator, label) {
 async function checkMobileTabbarVisible(page, label) {
   const result = await page.evaluate(() => {
     const tabbar = document.querySelector(".mobile-tabbar");
-    const modal = document.querySelector(".ledger-form-sheet, .reminder-form-sheet");
+    const modal = document.querySelector(".ledger-form-sheet, .reminder-form-sheet, .reminder-action-modal");
     const issues = [];
     if (!(tabbar instanceof HTMLElement)) {
       issues.push("mobile tabbar is missing");
@@ -471,6 +471,58 @@ async function checkMobileTabbarVisible(page, label) {
 
   if (result.issues.length) {
     throw new Error(`${label} tabbar issues:\n- ${result.issues.join("\n- ")}`);
+  }
+}
+
+async function checkDialogNotBlocked(page, locator, label) {
+  const result = await locator.evaluate((dialog) => {
+    const rect = dialog.getBoundingClientRect();
+    const actions = dialog.querySelector(".story-modal-actions");
+    const actionsRect = actions instanceof HTMLElement ? actions.getBoundingClientRect() : null;
+    const backdrop = dialog.closest(".story-modal-backdrop");
+    const backdropRect = backdrop instanceof HTMLElement ? backdrop.getBoundingClientRect() : null;
+    const backdropStyle = backdrop instanceof HTMLElement ? window.getComputedStyle(backdrop) : null;
+    const tabbar = document.querySelector(".mobile-tabbar");
+    const tabbarStyle = tabbar instanceof HTMLElement ? window.getComputedStyle(tabbar) : null;
+    const tabbarRect = tabbar instanceof HTMLElement ? tabbar.getBoundingClientRect() : null;
+    const tabbarVisible =
+      tabbar instanceof HTMLElement &&
+      tabbarStyle &&
+      tabbarStyle.display !== "none" &&
+      tabbarStyle.visibility !== "hidden" &&
+      Number(tabbarStyle.opacity) > 0.2 &&
+      tabbarRect &&
+      tabbarRect.bottom > 0 &&
+      tabbarRect.top < window.innerHeight;
+    const safeBottom = tabbarVisible && tabbarRect ? tabbarRect.top : window.innerHeight;
+    const issues = [];
+
+    if (rect.width <= 0 || rect.height <= 0) {
+      issues.push("dialog is not visible");
+    }
+    if (rect.left < -1 || rect.right > window.innerWidth + 1 || rect.top < -1 || rect.bottom > safeBottom - 4) {
+      issues.push(`dialog is blocked or outside safe area: top=${Math.round(rect.top)}, bottom=${Math.round(rect.bottom)}, safeBottom=${Math.round(safeBottom)}`);
+    }
+    if (actionsRect && actionsRect.bottom > safeBottom - 8) {
+      issues.push(`dialog actions are blocked: actionsBottom=${Math.round(actionsRect.bottom)}, safeBottom=${Math.round(safeBottom)}`);
+    }
+    if (backdropRect && backdropStyle && backdropRect.bottom < window.innerHeight - 1) {
+      const background = backdropStyle.backgroundColor;
+      const hasVisibleBackdrop =
+        background !== "rgba(0, 0, 0, 0)" &&
+        background !== "transparent" &&
+        background !== "";
+      const hasBackdropFilter = backdropStyle.backdropFilter !== "none" && backdropStyle.backdropFilter !== "";
+      if (hasVisibleBackdrop || hasBackdropFilter) {
+        issues.push(`visible backdrop is clipped at bottom=${Math.round(backdropRect.bottom)} of viewport=${window.innerHeight}`);
+      }
+    }
+
+    return { issues };
+  });
+
+  if (result.issues.length) {
+    throw new Error(`${label} dialog issues:\n- ${result.issues.join("\n- ")}`);
   }
 }
 
@@ -673,17 +725,42 @@ async function exerciseReminderFlow(page, viewport) {
   await page.getByRole("button", { name: /延后提醒 体检疫苗/ }).click();
   const postponeDialog = page.getByRole("dialog", { name: "延后到什么时候？" });
   await postponeDialog.waitFor({ timeout: 5000 });
+  if (viewport.mobile) {
+    await checkMobileTabbarVisible(page, `${viewport.name} postpone reminder dialog open`);
+    await checkDialogNotBlocked(page, postponeDialog, `${viewport.name} postpone reminder dialog`);
+  }
   const future = futureDateTimeParts(120);
   await postponeDialog.locator('input[type="date"]').fill(future.date);
   await postponeDialog.locator('input[type="time"]').fill(future.time);
   await postponeDialog.getByRole("button", { name: /确认延后/ }).click();
   await postponeDialog.waitFor({ state: "hidden", timeout: 5000 });
 
+  await page.getByRole("button", { name: /标记完成 体检疫苗/ }).click();
+  const completeDialog = page.getByRole("dialog", { name: /确认已经完成了吗|关闭本次提醒吗/ });
+  await completeDialog.waitFor({ timeout: 5000 });
+  if (viewport.mobile) {
+    await checkMobileTabbarVisible(page, `${viewport.name} complete reminder dialog open`);
+    await checkDialogNotBlocked(page, completeDialog, `${viewport.name} complete reminder dialog`);
+  }
+  await completeDialog.getByRole("button", { name: /先不完成/ }).click();
+  await completeDialog.waitFor({ state: "hidden", timeout: 5000 });
+
+  await page.getByRole("button", { name: /删除提醒 体检疫苗/ }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "确定不再提醒吗？" });
+  await deleteDialog.waitFor({ timeout: 5000 });
+  if (viewport.mobile) {
+    await checkMobileTabbarVisible(page, `${viewport.name} delete reminder dialog open`);
+    await checkDialogNotBlocked(page, deleteDialog, `${viewport.name} delete reminder dialog`);
+  }
+  await deleteDialog.getByRole("button", { name: /先保留/ }).click();
+  await deleteDialog.waitFor({ state: "hidden", timeout: 5000 });
+
   await page.getByRole("button", { name: /新建/ }).click();
   const editor = page.getByRole("dialog", { name: "新建提醒" });
   await editor.waitFor({ timeout: 5000 });
   if (viewport.mobile) {
     await checkMobileTabbarVisible(page, `${viewport.name} reminder editor open`);
+    await checkDialogNotBlocked(page, editor, `${viewport.name} reminder editor`);
     await simulateKeyboardCycle(page, viewport, editor.locator("input").first());
     await checkAppShellAligned(page, `${viewport.name} reminder editor after keyboard`);
   }

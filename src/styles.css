@@ -2131,7 +2131,8 @@ body {
 }
 
 body.app-modal-open,
-body.ledger-modal-open {
+body.ledger-modal-open,
+body.reminder-modal-open {
   touch-action: none;
 }
 
@@ -2146,6 +2147,11 @@ body.app-modal-open .mobile-tabbar {
 }
 
 body.ledger-modal-open .mobile-tab-ledger .ledger-screen {
+  animation: none;
+  transform: none;
+}
+
+body.reminder-modal-open .mobile-tab-reminders .reminders-screen {
   animation: none;
   transform: none;
 }
@@ -3330,7 +3336,7 @@ body.keyboard-open .story-modal.ledger-form-sheet.expense-editor {
   max-height: calc(100% - 16px);
 }
 
-.story-modal-backdrop.reminder-form-backdrop {
+.story-modal-backdrop.reminder-sheet-backdrop {
   z-index: 300;
   display: flex;
   align-items: flex-end;
@@ -3338,7 +3344,7 @@ body.keyboard-open .story-modal.ledger-form-sheet.expense-editor {
   inset:
     max(8px, env(safe-area-inset-top))
     0
-    calc(var(--mobile-tabbar-height, 72px) + env(safe-area-inset-bottom) + 6px)
+    calc(var(--mobile-tabbar-height, 72px) + env(safe-area-inset-bottom) + 34px)
     0;
   height: auto;
   max-height: none;
@@ -3347,6 +3353,8 @@ body.keyboard-open .story-modal.ledger-form-sheet.expense-editor {
     max(10px, env(safe-area-inset-right))
     4px
     max(10px, env(safe-area-inset-left));
+  background: transparent;
+  backdrop-filter: none;
 }
 
 .story-modal.reminder-form-sheet {
@@ -3356,7 +3364,7 @@ body.keyboard-open .story-modal.ledger-form-sheet.expense-editor {
   touch-action: pan-y;
 }
 
-body.keyboard-open .story-modal-backdrop.reminder-form-backdrop {
+body.keyboard-open .story-modal-backdrop.reminder-sheet-backdrop {
   inset: 0 0 max(0px, var(--keyboard-inset, 0px)) 0;
   padding:
     max(8px, env(safe-area-inset-top))
@@ -3367,6 +3375,12 @@ body.keyboard-open .story-modal-backdrop.reminder-form-backdrop {
 
 body.keyboard-open .story-modal.reminder-form-sheet {
   max-height: calc(100% - 16px);
+}
+
+.story-modal.reminder-action-modal {
+  max-height: min(460px, calc(100% - 12px));
+  overflow: auto;
+  touch-action: pan-y;
 }
 
 .expense-editor-body {
