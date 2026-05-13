@@ -19,6 +19,9 @@ SKIP_BACKEND_BUILD="${SKIP_BACKEND_BUILD:-0}"
 SKIP_KEY_CHECK="${SKIP_KEY_CHECK:-0}"
 BUILD_ANDROID="${BUILD_ANDROID:-0}"
 ANDROID_API_BASE_URL="${ANDROID_API_BASE_URL:-http://${ECS_HOST}:${DEPLOY_PORT}}"
+APP_STORAGE_MODE_EXPLICIT="${APP_STORAGE_MODE+x}"
+ALIYUN_OSS_ENDPOINT_EXPLICIT="${ALIYUN_OSS_ENDPOINT+x}"
+ALIYUN_OSS_BUCKET_EXPLICIT="${ALIYUN_OSS_BUCKET+x}"
 APP_STORAGE_MODE="${APP_STORAGE_MODE:-local}"
 ALIYUN_OSS_ENDPOINT="${ALIYUN_OSS_ENDPOINT:-}"
 ALIYUN_OSS_BUCKET="${ALIYUN_OSS_BUCKET:-}"
@@ -48,7 +51,8 @@ Options:
   SKIP_KEY_CHECK=0                   Require remote API key files before starting service.
   BUILD_ANDROID=0                    Also build Android debug APK with the public API URL.
   ANDROID_API_BASE_URL=http://ip:8300 Override APK API base URL.
-  APP_STORAGE_MODE=local|oss          Backend attachment storage mode.
+  APP_STORAGE_MODE=local|oss          Backend attachment storage mode. If omitted, preserve the
+                                      existing remote service value when present; first deploy defaults to local.
   ALIYUN_OSS_ENDPOINT=...             OSS endpoint when APP_STORAGE_MODE=oss.
   ALIYUN_OSS_BUCKET=...               OSS bucket when APP_STORAGE_MODE=oss.
   ALIYUN_OSS_OBJECT_PREFIX=...        OSS object key prefix.
@@ -74,21 +78,6 @@ if [[ -z "$ECS_HOST" ]]; then
   exit 1
 fi
 
-if [[ "$APP_STORAGE_MODE" == "oss" ]]; then
-  missing_oss_config=0
-  if [[ -z "$ALIYUN_OSS_ENDPOINT" ]]; then
-    echo "ALIYUN_OSS_ENDPOINT is required when APP_STORAGE_MODE=oss." >&2
-    missing_oss_config=1
-  fi
-  if [[ -z "$ALIYUN_OSS_BUCKET" ]]; then
-    echo "ALIYUN_OSS_BUCKET is required when APP_STORAGE_MODE=oss." >&2
-    missing_oss_config=1
-  fi
-  if [[ "$missing_oss_config" == "1" ]]; then
-    exit 1
-  fi
-fi
-
 ssh_args=(-p "$ECS_PORT")
 scp_args=(-P "$ECS_PORT")
 if [[ -n "$SSH_KEY" ]]; then
@@ -103,6 +92,50 @@ remote() {
 copy_to_remote() {
   scp "${scp_args[@]}" "$1" "$ECS_USER@$ECS_HOST:$2"
 }
+
+preserve_remote_storage_config() {
+  if [[ -n "$APP_STORAGE_MODE_EXPLICIT" && -n "$ALIYUN_OSS_ENDPOINT_EXPLICIT" && -n "$ALIYUN_OSS_BUCKET_EXPLICIT" ]]; then
+    return
+  fi
+
+  local remote_environment
+  remote_environment="$(remote "systemctl show '$SERVICE_NAME' -p Environment --value 2>/dev/null || true")"
+  [[ -n "$remote_environment" ]] || return
+
+  local entry key value
+  for entry in $remote_environment; do
+    key="${entry%%=*}"
+    value="${entry#*=}"
+    case "$key" in
+      APP_STORAGE_MODE)
+        [[ -n "$APP_STORAGE_MODE_EXPLICIT" ]] || APP_STORAGE_MODE="$value"
+        ;;
+      ALIYUN_OSS_ENDPOINT)
+        [[ -n "$ALIYUN_OSS_ENDPOINT_EXPLICIT" ]] || ALIYUN_OSS_ENDPOINT="$value"
+        ;;
+      ALIYUN_OSS_BUCKET)
+        [[ -n "$ALIYUN_OSS_BUCKET_EXPLICIT" ]] || ALIYUN_OSS_BUCKET="$value"
+        ;;
+    esac
+  done
+}
+
+preserve_remote_storage_config
+
+if [[ "$APP_STORAGE_MODE" == "oss" ]]; then
+  missing_oss_config=0
+  if [[ -z "$ALIYUN_OSS_ENDPOINT" ]]; then
+    echo "ALIYUN_OSS_ENDPOINT is required when APP_STORAGE_MODE=oss." >&2
+    missing_oss_config=1
+  fi
+  if [[ -z "$ALIYUN_OSS_BUCKET" ]]; then
+    echo "ALIYUN_OSS_BUCKET is required when APP_STORAGE_MODE=oss." >&2
+    missing_oss_config=1
+  fi
+  if [[ "$missing_oss_config" == "1" ]]; then
+    exit 1
+  fi
+fi
 
 java_major_version() {
   local java_bin="$1"

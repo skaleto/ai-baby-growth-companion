@@ -15,6 +15,16 @@ npm install
 npm run dev
 ```
 
+## 前端交付验证
+
+涉及 UI、样式、交互或移动端布局的改动，交付前需要跑本地前端验证：
+
+```bash
+npm run verify:frontend
+```
+
+该命令会构建应用、启动本地预览，并用 Playwright 检查桌面冒烟和 `360x740`、`390x844`、`430x932` 三档移动视口。完整规范见：[前端验证工作流](docs/frontend-verification.md)。
+
 ## 移动端构建
 
 ```bash

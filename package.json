@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
+    "setup:frontend-smoke": "playwright install chromium",
+    "smoke:frontend": "node scripts/frontend-smoke.mjs",
+    "verify:frontend": "npm run build && npm run smoke:frontend",
     "build:mobile:update": "bash scripts/build-mobile-update.sh",
     "build:android:debug": "bash scripts/build-android-debug.sh",
     "build:ios:debug": "bash scripts/build-ios-debug.sh",
@@ -34,6 +37,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "playwright": "^1.60.0"
   }
 }

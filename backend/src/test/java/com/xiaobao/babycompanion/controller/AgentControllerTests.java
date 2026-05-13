@@ -68,4 +68,41 @@ class AgentControllerTests {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
     }
+
+    @Test
+    void streamAcceptsSignedAttachmentUrlsInRecentMessages() throws Exception {
+        String signedUrl = "https://ai-baby-growth-companion.oss-cn-hangzhou.aliyuncs.com/baby-companion/uploads/2026-05-12/attachment-test-video.mov"
+                + "?Expires=1778657880&OSSAccessKeyId=" + "A".repeat(64)
+                + "&Signature=" + "x".repeat(180);
+
+        mockMvc.perform(post("/api/agent/chat/stream")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "你好你能干嘛",
+                                  "recentMessages": [
+                                    {
+                                      "id": "msg-with-signed-url",
+                                      "role": "parent",
+                                      "text": "之前发过一个视频",
+                                      "createdAt": "2026-05-12T15:39:00.000Z",
+                                      "attachments": [
+                                        {
+                                          "id": "att-signed-url",
+                                          "name": "video.mov",
+                                          "kind": "video",
+                                          "url": "%s"
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "careLogs": [],
+                                  "memories": [],
+                                  "attachments": []
+                                }
+                                """.formatted(signedUrl)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
+    }
 }

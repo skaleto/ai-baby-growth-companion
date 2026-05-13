@@ -1,8 +1,10 @@
 # Dependencies
 node_modules/
+.DS_Store
 
 # Frontend build output
 dist/
+.verification/
 
 # Mobile package outputs
 *.apk

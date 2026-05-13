@@ -12,7 +12,7 @@ public record AgentAttachment(
         @Size(max = 20, message = "attachment kind must be at most 20 characters")
         String kind,
 
-        @Size(max = 200, message = "attachment url must be at most 200 characters")
+        @Size(max = 2048, message = "attachment url must be at most 2048 characters")
         String url,
 
         @Size(max = 22_000_000, message = "attachment dataUrl is too large")
