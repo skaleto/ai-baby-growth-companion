@@ -3271,8 +3271,8 @@ canvas {
 
 .story-modal.ledger-form-sheet {
   width: min(100%, 410px);
-  height: min(800px, calc(100% - 10px));
-  max-height: calc(100% - 10px);
+  height: min(760px, calc(100% - 36px));
+  max-height: calc(100% - 36px);
   overflow: hidden;
   border-radius: 18px;
   touch-action: pan-y;
@@ -3295,10 +3295,15 @@ body.keyboard-open .story-modal.ledger-form-sheet {
 .story-modal.expense-editor {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  max-height: none;
+  height: min(760px, calc(100% - 36px));
+  max-height: calc(100% - 36px);
   gap: 14px;
   padding: 16px;
+}
+
+body.keyboard-open .story-modal.ledger-form-sheet.expense-editor {
+  height: min(760px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
 }
 
 .expense-editor-body {
@@ -3398,6 +3403,7 @@ body.keyboard-open .expense-editor-body {
   font-size: 16px;
   font-weight: 900;
   line-height: 1.2;
+  z-index: 0;
 }
 
 .expense-date-field > span {
@@ -3448,6 +3454,8 @@ body.keyboard-open .expense-editor-body {
 }
 
 .expense-optional-panel {
+  position: relative;
+  z-index: 1;
   overflow: hidden;
   margin-bottom: 6px;
   border: 1px solid rgba(234, 223, 208, 0.85);

@@ -3797,10 +3797,12 @@ function App() {
     return {
       today: active.filter((item) => reminderDate(item) === todayDate),
       overdue: active.filter((item) => reminderDate(item) < todayDate || item.status === "missed"),
+      upcoming: active.filter((item) => reminderDate(item) > todayDate && item.status !== "missed"),
       done: sorted.filter((item) => item.status === "done").reverse(),
     };
   }, [reminders, todayDate]);
-  const actionableReminderCount = reminderBuckets.today.length + reminderBuckets.overdue.length;
+  const actionableReminderCount =
+    reminderBuckets.today.length + reminderBuckets.overdue.length + reminderBuckets.upcoming.length;
   const latestMilkAnchor = useMemo(() => latestCareEventAnchor(careLogs, "milk"), [careLogs]);
   const recordEvents = useMemo(
     () => buildRecordEvents(careLogs, growthEvents, reminders),
@@ -8205,7 +8207,7 @@ function App() {
               <h2>照护任务中心</h2>
             </div>
             <div className="screen-head-actions">
-              <span className="screen-pill">{actionableReminderCount} 个今日/逾期待办</span>
+              <span className="screen-pill">{actionableReminderCount} 个未完成待办</span>
               {canCaregive ? (
                 <button className="screen-action-button" type="button" onClick={openNewReminderEditor}>
                   <Bell size={16} />
@@ -8230,6 +8232,7 @@ function App() {
 
           {[
             { key: "today", title: "今天要做", items: reminderBuckets.today, empty: "今天暂时没有待办。" },
+            { key: "upcoming", title: "未来安排", items: reminderBuckets.upcoming, empty: "后面暂时没有安排。" },
             { key: "overdue", title: "已逾期", items: reminderBuckets.overdue, empty: "没有逾期任务。" },
             { key: "done", title: "已完成", items: reminderBuckets.done, empty: "完成后的提醒会留在这里。" },
           ].map((group) => (

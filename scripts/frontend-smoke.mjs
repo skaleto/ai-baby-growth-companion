@@ -92,6 +92,16 @@ const smokeState = {
       createdAt: new Date().toISOString(),
       history: [],
     },
+    {
+      id: "smoke-reminder-future",
+      title: "体检疫苗",
+      dueText: "2026-05-19 09:00",
+      dueAt: "2026-05-19T01:00:00.000Z",
+      category: "vaccine",
+      status: "open",
+      createdAt: "2026-05-13T14:31:56.623Z",
+      history: [],
+    },
   ],
   memories: [],
   pendingEffects: [],
@@ -584,6 +594,8 @@ async function exerciseChatExpenseShortcut(page, viewport) {
 }
 
 async function simulateKeyboardCycle(page, viewport, field) {
+  await field.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(80);
   await field.focus();
   await page.waitForTimeout(120);
   const keyboardInset = Math.min(340, Math.max(260, Math.round(viewport.height * 0.42)));
@@ -659,6 +671,11 @@ async function exerciseAppShell(page, viewport) {
     const tab = page.getByRole("button", { name: label }).last();
     await tab.click({ timeout: 5000 });
     await page.waitForTimeout(120);
+    if (label === "提醒") {
+      await page.getByText("未来安排").waitFor({ timeout: 5000 });
+      await page.getByText("体检疫苗").first().waitFor({ timeout: 5000 });
+      await page.getByText(/未完成待办/).waitFor({ timeout: 5000 });
+    }
     checkedTabs.push(label);
   }
 
