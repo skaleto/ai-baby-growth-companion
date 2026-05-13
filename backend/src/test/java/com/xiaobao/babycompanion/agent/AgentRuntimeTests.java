@@ -73,6 +73,71 @@ class AgentRuntimeTests {
     }
 
     @Test
+    void acceptsStringSafetyAlertsFromModel() {
+        AgentChatResponse response = agentRuntime.parseModelContent(
+                """
+                        {
+                          "aiText": "19 号体检和疫苗可以先记个提醒，具体安排以社区医院通知为准。",
+                          "tags": ["提醒"],
+                          "growthEvent": null,
+                          "careLogPatch": null,
+                          "reminders": [],
+                          "memories": [],
+                          "sources": [],
+                          "safetyAlerts": [
+                            "疫苗、体检的具体安排和注意事项请以社区医院或医生的通知为准。"
+                          ]
+                        }
+                        """,
+                "agent-test",
+                "doubao-test",
+                "request-test",
+                List.of("default-baby-companion"),
+                List.of()
+        );
+
+        assertThat(response.safetyAlerts()).hasSize(1);
+        assertThat(response.safetyAlerts().get(0).level()).isEqualTo("info");
+        assertThat(response.safetyAlerts().get(0).category()).isEqualTo("general");
+        assertThat(response.safetyAlerts().get(0).message()).contains("社区医院");
+    }
+
+    @Test
+    void acceptsObjectSafetyAlertsFromModel() {
+        AgentChatResponse response = agentRuntime.parseModelContent(
+                """
+                        {
+                          "aiText": "涉及疫苗时请以医生安排为准。",
+                          "tags": ["提醒"],
+                          "growthEvent": null,
+                          "careLogPatch": null,
+                          "reminders": [],
+                          "memories": [],
+                          "sources": [],
+                          "safetyAlerts": [
+                            {
+                              "level": "warning",
+                              "category": "medical",
+                              "message": "接种前请确认宝宝当日状态。",
+                              "recommendedAction": "按社区医院通知执行"
+                            }
+                          ]
+                        }
+                        """,
+                "agent-test",
+                "doubao-test",
+                "request-test",
+                List.of("default-baby-companion"),
+                List.of()
+        );
+
+        assertThat(response.safetyAlerts()).hasSize(1);
+        assertThat(response.safetyAlerts().get(0).level()).isEqualTo("warning");
+        assertThat(response.safetyAlerts().get(0).category()).isEqualTo("medical");
+        assertThat(response.safetyAlerts().get(0).recommendedAction()).isEqualTo("按社区医院通知执行");
+    }
+
+    @Test
     void rejectsNonJsonModelContent() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> agentRuntime.parseModelContent(
                 "我已经帮你记录好了。",

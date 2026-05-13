@@ -186,7 +186,14 @@ public class AgentRuntime {
                   "snippet": "string"
                 }
               ],
-              "safetyAlerts": [],
+              "safetyAlerts": [
+                {
+                  "level": "info|warning",
+                  "category": "health|medical|safety|general",
+                  "message": "string",
+                  "recommendedAction": null | "string"
+                }
+              ],
               "usedSkills": ["default-baby-companion"]
             }
 
