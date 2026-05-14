@@ -6364,7 +6364,9 @@ function App() {
         <span className="system-weak-message">{systemWeakNotice.message}</span>
         {systemWeakNotice.progressMode ? (
           <span className="system-weak-percent">
-            {typeof systemWeakNotice.progress === "number" ? `${Math.round(systemWeakNotice.progress)}%` : "准备中"}
+            {systemWeakNotice.progressMode === "determinate" && typeof systemWeakNotice.progress === "number"
+              ? `${Math.round(systemWeakNotice.progress)}%`
+              : "下载中"}
           </span>
         ) : null}
       </div>

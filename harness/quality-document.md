@@ -27,7 +27,7 @@ This file is the quality snapshot for agent and human handoffs. Ratings are inte
 
 | Layer | Rating | Boundary Discipline | Agent Readability | Key Gap | Last Updated |
 | --- | --- | --- | --- | --- | --- |
-| React app shell | B | Mostly clear, but large `src/App.tsx` remains dense | Medium | Future refactor could split feature panels and modal logic | 2026-05-13 |
+| React app shell | B | Mostly clear, but large `frontend/src/App.tsx` remains dense | Medium | Future refactor could split feature panels and modal logic | 2026-05-13 |
 | Mobile/native bridge | C | Platform code exists but must be validated on device | Medium | Native notification/ringing parity is hard to prove in browser | 2026-05-13 |
 | Spring backend services | B | Services are reasonably separated | Medium | App state merge and family/private boundaries are high-risk when changed | 2026-05-13 |
 | Agent harness/runtime | B | Runtime/config/test harness is improving | High | Add live model regression layer when stable credentials and test data are available | 2026-05-13 |

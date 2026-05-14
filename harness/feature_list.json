@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-05-13",
+  "lastUpdated": "2026-05-14",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -65,7 +65,9 @@
         "Inspect generated artifacts under .verification/frontend-smoke when failures occur."
       ],
       "evidence": [
-        "docs/frontend-verification.md defines the viewport matrix and waiver rule."
+        "docs/frontend-verification.md defines the viewport matrix and waiver rule.",
+        "2026-05-14 npm run verify:frontend passed after OTA progress notice rendering was covered in frontend smoke.",
+        "2026-05-14 release-flow check: frontend build passed through frontend/vite.config.ts after moving frontend source/config under frontend/."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -81,7 +83,9 @@
         "Verify http://120.55.188.242:8300/api/health returns ok.",
         "When behavior changed, run a live probe or documented test account flow."
       ],
-      "evidence": [],
+      "evidence": [
+        "2026-05-14 release-flow check: curl -fsS http://120.55.188.242:8300/api/health returned ok. Live deploy was not executed because the script has no dry-run mode."
+      ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },
     {
@@ -96,7 +100,10 @@
         "Run npm run build:android:debug for Android package changes.",
         "Run npm run build:ios:debug for iOS package changes when Xcode signing/build environment is ready."
       ],
-      "evidence": [],
+      "evidence": [
+        "2026-05-14 release-flow check: VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:android:debug passed.",
+        "2026-05-14 release-flow check: VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:ios:debug passed for iPhone 17 simulator."
+      ],
       "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
     }
   ]

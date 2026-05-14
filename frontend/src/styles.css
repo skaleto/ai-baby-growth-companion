@@ -3351,7 +3351,7 @@ body.keyboard-open .story-modal.ledger-form-sheet.expense-editor {
   padding:
     6px
     max(10px, env(safe-area-inset-right))
-    4px
+    10px
     max(10px, env(safe-area-inset-left));
   background: transparent;
   backdrop-filter: none;

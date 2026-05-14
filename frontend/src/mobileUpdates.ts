@@ -27,6 +27,15 @@ type MobileUpdateCheckResponse = {
   message?: string | null;
 };
 
+type DownloadProgressEvent = {
+  percent?: number;
+  progress?: number;
+  downloadedBytes?: number;
+  bytesDownloaded?: number;
+  totalBytes?: number;
+  totalBytesToDownload?: number;
+};
+
 export function startMobileUpdateRuntime() {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable("CapacitorUpdater")) return;
 
@@ -94,18 +103,27 @@ async function checkAndQueueMobileUpdate() {
 
 async function downloadBundleWithProgress(version: string, url: string, checksum?: string | null): Promise<BundleInfo> {
   let listener: { remove: () => Promise<void> } | undefined;
-  let lastProgress = 1;
+  let lastProgress = 0;
+  let hasDeterminateProgress = false;
   try {
     listener = await CapacitorUpdater.addListener("download", (state) => {
-      const progress = normalizeDownloadProgress(state.percent);
+      const progress = readDownloadProgress(state as DownloadProgressEvent);
+      console.info("[mobile-update] download progress", { version, progress, state });
+      if (progress === null || progress <= 0) {
+        if (!hasDeterminateProgress) {
+          emitMobileUpdateNotice(`正在下载新版本 ${version}`, "info", 0, null, "indeterminate");
+        }
+        return;
+      }
       if (progress > lastProgress) {
         lastProgress = progress;
       }
       if (lastProgress < 100) {
+        hasDeterminateProgress = true;
         emitMobileUpdateNotice(`正在下载新版本 ${version}`, "info", 0, lastProgress, "determinate");
       }
     });
-    emitMobileUpdateNotice(`正在下载新版本 ${version}`, "info", 0, lastProgress, "determinate");
+    emitMobileUpdateNotice(`正在下载新版本 ${version}`, "info", 0, null, "indeterminate");
     const bundle = await CapacitorUpdater.download({
       version,
       url,
@@ -163,10 +181,24 @@ function clampProgress(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function normalizeDownloadProgress(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return 1;
+function readDownloadProgress(state: DownloadProgressEvent) {
+  const directProgress = normalizeDownloadProgress(state.percent ?? state.progress);
+  if (directProgress !== null && directProgress > 0) return directProgress;
+
+  const downloadedBytes = state.downloadedBytes ?? state.bytesDownloaded;
+  const totalBytes = state.totalBytes ?? state.totalBytesToDownload;
+  if (typeof downloadedBytes === "number" && typeof totalBytes === "number" && totalBytes > 0) {
+    return clampProgress((downloadedBytes / totalBytes) * 100);
+  }
+
+  return directProgress;
+}
+
+function normalizeDownloadProgress(value: number | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  if (value <= 0) return 0;
   if (value > 0 && value <= 1) return clampProgress(value * 100);
-  return Math.max(1, clampProgress(value));
+  return clampProgress(value);
 }
 
 function sleep(ms: number) {

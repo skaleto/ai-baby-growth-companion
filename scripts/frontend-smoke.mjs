@@ -176,7 +176,7 @@ async function waitForServer(preview, timeoutMs = 30000) {
 
 function startPreview() {
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
-  const child = spawn(npx, ["vite", "preview", "--host", host, "--port", String(port), "--strictPort"], {
+  const child = spawn(npx, ["vite", "preview", "--config", "frontend/vite.config.ts", "--host", host, "--port", String(port), "--strictPort"], {
     cwd: rootDir,
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, BROWSER: "none" },
@@ -616,6 +616,54 @@ async function checkLedgerModalChrome(page, label) {
   }
 }
 
+async function exerciseMobileUpdateNotice(page) {
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("xiaobao-mobile-update-notice", {
+      detail: {
+        message: "正在下载新版本 smoke",
+        tone: "info",
+        durationMs: 0,
+        progress: null,
+        progressMode: "indeterminate",
+      },
+    }));
+  });
+  const toast = page.locator(".system-weak-toast.with-progress").last();
+  await toast.waitFor({ timeout: 5000 });
+  const indeterminateText = (await toast.textContent()) ?? "";
+  if (indeterminateText.includes("0%")) {
+    throw new Error(`mobile update indeterminate progress should not render 0%: "${indeterminateText}"`);
+  }
+  if (!indeterminateText.includes("下载中")) {
+    throw new Error(`mobile update indeterminate progress should show downloading state: "${indeterminateText}"`);
+  }
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("xiaobao-mobile-update-notice", {
+      detail: {
+        message: "正在下载新版本 smoke",
+        tone: "info",
+        durationMs: 0,
+        progress: 42,
+        progressMode: "determinate",
+      },
+    }));
+  });
+  await page.waitForFunction(() => document.querySelector(".system-weak-percent")?.textContent?.includes("42%"));
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("xiaobao-mobile-update-notice", {
+      detail: {
+        message: "当前已是最新版本",
+        tone: "success",
+        durationMs: 20,
+      },
+    }));
+  });
+  await page.waitForTimeout(80);
+  return { mobileUpdateNoticeChecked: true };
+}
+
 async function exerciseAlbumVideoFallback(page) {
   await page.getByRole("button", { name: "相册" }).last().click();
   await page.waitForSelector(".album-photo-thumb", { timeout: 5000 });
@@ -780,6 +828,7 @@ async function exerciseAppShell(page, viewport) {
   }
 
   await page.waitForSelector("nav.mobile-tabbar", { timeout: 15000 });
+  const mobileUpdateNotice = await exerciseMobileUpdateNotice(page);
   const checkedTabs = [];
   for (const label of tabLabels) {
     const tab = page.getByRole("button", { name: label }).last();
@@ -803,7 +852,7 @@ async function exerciseAppShell(page, viewport) {
     await page.waitForTimeout(120);
   }
 
-  return { mode: "authenticated", tabsChecked: checkedTabs, albumVideoFallback, chatExpenseShortcut, ledgerKeyboard, reminderFlow };
+  return { mode: "authenticated", tabsChecked: checkedTabs, mobileUpdateNotice, albumVideoFallback, chatExpenseShortcut, ledgerKeyboard, reminderFlow };
 }
 
 async function runViewport(browser, viewport) {

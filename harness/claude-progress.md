@@ -13,6 +13,51 @@
 
 ## Session Log
 
+### Session 2026-05-14 Frontend Directory Release Flow Check
+
+- Goal: Verify the current release flow after moving frontend source/config into `frontend/`, without changing cloud production state.
+- Completed:
+  - Confirmed the standard harness smoke gate still works from the repository root.
+  - Built the web app through the new `frontend/vite.config.ts` path.
+  - Built an OTA bundle with `MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300` and `VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300`.
+  - Built Android debug APK with cloud API URL.
+  - Built iOS simulator debug app with cloud API URL.
+  - Confirmed the current cloud health endpoint returns `ok`.
+- Verification run:
+  - `git diff --check`
+  - `bash harness/init.sh`
+  - `npm run verify:frontend`
+  - `MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:android:debug`
+  - `VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:ios:debug`
+  - `curl -fsS http://120.55.188.242:8300/api/health`
+- Evidence:
+  - Harness smoke passed, including frontend build and Agent benchmark.
+  - Frontend verification passed across configured mobile/desktop viewports.
+  - OTA bundle generated as `0.1.0-20260514151614`.
+  - Android debug APK built at `android/app/build/outputs/apk/debug/app-debug.apk`.
+  - iOS simulator build completed with `BUILD SUCCEEDED`.
+  - Cloud health returned `ok`.
+- Known risks:
+  - Cloud deployment was intentionally not executed in this check because the deploy script has no dry-run mode and would restart the live service.
+
+### Session 2026-05-14 OTA Progress Display
+
+- Goal: Make OTA download progress truthful instead of showing a fake `0%` state until completion.
+- Completed:
+  - OTA download UI now starts in an indeterminate “下载中” state until the native updater emits a real positive percent.
+  - Native download events are logged with their raw payload and parsed progress to help diagnose platform-specific progress behavior.
+  - Frontend smoke now covers mobile update notice rendering for indeterminate and determinate progress.
+  - Reminder sheet bottom spacing was widened slightly after the frontend gate exposed a 360px safe-area edge miss.
+- Verification run:
+  - `npm run build`
+  - `npm run verify:frontend`
+- Evidence:
+  - `npm run build` passed.
+  - `npm run verify:frontend` passed across desktop and six mobile viewports, including OTA progress notice smoke coverage.
+- Known risks:
+  - If the native updater only emits `0` and `100` on a platform/update path, the UI will honestly show an indeterminate download state and then completion; it will not invent intermediate percentages.
+
 ### Session 2026-05-13 Harness Baseline
 
 - Goal: Build a repo-local harness based on the Learn Harness Engineering template, with only `AGENTS.md` at root and all new harness files under `harness/`.

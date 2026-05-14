@@ -66,18 +66,18 @@
 
 ### 3.1 前端与移动壳
 
-前端使用 React + TypeScript + Vite，核心业务集中在 `src/App.tsx`，并通过多个 API/原生桥模块连接后端与移动端能力：
+前端使用 React + TypeScript + Vite，核心业务集中在 `frontend/src/App.tsx`，并通过多个 API/原生桥模块连接后端与移动端能力：
 
 | 模块 | 职责 |
 | --- | --- |
-| `src/authApi.ts` | 登录、邀请码角色预检、当前用户、家庭名称、退出登录。 |
-| `src/appStateApi.ts` | 应用状态读取、集合 upsert/delete、附件上传、OSS 预签名直传。 |
-| `src/agentApi.ts` | Agent 普通请求与 SSE 流式请求、会话摘要压缩。 |
-| `src/asrApi.ts` | ASR WebSocket 客户端。 |
-| `src/nativeAlarm.ts` | Android/iOS 原生提醒和闹铃插件桥。 |
-| `src/nativeMediaPicker.ts` | iOS/Android 原生媒体选择。 |
-| `src/mobileUpdates.ts` | Capgo OTA 检查、下载、进度提示和切换。 |
-| `src/types.ts` | 前后端共享的主要领域类型。 |
+| `frontend/src/authApi.ts` | 登录、邀请码角色预检、当前用户、家庭名称、退出登录。 |
+| `frontend/src/appStateApi.ts` | 应用状态读取、集合 upsert/delete、附件上传、OSS 预签名直传。 |
+| `frontend/src/agentApi.ts` | Agent 普通请求与 SSE 流式请求、会话摘要压缩。 |
+| `frontend/src/asrApi.ts` | ASR WebSocket 客户端。 |
+| `frontend/src/nativeAlarm.ts` | Android/iOS 原生提醒和闹铃插件桥。 |
+| `frontend/src/nativeMediaPicker.ts` | iOS/Android 原生媒体选择。 |
+| `frontend/src/mobileUpdates.ts` | Capgo OTA 检查、下载、进度提示和切换。 |
+| `frontend/src/types.ts` | 前后端共享的主要领域类型。 |
 
 移动端通过 Capacitor 复用同一套 Web 业务代码：
 
@@ -243,4 +243,4 @@ OTA Bundle 承担：
 - 当前云端仍是单机 Spring Boot + SQLite，不做负载均衡和托管数据库。
 - iOS 后台无法像 Android 一样强制全屏闹铃，采用本地通知 + 点击进入闹铃页的可达等价策略。
 - Agent 真实模型输出有不确定性，因此核心行为依赖规则层和 benchmark 保护。
-- `src/App.tsx` 仍然较大，后续可按功能面拆分组件和 hooks，但不应在无需求时大改。
+- `frontend/src/App.tsx` 仍然较大，后续可按功能面拆分组件和 hooks，但不应在无需求时大改。

@@ -276,15 +276,15 @@ OpenSpec 当前定义了前端交付的基本验证标准。后续自动化脚�
 
 ## 主要代码索引
 
-- 前端入口与页面：`src/App.tsx`
-- 类型定义：`src/types.ts`
-- 状态 API：`src/appStateApi.ts`
-- 登录 API：`src/authApi.ts`
-- Agent API：`src/agentApi.ts`
-- ASR API：`src/asrApi.ts`
-- 相册规则：`src/albumDomain.ts`
-- 原生闹铃桥：`src/nativeAlarm.ts`
-- OTA 运行时：`src/mobileUpdates.ts`
+- 前端入口与页面：`frontend/src/App.tsx`
+- 类型定义：`frontend/src/types.ts`
+- 状态 API：`frontend/src/appStateApi.ts`
+- 登录 API：`frontend/src/authApi.ts`
+- Agent API：`frontend/src/agentApi.ts`
+- ASR API：`frontend/src/asrApi.ts`
+- 相册规则：`frontend/src/albumDomain.ts`
+- 原生闹铃桥：`frontend/src/nativeAlarm.ts`
+- OTA 运行时：`frontend/src/mobileUpdates.ts`
 - 后端登录：`backend/src/main/java/com/xiaobao/babycompanion/auth/AuthService.java`
 - 后端状态：`backend/src/main/java/com/xiaobao/babycompanion/service/AppStateService.java`
 - 后端附件/OSS：`backend/src/main/java/com/xiaobao/babycompanion/service/AttachmentStorageService.java`

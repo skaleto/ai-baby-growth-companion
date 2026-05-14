@@ -9,8 +9,8 @@ This app keeps the normal Capacitor bundled `dist` assets as the offline fallbac
 
 ## What Can Be Updated
 
-- React UI and page logic under `src/`.
-- CSS and visual layout under `src/styles.css`.
+- React UI and page logic under `frontend/src/`.
+- CSS and visual layout under `frontend/src/styles.css`.
 - Text copy and frontend-only interaction changes.
 - Agent display logic, album display logic, reminder display logic.
 
