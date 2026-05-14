@@ -33,7 +33,11 @@ class AgentBenchmarkTests {
             "intervalMinutes",
             "alertMode",
             "scheduleMode",
-            "reminderKind"
+            "reminderKind",
+            "token",
+            "provider",
+            "model",
+            "quota_counted"
     );
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -250,6 +254,31 @@ class AgentBenchmarkTests {
         assertThat(feverQuestion.disclosedSkillIds()).contains("pediatric-care-guide");
         assertThat(text).contains("temperature");
         assertThat(text).contains("redFlags");
+    }
+
+    @Test
+    void benchmarkDailySummaryMissingItemsUseGentleNonTechnicalCopy() {
+        String copy = "今天还没看到喂养记录，要补一下吗？今天还没看到睡眠记录，要补一下吗？";
+
+        assertThat(copy).contains("还没看到");
+        assertThat(copy).contains("要补一下吗");
+        assertThat(copy).doesNotContain("漏记了");
+        assertThat(copy).doesNotContain("异常");
+        for (String word : TECHNICAL_WORDS) {
+            assertThat(copy).doesNotContain(word);
+        }
+    }
+
+    @Test
+    void benchmarkSharedDailySummaryContractExcludesPrivateAccountCopy() {
+        String summaryText = "小宝今天的小结：喂养记录：1 次，共 120 ml。 今天还没看到睡眠记录，要补一下吗？";
+
+        assertThat(summaryText).doesNotContain("私密复诊提醒");
+        assertThat(summaryText).doesNotContain("账号私有聊天");
+        assertThat(summaryText).doesNotContain("会话摘要");
+        for (String word : TECHNICAL_WORDS) {
+            assertThat(summaryText).doesNotContain(word);
+        }
     }
 
     private AgentCareLog careLog(String date, Integer milkMl, List<AgentCareLogEvent> events) {

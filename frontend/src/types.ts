@@ -223,6 +223,57 @@ export interface ConversationSummary {
   updatedAt: string;
 }
 
+export interface ProTrialApplication {
+  id: string;
+  status: "pending" | "approved" | "rejected" | "cancelled" | string;
+  source?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ProTrialEntitlement {
+  enabled: boolean;
+  planCode?: string | null;
+  startsAt?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface ProTrialStatus {
+  enabled: boolean;
+  entitlement?: ProTrialEntitlement | null;
+  application?: ProTrialApplication | null;
+  message?: string | null;
+}
+
+export interface DailySummarySettings {
+  enabled: boolean;
+  reminderTime: string;
+  mutedMissingTypes: string[];
+}
+
+export interface MissingItemPrompt {
+  id: string;
+  type: string;
+  scope: "family" | "account" | string;
+  title: string;
+  message: string;
+  action?: string | null;
+}
+
+export interface DailySummary {
+  id: string;
+  date: string;
+  text: string;
+  facts: string[];
+  observations: string[];
+  missingItems: MissingItemPrompt[];
+  accountMissingItems: MissingItemPrompt[];
+  generatedAt: string;
+  generatedByUserId?: string | null;
+  sourceFingerprint?: string | null;
+  stale: boolean;
+}
+
 export interface SafetyAlert {
   level: "notice" | "urgent";
   category: "fever" | "vaccine" | "medicine" | "allergy" | "injury" | "breathing" | "general";
@@ -257,6 +308,9 @@ export interface AppStateSnapshot {
   conversationSummary?: ConversationSummary | null;
   thinkingEnabled?: boolean;
   selectedModel?: AgentModelId;
+  proTrial?: ProTrialStatus | null;
+  dailySummary?: DailySummary | null;
+  dailySummarySettings?: DailySummarySettings | null;
 }
 
 export interface AnalysisResult {

@@ -77,8 +77,11 @@ import {
   discardPendingEffectOnServer,
   importAppState,
   readAppState,
+  generateDailySummary,
+  submitProTrialApplication,
   type AppStateCollection,
   type AppStateResponse,
+  updateDailySummarySettings,
   upsertAppRecord,
   uploadFileAttachment,
 } from "./appStateApi";
@@ -132,12 +135,16 @@ import {
   CareLogEventType,
   ChatMessage,
   ConversationSummary,
+  DailySummary,
+  DailySummarySettings,
   EffectDecision,
   ExpenseCategory,
   ExpenseItem,
   GrowthEvent,
   MemoryItem,
+  MissingItemPrompt,
   PendingEffect,
+  ProTrialStatus,
   Reminder,
   ReminderKind,
   ReminderAlertMode,
@@ -260,6 +267,7 @@ const REMINDER_WEB_SOUND_URLS: Record<ReminderSoundId, string> = {
   soft_bell: softBellSoundUrl,
 };
 
+const DAILY_SUMMARY_NOTIFICATION_ID = 210930;
 const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
 const MIN_INTERVAL_MINUTES = 10;
 const MAX_INTERVAL_MINUTES = 12 * 60;
@@ -1439,6 +1447,62 @@ const normalizeConversationSummary = (
   };
 };
 
+const normalizeProTrialStatus = (value: Partial<ProTrialStatus> | null | undefined): ProTrialStatus => ({
+  enabled: Boolean(value?.enabled),
+  entitlement: value?.entitlement
+    ? {
+        enabled: Boolean(value.entitlement.enabled),
+        planCode: textValue(value.entitlement.planCode) || undefined,
+        startsAt: textValue(value.entitlement.startsAt) || undefined,
+        expiresAt: textValue(value.entitlement.expiresAt) || undefined,
+      }
+    : null,
+  application: value?.application
+    ? {
+        id: textValue(value.application.id),
+        status: textValue(value.application.status, "pending"),
+        source: textValue(value.application.source) || undefined,
+        createdAt: textValue(value.application.createdAt) || undefined,
+        updatedAt: textValue(value.application.updatedAt) || undefined,
+      }
+    : null,
+  message: textValue(value?.message) || undefined,
+});
+
+const normalizeDailySummarySettings = (
+  value: Partial<DailySummarySettings> | null | undefined,
+): DailySummarySettings => ({
+  enabled: value?.enabled !== false,
+  reminderTime: textValue(value?.reminderTime, "21:30"),
+  mutedMissingTypes: stringList(value?.mutedMissingTypes),
+});
+
+const normalizeMissingPrompt = (value: Partial<DailySummary["missingItems"][number]> | null | undefined, index: number) => ({
+  id: textValue(value?.id, `missing-${index}`),
+  type: textValue(value?.type, "general"),
+  scope: textValue(value?.scope, "family"),
+  title: textValue(value?.title, "可能漏项"),
+  message: textValue(value?.message, "这条信息可以稍后再补。"),
+  action: textValue(value?.action) || undefined,
+});
+
+const normalizeDailySummary = (value: Partial<DailySummary> | null | undefined): DailySummary | null => {
+  if (!value || !textValue(value.text).trim()) return null;
+  return {
+    id: textValue(value.id, "daily-summary"),
+    date: textValue(value.date, todayISO()),
+    text: textValue(value.text),
+    facts: stringList(value.facts),
+    observations: stringList(value.observations),
+    missingItems: Array.isArray(value.missingItems) ? value.missingItems.map(normalizeMissingPrompt) : [],
+    accountMissingItems: Array.isArray(value.accountMissingItems) ? value.accountMissingItems.map(normalizeMissingPrompt) : [],
+    generatedAt: textValue(value.generatedAt, new Date().toISOString()),
+    generatedByUserId: textValue(value.generatedByUserId) || undefined,
+    sourceFingerprint: textValue(value.sourceFingerprint) || undefined,
+    stale: Boolean(value.stale),
+  };
+};
+
 const normalizePendingEffect = (value: Partial<PendingEffect> | null | undefined, index: number): PendingEffect => ({
   id: textValue(value?.id, `pending-${index}`),
   messageId: textValue(value?.messageId),
@@ -2380,6 +2444,53 @@ const ensureReminderChannels = async () => {
   }
 };
 
+const nextDailySummaryReminderAt = (reminderTime: string) => {
+  const match = reminderTime.match(/^(\d{2}):(\d{2})$/);
+  const hours = match ? Number(match[1]) : 21;
+  const minutes = match ? Number(match[2]) : 30;
+  const next = new Date();
+  next.setHours(Number.isFinite(hours) ? hours : 21, Number.isFinite(minutes) ? minutes : 30, 0, 0);
+  if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+  return next;
+};
+
+const cancelDailySummaryNotification = async () => {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: DAILY_SUMMARY_NOTIFICATION_ID }] });
+  } catch {
+    // The setting remains valid even if the OS had no matching notification to cancel.
+  }
+};
+
+const scheduleDailySummaryNotification = async (settings: DailySummarySettings) => {
+  if (!Capacitor.isNativePlatform()) return "in_app_only" as const;
+  await cancelDailySummaryNotification();
+  if (!settings.enabled) return "cancelled" as const;
+  const permission = await LocalNotifications.requestPermissions();
+  if (permission.display !== "granted") return "permission_denied" as const;
+  await ensureReminderChannels();
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        id: DAILY_SUMMARY_NOTIFICATION_ID,
+        title: "要不要整理一下小宝今天的一天？",
+        body: "我可以先帮你看看有没有可能漏掉的记录。",
+        channelId: REMINDER_CHANNELS.schedule,
+        schedule: {
+          at: nextDailySummaryReminderAt(settings.reminderTime),
+          repeats: true,
+        },
+        extra: {
+          dailySummaryReminder: true,
+          target: "record-today",
+        },
+      },
+    ],
+  });
+  return "scheduled" as const;
+};
+
 const canScheduleExactAlarm = async () => {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return true;
   try {
@@ -3240,6 +3351,12 @@ function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authFamily, setAuthFamily] = useState<AuthFamily | null>(null);
   const [authMember, setAuthMember] = useState<AuthMember | null>(null);
+  const [proTrial, setProTrial] = useState<ProTrialStatus>(() => normalizeProTrialStatus(null));
+  const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
+  const [dailySummarySettings, setDailySummarySettings] = useState<DailySummarySettings>(() => normalizeDailySummarySettings(null));
+  const [dismissedDailySummaryMissingItemIds, setDismissedDailySummaryMissingItemIds] = useState<string[]>([]);
+  const [isApplyingProTrial, setIsApplyingProTrial] = useState(false);
+  const [isGeneratingDailySummary, setIsGeneratingDailySummary] = useState(false);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
   const [loginPhone, setLoginPhone] = useState("");
   const [loginInviteCode, setLoginInviteCode] = useState("");
@@ -3363,6 +3480,7 @@ function App() {
   const compressionInFlightRef = useRef(false);
   const compressionResetTimerRef = useRef<number | null>(null);
   const intervalReminderRescheduleRef = useRef("");
+  const dailySummaryNotificationSignatureRef = useRef("");
   const remindersRef = useRef<Reminder[]>([]);
   const handledNativeNotificationKeysRef = useRef<Set<string>>(new Set());
   const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -3419,14 +3537,23 @@ function App() {
   }, []);
   const canCaregive = authMember?.caregiver ?? true;
   const visibleTabs = canCaregive ? MOBILE_TABS : MOBILE_TABS.filter((tab) => tab.id !== "chat");
-  const canAttachVisuals = canCaregive && (currentModel.supportsImageInput || currentModel.supportsVideoInput);
+  const currentModelSupportsVisuals = currentModel.supportsImageInput || currentModel.supportsVideoInput;
+  const canAttachVisuals = canCaregive && currentModelSupportsVisuals && proTrial.enabled;
   const canUseLowLatency = canCaregive && currentModel.supportsLowLatency;
   const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
   const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
   const albumUploadItems = mediaUploadItems.filter((item) => item.target === "album");
   const isUploadingChatMedia = chatUploadItems.some((item) => activeUploadStatuses.includes(item.status));
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
+  const visualToolTitle = isUploadingChatMedia
+    ? "素材正在上传"
+    : currentModelSupportsVisuals
+      ? proTrial.enabled ? "照片或视频" : "申请 Pro 后可用图片和视频 AI 整理"
+      : "当前模型不支持视觉理解";
+  const visualToolDisabled = !canCaregive || !currentModelSupportsVisuals || isSubmitting || isUploadingChatMedia;
   const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
+  const proApplicationPending = proTrial.application?.status === "pending";
+  const proStatusText = proTrial.enabled ? "Pro 内测已开通" : proApplicationPending ? "Pro 内测申请中" : "可申请 Pro 内测";
   const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget);
   const reminderModalOpen = reminderEditorOpen || Boolean(completeReminderTarget) || Boolean(postponeReminderTarget) || Boolean(deleteReminderTarget);
   const appModalOpen = Boolean(deleteExpenseTarget);
@@ -4066,6 +4193,13 @@ function App() {
   const selectedKeyPointCount = selectedEvents.length;
   const selectedGrowthCount = selectedEvents.filter((event) => event.type === "growth").length;
   const selectedDateIsToday = selectedDate === todayDate;
+  const selectedDailySummary = dailySummary?.date === selectedDate ? dailySummary : null;
+  const mutedMissingTypes = new Set(dailySummarySettings.mutedMissingTypes);
+  const dismissedMissingIds = new Set(dismissedDailySummaryMissingItemIds);
+  const selectedSummaryMissingItems = [
+    ...(selectedDailySummary?.missingItems ?? []),
+    ...(selectedDateIsToday ? selectedDailySummary?.accountMissingItems ?? [] : []),
+  ].filter((item) => !mutedMissingTypes.has(item.type) && !dismissedMissingIds.has(`${selectedDate}:${item.scope}:${item.id}`));
   const milkTrend = useMemo(() => {
     const recent = careLogs.slice(-3).map((item) => item.milkMl ?? 0).filter(Boolean);
     if (recent.length < 2) return "继续收集中";
@@ -4228,6 +4362,9 @@ function App() {
     conversationSummary,
     thinkingEnabled,
     selectedModel,
+    proTrial,
+    dailySummary,
+    dailySummarySettings,
   });
 
   const applyAppSnapshot = (state: Partial<AppStateSnapshot>) => {
@@ -4245,6 +4382,11 @@ function App() {
     }
     if (state.thinkingEnabled !== undefined) setThinkingEnabled(state.thinkingEnabled);
     if (state.selectedModel) setSelectedModel(state.selectedModel);
+    if ("proTrial" in state) setProTrial(normalizeProTrialStatus(state.proTrial ?? null));
+    if ("dailySummary" in state) setDailySummary(normalizeDailySummary(state.dailySummary ?? null));
+    if ("dailySummarySettings" in state) {
+      setDailySummarySettings(normalizeDailySummarySettings(state.dailySummarySettings ?? null));
+    }
   };
 
   const applyEmptyAppSnapshot = () => {
@@ -4261,6 +4403,9 @@ function App() {
       expenses: [],
       thinkingEnabled,
       selectedModel,
+      proTrial: normalizeProTrialStatus(null),
+      dailySummary: null,
+      dailySummarySettings: normalizeDailySummarySettings(null),
     });
   };
 
@@ -4315,6 +4460,66 @@ function App() {
       setStorageStatus("offline");
       throw error;
     }
+  };
+
+  const applyForProTrial = async (source: string) => {
+    setIsApplyingProTrial(true);
+    try {
+      const status = await submitProTrialApplication(source);
+      setProTrial(normalizeProTrialStatus(status));
+      showSystemWeakNotice("已收到 Pro 内测申请，开通后会在 App 内提示你。", "success");
+    } catch (error) {
+      showSystemWeakNotice(error instanceof Error ? error.message : "申请失败，请稍后再试。", "warning");
+    } finally {
+      setIsApplyingProTrial(false);
+    }
+  };
+
+  const requestGenerateDailySummary = async () => {
+    if (!canCaregive) return;
+    if (!proTrial.enabled) {
+      showSystemWeakNotice("当前家庭还没有开通 Pro 内测，可以先申请体验。", "info");
+      return;
+    }
+    setIsGeneratingDailySummary(true);
+    try {
+      const summary = await generateDailySummary(selectedDate);
+      setDailySummary(normalizeDailySummary(summary));
+      showSystemWeakNotice("今日小结已整理好。", "success");
+    } catch (error) {
+      showSystemWeakNotice(error instanceof Error ? error.message : "今日小结生成失败，请稍后再试。", "warning");
+    } finally {
+      setIsGeneratingDailySummary(false);
+    }
+  };
+
+  const saveDailySummarySettings = async (next: DailySummarySettings) => {
+    const normalized = normalizeDailySummarySettings(next);
+    setDailySummarySettings(normalized);
+    try {
+      const saved = await updateDailySummarySettings(normalized);
+      const savedSettings = normalizeDailySummarySettings(saved);
+      setDailySummarySettings(savedSettings);
+      const scheduleStatus = proTrial.enabled ? await scheduleDailySummaryNotification(savedSettings) : "in_app_only";
+      if (scheduleStatus === "permission_denied") {
+        showSystemWeakNotice("设置已保存。手机通知权限未开启，暂时不会弹出每日小结提醒。", "warning");
+      } else {
+        showSystemWeakNotice("小结提醒设置已保存。", "success");
+      }
+    } catch (error) {
+      showSystemWeakNotice(error instanceof Error ? error.message : "小结提醒设置保存失败。", "warning");
+    }
+  };
+
+  const dismissMissingItemForToday = (item: MissingItemPrompt) => {
+    const key = `${selectedDate}:${item.scope}:${item.id}`;
+    setDismissedDailySummaryMissingItemIds((current) => current.includes(key) ? current : [...current, key]);
+    showSystemWeakNotice("好的，今天先不提醒这项。", "info");
+  };
+
+  const muteMissingItemType = async (item: MissingItemPrompt) => {
+    const nextTypes = Array.from(new Set([...dailySummarySettings.mutedMissingTypes, item.type]));
+    await saveDailySummarySettings({ ...dailySummarySettings, mutedMissingTypes: nextTypes });
   };
 
   const applyNativeAlarmEvents = async (events: NativeAlarmEvent[]) => {
@@ -4391,6 +4596,33 @@ function App() {
     return () => {
       cancelled = true;
       void listener.then((handle) => handle.remove());
+    };
+  }, [authStatus]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !Capacitor.isNativePlatform()) return;
+    const signature = `${proTrial.enabled}:${dailySummarySettings.enabled}:${dailySummarySettings.reminderTime}`;
+    if (dailySummaryNotificationSignatureRef.current === signature) return;
+    dailySummaryNotificationSignatureRef.current = signature;
+    if (!proTrial.enabled) {
+      void cancelDailySummaryNotification();
+      return;
+    }
+    void scheduleDailySummaryNotification(dailySummarySettings).catch(() => undefined);
+  }, [authStatus, proTrial.enabled, dailySummarySettings.enabled, dailySummarySettings.reminderTime]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !Capacitor.isNativePlatform()) return undefined;
+    const actionListener = LocalNotifications.addListener("localNotificationActionPerformed", (action: ActionPerformed) => {
+      const extra = action.notification.extra as Record<string, unknown> | undefined;
+      if (!extra?.dailySummaryReminder) return;
+      setActiveMobileTab("records");
+      setRecordView("today");
+      setSelectedDate(todayISO());
+      showSystemWeakNotice("可以先看看今天有没有要补充的记录，再生成今日小结。", "info");
+    });
+    return () => {
+      void actionListener.then((handle) => handle.remove());
     };
   }, [authStatus]);
 
@@ -4880,7 +5112,16 @@ function App() {
   };
 
   const openMediaPicker = async () => {
-    if (!canCaregive || !canAttachVisuals || isUploadingChatMedia) return;
+    if (!canCaregive || isUploadingChatMedia) return;
+    if (!currentModelSupportsVisuals) {
+      showSystemWeakNotice("当前模型不支持图片或视频理解。", "info");
+      return;
+    }
+    if (!proTrial.enabled) {
+      showSystemWeakNotice("图片和视频 AI 整理属于 Pro 内测能力，可以先申请体验。", "info");
+      void applyForProTrial("visual-ai-trigger");
+      return;
+    }
 
     const availableSlots = Math.max(0, 4 - attachments.length);
     if (availableSlots <= 0) {
@@ -6893,8 +7134,8 @@ function App() {
               <button
                 type="button"
                 className="icon-button"
-                title={isUploadingChatMedia ? "素材正在上传" : canAttachVisuals ? "照片或视频" : "当前模型不支持视觉理解"}
-                disabled={!canAttachVisuals || isSubmitting || isUploadingChatMedia}
+                title={visualToolTitle}
+                disabled={visualToolDisabled}
                 onClick={openMediaPicker}
               >
                 <CameraIcon size={18} />
@@ -7503,8 +7744,8 @@ function App() {
                 <button
                   type="button"
                   className="tool-button"
-                  title={isUploadingChatMedia ? "素材正在上传" : canAttachVisuals ? "上传照片或视频" : "当前模型不支持视觉理解"}
-                  disabled={!canAttachVisuals || isSubmitting || isUploadingChatMedia}
+                  title={visualToolTitle}
+                  disabled={visualToolDisabled}
                   onClick={openMediaPicker}
                 >
                   <CameraIcon size={19} />
@@ -7705,6 +7946,81 @@ function App() {
               ))}
             </div>
           </section>
+          ) : null}
+
+          {recordView === "today" ? (
+            <section className="daily-summary-card">
+              <div className="daily-summary-head">
+                <div>
+                  <span className="section-kicker">Pro 今日小结</span>
+                  <h3>少输入、少遗漏、自动整理</h3>
+                </div>
+                <span className={`pro-status-pill ${proTrial.enabled ? "enabled" : proApplicationPending ? "pending" : ""}`}>
+                  {proStatusText}
+                </span>
+              </div>
+              {proTrial.enabled ? (
+                <>
+                  {selectedDailySummary ? (
+                    <div className="daily-summary-body">
+                      <p>{selectedDailySummary.text}</p>
+                      <div className="summary-fact-list">
+                        {selectedDailySummary.facts.map((fact) => <span key={fact}>{fact}</span>)}
+                      </div>
+                      {selectedDailySummary.stale ? <small className="summary-stale-note">有新记录，可重新整理一版。</small> : null}
+                    </div>
+                  ) : (
+                    <p className="daily-summary-empty">今天的小结还没有生成。生成前可以先补齐关键记录，内容会更稳。</p>
+                  )}
+                  {selectedSummaryMissingItems.length ? (
+                    <div className="missing-item-list">
+                      {selectedSummaryMissingItems.map((item) => (
+                        <article className="missing-item-card" key={`${item.scope}-${item.id}`}>
+                          <div>
+                            <strong>{item.title}</strong>
+                            <p>{item.message}</p>
+                          </div>
+                          <div className="missing-item-actions">
+                            <button type="button" onClick={() => item.type === "reminder" ? switchMobileTab("reminders") : switchMobileTab("chat")}>
+                              补一下
+                            </button>
+                            <button type="button" className="quiet" onClick={() => dismissMissingItemForToday(item)}>
+                              今天不用记
+                            </button>
+                            <button type="button" className="quiet" onClick={() => void muteMissingItemType(item)}>
+                              以后别提醒这个
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="screen-action-button daily-summary-generate"
+                    onClick={() => void requestGenerateDailySummary()}
+                    disabled={!canCaregive || isGeneratingDailySummary}
+                  >
+                    <Sparkles size={16} />
+                    {selectedDailySummary ? "重新生成小结" : "生成今日小结"}
+                  </button>
+                  {!canCaregive ? <p className="readonly-copy">当前身份仅可查看，生成小结需要照护人操作。</p> : null}
+                </>
+              ) : (
+                <div className="pro-intro-copy">
+                  <p>Pro 内测会优先开放今日小结、漏项轻提醒，以及语音/图片/视频辅助整理，适合想少记一点、少漏一点的家庭。</p>
+                  <button
+                    type="button"
+                    className="screen-action-button"
+                    onClick={() => void applyForProTrial("record-daily-summary")}
+                    disabled={isApplyingProTrial || proApplicationPending}
+                  >
+                    <Sparkles size={16} />
+                    {proApplicationPending ? "已提交申请" : "申请 Pro 内测"}
+                  </button>
+                </div>
+              )}
+            </section>
           ) : null}
 
           {recordView === "trend" ? (
@@ -8670,6 +8986,45 @@ function App() {
                   ))}
                 </div>
               </div>
+              <section className="profile-pro-card">
+                <div className="daily-summary-head">
+                  <div>
+                    <span className="section-kicker">Pro 内测</span>
+                    <h3>{proStatusText}</h3>
+                  </div>
+                  <span className={`pro-status-pill ${proTrial.enabled ? "enabled" : proApplicationPending ? "pending" : ""}`}>
+                    {proTrial.enabled ? "家庭共享" : proApplicationPending ? "等待开通" : "可申请"}
+                  </span>
+                </div>
+                <p>Pro 会先开放“少输入、少遗漏、自动整理”：今日小结、漏项轻提醒，以及语音/图片/视频辅助整理。当前为小范围免费内测。</p>
+                <div className="summary-settings-row">
+                  <label className="summary-reminder-toggle">
+                    <input
+                      type="checkbox"
+                      checked={dailySummarySettings.enabled}
+                      onChange={(event) => void saveDailySummarySettings({ ...dailySummarySettings, enabled: event.target.checked })}
+                    />
+                    接收每日小结提醒
+                  </label>
+                  <input
+                    type="time"
+                    value={dailySummarySettings.reminderTime}
+                    onChange={(event) => void saveDailySummarySettings({ ...dailySummarySettings, reminderTime: event.target.value })}
+                    aria-label="每日小结提醒时间"
+                  />
+                </div>
+                {!proTrial.enabled ? (
+                  <button
+                    className="screen-action-button"
+                    type="button"
+                    onClick={() => void applyForProTrial("profile")}
+                    disabled={isApplyingProTrial || proApplicationPending}
+                  >
+                    <Sparkles size={16} />
+                    {proApplicationPending ? "已提交申请" : "申请 Pro 内测"}
+                  </button>
+                ) : null}
+              </section>
               {canCaregive ? (
                 <button className="profile-edit-button" type="button" onClick={startProfileEditing}>
                   <PencilLine size={18} />

@@ -13,6 +13,44 @@
 
 ## Session Log
 
+### Session 2026-05-14 Pro Trial Daily Summary OpenSpec Implementation
+
+- Goal: Implement the OpenSpec change `add-pro-trial-daily-summary` for Pro trial application, family-scoped Pro status, AI usage logging, Pro daily summary, conservative missing-item prompts, and account-level daily summary reminders.
+- Completed:
+  - Added OpenSpec artifacts under `openspec/changes/add-pro-trial-daily-summary/` and marked implementation tasks through verification.
+  - Added SQLite persistence for `pro_trial_application`, `pro_trial_entitlement`, `ai_usage_log`, `daily_summary`, and `daily_summary_setting`.
+  - Added backend Pro APIs under `/api/pro/*` and surfaced Pro state, current daily summary, and daily summary settings in `/api/app/state`.
+  - Added AI usage logging across backend model invocation paths and daily summary generation.
+  - Added deterministic daily summary generation from family-shared data only, with account-private reminders/pending items shown only as current-account prompts and not persisted into the family summary payload.
+  - Added frontend Pro entry points in the Record Today page, My page, and visual AI trigger path; non-Pro visual AI triggers now submit/show Pro trial flow without calling the high-cost model.
+  - Added account-level daily summary reminder settings, mobile local notification scheduling, and notification click navigation to the Record Today page.
+  - Added backend Pro controller tests and Agent benchmark boundary cases for gentle missing-item copy and private-content exclusion.
+  - Deployed the code-only backend update to Aliyun `120.55.188.242:8300` with `SYNC_DATA=0`, preserving cloud SQLite data and uploaded files.
+  - Marked the OpenSpec implementation task list complete through commit/push handoff.
+- Verification run:
+  - `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" "/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn" -Dtest=ProTrialControllerTests test -q`
+  - `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" "/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn" test -q`
+  - `npm run test:agent-benchmark`
+  - `npm run build`
+  - `npm run verify:frontend`
+  - `npm run mobile:sync`
+  - `npm run build:android:debug`
+  - `npm run build:ios:debug`
+  - `bash harness/init.sh`
+  - `SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=<configured-key> npm run deploy:aliyun`
+  - `curl -fsS http://120.55.188.242:8300/api/health`
+- Evidence:
+  - Backend full Maven test passed.
+  - `docs/agent-benchmark-results.md` reports PASS, 15 tests, 0 failures.
+  - Frontend smoke passed across desktop and configured mobile viewports.
+  - Android debug APK built at `android/app/build/outputs/apk/debug/app-debug.apk`.
+  - iOS simulator build completed with `BUILD SUCCEEDED`.
+  - Cloud health returned `ok` after deployment.
+- Known risks:
+  - Daily summary generation is currently deterministic rule-based rather than a paid model call; usage is still logged as `daily_summary` for cost pipeline compatibility.
+  - Daily summary reminder delivery was build-verified only; real-device notification behavior should be validated on Android/iOS before inviting beta families.
+  - OpenSpec change is implemented but not archived.
+
 ### Session 2026-05-14 Frontend Directory Release Flow Check
 
 - Goal: Verify the current release flow after moving frontend source/config into `frontend/`, without changing cloud production state.

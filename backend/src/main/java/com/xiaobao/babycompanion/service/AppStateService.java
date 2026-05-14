@@ -70,6 +70,8 @@ public class AppStateService {
     private final AttachmentRecordService attachmentRecordService;
     private final AuthFamilyMemberRecordService familyMemberService;
     private final AttachmentStorageService attachmentStorageService;
+    private final ProTrialService proTrialService;
+    private final DailySummaryService dailySummaryService;
     private final ObjectMapper objectMapper;
     private final CurrentUser currentUser;
 
@@ -87,6 +89,8 @@ public class AppStateService {
             AttachmentRecordService attachmentRecordService,
             AuthFamilyMemberRecordService familyMemberService,
             AttachmentStorageService attachmentStorageService,
+            ProTrialService proTrialService,
+            DailySummaryService dailySummaryService,
             ObjectMapper objectMapper,
             CurrentUser currentUser
     ) {
@@ -103,6 +107,8 @@ public class AppStateService {
         this.attachmentRecordService = attachmentRecordService;
         this.familyMemberService = familyMemberService;
         this.attachmentStorageService = attachmentStorageService;
+        this.proTrialService = proTrialService;
+        this.dailySummaryService = dailySummaryService;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
     }
@@ -129,9 +135,24 @@ public class AppStateService {
                 readList(expenseItemService, familyId),
                 readConversationSummary(familyId, userId),
                 null,
-                null
+                null,
+                proTrialNode(familyId, userId),
+                dailySummaryNode(familyId, userId, null),
+                dailySummarySettingsNode(familyId, userId)
         );
         return new AppStateResponse(isEmpty(state), state);
+    }
+
+    private JsonNode proTrialNode(String familyId, String userId) {
+        return StringUtils.hasText(userId) ? objectMapper.valueToTree(proTrialService.status(familyId, userId)) : null;
+    }
+
+    private JsonNode dailySummaryNode(String familyId, String userId, String date) {
+        return StringUtils.hasText(userId) ? objectMapper.valueToTree(dailySummaryService.read(familyId, userId, date)) : null;
+    }
+
+    private JsonNode dailySummarySettingsNode(String familyId, String userId) {
+        return StringUtils.hasText(userId) ? objectMapper.valueToTree(proTrialService.summarySettings(familyId, userId)) : null;
     }
 
     @Transactional

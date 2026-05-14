@@ -47,6 +47,7 @@ public class DatabaseInitializer implements ApplicationRunner {
             createRecordTable(connection, statement, "expense_item");
             createRecordTable(connection, statement, "conversation_summary");
             createAuthTables(connection, statement);
+            createProTrialTables(statement);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS attachment (
                       id TEXT PRIMARY KEY,
@@ -77,6 +78,94 @@ public class DatabaseInitializer implements ApplicationRunner {
             migrateDefaultFamily(statement);
             migrateExpenseBarcodeData(connection);
         }
+    }
+
+    private void createProTrialTables(Statement statement) throws Exception {
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS pro_trial_application (
+                  id TEXT PRIMARY KEY,
+                  family_id TEXT NOT NULL,
+                  user_id TEXT NOT NULL,
+                  phone TEXT,
+                  source TEXT,
+                  status TEXT,
+                  created_at TEXT,
+                  updated_at TEXT
+                )
+                """);
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_pro_trial_application_family ON pro_trial_application(family_id)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_pro_trial_application_user ON pro_trial_application(user_id)");
+        statement.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_pro_trial_application_family_user_active
+                ON pro_trial_application(family_id, user_id)
+                WHERE status IN ('pending', 'approved')
+                """);
+
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS pro_trial_entitlement (
+                  id TEXT PRIMARY KEY,
+                  family_id TEXT NOT NULL UNIQUE,
+                  enabled TEXT,
+                  starts_at TEXT,
+                  expires_at TEXT,
+                  plan_code TEXT,
+                  note TEXT,
+                  created_at TEXT,
+                  updated_at TEXT
+                )
+                """);
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_pro_trial_entitlement_family ON pro_trial_entitlement(family_id)");
+
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS ai_usage_log (
+                  id TEXT PRIMARY KEY,
+                  family_id TEXT,
+                  user_id TEXT,
+                  request_id TEXT,
+                  provider TEXT,
+                  model TEXT,
+                  feature TEXT,
+                  input_type TEXT,
+                  input_tokens INTEGER,
+                  output_tokens INTEGER,
+                  total_tokens INTEGER,
+                  success TEXT,
+                  error_code TEXT,
+                  pro_required TEXT,
+                  quota_counted TEXT,
+                  created_at TEXT
+                )
+                """);
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_family_created ON ai_usage_log(family_id, created_at)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_request ON ai_usage_log(request_id)");
+
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS daily_summary (
+                  id TEXT PRIMARY KEY,
+                  family_id TEXT NOT NULL,
+                  summary_date TEXT NOT NULL,
+                  payload_json TEXT NOT NULL,
+                  source_fingerprint TEXT,
+                  generated_by_user_id TEXT,
+                  created_at TEXT,
+                  updated_at TEXT
+                )
+                """);
+        statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_summary_family_date ON daily_summary(family_id, summary_date)");
+
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS daily_summary_setting (
+                  id TEXT PRIMARY KEY,
+                  family_id TEXT NOT NULL,
+                  user_id TEXT NOT NULL,
+                  enabled TEXT,
+                  reminder_time TEXT,
+                  muted_missing_types TEXT,
+                  created_at TEXT,
+                  updated_at TEXT
+                )
+                """);
+        statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_summary_setting_family_user ON daily_summary_setting(family_id, user_id)");
     }
 
     private void createRecordTable(Connection connection, Statement statement, String tableName) throws Exception {

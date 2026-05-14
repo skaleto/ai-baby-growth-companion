@@ -43,12 +43,14 @@ import com.xiaobao.babycompanion.dto.app.AppStateDto;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
 import com.xiaobao.babycompanion.exception.DeepSeekApiException;
 import com.xiaobao.babycompanion.service.AppStateService;
+import com.xiaobao.babycompanion.service.AiUsageLogService;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatResponse;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekFunctionCall;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekMessage;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekResponseFormat;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekToolCall;
+import com.xiaobao.babycompanion.service.deepseek.DeepSeekUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -250,6 +252,7 @@ public class AgentRuntime {
     private final AgentPlanner agentPlanner;
     private final AgentContextService agentContextService;
     private final AppStateService appStateService;
+    private final AiUsageLogService aiUsageLogService;
     private final RecordSignalExtractor recordSignalExtractor;
     private final EffectPolicy effectPolicy;
     private final CurrentUser currentUser;
@@ -292,6 +295,7 @@ public class AgentRuntime {
                 skillDisclosureService,
                 toolRegistry,
                 safetyGuard,
+                null,
                 Runnable::run,
                 Clock.system(ZoneId.of("Asia/Shanghai"))
         );
@@ -312,6 +316,7 @@ public class AgentRuntime {
             SkillDisclosureService skillDisclosureService,
             ToolRegistry toolRegistry,
             SafetyGuard safetyGuard,
+            AiUsageLogService aiUsageLogService,
             @Qualifier("agentStreamExecutor") Executor agentStreamExecutor,
             Clock clock
     ) {
@@ -321,6 +326,7 @@ public class AgentRuntime {
         this.agentPlanner = agentPlanner;
         this.agentContextService = agentContextService;
         this.appStateService = appStateService;
+        this.aiUsageLogService = aiUsageLogService;
         this.recordSignalExtractor = recordSignalExtractor;
         this.effectPolicy = effectPolicy;
         this.currentUser = currentUser;
@@ -368,7 +374,7 @@ public class AgentRuntime {
         RecordSignals signals = recordSignalExtractor.extract(request.message());
         AgentChatResponse immediate = immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills);
         if (immediate != null) return immediate;
-        AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey);
+        AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey, familyId, principal.userId());
         AgentContextSnapshot contextSnapshot = agentContextService.build(familyId, principal.userId(), request, plan, signals);
         AgentChatResponse profileBoundary = immediateBoundaryResponse(
                 signals,
@@ -395,6 +401,7 @@ public class AgentRuntime {
             if (response == null || response.choices() == null || response.choices().isEmpty()) {
                 throw new DeepSeekApiException(runtimeModel.id() + " returned an empty response");
             }
+            recordUsage(runtimeModel, "agent_chat", inputType(request), familyId, principal.userId(), response.id(), response.usage(), true, null, false, true);
 
             String content = Optional.ofNullable(response.choices().get(0).message())
                     .map(DeepSeekMessage::contentAsText)
@@ -409,6 +416,7 @@ public class AgentRuntime {
                     contextSnapshot.babyProfile()
             );
         } catch (RestClientException exception) {
+            recordUsage(runtimeModel, "agent_chat", inputType(request), familyId, principal.userId(), traceId, null, false, rootCauseMessage(exception), false, true);
             throw new DeepSeekApiException("Failed to call " + runtimeModel.id() + " API", exception);
         }
     }
@@ -499,7 +507,7 @@ public class AgentRuntime {
             throw new IllegalStateException(summaryModel.apiKeyHelp() + " is not configured for conversation compression");
         }
 
-        JsonNode summary = runSummaryModel(summaryModel, apiKey, currentSummary, candidates);
+        JsonNode summary = runSummaryModel(summaryModel, apiKey, currentSummary, candidates, principal.familyId(), principal.userId());
         JsonNode saved = appStateService
                 .upsertRecord("conversationSummary", "conversation-summary", summary, "replace")
                 .state()
@@ -507,7 +515,7 @@ public class AgentRuntime {
         return new ConversationSummaryResponse(true, "compressed", saved == null ? summary : saved);
     }
 
-    private JsonNode runSummaryModel(RuntimeModel runtimeModel, String apiKey, JsonNode currentSummary, List<JsonNode> messages) {
+    private JsonNode runSummaryModel(RuntimeModel runtimeModel, String apiKey, JsonNode currentSummary, List<JsonNode> messages, String familyId, String userId) {
         try {
             DeepSeekChatRequest request = new DeepSeekChatRequest(
                     runtimeModel.apiModel(),
@@ -530,6 +538,9 @@ public class AgentRuntime {
                     .body(request)
                     .retrieve()
                     .body(DeepSeekChatResponse.class);
+            if (response != null) {
+                recordUsage(runtimeModel, "conversation_summary", "text", familyId, userId, response.id(), response.usage(), true, null, false, true);
+            }
             String content = Optional.ofNullable(response)
                     .map(DeepSeekChatResponse::choices)
                     .filter((choices) -> !choices.isEmpty())
@@ -551,6 +562,7 @@ public class AgentRuntime {
             summary.put("updatedAt", Instant.now().toString());
             return summary;
         } catch (RestClientException | JsonProcessingException exception) {
+            recordUsage(runtimeModel, "conversation_summary", "text", familyId, userId, "conversation-summary-" + UUID.randomUUID(), null, false, rootCauseMessage(exception), false, true);
             throw new DeepSeekApiException("Failed to compress conversation summary", exception);
         }
     }
@@ -627,7 +639,7 @@ public class AgentRuntime {
                 return;
             }
             sendEvent(emitter, "planning", Map.of("message", "理解记录中"));
-            AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey);
+            AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey, familyId, principal.userId());
             sendEvent(emitter, "retrieving_context", Map.of("message", "查找相关记录"));
             AgentContextSnapshot contextSnapshot = agentContextService.build(familyId, principal.userId(), request, plan, signals);
             AgentChatResponse profileBoundary = immediateBoundaryResponse(
@@ -656,7 +668,7 @@ public class AgentRuntime {
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
 
-            streamDeepSeekResponse(httpRequest, emitter, traceId, runtimeModel, usedSkills, sources, request.message(), signals, plan, contextSnapshot.babyProfile());
+            streamDeepSeekResponse(httpRequest, emitter, traceId, runtimeModel, usedSkills, sources, request.message(), signals, plan, contextSnapshot.babyProfile(), familyId, principal.userId(), inputType(request));
         } catch (Exception exception) {
             LOGGER.warn(
                     "Agent stream failed before model stream. traceId={}, provider={}, model={}, cause={}",
@@ -739,7 +751,9 @@ public class AgentRuntime {
             List<Skill> selectedSkills,
             RecordSignals signals,
             RuntimeModel plannerRuntimeModel,
-            String apiKey
+            String apiKey,
+            String familyId,
+            String userId
     ) {
         DeepSeekChatRequest plannerRequest = agentPlanner.buildRequest(
                 plannerRuntimeModel.apiModel(),
@@ -755,6 +769,9 @@ public class AgentRuntime {
                     .body(plannerRequest)
                     .retrieve()
                     .body(DeepSeekChatResponse.class);
+            if (response != null) {
+                recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, response.id(), response.usage(), true, null, false, true);
+            }
 
             String content = Optional.ofNullable(response)
                     .map(DeepSeekChatResponse::choices)
@@ -773,6 +790,7 @@ public class AgentRuntime {
                     rootCauseMessage(exception),
                     exception
             );
+            recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, "planner-" + UUID.randomUUID(), null, false, rootCauseMessage(exception), false, true);
             throw new DeepSeekApiException("Failed to call model API for agent planning", exception);
         }
     }
@@ -964,7 +982,10 @@ public class AgentRuntime {
             String userMessage,
             RecordSignals signals,
             AgentPlan plan,
-            JsonNode babyProfile
+            JsonNode babyProfile,
+            String familyId,
+            String userId,
+            String inputType
     ) {
         StringBuilder content = new StringBuilder();
         AtomicReference<String> model = new AtomicReference<>(runtimeModel.apiModel());
@@ -983,6 +1004,7 @@ public class AgentRuntime {
                             response.statusCode(),
                             abbreviate(errorBody, 1200)
                     );
+                    recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, "HTTP_" + response.statusCode(), false, true);
                     sendEvent(emitter, "error", Map.of("message", runtimeModel.id() + " stream failed: " + errorBody));
                     emitter.complete();
                     return;
@@ -999,6 +1021,7 @@ public class AgentRuntime {
                     usedSkills,
                     sources
             );
+            recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, requestId.get(), null, true, null, false, true);
             sendEvent(emitter, "final", withSafetyAlertsAndDecisions(parsed, userMessage, signals, plan, babyProfile));
             emitter.complete();
         } catch (Exception exception) {
@@ -1010,6 +1033,7 @@ public class AgentRuntime {
                     rootCauseMessage(exception),
                     exception
             );
+            recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, rootCauseMessage(exception), false, true);
             sendEvent(emitter, "error", Map.of("message", exception.getMessage()));
             emitter.complete();
         }
@@ -1349,6 +1373,48 @@ public class AgentRuntime {
         return StringUtils.hasText(doubaoProperties.getLowLatencyServiceTier())
                 ? doubaoProperties.getLowLatencyServiceTier()
                 : "fast";
+    }
+
+    private String inputType(AgentChatRequest request) {
+        if (request == null || request.attachments() == null || request.attachments().isEmpty()) return "text";
+        boolean hasVideo = request.attachments().stream().anyMatch((attachment) -> "video".equals(attachment.kind()));
+        if (hasVideo) return "video";
+        boolean hasImage = request.attachments().stream().anyMatch((attachment) -> "image".equals(attachment.kind()));
+        if (hasImage) return "image";
+        boolean hasAudio = request.attachments().stream().anyMatch((attachment) -> "audio".equals(attachment.kind()));
+        return hasAudio ? "audio" : "text";
+    }
+
+    private void recordUsage(
+            RuntimeModel runtimeModel,
+            String feature,
+            String inputType,
+            String familyId,
+            String userId,
+            String requestId,
+            DeepSeekUsage usage,
+            boolean success,
+            String errorCode,
+            boolean proRequired,
+            boolean quotaCounted
+    ) {
+        if (aiUsageLogService == null || runtimeModel == null) return;
+        aiUsageLogService.record(new AiUsageLogService.UsageEvent(
+                familyId,
+                userId,
+                requestId,
+                runtimeModel.provider().name().toLowerCase(),
+                runtimeModel.id(),
+                feature,
+                inputType,
+                usage == null ? null : usage.promptTokens(),
+                usage == null ? null : usage.completionTokens(),
+                usage == null ? null : usage.totalTokens(),
+                success,
+                errorCode,
+                proRequired,
+                quotaCounted
+        ));
     }
 
     private Map<String, Object> requesterContext(AuthPrincipal principal) {

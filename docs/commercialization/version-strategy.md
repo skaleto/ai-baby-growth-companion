@@ -171,7 +171,7 @@ Pro 是高频照护家庭的高级 AI 照护助手。收费点不是“模型更
 
 ## 验收标准
 
-- 本文档位于 `docs/monetization-version-strategy.md`。
+- 本文档位于 `docs/commercialization/version-strategy.md`。
 - 文档只描述策略，不包含已执行承诺。
 - 不修改代码、不生成会员墙、不接支付。
 - 明确 Lite / Free / Pro 的定位、数据边界、AI 能力、收费假设和后续实施阶段。
