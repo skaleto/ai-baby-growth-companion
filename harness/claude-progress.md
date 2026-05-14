@@ -13,6 +13,72 @@
 
 ## Session Log
 
+### Session 2026-05-14 OTA Timeout Diagnosis
+
+- Goal: Diagnose why the mobile OTA update failed in the installed app and patch the updater timeout path.
+- Completed:
+  - Verified the cloud OTA check endpoint returns an update for `0.1.0-20260514185558`.
+  - Verified the cloud bundle endpoint returns `200`, `Content-Length: 6086147`, and the downloaded zip checksum matches the manifest.
+  - Confirmed the zip archive is valid with `unzip -t`.
+  - Checked cloud logs and found mobile bundle downloads completed with `200` but took about 25 seconds.
+  - Identified the likely failure: Capgo Capacitor Updater defaults `responseTimeout` to 20 seconds, so the installed native plugin can time out before the slow bundle download finishes.
+  - Raised Capacitor Updater `responseTimeout` to 120 seconds and improved user-facing OTA failure copy for timeout/checksum/unzip cases.
+  - Synced native projects and rebuilt Android/iOS debug targets.
+  - Published a fresh OTA bundle `0.1.0-20260514190632`.
+- Verification run:
+  - Cloud `POST /api/mobile-updates/check`
+  - Cloud `HEAD /api/mobile-updates/bundles/app-0.1.0-20260514185558.zip`
+  - Local download + `shasum -a 256` + `unzip -t`
+  - `npm run mobile:sync`
+  - `VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:android:debug`
+  - `VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:ios:debug`
+  - `MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SKIP_BACKEND_BUILD=1 ECS_HOST=120.55.188.242 SSH_KEY=<configured-key> npm run deploy:aliyun`
+  - Cloud `POST /api/mobile-updates/check`
+- Evidence:
+  - Manifest checksum `9438f6c348102ae41824c752edcc6b8bff4afb1d14a7280241201bcfb594e1c5` matched the downloaded `0.1.0-20260514185558` zip.
+  - `unzip -t` reported no archive errors.
+  - Cloud logs showed `GET /api/mobile-updates/bundles/app-0.1.0-20260514185558.zip status=200 durationMs=24981` and another successful download around 25 seconds.
+  - Android debug APK built at `android/app/build/outputs/apk/debug/app-debug.apk`.
+  - iOS simulator build completed with `BUILD SUCCEEDED`.
+  - Cloud OTA check now returns version `0.1.0-20260514190632`.
+- Known risks:
+  - The timeout fix changes native plugin configuration, so already-installed old packages still need a new native install before OTA becomes reliable on slow downloads.
+  - Real-device OTA should be re-tested after reinstalling the new native package.
+
+### Session 2026-05-14 Official Site Port 80 Deployment
+
+- Goal: Publish the current official website build to Aliyun `120.55.188.242` on port `80` without touching production data.
+- Completed:
+  - Ran the standard harness smoke gate before deployment.
+  - Rebuilt the frontend with `VITE_AGENT_API_BASE_URL=` so browser API calls use same-origin `/api` instead of a local development host.
+  - Uploaded the `dist/` build to the ECS and served it from `/var/www/xiaobaoji`.
+  - Installed and enabled Nginx on the ECS.
+  - Configured Nginx to listen on port `80`, serve the SPA with fallback to `index.html`, cache `/assets/`, and reverse-proxy `/api/` to `127.0.0.1:8300`.
+  - Ran the frontend smoke gate, then rebuilt and republished the same-origin production bundle.
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run verify:frontend`
+  - `VITE_AGENT_API_BASE_URL= npm run build`
+  - `rg "localhost:8080|120\\.55\\.188\\.242:8300|/api/health" dist -n || true`
+  - Remote `nginx -t`
+  - Remote `curl -fsSI http://127.0.0.1/official`
+  - Remote `curl -fsS http://127.0.0.1/api/health`
+  - Local `curl -fsSI http://120.55.188.242/official`
+  - Local `curl -fsS http://120.55.188.242/api/health`
+  - Playwright smoke against `http://120.55.188.242/official`
+- Evidence:
+  - Harness smoke passed.
+  - Frontend smoke passed across desktop and configured mobile viewports.
+  - Production frontend build passed and did not contain `localhost:8080`.
+  - Nginx syntax check passed and service is active.
+  - ECS listeners include `0.0.0.0:80`, `[::]:80`, and backend `*:8300`.
+  - Public `http://120.55.188.242/official` returned `200 OK`.
+  - Public `http://120.55.188.242/api/health` returned `ok`.
+  - Playwright verified title `小宝记官网`, H1 `小宝记`, and mobile scroll changed from `0` to `900`; screenshot saved under `.verification/official-site/cloud-official-mobile.png`.
+- Known risks:
+  - Download QR links are still placeholders until real iOS and Android package URLs are provided.
+
 ### Session 2026-05-14 Pro Trial Daily Summary OpenSpec Implementation
 
 - Goal: Implement the OpenSpec change `add-pro-trial-daily-summary` for Pro trial application, family-scoped Pro status, AI usage logging, Pro daily summary, conservative missing-item prompts, and account-level daily summary reminders.

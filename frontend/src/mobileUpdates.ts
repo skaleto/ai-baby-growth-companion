@@ -97,7 +97,7 @@ async function checkAndQueueMobileUpdate() {
     await CapacitorUpdater.set({ id: bundle.id });
   } catch (error) {
     console.warn("[mobile-update] check failed", error);
-    emitMobileUpdateNotice("更新检查暂时失败，稍后会再试", "warning");
+    emitMobileUpdateNotice(readUpdateFailureMessage(error), "warning", 3600);
   }
 }
 
@@ -199,6 +199,20 @@ function normalizeDownloadProgress(value: number | undefined) {
   if (value <= 0) return 0;
   if (value > 0 && value <= 1) return clampProgress(value * 100);
   return clampProgress(value);
+}
+
+function readUpdateFailureMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (/timeout|timed out|超时/i.test(message)) {
+    return "更新下载超时，网络较慢时可以稍后再试";
+  }
+  if (/checksum|校验/i.test(message)) {
+    return "更新包校验失败，我会稍后重新下载";
+  }
+  if (/unzip|zip|解压/i.test(message)) {
+    return "更新包解压失败，我会稍后重新下载";
+  }
+  return "更新检查暂时失败，稍后会再试";
 }
 
 function sleep(ms: number) {

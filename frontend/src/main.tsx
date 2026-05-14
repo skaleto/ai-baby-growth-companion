@@ -14,7 +14,7 @@ if (!shouldRenderOfficialSite) {
 } else {
   document.documentElement.classList.add("official-page-root");
   document.body.classList.add("official-page");
-  document.title = "小宝成长伙伴官网";
+  document.title = "小宝记官网";
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

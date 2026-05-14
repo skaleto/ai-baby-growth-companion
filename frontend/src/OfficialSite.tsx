@@ -90,14 +90,14 @@ const downloadItems: Array<{ icon: LandingIcon; platform: string; note: string; 
 function OfficialSite() {
   return (
     <main className="official-site">
-      <section className="official-hero" aria-label="小宝成长伙伴官网首页">
+      <section className="official-hero" aria-label="小宝记官网首页">
         <img className="official-hero-image" src={heroCompanion} alt="" />
         <div className="official-hero-scrim" />
 
         <nav className="official-nav" aria-label="官网导航">
-          <a className="official-brand" href="#top" aria-label="小宝成长伙伴">
+          <a className="official-brand" href="#top" aria-label="小宝记">
             <img src={splashMark} alt="" />
-            <span>小宝成长伙伴</span>
+            <span>小宝记</span>
           </a>
           <div className="official-nav-links">
             <a href="#features">特色</a>
@@ -109,9 +109,9 @@ function OfficialSite() {
         <div className="official-hero-content" id="top">
           <p className="official-kicker">
             <Sparkles size={16} />
-            给新手家庭的 AI 育儿记录台
+            给新手家庭的 AI 成长伙伴
           </p>
-          <h1>小宝成长伙伴</h1>
+          <h1>小宝记</h1>
           <p className="official-lead">
             把聊天、照护记录、成长曲线、家庭协作和账本放进同一个清爽空间。深夜不慌，白天少漏，全家都知道小宝今天发生了什么。
           </p>

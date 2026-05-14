@@ -68,7 +68,9 @@
         "docs/frontend-verification.md defines the viewport matrix and waiver rule.",
         "2026-05-14 npm run verify:frontend passed after OTA progress notice rendering was covered in frontend smoke.",
         "2026-05-14 release-flow check: frontend build passed through frontend/vite.config.ts after moving frontend source/config under frontend/.",
-        "2026-05-14 npm run verify:frontend passed after Pro daily summary and reminder setting UI changes."
+        "2026-05-14 npm run verify:frontend passed after Pro daily summary and reminder setting UI changes.",
+        "2026-05-14 npm run verify:frontend passed after official-site port-80 deployment.",
+        "2026-05-14 official-site cloud smoke: Playwright opened http://120.55.188.242/official, verified title 小宝记官网, H1 小宝记, and mobile scroll changed 0 -> 900."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -86,7 +88,8 @@
       ],
       "evidence": [
         "2026-05-14 release-flow check: curl -fsS http://120.55.188.242:8300/api/health returned ok. Live deploy was not executed because the script has no dry-run mode.",
-        "2026-05-14 code-only Aliyun deployment completed with SYNC_DATA=0 and health returned ok at http://120.55.188.242:8300/api/health."
+        "2026-05-14 code-only Aliyun deployment completed with SYNC_DATA=0 and health returned ok at http://120.55.188.242:8300/api/health.",
+        "2026-05-14 official-site port-80 deployment: Nginx active on 120.55.188.242, /official returned 200 OK, and /api/health returned ok through same-origin reverse proxy."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },
@@ -107,7 +110,8 @@
         "2026-05-14 release-flow check: VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:ios:debug passed for iPhone 17 simulator.",
         "2026-05-14 npm run mobile:sync passed after daily summary local notification scheduling changes.",
         "2026-05-14 npm run build:android:debug passed; debug APK built at android/app/build/outputs/apk/debug/app-debug.apk.",
-        "2026-05-14 npm run build:ios:debug passed for iPhone 17 simulator."
+        "2026-05-14 npm run build:ios:debug passed for iPhone 17 simulator.",
+        "2026-05-14 OTA timeout fix: raised CapacitorUpdater responseTimeout to 120 seconds, npm run mobile:sync passed, Android debug APK passed, and iOS simulator build passed."
       ],
       "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
     },
