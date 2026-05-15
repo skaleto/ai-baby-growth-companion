@@ -190,6 +190,83 @@ class AppStateControllerTests {
     }
 
     @Test
+    void sharedRecordsReturnContributorAndHydrateExpenseAttachments() throws Exception {
+        mockMvc.perform(post("/api/uploads")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "expense-receipt",
+                                  "name": "receipt.png",
+                                  "kind": "image",
+                                  "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/app/state/careLogs/care-contributor")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "care-contributor",
+                                  "date": "2026-05-01",
+                                  "events": [
+                                    {"id": "care-event-contributor", "type": "milk", "date": "2026-05-01", "time": "08:00", "amountMl": 120}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/app/state/albumItems/album-contributor")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "album-contributor",
+                                  "kind": "media",
+                                  "title": "小票照片",
+                                  "date": "2026-05-01",
+                                  "category": "daily",
+                                  "tags": [],
+                                  "attachmentId": "expense-receipt",
+                                  "source": "manual"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/app/state/expenses/expense-contributor")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "expense-contributor",
+                                  "title": "奶粉",
+                                  "amount": 268,
+                                  "currency": "CNY",
+                                  "category": "formula",
+                                  "date": "2026-05-01",
+                                  "attachmentIds": ["expense-receipt"],
+                                  "source": "manual",
+                                  "createdAt": "2026-05-01T08:00:00Z",
+                                  "updatedAt": "2026-05-01T08:00:00Z"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/app/state")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.careLogs[0].recordedBy.label").value("家庭照护人"))
+                .andExpect(jsonPath("$.state.careLogs[0].events[0].recordedBy.label").value("家庭照护人"))
+                .andExpect(jsonPath("$.state.albumItems[0].recordedBy.label").value("家庭照护人"))
+                .andExpect(jsonPath("$.state.albumItems[0].attachment.id").value("expense-receipt"))
+                .andExpect(jsonPath("$.state.expenses[0].recordedBy.label").value("家庭照护人"))
+                .andExpect(jsonPath("$.state.expenses[0].attachments[0].id").value("expense-receipt"))
+                .andExpect(jsonPath("$.state.expenses[0].attachments[0].url").value("/api/uploads/expense-receipt"));
+    }
+
+    @Test
     void readsLocalFilesWhenStoredPathStillHasOssPrefix() throws Exception {
         mockMvc.perform(post("/api/uploads")
                         .header(HttpHeaders.AUTHORIZATION, bearer())

@@ -145,6 +145,7 @@ import {
   MissingItemPrompt,
   PendingEffect,
   ProTrialStatus,
+  RecordedBy,
   Reminder,
   ReminderKind,
   ReminderAlertMode,
@@ -361,6 +362,7 @@ type RecordEvent = {
   tags: string[];
   careLogId?: string;
   careEventId?: string;
+  recordedBy?: RecordedBy;
 };
 
 type CareEventDraft = {
@@ -491,6 +493,8 @@ const MODEL_SELECT_OPTIONS: Array<SelectOption<AgentModelId>> = MODEL_OPTIONS.ma
     .filter(Boolean)
     .join(" · "),
 }));
+
+const isVisualModel = (model: AgentModelOption) => model.supportsImageInput || model.supportsVideoInput;
 
 const CARE_EVENT_TYPE_OPTIONS: Array<SelectOption<CareLogEventType>> = [
   { value: "milk", label: "喝奶" },
@@ -860,6 +864,23 @@ const normalizeAttachment = (value: Partial<Attachment> | null | undefined, inde
   createdAt: textValue(value?.createdAt) || undefined,
 });
 
+const normalizeRecordedBy = (value: Partial<RecordedBy> | null | undefined): RecordedBy | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const label = textValue(value.label) || textValue(value.roleName);
+  const userId = textValue(value.userId);
+  if (!label && !userId) return undefined;
+  return {
+    userId: userId || undefined,
+    roleName: textValue(value.roleName) || label || undefined,
+    label: label || "家庭成员",
+    caregiver: typeof value.caregiver === "boolean" ? value.caregiver : undefined,
+  };
+};
+
+const recordedByLabel = (recordedBy?: RecordedBy) => recordedBy?.label || recordedBy?.roleName || "家庭成员";
+
+const creatorMetaText = (recordedBy?: RecordedBy) => `记录人：${recordedByLabel(recordedBy)}`;
+
 const stripAttachmentUrlForStorage = (url?: string) => {
   if (!url || url.startsWith("data:")) return undefined;
   try {
@@ -906,6 +927,8 @@ const normalizeAlbumItem = (value: Partial<AlbumItem> | null | undefined, index:
       : undefined,
   linkedId: textValue(value?.linkedId) || undefined,
   source: value?.source === "agent" || value?.source === "manual" ? value.source : "rule",
+  recordedBy: normalizeRecordedBy(value?.recordedBy),
+  createdByUserId: textValue(value?.createdByUserId) || undefined,
 });
 
 const normalizeExpenseCategory = (value: unknown): ExpenseCategory =>
@@ -928,9 +951,14 @@ const normalizeExpenseItem = (value: Partial<ExpenseItem> | null | undefined, in
     brand: textValue(value?.brand) || undefined,
     spec: textValue(value?.spec) || undefined,
     attachmentIds: stringList(value?.attachmentIds),
+    attachments: Array.isArray(value?.attachments)
+      ? value.attachments.map((attachment, attachmentIndex) => normalizeAttachment(attachment, attachmentIndex))
+      : undefined,
     source: value?.source === "agent" ? "agent" : "manual",
     createdAt: textValue(value?.createdAt, now),
     updatedAt: textValue(value?.updatedAt, now),
+    recordedBy: normalizeRecordedBy(value?.recordedBy),
+    createdByUserId: textValue(value?.createdByUserId) || undefined,
   };
 };
 
@@ -1291,6 +1319,8 @@ const normalizeCareLogEvent = (
     temperature: numberValue(value?.temperature),
     note: textValue(value?.note) || undefined,
     tags,
+    recordedBy: normalizeRecordedBy(value?.recordedBy),
+    createdByUserId: textValue(value?.createdByUserId) || undefined,
   };
 };
 
@@ -1309,6 +1339,8 @@ const normalizeCareLog = (value: Partial<CareLog> | null | undefined, index: num
   events: Array.isArray(value?.events)
     ? value.events.map((item, eventIndex) => normalizeCareLogEvent(item, eventIndex, textValue(value?.date, todayISO())))
     : [],
+  recordedBy: normalizeRecordedBy(value?.recordedBy),
+  createdByUserId: textValue(value?.createdByUserId) || undefined,
 });
 
 const careEventTimelineKey = (event: CareLogEvent) =>
@@ -1340,6 +1372,8 @@ const dedupeCareEvents = (events: CareLogEvent[]) => {
       temperature: normalized.temperature ?? existing?.temperature,
       note: normalized.note ?? existing?.note,
       tags: Array.from(new Set([...(existing?.tags ?? []), ...(normalized.tags ?? [])])),
+      recordedBy: existing?.recordedBy ?? normalized.recordedBy,
+      createdByUserId: existing?.createdByUserId ?? normalized.createdByUserId,
     });
   });
   return Array.from(byKey.values());
@@ -1382,6 +1416,8 @@ const normalizeGrowthEvent = (value: Partial<GrowthEvent> | null | undefined, in
   firstTime: Boolean(value?.firstTime),
   mediaKind: value?.mediaKind,
   tags: stringList(value?.tags),
+  recordedBy: normalizeRecordedBy(value?.recordedBy),
+  createdByUserId: textValue(value?.createdByUserId) || undefined,
 });
 
 const normalizeReminder = (value: Partial<Reminder> | null | undefined, index: number): Reminder => {
@@ -1920,6 +1956,7 @@ const buildRecordEvents = (
       tags: event.tags?.length ? event.tags : [careEventTitleMap[event.type]],
       careLogId: log.id,
       careEventId: event.id,
+      recordedBy: event.recordedBy ?? log.recordedBy,
     })),
   );
 
@@ -1933,6 +1970,7 @@ const buildRecordEvents = (
     title: event.title,
     body: event.summary,
     tags: event.tags,
+    recordedBy: event.recordedBy,
   }));
 
   const reminderEvents: RecordEvent[] = reminders
@@ -2758,9 +2796,12 @@ function expenseFromDraft(draft: ExpenseDraft, existing?: ExpenseItem): ExpenseI
       brand: draft.brand.trim() || undefined,
       spec: draft.spec.trim() || undefined,
       attachmentIds: existing?.attachmentIds ?? [],
+      attachments: existing?.attachments,
       source: draft.source,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      recordedBy: existing?.recordedBy,
+      createdByUserId: existing?.createdByUserId,
     },
     0,
   );
@@ -3508,7 +3549,24 @@ function App() {
   const previewCloseTimerRef = useRef<number | null>(null);
   const previewVideoCleanupRef = useRef<(() => void) | null>(null);
   const appPlatform = platformLabel();
-  const currentModel = MODEL_OPTIONS.find((model) => model.id === selectedModel) ?? MODEL_OPTIONS[0];
+  const selectedModelOption = MODEL_OPTIONS.find((model) => model.id === selectedModel) ?? MODEL_OPTIONS[0];
+  const visualModelsEnabled = proTrial.enabled;
+  const currentModel = !visualModelsEnabled && isVisualModel(selectedModelOption)
+    ? MODEL_OPTIONS.find((model) => model.id === DEFAULT_MODEL) ?? MODEL_OPTIONS[0]
+    : selectedModelOption;
+  const modelSelectOptions = useMemo(
+    () =>
+      MODEL_SELECT_OPTIONS.map((option) => {
+        const model = MODEL_OPTIONS.find((item) => item.id === option.value);
+        if (!model || !isVisualModel(model) || visualModelsEnabled) return option;
+        return {
+          ...option,
+          disabled: true,
+          hint: "Pro 内测开通后可选 · 支持图片/视频理解",
+        };
+      }),
+    [visualModelsEnabled],
+  );
   const babyNickname = profile.nickname.trim() || "小宝";
   const familySpeakerName = `${babyNickname}家`;
   const withBabyNickname = useCallback(
@@ -4747,8 +4805,12 @@ function App() {
   });
 
   const albumItemForStorage = (item: AlbumItem): AlbumItem => ({
-    ...item,
+    ...(({ recordedBy: _recordedBy, createdByUserId: _createdByUserId, ...rest }) => rest)(item),
     attachment: item.attachment ? attachmentForStorage(item.attachment) : undefined,
+  });
+
+  const expenseForStorage = (expense: ExpenseItem): ExpenseItem => ({
+    ...(({ attachments: _attachments, recordedBy: _recordedBy, createdByUserId: _createdByUserId, ...rest }) => rest)(expense),
   });
 
   useEffect(() => {
@@ -6085,7 +6147,7 @@ function App() {
       );
     });
     try {
-      await persistRecord("expenses", nextExpense.id, nextExpense, { applyResponse: true, mode: "replace" });
+      await persistRecord("expenses", nextExpense.id, expenseForStorage(nextExpense), { applyResponse: true, mode: "replace" });
       closeExpenseEditor();
     } catch {
       setStorageStatus("offline");
@@ -7738,7 +7800,7 @@ function App() {
                   ariaLabel="模型"
                   value={currentModel.id}
                   disabled={isSubmitting}
-                  options={MODEL_SELECT_OPTIONS}
+                  options={modelSelectOptions}
                   onChange={setSelectedModel}
                 />
                 <button
@@ -8155,6 +8217,7 @@ function App() {
                           <span key={tag}>{tag}</span>
                         ))}
                       </div>
+                      {event.recordedBy ? <small className="record-creator">{creatorMetaText(event.recordedBy)}</small> : null}
                       {canCaregive && event.type === "care" ? (
                         editingCareEventId === event.id ? (
                           <form className="timeline-edit-form" onSubmit={(formEvent) => saveCareTimelineEvent(formEvent, event)}>
@@ -8394,6 +8457,35 @@ function App() {
                           {expense.spec ?? ""}
                           {expenseSourceLabel(expense.source) ? ` · ${expenseSourceLabel(expense.source)}` : ""}
                         </small>
+                        {expense.recordedBy ? <small className="expense-creator">{creatorMetaText(expense.recordedBy)}</small> : null}
+                        {expense.attachments?.length ? (
+                          <div className="expense-attachment-strip" aria-label={`${expense.title} 附件`}>
+                            {expense.attachments.map((attachment) => (
+                              <button
+                                type="button"
+                                className="expense-attachment-thumb"
+                                key={attachment.id}
+                                title={`查看${attachment.kind === "video" ? "视频" : attachment.kind === "audio" ? "语音" : "图片"}附件`}
+                                disabled={!attachment.url}
+                                onClick={() => {
+                                  if (!attachment.url) return;
+                                  openPreviewAttachment(attachment, null);
+                                }}
+                              >
+                                {attachment.kind === "image" ? (
+                                  <img src={attachment.thumbnailUrl || attachmentListSrc(attachment)} alt={attachment.name} loading="lazy" decoding="async" />
+                                ) : attachment.kind === "video" && attachment.thumbnailUrl ? (
+                                  <img src={attachment.thumbnailUrl} alt={attachment.name} loading="lazy" decoding="async" />
+                                ) : attachment.kind === "video" ? (
+                                  <Video size={18} />
+                                ) : (
+                                  <Mic size={18} />
+                                )}
+                                <span>{attachment.kind === "video" ? "视频" : attachment.kind === "audio" ? "语音" : "图片"}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                       <strong>{formatMoney(expense.amount)}</strong>
                       {canCaregive ? (
@@ -9343,6 +9435,7 @@ function App() {
                 <div className="media-preview-meta">
                   <strong>{previewAlbumItem.title}</strong>
                   <span>{formatFullDate(previewAlbumItem.date)} · {albumCategoryLabel(previewAlbumItem.category)}</span>
+                  {previewAlbumItem.recordedBy ? <small>{creatorMetaText(previewAlbumItem.recordedBy)}</small> : null}
                 </div>
                 {previewAlbumItem.tags.length ? (
                   <div className="media-preview-tags">

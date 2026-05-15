@@ -16,6 +16,13 @@ export interface Attachment {
   createdAt?: string;
 }
 
+export interface RecordedBy {
+  userId?: string;
+  roleName?: string;
+  label?: string;
+  caregiver?: boolean;
+}
+
 export type AlbumItemCategory = "growth" | "feeding" | "sleep" | "health" | "reminder" | "daily";
 
 export interface AlbumItem {
@@ -31,6 +38,8 @@ export interface AlbumItem {
   linkedType?: "chatMessage" | "careLogEvent" | "growthEvent" | "reminder";
   linkedId?: string;
   source: "agent" | "rule" | "manual";
+  recordedBy?: RecordedBy;
+  createdByUserId?: string;
 }
 
 export interface AlbumPrompt {
@@ -71,9 +80,12 @@ export interface ExpenseItem {
   brand?: string;
   spec?: string;
   attachmentIds: string[];
+  attachments?: Attachment[];
   source: "manual" | "agent";
   createdAt: string;
   updatedAt: string;
+  recordedBy?: RecordedBy;
+  createdByUserId?: string;
 }
 
 export type AgentModelId =
@@ -135,6 +147,8 @@ export interface GrowthEvent {
   firstTime: boolean;
   mediaKind?: AttachmentKind;
   tags: string[];
+  recordedBy?: RecordedBy;
+  createdByUserId?: string;
 }
 
 export type CareLogEventType = "milk" | "sleep" | "wake" | "poop" | "solid" | "temperature" | "soothing" | "note";
@@ -150,6 +164,8 @@ export interface CareLogEvent {
   temperature?: number;
   note?: string;
   tags?: string[];
+  recordedBy?: RecordedBy;
+  createdByUserId?: string;
 }
 
 export interface CareLog {
@@ -165,6 +181,8 @@ export interface CareLog {
   temperature?: number;
   notes: string[];
   events: CareLogEvent[];
+  recordedBy?: RecordedBy;
+  createdByUserId?: string;
 }
 
 export type ReminderKind = "schedule" | "alarm";

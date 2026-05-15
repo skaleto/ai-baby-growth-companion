@@ -364,8 +364,9 @@ public class AppStateService {
         QueryWrapper<T> query = familyQuery(null, familyId);
         query.orderByAsc("sort_key").orderByAsc("created_at");
         Map<String, AttachmentDto> attachmentCache = new LinkedHashMap<>();
+        Map<String, ObjectNode> contributorCache = new LinkedHashMap<>();
         return service.list(query).stream()
-                .map((record) -> hydrateAttachmentMetadata(parse(record.getPayloadJson()), familyId, attachmentCache))
+                .map((record) -> hydrateAttachmentMetadata(decorateRecordedBy(record, parse(record.getPayloadJson()), familyId, contributorCache), familyId, attachmentCache))
                 .toList();
     }
 
@@ -373,8 +374,9 @@ public class AppStateService {
         QueryWrapper<T> query = privateQuery(null, familyId, userId);
         query.orderByAsc("sort_key").orderByAsc("created_at");
         Map<String, AttachmentDto> attachmentCache = new LinkedHashMap<>();
+        Map<String, ObjectNode> contributorCache = new LinkedHashMap<>();
         return service.list(query).stream()
-                .map((record) -> hydrateAttachmentMetadata(parse(record.getPayloadJson()), familyId, attachmentCache))
+                .map((record) -> hydrateAttachmentMetadata(decorateRecordedBy(record, parse(record.getPayloadJson()), familyId, contributorCache), familyId, attachmentCache))
                 .toList();
     }
 
@@ -436,6 +438,22 @@ public class AppStateService {
         if (node == null || node.isNull()) return false;
         boolean changed = false;
         if (node instanceof ObjectNode object) {
+            if (attachmentId.equals(text(object, "attachmentId", ""))) {
+                object.remove("attachmentId");
+                changed = true;
+            }
+
+            JsonNode attachmentIds = object.get("attachmentIds");
+            if (attachmentIds instanceof ArrayNode idsArray) {
+                for (int index = idsArray.size() - 1; index >= 0; index--) {
+                    JsonNode item = idsArray.get(index);
+                    if (item.isTextual() && attachmentId.equals(item.asText())) {
+                        idsArray.remove(index);
+                        changed = true;
+                    }
+                }
+            }
+
             JsonNode attachment = object.get("attachment");
             if (matchesAttachmentReference(attachment, attachmentId)) {
                 object.remove("attachment");
@@ -458,7 +476,10 @@ public class AppStateService {
             List<String> fieldNames = new ArrayList<>();
             object.fieldNames().forEachRemaining(fieldNames::add);
             for (String fieldName : fieldNames) {
-                if ("attachment".equals(fieldName) || "attachments".equals(fieldName)) continue;
+                if ("attachment".equals(fieldName) || "attachments".equals(fieldName)
+                        || "attachmentId".equals(fieldName) || "attachmentIds".equals(fieldName)) {
+                    continue;
+                }
                 if (pruneAttachmentReferences(object.get(fieldName), attachmentId)) {
                     changed = true;
                 }
@@ -476,6 +497,7 @@ public class AppStateService {
     }
 
     private boolean matchesAttachmentReference(JsonNode node, String attachmentId) {
+        if (node != null && node.isTextual()) return attachmentId.equals(node.asText());
         if (!(node instanceof ObjectNode object)) return false;
         return attachmentId.equals(text(object, "id", ""))
                 || attachmentId.equals(text(object, "attachmentId", ""));
@@ -485,9 +507,11 @@ public class AppStateService {
         QueryWrapper<CareLogRecord> query = familyQuery(CareLogRecord.class, familyId);
         query.orderByAsc("sort_key").orderByAsc("created_at");
         Map<String, ObjectNode> byDate = new LinkedHashMap<>();
+        Map<String, AttachmentDto> attachmentCache = new LinkedHashMap<>();
+        Map<String, ObjectNode> contributorCache = new LinkedHashMap<>();
         for (CareLogRecord record : careLogService.list(query)) {
-            JsonNode payload = parse(record.getPayloadJson());
-            payload = hydrateAttachmentMetadata(payload, familyId, new LinkedHashMap<>());
+            JsonNode payload = decorateRecordedBy(record, parse(record.getPayloadJson()), familyId, contributorCache);
+            payload = hydrateAttachmentMetadata(payload, familyId, attachmentCache);
             if (!(payload instanceof ObjectNode object)) continue;
             String date = text(object, "date", record.getSortKey());
             ObjectNode existing = byDate.get(date);
@@ -543,7 +567,8 @@ public class AppStateService {
         if (node == null || node.isNull()) return;
         String id = text(node, "id", ownerType + "-0");
         ObjectNode payload = mutable(node, ownerType, id, familyId, userId);
-        service.saveOrUpdate(record(supplier, id, payload, ownerType, sortKey(payload, ownerType, 0), now, familyId, userId));
+        T existing = service.getOne(new QueryWrapper<T>().eq("family_id", familyId).eq("id", id), false);
+        service.saveOrUpdate(preserveCreator(record(supplier, id, payload, ownerType, sortKey(payload, ownerType, 0), now, familyId, userId), existing));
     }
 
     private void saveCareLogPatch(JsonNode patch, String now, String familyId, String userId) {
@@ -567,12 +592,13 @@ public class AppStateService {
                     careLogService.remove(familyQuery(CareLogRecord.class, familyId).in("id", duplicateIds));
                 }
                 merged.put("id", primary.getId());
-                careLogService.saveOrUpdate(record(CareLogRecord::new, primary.getId(), merged, "care", date, now, familyId, userId));
+                careLogService.saveOrUpdate(preserveCreator(record(CareLogRecord::new, primary.getId(), merged, "care", date, now, familyId, userId), primary));
                 return;
             }
         }
         String id = text(next, "id", "care-" + UUID.randomUUID());
-        careLogService.saveOrUpdate(record(CareLogRecord::new, id, next, "care", sortKey(next, "care", 0), now, familyId, userId));
+        CareLogRecord existing = careLogService.getOne(familyQuery(CareLogRecord.class, familyId).eq("id", id), false);
+        careLogService.saveOrUpdate(preserveCreator(record(CareLogRecord::new, id, next, "care", sortKey(next, "care", 0), now, familyId, userId), existing));
     }
 
     private void saveCareLogSnapshot(JsonNode snapshot, String now, String familyId, String userId) {
@@ -586,7 +612,8 @@ public class AppStateService {
                     .ne("id", id);
             careLogService.remove(duplicates);
         }
-        careLogService.saveOrUpdate(record(CareLogRecord::new, id, next, "care", date, now, familyId, userId));
+        CareLogRecord existing = careLogService.getOne(familyQuery(CareLogRecord.class, familyId).eq("id", id), false);
+        careLogService.saveOrUpdate(preserveCreator(record(CareLogRecord::new, id, next, "care", date, now, familyId, userId), existing));
     }
 
     private void saveConversationSummary(JsonNode summary, String now, String familyId, String userId) {
@@ -707,18 +734,115 @@ public class AppStateService {
         if (!StringUtils.hasText(text(objectNode, "id", "")) && !"profile".equals(ownerType)) {
             objectNode.put("id", ownerId);
         }
+        objectNode.remove(List.of("recordedBy", "createdByUserId"));
         normalizeAttachments(objectNode, ownerType, ownerId, familyId, userId);
         return objectNode;
+    }
+
+    private <T extends AppRecordEntity> T preserveCreator(T next, T existing) {
+        if (existing == null) return next;
+        if (StringUtils.hasText(existing.getCreatedByUserId())) {
+            next.setCreatedByUserId(existing.getCreatedByUserId());
+        }
+        return next;
+    }
+
+    private <T extends AppRecordEntity> JsonNode decorateRecordedBy(T record, JsonNode node, String familyId, Map<String, ObjectNode> contributorCache) {
+        if (!(node instanceof ObjectNode object)) return node;
+        String userId = StringUtils.hasText(record.getCreatedByUserId())
+                ? record.getCreatedByUserId()
+                : record.getOwnerUserId();
+        if (!StringUtils.hasText(userId)) return node;
+        ObjectNode contributor = contributorNode(familyId, userId, contributorCache);
+        object.put("createdByUserId", userId);
+        object.set("recordedBy", contributor.deepCopy());
+        JsonNode events = object.get("events");
+        if (events instanceof ArrayNode array) {
+            for (JsonNode event : array) {
+                if (event instanceof ObjectNode eventObject && !eventObject.has("recordedBy")) {
+                    eventObject.put("createdByUserId", userId);
+                    eventObject.set("recordedBy", contributor.deepCopy());
+                }
+            }
+        }
+        return object;
+    }
+
+    private ObjectNode contributorNode(String familyId, String userId, Map<String, ObjectNode> contributorCache) {
+        String cacheKey = familyId + ":" + userId;
+        ObjectNode cached = contributorCache.get(cacheKey);
+        if (cached != null) return cached;
+
+        AuthFamilyMemberRecord member = familyMemberService.getOne(new QueryWrapper<AuthFamilyMemberRecord>()
+                .eq("family_id", familyId)
+                .eq("user_id", userId)
+                .last("LIMIT 1"), false);
+        String roleName = member == null ? "" : member.getRoleName();
+        if (!StringUtils.hasText(roleName)) roleName = "家庭成员";
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("userId", userId);
+        node.put("roleName", roleName);
+        node.put("label", roleName);
+        node.put("caregiver", member != null && "true".equalsIgnoreCase(member.getIsCaregiver()));
+        contributorCache.put(cacheKey, node);
+        return node;
     }
 
     private JsonNode hydrateAttachmentMetadata(JsonNode node, String familyId, Map<String, AttachmentDto> attachmentCache) {
         if (node == null) return null;
         if (node instanceof ObjectNode object) {
+            hydrateAttachmentReferenceFields(object, familyId, attachmentCache);
             hydrateSingleAttachment(object, familyId, attachmentCache);
             object.fields().forEachRemaining((entry) -> hydrateAttachmentMetadata(entry.getValue(), familyId, attachmentCache));
         } else if (node.isArray()) {
             for (JsonNode child : node) hydrateAttachmentMetadata(child, familyId, attachmentCache);
         }
+        return node;
+    }
+
+    private void hydrateAttachmentReferenceFields(ObjectNode object, String familyId, Map<String, AttachmentDto> attachmentCache) {
+        String attachmentId = text(object, "attachmentId", "");
+        if (StringUtils.hasText(attachmentId)) {
+            AttachmentDto attachment = attachmentById(attachmentId, familyId, attachmentCache);
+            if (attachment != null) object.set("attachment", attachmentNode(attachment));
+        }
+
+        JsonNode attachmentIds = object.get("attachmentIds");
+        if (!(attachmentIds instanceof ArrayNode idsArray)) return;
+        ArrayNode attachments = objectMapper.createArrayNode();
+        Set<String> seen = new LinkedHashSet<>();
+        for (JsonNode item : idsArray) {
+            if (!item.isTextual()) continue;
+            String id = item.asText();
+            if (!StringUtils.hasText(id) || !seen.add(id)) continue;
+            AttachmentDto attachment = attachmentById(id, familyId, attachmentCache);
+            if (attachment != null) attachments.add(attachmentNode(attachment));
+        }
+        object.set("attachments", attachments);
+    }
+
+    private AttachmentDto attachmentById(String id, String familyId, Map<String, AttachmentDto> attachmentCache) {
+        String cacheKey = familyId + ":" + id;
+        if (attachmentCache.containsKey(cacheKey)) {
+            return attachmentCache.get(cacheKey);
+        }
+        AttachmentDto attachment = attachmentStorageService.metadata(id, familyId);
+        attachmentCache.put(cacheKey, attachment);
+        return attachment;
+    }
+
+    private ObjectNode attachmentNode(AttachmentDto attachment) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("id", attachment.id());
+        node.put("name", attachment.name());
+        node.put("kind", attachment.kind());
+        if (StringUtils.hasText(attachment.mimeType())) node.put("mimeType", attachment.mimeType());
+        if (StringUtils.hasText(attachment.filePath())) node.put("filePath", attachment.filePath());
+        if (StringUtils.hasText(attachment.publicUrl())) node.put("publicUrl", attachment.publicUrl());
+        if (StringUtils.hasText(attachment.url())) node.put("url", attachment.url());
+        if (StringUtils.hasText(attachment.thumbnailPath())) node.put("thumbnailPath", attachment.thumbnailPath());
+        if (StringUtils.hasText(attachment.thumbnailUrl())) node.put("thumbnailUrl", attachment.thumbnailUrl());
+        if (StringUtils.hasText(attachment.createdAt())) node.put("createdAt", attachment.createdAt());
         return node;
     }
 

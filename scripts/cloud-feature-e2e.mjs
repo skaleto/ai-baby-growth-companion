@@ -44,6 +44,8 @@ const created = {
   expenses: new Set(),
   reminders: new Set(),
   messages: new Set(),
+  careLogs: new Set(),
+  attachments: new Set(),
 };
 const cleanupNotes = [];
 
@@ -190,9 +192,25 @@ async function putRecord(token, collection, id, item) {
   return text ? JSON.parse(text) : null;
 }
 
+async function uploadAttachment(token, id) {
+  const response = await fetch(`${apiBaseUrl}/api/uploads`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id,
+      name: `${id}.png`,
+      kind: "image",
+      dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) throw e2eError(`上传测试附件失败：${response.status} ${text}`);
+  return text ? JSON.parse(text) : null;
+}
+
 function startVite() {
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
-  const child = spawn(npx, ["vite", "--host", host, "--port", String(port), "--strictPort"], {
+  const child = spawn(npx, ["vite", "--config", "frontend/vite.config.ts", "--host", host, "--port", String(port), "--strictPort"], {
     cwd: rootDir,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -463,6 +481,30 @@ async function ledgerCrud(page, token) {
   const expense = stateAfterEdit.state?.expenses?.find((item) => item.title === title);
   if (!expense) throw e2eError("账本新增/编辑后云端状态中未找到支出");
   created.expenses.add(expense.id);
+  const attachmentId = `${testPrefix}-receipt`;
+  const attachment = await uploadAttachment(token, attachmentId);
+  created.attachments.add(attachmentId);
+  await putRecord(token, "expenses", expense.id, {
+    ...expense,
+    attachmentIds: [attachment.id],
+    updatedAt: new Date().toISOString(),
+  });
+  const hydratedExpense = (await apiState(token)).state?.expenses?.find((item) => item.id === expense.id);
+  if (!hydratedExpense?.recordedBy?.label) throw e2eError("账本记录缺少记录人信息");
+  if (!hydratedExpense.attachments?.some((item) => item.id === attachment.id && item.url)) {
+    throw e2eError("账本记录缺少可预览附件元数据");
+  }
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector("nav.mobile-tabbar", { timeout: 20000 });
+  await gotoTab(page, "账本");
+  await clickTabButton(page, "明细");
+  const updatedItem = page.locator(".expense-item", { hasText: title }).first();
+  await updatedItem.getByText(/记录人：/).waitFor({ timeout: 12000 });
+  await updatedItem.locator(".expense-attachment-thumb").first().click();
+  await page.getByRole("dialog", { name: "附件预览" }).waitFor({ timeout: 8000 });
+  await page.keyboard.press("Escape").catch(() => undefined);
+  const previewClose = page.getByRole("button", { name: /关闭|返回/ }).first();
+  if (await previewClose.count()) await previewClose.click().catch(() => undefined);
   await page.locator(".expense-item", { hasText: title }).first().getByTitle("删除支出").click();
   const keepExpenseDialog = page.getByRole("dialog", { name: /确定删除这笔支出吗/ });
   await keepExpenseDialog.waitFor({ timeout: 8000 });
@@ -522,8 +564,30 @@ async function createReminder(page, title) {
   await page.locator(".reminder-item", { hasText: title }).first().waitFor({ timeout: 12000 });
 }
 
-async function recordsViews(page) {
+async function recordsViews(page, token) {
+  const careId = `${testPrefix}-care-log`;
+  const note = `${testPrefix}-记录人检查`;
+  await putRecord(token, "careLogs", careId, {
+    id: careId,
+    date: todayDate(),
+    events: [
+      {
+        id: `${careId}-event`,
+        type: "milk",
+        date: todayDate(),
+        time: "08:10",
+        amountMl: 90,
+        note,
+        tags: ["喝奶"],
+      },
+    ],
+  });
+  created.careLogs.add(careId);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector("nav.mobile-tabbar", { timeout: 20000 });
   await gotoTab(page, "记录");
+  await page.getByText(note).waitFor({ timeout: 12000 });
+  await page.locator(".record-event", { hasText: note }).first().getByText(/记录人：/).waitFor({ timeout: 8000 });
   await page.getByRole("heading", { name: /今天的总览|年|月|日/ }).waitFor({ timeout: 8000 });
   await clickTabButton(page, "趋势");
   await page.getByText(/近 7 天|近7天/).first().waitFor({ timeout: 8000 });
@@ -695,6 +759,22 @@ async function cleanup(token) {
     try {
       await deleteRecord(token, "messages", id);
       cleanupNotes.push(`已清理消息 ${id}`);
+    } catch (error) {
+      cleanupNotes.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  for (const id of created.careLogs) {
+    try {
+      await deleteRecord(token, "careLogs", id);
+      cleanupNotes.push(`已清理照护记录 ${id}`);
+    } catch (error) {
+      cleanupNotes.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  for (const id of created.attachments) {
+    try {
+      await deleteRecord(token, "attachments", id);
+      cleanupNotes.push(`已清理附件 ${id}`);
     } catch (error) {
       cleanupNotes.push(error instanceof Error ? error.message : String(error));
     }
@@ -876,7 +956,7 @@ async function main() {
     }),
     makeCase("LEDGER-CRUD-001", "P0", "账本新增编辑删除", "新增、编辑、删除均反映到真实云端状态，删除有二次确认。", async ({ page, token }) => ledgerCrud(page, token)),
     makeCase("REMINDER-CRUD-001", "P0", "提醒新增完成删除", "新建提醒、完成确认、删除确认均生效，云端状态同步。", async ({ page, token }) => reminderCrud(page, token)),
-    makeCase("RECORDS-VIEWS-001", "P0", "记录三视图", "今日、趋势、日历都可渲染并无横向溢出。", async ({ page }) => recordsViews(page)),
+    makeCase("RECORDS-VIEWS-001", "P0", "记录三视图", "今日、趋势、日历都可渲染并无横向溢出，时间线展示记录人。", async ({ page, token }) => recordsViews(page, token)),
     makeCase("ALBUM-VIEWS-001", "P1", "相册分类与预览", "分类可切换；有素材可预览，无素材显示空态。", async ({ page }) => albumViews(page)),
     makeCase("PROFILE-VIEW-001", "P0", "我的页资料", "资料、身份、照护人、后端接口可见。", async ({ page }) => profileView(page)),
     makeCase("CHAT-LIVE-001", "P1", "真实 Agent 文本链路", "真实发送文本并收到 AI 回复；不出现服务不可用。", async ({ page, token }) => {

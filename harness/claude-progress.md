@@ -180,6 +180,52 @@
 - Next best action:
   - For the next feature, choose scope from `harness/feature_list.json` or add a new feature entry before implementation.
 
+### Session 2026-05-15 Shared Contributor And Ledger Attachments
+
+- Goal: Show a unified contributor label for records, ledger entries, and album media; hydrate and preview ledger attachments; verify the existing cloud expense `8887.24` for user `18915618653`.
+- Completed:
+  - Added runtime `recordedBy` metadata for family-shared state rows and care-log timeline events, using the family member role as the user-facing label.
+  - Hydrated `attachmentId` and `attachmentIds` references into full attachment metadata so ledger entries can show clickable image/video/audio attachments.
+  - Added frontend display for `记录人` in records, ledger, and album, plus ledger attachment preview buttons.
+  - Preserved original creator attribution when existing shared rows are updated.
+  - Confirmed cloud user `18915618653` belongs to family `family-eb3f4751-2df9-46b4-920e-6634c4013d50`; expense `expense-1` amount `8887.24` already has attachment `attachment-mp2lomag-chc0xt`, so no production DB mutation was needed.
+  - Deployed code and OTA assets to Aliyun `120.55.188.242` with production data sync disabled.
+- Verification run:
+  - `npm run build`
+  - `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" "/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn" -q -f backend/pom.xml -Dtest=AppStateControllerTests test`
+  - `npm run verify:frontend`
+  - `MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - `npm run test:cloud-e2e`
+  - `bash harness/init.sh`
+- Evidence:
+  - Backend targeted test passed with contributor and expense attachment hydration coverage.
+  - Frontend verification passed across desktop and configured mobile viewports.
+  - Cloud health returned `ok` after deployment.
+  - Cloud E2E passed 10/10 cases, including timeline `记录人`, ledger CRUD with attachment preview, album view, reminder flow, and real Agent text flow.
+  - Final harness init passed with whitespace check, frontend build, and Agent benchmark.
+  - Detailed iteration note is saved at `docs/record-contributor-attachment-e2e-plan.md`; E2E result is saved at `docs/automation-test-results.md`.
+- Known risks:
+  - The cloud `8887.24` expense fix depends on the existing linked attachment record remaining available in object/local storage; this run verified the DB relationship and new metadata hydration path, not manual visual review of the original receipt content.
+
+### Session 2026-05-15 Album Gallery Metadata Placement
+
+- Goal: Keep album gallery tiles visually clean and move title/date/category/recorded-by details into the click-through preview detail panel.
+- Completed:
+  - Removed the title and recorded-by block from album gallery tiles.
+  - Added `记录人` to the album preview detail panel alongside date and category.
+  - Published OTA bundle `0.1.0-20260515153705` to Aliyun `120.55.188.242`.
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run verify:frontend`
+  - `MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SKIP_BACKEND_BUILD=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `POST /api/mobile-updates/check`
+- Evidence:
+  - Frontend smoke passed across desktop and configured mobile viewports.
+  - Cloud update check returns version `0.1.0-20260515153705`.
+  - Cloud health returned `ok`.
+
 ## Operational Notes
 
 - Use `npm run test:agent-benchmark` for Agent behavior changes.

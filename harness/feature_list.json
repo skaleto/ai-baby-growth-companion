@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-05-14",
+  "lastUpdated": "2026-05-15",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -116,8 +116,29 @@
       "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
     },
     {
-      "id": "commercialization-001",
+      "id": "shared-records-001",
       "priority": 6,
+      "area": "state",
+      "title": "Shared record contributor labels and ledger attachments",
+      "userVisibleBehavior": "Records, ledger entries, and album media show who recorded or uploaded them, and ledger entries can display and preview linked image/video/audio attachments.",
+      "status": "passing",
+      "verification": [
+        "Run backend state tests covering contributor enrichment and attachment hydration.",
+        "Run npm run verify:frontend for record, ledger, and album rendering.",
+        "Run live cloud E2E against the Aliyun environment with real test accounts."
+      ],
+      "evidence": [
+        "2026-05-15 AppStateControllerTests passed with shared records returning recordedBy labels and hydrated expense attachments.",
+        "2026-05-15 npm run verify:frontend passed across desktop and configured mobile viewports.",
+        "2026-05-15 npm run test:cloud-e2e passed 10/10 cases, including timeline 记录人 display and ledger attachment preview.",
+        "2026-05-15 cloud inspection confirmed user 18915618653 family expense 8887.24 already links attachment-mp2lomag-chc0xt; backend hydration and frontend preview now surface it.",
+        "2026-05-15 album gallery metadata placement update: npm run verify:frontend passed, and OTA 0.1.0-20260515153705 was published."
+      ],
+      "notes": "User-facing label is unified as 记录人; creator metadata is runtime-enriched and stripped before storage to avoid stale payload copies. Album gallery tiles stay media-only, while title/date/category/记录人 are shown in preview details."
+    },
+    {
+      "id": "commercialization-001",
+      "priority": 7,
       "area": "commercialization",
       "title": "Pro trial daily summary and usage telemetry",
       "userVisibleBehavior": "Families can apply for a small Pro trial, Pro-enabled caregiver accounts can generate a shared daily summary, all family members can read it, and daily summary reminders nudge users without background AI generation.",
