@@ -13,6 +13,39 @@
 
 ## Session Log
 
+### Session 2026-05-16 Batched Multi Image Agent Analysis
+
+- Goal: Replace the previous timeout-only mitigation with real automatic multi-image batching for AI visual analysis.
+- Completed:
+  - Added backend automatic visual batching: when a request has more than 4 visual inputs, the Agent runs separate non-stream model OCR/visual-summary calls in batches of up to 4, then feeds those summaries into the final response request without re-attaching all images.
+  - Added per-batch SSE progress text such as `正在分批分析 8 张图片`, `正在分析第 1/2 批图片`, and `正在整理图片分析结果`.
+  - Preserved the 4-or-fewer path as a single visual request to avoid making small requests slower.
+  - Added usage tracking label support for `agent_visual_analysis`.
+  - Updated timeout copy to say the Agent already attempted batching before asking the user to reduce or split images.
+  - Published backend code plus OTA `0.1.0-20260516145942` with message `多图AI自动分批分析`.
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run build`
+  - `mvn -Dtest=AgentRuntimeTests test`
+  - `mvn test -q`
+  - `npm run verify:frontend`
+  - `npm run test:agent-benchmark`
+  - `MOBILE_UPDATE_MESSAGE='多图AI自动分批分析' MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `MOBILE_UPDATE_OSS_SSH_TARGET=ai-baby-aliyun scripts/upload-mobile-update-oss.sh`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`, OTA check, OSS signed URL download, checksum probe, and up-to-date probe.
+- Evidence:
+  - `AgentRuntimeTests` now covers splitting 8 visual inputs into 2 batches of 4, while keeping 4 visual inputs unbatched.
+  - Backend full Maven tests passed.
+  - Frontend smoke passed across desktop and six mobile viewports.
+  - Agent benchmark passed and kept the expense-image no-web-search case green.
+  - Cloud health returned `ok`.
+  - Cloud OTA check returns version `0.1.0-20260516145942`, signed OSS host `ai-baby-growth-companion.oss-cn-hangzhou.aliyuncs.com`, and object path `/baby-companion/mobile-updates/app-0.1.0-20260516145942.zip`.
+  - Downloaded bundle size was `2639905` bytes and SHA-256 matched manifest checksum `9f4e5454bd1d9c5e842a69e8981f975b5e757a7d5b339a0678b36a45815d9a98`.
+  - Up-to-date probe using `currentBundleVersion=0.1.0-20260516145942` returned `updateAvailable=false`.
+- Known risks:
+  - Batched visual analysis is sequential in this release to avoid overloading provider concurrency; it improves reliability and transparency, but the next performance pass can evaluate limited parallelism if latency remains high.
+
 ### Session 2026-05-16 Multi Image Agent Availability
 
 - Goal: Investigate user `13777892890`'s latest 8-image expense recognition failure and remove misleading in-chat status copy while improving AI vision availability.

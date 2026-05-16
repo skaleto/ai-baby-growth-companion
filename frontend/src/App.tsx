@@ -300,6 +300,7 @@ const AI_USAGE_FEATURE_LABELS: Record<string, string> = {
   agent_chat: "聊天回复",
   agent_planner: "理解规划",
   agent_stream: "流式回复",
+  agent_visual_analysis: "图片分批分析",
   conversation_summary: "上下文压缩",
   daily_summary: "今日小结",
 };
@@ -2179,7 +2180,7 @@ const formatAgentFailureMessage = (error: unknown, attachments: Attachment[]) =>
   if (/图片分析超时|AI 响应超时/.test(message)) return message;
   if (/timeout|timed out|超时/i.test(message)) {
     return hasVisualAttachments
-      ? "图片分析超时了：这次素材较多，模型没有及时返回。请稍后重试；如果仍失败，可以先分批发送图片。"
+      ? "图片分析超时了：我已尝试分批处理，但模型没有及时返回。请稍后重试；如果仍失败，可以先减少图片数量或分开发送。"
       : "AI 响应超时了：模型没有及时返回，请稍后重试。";
   }
   if (message) return `AI 服务暂时不可用：${message}`;

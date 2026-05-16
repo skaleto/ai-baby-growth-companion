@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
+import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
 import com.xiaobao.babycompanion.dto.agent.AgentGrowthEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentExpense;
@@ -197,7 +198,35 @@ class AgentRuntimeTests {
         );
 
         assertThat(message).contains("图片分析超时");
-        assertThat(message).contains("分批发送图片");
+        assertThat(message).contains("分批处理");
+    }
+
+    @Test
+    void splitsMoreThanFourVisualInputsIntoModelBatches() throws Exception {
+        Object runtimeModel = resolveRuntimeModel(agentRuntime, "doubao-seed-2.0-pro", false);
+        Method visualInputsMethod = AgentRuntime.class.getDeclaredMethod("visualAttachmentInputs", List.class, runtimeModel.getClass());
+        visualInputsMethod.setAccessible(true);
+        Method batchesMethod = AgentRuntime.class.getDeclaredMethod("visualAnalysisBatches", List.class);
+        batchesMethod.setAccessible(true);
+
+        List<AgentAttachment> attachments = java.util.stream.IntStream.rangeClosed(1, 8)
+                .mapToObj((index) -> new AgentAttachment(
+                        "attachment-" + index,
+                        "image-" + index + ".jpg",
+                        "image",
+                        null,
+                        "data:image/jpeg;base64,AAAA"
+                ))
+                .toList();
+        List<?> visualInputs = (List<?>) visualInputsMethod.invoke(agentRuntime, attachments, runtimeModel);
+
+        List<?> batches = (List<?>) batchesMethod.invoke(agentRuntime, visualInputs);
+        List<?> fourOrFewer = (List<?>) batchesMethod.invoke(agentRuntime, visualInputs.subList(0, 4));
+
+        assertThat(batches).hasSize(2);
+        assertThat((List<?>) batches.get(0)).hasSize(4);
+        assertThat((List<?>) batches.get(1)).hasSize(4);
+        assertThat(fourOrFewer).isEmpty();
     }
 
     @Test

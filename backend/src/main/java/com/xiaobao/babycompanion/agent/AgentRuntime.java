@@ -70,6 +70,7 @@ public class AgentRuntime {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentRuntime.class);
     private static final int MAX_AGENT_VISUAL_ATTACHMENTS = 8;
+    private static final int VISUAL_ANALYSIS_BATCH_SIZE = 4;
 
     private static final int SUMMARY_MIN_NEW_MESSAGES = 24;
     private static final int SUMMARY_MIN_NEW_CHARS = 12_000;
@@ -216,8 +217,33 @@ public class AgentRuntime {
         if (profileBoundary != null) return profileBoundary;
         List<AgentToolResult> toolResults = executePlannedTools(plan, request, null);
         List<String> usedSkills = usedSkillIds(selectedSkills, toolResults, plan, signals, request.message());
+        List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(request.attachments(), runtimeModel);
+        List<VisualAnalysisResult> visualAnalysisResults = analyzeVisualInputsInBatches(
+                request,
+                runtimeModel,
+                apiKey,
+                traceId,
+                familyId,
+                principal.userId(),
+                visualInputs,
+                null
+        );
+        List<VisualAttachmentInput> finalVisualInputs = visualAnalysisResults.isEmpty() ? visualInputs : List.of();
 
-        DeepSeekChatRequest chatRequest = buildDeepSeekRequest(request, selectedSkills, toolResults, runtimeModel, traceId, false, plan, contextSnapshot, signals, principal);
+        DeepSeekChatRequest chatRequest = buildDeepSeekRequest(
+                request,
+                selectedSkills,
+                toolResults,
+                runtimeModel,
+                traceId,
+                false,
+                plan,
+                contextSnapshot,
+                signals,
+                principal,
+                finalVisualInputs,
+                visualAnalysisResults
+        );
 
         try {
             DeepSeekChatResponse response = restClient(runtimeModel).post()
@@ -488,9 +514,33 @@ public class AgentRuntime {
             List<String> usedSkills = usedSkillIds(selectedSkills, toolResults, plan, signals, request.message());
             List<AgentSource> sources = collectSources(toolResults);
             List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(request.attachments(), runtimeModel);
-            sendModelWorkStatus(emitter, visualInputs);
+            List<VisualAnalysisResult> visualAnalysisResults = analyzeVisualInputsInBatches(
+                    request,
+                    runtimeModel,
+                    apiKey,
+                    traceId,
+                    familyId,
+                    principal.userId(),
+                    visualInputs,
+                    emitter
+            );
+            List<VisualAttachmentInput> finalVisualInputs = visualAnalysisResults.isEmpty() ? visualInputs : List.of();
+            sendModelWorkStatus(emitter, finalVisualInputs, visualAnalysisResults);
 
-            String body = objectMapper.writeValueAsString(buildDeepSeekRequest(request, selectedSkills, toolResults, runtimeModel, traceId, true, plan, contextSnapshot, signals, principal));
+            String body = objectMapper.writeValueAsString(buildDeepSeekRequest(
+                    request,
+                    selectedSkills,
+                    toolResults,
+                    runtimeModel,
+                    traceId,
+                    true,
+                    plan,
+                    contextSnapshot,
+                    signals,
+                    principal,
+                    finalVisualInputs,
+                    visualAnalysisResults
+            ));
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create(endpointUrl(runtimeModel)))
                     .timeout(runtimeModel.readTimeout().plusSeconds(30))
@@ -558,13 +608,26 @@ public class AgentRuntime {
             AgentPlan plan,
             AgentContextSnapshot contextSnapshot,
             RecordSignals signals,
-            AuthPrincipal principal
+            AuthPrincipal principal,
+            List<VisualAttachmentInput> visualInputs,
+            List<VisualAnalysisResult> visualAnalysisResults
     ) {
         return new DeepSeekChatRequest(
                 runtimeModel.apiModel(),
                 List.of(
                         new DeepSeekMessage("system", AgentPrompts.AGENT_SYSTEM_PROMPT),
-                        new DeepSeekMessage("user", buildUserContent(request, selectedSkills, toolResults, runtimeModel, traceId, plan, contextSnapshot, signals, principal), null, null)
+                        new DeepSeekMessage("user", buildUserContent(
+                                request,
+                                selectedSkills,
+                                toolResults,
+                                traceId,
+                                plan,
+                                contextSnapshot,
+                                signals,
+                                principal,
+                                visualInputs,
+                                visualAnalysisResults
+                        ), null, null)
                 ),
                 stream,
                 properties.getAgentMaxTokens(),
@@ -623,6 +686,157 @@ public class AgentRuntime {
             );
             recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, "planner-" + UUID.randomUUID(), null, false, rootCauseMessage(exception), false, true);
             throw new DeepSeekApiException("Failed to call model API for agent planning", exception);
+        }
+    }
+
+    private List<VisualAnalysisResult> analyzeVisualInputsInBatches(
+            AgentChatRequest request,
+            RuntimeModel runtimeModel,
+            String apiKey,
+            String traceId,
+            String familyId,
+            String userId,
+            List<VisualAttachmentInput> visualInputs,
+            SseEmitter emitter
+    ) {
+        List<List<VisualAttachmentInput>> batches = visualAnalysisBatches(visualInputs);
+        if (batches.size() <= 1) return List.of();
+
+        sendStatusEvent(emitter, "analyzing_media", "正在分批分析 " + visualInputs.size() + " 张图片");
+        List<VisualAnalysisResult> results = new ArrayList<>();
+        for (int index = 0; index < batches.size(); index += 1) {
+            List<VisualAttachmentInput> batch = batches.get(index);
+            int batchNumber = index + 1;
+            sendStatusEvent(
+                    emitter,
+                    "analyzing_media",
+                    "正在分析第 " + batchNumber + "/" + batches.size() + " 批图片"
+            );
+            DeepSeekChatRequest analysisRequest = buildVisualAnalysisRequest(request, runtimeModel, traceId, batch, batchNumber, batches.size());
+            try {
+                DeepSeekChatResponse response = restClient(runtimeModel).post()
+                        .uri(runtimeModel.chatPath())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                        .body(analysisRequest)
+                        .retrieve()
+                        .body(DeepSeekChatResponse.class);
+                if (response == null || response.choices() == null || response.choices().isEmpty()) {
+                    throw new DeepSeekApiException(runtimeModel.id() + " visual analysis returned an empty response");
+                }
+                recordUsage(runtimeModel, "agent_visual_analysis", inputType(request), familyId, userId, response.id(), response.usage(), true, null, false, true);
+                String summary = Optional.ofNullable(response.choices().get(0).message())
+                        .map(DeepSeekMessage::contentAsText)
+                        .filter(StringUtils::hasText)
+                        .orElseThrow(() -> new DeepSeekApiException(runtimeModel.id() + " visual analysis did not include message content"));
+                results.add(new VisualAnalysisResult(
+                        batchNumber,
+                        batches.size(),
+                        batch.size(),
+                        batch.stream().map(VisualAttachmentInput::metadata).toList(),
+                        summary
+                ));
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "Agent visual batch analysis failed. traceId={}, provider={}, model={}, batch={}/{}, cause={}",
+                        traceId,
+                        runtimeModel.provider(),
+                        runtimeModel.id(),
+                        batchNumber,
+                        batches.size(),
+                        rootCauseMessage(exception),
+                        exception
+                );
+                recordUsage(runtimeModel, "agent_visual_analysis", inputType(request), familyId, userId, traceId + "-visual-" + batchNumber, null, false, rootCauseMessage(exception), false, true);
+                throw exception;
+            }
+        }
+        return results;
+    }
+
+    List<List<VisualAttachmentInput>> visualAnalysisBatches(List<VisualAttachmentInput> visualInputs) {
+        if (visualInputs == null || visualInputs.size() <= VISUAL_ANALYSIS_BATCH_SIZE) return List.of();
+        List<List<VisualAttachmentInput>> batches = new ArrayList<>();
+        for (int index = 0; index < visualInputs.size(); index += VISUAL_ANALYSIS_BATCH_SIZE) {
+            batches.add(visualInputs.subList(index, Math.min(index + VISUAL_ANALYSIS_BATCH_SIZE, visualInputs.size())));
+        }
+        return batches;
+    }
+
+    private DeepSeekChatRequest buildVisualAnalysisRequest(
+            AgentChatRequest request,
+            RuntimeModel runtimeModel,
+            String traceId,
+            List<VisualAttachmentInput> batch,
+            int batchNumber,
+            int totalBatches
+    ) {
+        return new DeepSeekChatRequest(
+                runtimeModel.apiModel(),
+                List.of(
+                        new DeepSeekMessage("system", """
+                                你是图片 OCR 和视觉理解助手。只能根据本次图片内容输出事实，不要联网，不要查询价格，不要编造看不清的字段。
+                                如果用户目标是记账或识别花费，重点提取商家、订单/支付状态、日期、金额、币种、商品、规格、数量、单价、优惠、运费和可能重复的截图线索。
+                                输出简洁中文，按素材逐条列出可见事实和不确定字段，最后给出本批结论。
+                                """),
+                        new DeepSeekMessage("user", buildVisualAnalysisContent(request, traceId, batch, batchNumber, totalBatches), null, null)
+                ),
+                false,
+                1200,
+                0.0,
+                null,
+                Map.of("type", "disabled"),
+                null,
+                null,
+                serviceTier(runtimeModel)
+        );
+    }
+
+    private Object buildVisualAnalysisContent(
+            AgentChatRequest request,
+            String traceId,
+            List<VisualAttachmentInput> batch,
+            int batchNumber,
+            int totalBatches
+    ) {
+        List<Object> content = new ArrayList<>();
+        content.add(Map.of("type", "text", "text", visualAnalysisPrompt(request, traceId, batch, batchNumber, totalBatches)));
+        batch.forEach((input) -> {
+            if ("video".equals(input.kind()) && input.dataUrl().startsWith("data:video/")) {
+                content.add(Map.of(
+                        "type", "video_url",
+                        "video_url", Map.of("url", input.dataUrl())
+                ));
+            } else {
+                content.add(Map.of(
+                        "type", "image_url",
+                        "image_url", Map.of("url", input.dataUrl())
+                ));
+            }
+        });
+        return content;
+    }
+
+    private String visualAnalysisPrompt(
+            AgentChatRequest request,
+            String traceId,
+            List<VisualAttachmentInput> batch,
+            int batchNumber,
+            int totalBatches
+    ) {
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("traceId", traceId);
+        context.put("batch", batchNumber + "/" + totalBatches);
+        context.put("userMessage", request.message());
+        context.put("attachmentOrder", batch.stream().map(VisualAttachmentInput::metadata).toList());
+        try {
+            return """
+                    请分析本批图片，不要输出最终聊天回复，也不要决定是否记账；只做视觉事实摘要。
+                    每个素材必须保留 attachment id，方便后续最终回复把金额和原图关联。
+                    上下文:
+                    %s
+                    """.formatted(objectMapper.writeValueAsString(context));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to build visual analysis prompt", exception);
         }
     }
 
@@ -1134,16 +1348,29 @@ public class AgentRuntime {
         }
     }
 
-    private void sendModelWorkStatus(SseEmitter emitter, List<VisualAttachmentInput> visualInputs) {
-        if (visualInputs == null || visualInputs.isEmpty()) {
-            Map<String, String> event = Map.of("message", "正在生成回复");
-            sendEvent(emitter, "retrieving_context", event);
-            sendEvent(emitter, "generating", event);
+    private void sendModelWorkStatus(
+            SseEmitter emitter,
+            List<VisualAttachmentInput> visualInputs,
+            List<VisualAnalysisResult> visualAnalysisResults
+    ) {
+        if (visualAnalysisResults != null && !visualAnalysisResults.isEmpty()) {
+            sendStatusEvent(emitter, "generating", "正在整理图片分析结果");
             return;
         }
-        Map<String, String> event = Map.of("message", analyzingMediaMessage(visualInputs));
-        sendEvent(emitter, "retrieving_context", event);
-        sendEvent(emitter, "analyzing_media", event);
+        if (visualInputs == null || visualInputs.isEmpty()) {
+            sendStatusEvent(emitter, "generating", "正在生成回复");
+            return;
+        }
+        sendStatusEvent(emitter, "analyzing_media", analyzingMediaMessage(visualInputs));
+    }
+
+    private void sendStatusEvent(SseEmitter emitter, String name, String message) {
+        if (emitter == null) return;
+        Map<String, String> event = Map.of("message", message);
+        if (!"retrieving_context".equals(name)) {
+            sendEvent(emitter, "retrieving_context", event);
+        }
+        sendEvent(emitter, name, event);
     }
 
     private String analyzingMediaMessage(List<VisualAttachmentInput> visualInputs) {
@@ -1170,7 +1397,7 @@ public class AgentRuntime {
         String message = rootCauseMessage(exception);
         boolean timedOut = message != null && message.matches("(?is).*(timeout|timed out|超时).*");
         if (timedOut && ("image".equals(inputType) || "video".equals(inputType))) {
-            return "图片分析超时了：这次素材较多，模型没有及时返回。请稍后重试；如果仍失败，可以先分批发送图片。";
+            return "图片分析超时了：我已尝试分批处理，但模型没有及时返回。请稍后重试；如果仍失败，可以先减少图片数量或分开发送。";
         }
         if (timedOut) {
             return "AI 响应超时了：模型没有及时返回，请稍后重试。";
@@ -1420,7 +1647,9 @@ public class AgentRuntime {
             AgentPlan plan,
             AgentContextSnapshot contextSnapshot,
             RecordSignals signals,
-            AuthPrincipal principal
+            AuthPrincipal principal,
+            List<VisualAnalysisResult> visualAnalysisResults,
+            boolean visualInputsAttachedToFinalRequest
     ) {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("traceId", traceId);
@@ -1442,6 +1671,14 @@ public class AgentRuntime {
         context.put("conversationSummary", contextSnapshot.conversationSummary());
         context.put("recordContext", contextSnapshot.recordContext());
         context.put("attachments", attachmentSummaries(request.attachments()));
+        context.put("visualInputsAttachedToFinalRequest", visualInputsAttachedToFinalRequest);
+        if (visualAnalysisResults != null && !visualAnalysisResults.isEmpty()) {
+            context.put("visualAnalysisResults", visualAnalysisResults);
+            context.put(
+                    "visualAnalysisUsageRule",
+                    "图片较多时已由前置模型分批完成 OCR/视觉摘要；最终回复应优先使用 visualAnalysisResults，不要重新要求用户确认已经识别到的金额。若多张图属于同一订单或支付链路，注意去重并保留相关 attachment id。"
+            );
+        }
         context.put("userMessage", request.message());
 
         try {
@@ -1459,16 +1696,27 @@ public class AgentRuntime {
             AgentChatRequest request,
             List<Skill> selectedSkills,
             List<AgentToolResult> toolResults,
-            RuntimeModel runtimeModel,
             String traceId,
             AgentPlan plan,
             AgentContextSnapshot contextSnapshot,
             RecordSignals signals,
-            AuthPrincipal principal
+            AuthPrincipal principal,
+            List<VisualAttachmentInput> visualInputs,
+            List<VisualAnalysisResult> visualAnalysisResults
     ) {
-        String prompt = buildUserPrompt(request, selectedSkills, toolResults, traceId, plan, contextSnapshot, signals, principal);
-        List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(request.attachments(), runtimeModel);
-        if (visualInputs.isEmpty()) return prompt;
+        String prompt = buildUserPrompt(
+                request,
+                selectedSkills,
+                toolResults,
+                traceId,
+                plan,
+                contextSnapshot,
+                signals,
+                principal,
+                visualAnalysisResults,
+                visualInputs != null && !visualInputs.isEmpty()
+        );
+        if (visualInputs == null || visualInputs.isEmpty()) return prompt;
 
         List<Object> content = new ArrayList<>();
         content.add(Map.of("type", "text", "text", prompt));
@@ -1517,7 +1765,7 @@ public class AgentRuntime {
     private List<VisualAttachmentInput> visualAttachmentInputs(List<AgentAttachment> attachments, RuntimeModel runtimeModel) {
         if (attachments == null || attachments.isEmpty()) return List.of();
         return attachments.stream()
-                .map((attachment) -> new VisualAttachmentInput(attachment.kind(), attachment.dataUrl()))
+                .map((attachment) -> new VisualAttachmentInput(attachment.id(), attachment.name(), attachment.kind(), attachment.dataUrl()))
                 .filter((input) ->
                         StringUtils.hasText(input.dataUrl())
                                 && (
@@ -1630,8 +1878,26 @@ public class AgentRuntime {
     }
 
     private record VisualAttachmentInput(
+            String id,
+            String name,
             String kind,
             String dataUrl
+    ) {
+        Map<String, String> metadata() {
+            Map<String, String> values = new LinkedHashMap<>();
+            if (StringUtils.hasText(id)) values.put("id", id);
+            if (StringUtils.hasText(name)) values.put("name", name);
+            if (StringUtils.hasText(kind)) values.put("kind", kind);
+            return values;
+        }
+    }
+
+    private record VisualAnalysisResult(
+            int batchIndex,
+            int batchCount,
+            int visualCount,
+            List<Map<String, String>> attachments,
+            String summary
     ) {
     }
 }
