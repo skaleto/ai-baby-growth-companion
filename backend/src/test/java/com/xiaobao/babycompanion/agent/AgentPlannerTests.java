@@ -111,6 +111,38 @@ class AgentPlannerTests {
         assertThat(plan.toolRequests()).isEmpty();
     }
 
+    @Test
+    void parsesPlannerSelectedExpenseSkillForPreviousImageRetry() {
+        AgentChatRequest request = previousImageRetryRequest("把刚才我上传的图片对应的花费再记录一下");
+        RecordSignals signals = extractor.extract(request.message());
+
+        AgentPlan plan = planner.parse(
+                """
+                        {"intent":"record","topics":["expense"],"targetDates":[],"contextNeeds":["profile","careHistory"],"toolRequests":[],"riskHints":["none"],"skillRequests":[{"skillId":"expense-recognition","mode":"execute","reason":"用户引用上一轮支出图片并要求入账"}]}
+                        """,
+                request,
+                signals
+        );
+
+        assertThat(plan.skillRequests()).hasSize(1);
+        assertThat(plan.skillRequests().get(0).skillId()).isEqualTo("expense-recognition");
+        assertThat(plan.skillRequests().get(0).mode()).isEqualTo(SkillMode.EXECUTE);
+        assertThat(plan.toolRequests()).isEmpty();
+    }
+
+    @Test
+    void heuristicFallbackCanRequestExpenseSkillForRecentImageRetryWithoutCurrentAttachments() {
+        AgentChatRequest request = previousImageRetryRequest("把刚才我上传的图片对应的花费再记录一下");
+
+        AgentPlan plan = planner.heuristic(request, extractor.extract(request.message()));
+
+        assertThat(plan.skillRequests()).anySatisfy((entry) -> {
+            assertThat(entry.skillId()).isEqualTo("expense-recognition");
+            assertThat(entry.mode()).isEqualTo(SkillMode.EXECUTE);
+        });
+        assertThat(plan.toolRequests()).isEmpty();
+    }
+
     private AgentChatRequest expenseImageRequest(String message) {
         return new AgentChatRequest(
                 message,
@@ -120,6 +152,27 @@ class AgentPlannerTests {
                 List.of(),
                 List.of(),
                 List.of(new AgentAttachment("attachment-1", "receipt.jpg", "image", null, "data:image/jpeg;base64,abc")),
+                null,
+                false
+        );
+    }
+
+    private AgentChatRequest previousImageRetryRequest(String message) {
+        return new AgentChatRequest(
+                message,
+                null,
+                null,
+                List.of(new AgentChatMessage(
+                        "msg-prior",
+                        "parent",
+                        "这几张购物截图帮我看看宝宝花费",
+                        "2026-05-16T19:58:00",
+                        List.of(new AgentAttachment("attachment-prior-1", "receipt.jpg", "image", null, null)),
+                        List.of()
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
                 null,
                 false
         );

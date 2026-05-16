@@ -79,6 +79,27 @@ class ExpenseRecognitionSkillTests {
         assertThat(result.traceSummary().errorCode()).isEqualTo("timeout");
     }
 
+    @Test
+    void categoryOnlyUncertaintyDoesNotBlockCompleteExpenses() {
+        ExpenseRecognitionInput input = input(
+                "把月子鞋、摇奶器这些花费记到账本",
+                List.of(image("attachment-1")),
+                4
+        );
+
+        ExpenseRecognitionResult result = skill.execute(
+                input,
+                (request, batchNumber, batchCount) -> new ExpenseRecognitionModelResponse("req-1", "doubao", categoryUnclearJson(), null),
+                null
+        );
+
+        assertThat(result.status()).isEqualTo("complete");
+        assertThat(result.clarifications()).isEmpty();
+        assertThat(result.effectCandidates()).hasSize(2);
+        assertThat(result.effectCandidates().get(0).payload().path("category").asText()).isEqualTo("clothing");
+        assertThat(result.effectCandidates().get(1).payload().path("category").asText()).isEqualTo("daily");
+    }
+
     private ExpenseRecognitionInput input(String message, List<AgentAttachment> attachments, int batchSize) {
         AgentRuntimeProperties.ModelProfile profile = new AgentRuntimeProperties.ModelProfile();
         profile.setBatchSize(batchSize);
@@ -137,6 +158,36 @@ class ExpenseRecognitionSkillTests {
                   "expenses": [],
                   "clarifications": [],
                   "evidence": []
+                }
+                """;
+    }
+
+    private String categoryUnclearJson() {
+        return """
+                {
+                  "status": "needs_clarification",
+                  "aiTextDraft": "需要确认分类",
+                  "expenses": [{
+                    "title": "月子鞋",
+                    "amount": 59.9,
+                    "currency": "CNY",
+                    "category": "unknown",
+                    "date": "2026-05-16",
+                    "merchant": "淘宝",
+                    "note": "截图显示月子鞋实付款 59.9 元",
+                    "attachmentIds": ["attachment-1"]
+                  }, {
+                    "title": "摇奶器",
+                    "amount": 129,
+                    "currency": "CNY",
+                    "category": "",
+                    "date": "2026-05-16",
+                    "merchant": "京东",
+                    "note": "截图显示摇奶器实付款 129 元",
+                    "attachmentIds": ["attachment-1"]
+                  }],
+                  "clarifications": ["请确认月子鞋和摇奶器分别属于什么分类？"],
+                  "evidence": [{"attachmentId":"attachment-1","visibleFacts":["月子鞋 59.9 元","摇奶器 129 元"],"confidence":0.9}]
                 }
                 """;
     }

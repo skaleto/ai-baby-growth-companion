@@ -89,9 +89,12 @@
         "2026-05-16 OTA 0.1.0-20260516194139 published after expense Agent auto-save interaction contract; cloud health, OTA check, signed OSS checksum, and up-to-date probes passed.",
         "2026-05-16 backend-only Aliyun redeploy completed with SYNC_DATA=0 after deterministic persisted-expense fallback handling; /api/health returned ok and OTA up-to-date probe for 0.1.0-20260516194139 returned updateAvailable=false.",
         "2026-05-16 mvn -f backend/pom.xml -Dtest=AgentRuntimeTests,AppStateControllerTests,AgentBenchmarkTests test passed: 65 tests, 0 failures after fixing stream-thread AUTH_REQUIRED during auto-saved expense persistence.",
-        "2026-05-16 backend-only Aliyun redeploy completed with SYNC_DATA=0 after fixing stream-thread explicit principal handling; /api/health returned ok and post-start journal probe showed no AUTH_REQUIRED / Agent stream failed before model stream entries."
+        "2026-05-16 backend-only Aliyun redeploy completed with SYNC_DATA=0 after fixing stream-thread explicit principal handling; /api/health returned ok and post-start journal probe showed no AUTH_REQUIRED / Agent stream failed before model stream entries.",
+        "2026-05-16 mvn -f backend/pom.xml test passed: 179 tests, 0 failures after standardizing planner-selected skillRequests, backend previous-attachment hydration, and category-only non-blocking expense recognition.",
+        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after adding previous-image retry without frontend forwarding and category-only clarification coverage.",
+        "2026-05-16 OTA 0.1.0-20260516203136 published after standardizing Agent Skill Runtime; cloud health, OTA check, signed OSS checksum, and up-to-date probes passed."
       ],
-      "notes": "No frontend bundle assets changed, so no OTA was published for this backend-only release. The skill uses the configured expense-recognition model profile, or falls back to Doubao Pro when the final composer model has no vision support."
+      "notes": "The skill uses the configured expense-recognition model profile, or falls back to Doubao Pro when the final composer model has no vision support. Latest runtime contract standardization includes both backend changes and OTA because frontend attachment forwarding was removed."
     },
     {
       "id": "frontend-001",
@@ -117,7 +120,8 @@
         "2026-05-16 npm run verify:frontend passed after adding previous expense image retry forwarding.",
         "2026-05-16 npm run verify:frontend passed after backend expense skill status integration; no frontend bundle changes were required.",
         "2026-05-16 npm run verify:frontend passed after making AI pending expense fallback ids unique in frontend state normalization.",
-        "2026-05-16 npm run verify:frontend passed after adding auto-saved expense ledger refresh and pending-effect confirm saving state."
+        "2026-05-16 npm run verify:frontend passed after adding auto-saved expense ledger refresh and pending-effect confirm saving state.",
+        "2026-05-16 npm run verify:frontend passed after removing frontend regex-based previous expense attachment forwarding and relying on backend skill runtime hydration."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -145,7 +149,8 @@
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for ledger id collision and duplicate expense fixes; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516173716.",
         "2026-05-16 after explicit user approval, production DB was backed up and hospitalization expense expense-restored-hospital-mp2lqef1 was restored with original note and attachmentIds[0]=attachment-mp2lomag-chc0xt.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for expense Agent auto-save interaction contract; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516194139.",
-        "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for stream-thread AUTH_REQUIRED fix in expense auto-save persistence; /api/health returned ok and post-start journal probe showed no same-class AUTH_REQUIRED entries."
+        "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for stream-thread AUTH_REQUIRED fix in expense auto-save persistence; /api/health returned ok and post-start journal probe showed no same-class AUTH_REQUIRED entries.",
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent Skill Runtime contract standardization; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516203136."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },
@@ -173,7 +178,8 @@
         "2026-05-16 OTA 0.1.0-20260516145942 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2639905 bytes and checksum 9f4e5454bd1d9c5e842a69e8981f975b5e757a7d5b339a0678b36a45815d9a98.",
         "2026-05-16 OTA 0.1.0-20260516152314 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640317 bytes and checksum 455a69da31438dc9f37aa6866ab7e8574d668b7b4540ee6e061ef15c41502d44.",
         "2026-05-16 OTA 0.1.0-20260516173716 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640325 bytes and checksum c8440860c0dc6a45c20b61737a647efd77a89a6e21d3fca3ad941adcfa4ad329.",
-        "2026-05-16 OTA 0.1.0-20260516194139 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640408 bytes and checksum 2999bfa53dc6806f5262b9fcadd39aefeb4406e6055c876552d0b75bb16c08d2."
+        "2026-05-16 OTA 0.1.0-20260516194139 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640408 bytes and checksum 2999bfa53dc6806f5262b9fcadd39aefeb4406e6055c876552d0b75bb16c08d2.",
+        "2026-05-16 OTA 0.1.0-20260516203136 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640023 bytes and checksum 6a2ca6559f1441ad8444de3e084b2fe0c802abb97a289fa4d2a559644862bcfc."
       ],
       "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
     },

@@ -43,6 +43,26 @@ class SkillRouterTests {
     }
 
     @Test
+    void routesPlannerSelectedExpenseSkillWithoutCurrentAttachments() {
+        AgentChatRequest request = request("把刚才我上传的图片对应的花费再记录一下", List.of());
+        RecordSignals signals = extractor.extract(request.message());
+        AgentPlan plan = new AgentPlan(
+                "record",
+                List.of("expense"),
+                List.of(),
+                List.of("profile"),
+                List.of(),
+                List.of("none"),
+                null,
+                List.of(new SkillPlanEntry("expense-recognition", SkillMode.EXECUTE, "模型选择执行上一轮支出图片识别"))
+        );
+
+        SkillPlan skillPlan = router.plan(request, plan, signals);
+
+        assertThat(skillPlan.executes("expense-recognition")).isTrue();
+    }
+
+    @Test
     void doesNotTreatKnowledgeDisclosureAsExecutedWorker() {
         AgentChatRequest request = request("宝宝今天喝奶比昨天少，正常吗", List.of());
         RecordSignals signals = extractor.extract(request.message());

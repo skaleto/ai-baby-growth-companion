@@ -25,7 +25,19 @@ public class SkillRouter {
             RecordSignals signals
     ) {
         List<SkillPlanEntry> entries = new ArrayList<>();
-        if (shouldExecuteExpenseRecognition(request, agentPlan, signals)) {
+        List<SkillPlanEntry> requestedSkills = agentPlan == null ? List.of() : agentPlan.skillRequests();
+        requestedSkills.stream()
+                .filter((entry) -> entry != null
+                        && EXPENSE_RECOGNITION_SKILL_ID.equals(entry.skillId())
+                        && SkillMode.EXECUTE.equals(entry.mode()))
+                .findFirst()
+                .ifPresent((entry) -> entries.add(new SkillPlanEntry(
+                        EXPENSE_RECOGNITION_SKILL_ID,
+                        SkillMode.EXECUTE,
+                        StringUtils.hasText(entry.reason()) ? entry.reason() : "planner 选择执行支出识别 skill"
+                )));
+        if (entries.stream().noneMatch((entry) -> EXPENSE_RECOGNITION_SKILL_ID.equals(entry.skillId()))
+                && shouldExecuteExpenseRecognition(request, agentPlan, signals)) {
             entries.add(new SkillPlanEntry(
                     EXPENSE_RECOGNITION_SKILL_ID,
                     SkillMode.EXECUTE,

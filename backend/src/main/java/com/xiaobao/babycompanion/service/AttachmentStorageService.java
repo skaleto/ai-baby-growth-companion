@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
@@ -37,6 +38,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.xiaobao.babycompanion.auth.AuthPrincipal;
 import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.config.AppStorageProperties;
+import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
 import com.xiaobao.babycompanion.dto.app.AttachmentDto;
 import com.xiaobao.babycompanion.dto.app.UploadCompleteRequest;
 import com.xiaobao.babycompanion.dto.app.UploadPresignRequest;
@@ -348,6 +350,23 @@ public class AttachmentStorageService {
         if (record == null) return null;
         ensureThumbnail(record);
         return toDto(record);
+    }
+
+    public AgentAttachment loadAgentAttachmentDataUrl(String id, String familyId) {
+        if (!StringUtils.hasText(id) || !StringUtils.hasText(familyId)) return null;
+        AttachmentRecord record = attachmentService.getOne(new QueryWrapper<AttachmentRecord>()
+                .eq("id", id)
+                .eq("family_id", familyId), false);
+        if (record == null || !StringUtils.hasText(record.getFilePath())) return null;
+        try {
+            byte[] bytes = readStoredObject(record.getFilePath());
+            String mimeType = StringUtils.hasText(record.getMimeType()) ? record.getMimeType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+            String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+            return new AgentAttachment(record.getId(), record.getName(), record.getKind(), record.getPublicUrl(), dataUrl);
+        } catch (Exception exception) {
+            LOGGER.warn("Failed to load attachment {} for agent input: {}", id, exception.getMessage());
+            return null;
+        }
     }
 
     private AttachmentDto saveBytes(

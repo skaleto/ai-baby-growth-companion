@@ -13,6 +13,45 @@
 
 ## Session Log
 
+### Session 2026-05-16 Agent Skill Runtime Contract And Previous Image Retry
+
+- Goal: 回应“不要靠前端正则判断刚才图片”的架构要求，把 Agent 能力统一到“模型选择 skill、后端 runtime 执行 skill 并做结构化兜底”的策略，并修复上一轮支出图片重试路径。
+- Completed:
+  - 新增 OpenSpec change `standardize-agent-skill-runtime-contract`，沉淀 Agent skill runtime contract、上一轮媒体引用、支出识别路径和开发验证要求。
+  - `AgentPlanner` 支持输出 `skillRequests`，并在 prompt 中要求上一轮/当前支出图片记录请求选择 `expense-recognition` execute。
+  - `SkillRouter` 优先执行 planner 选择的 allowlisted executable skill，保留后端 deterministic fallback 作为安全兜底。
+  - 前端删除“刚才/上面/之前...花费...再记录”正则转发上一轮附件逻辑；前端只提交当前附件和 recentMessages 附件元数据。
+  - `AgentRuntime` 在 `expense-recognition` 被选中且当前请求无图片字节时，按 familyId 从后端附件存储加载最近消息中的视觉附件再执行 skill。
+  - `AttachmentStorageService` 增加按附件 id + familyId 读取 dataUrl 的 runtime 入口，避免跨家庭读取。
+  - 支出识别分类变成非阻断字段：`月子鞋/月子服` 推断为 `clothing`，`摇奶器/恒温壶/暖奶器/奶瓶/洗衣机` 等推断为 `daily`，不确定用 `other`。
+  - skill 未产出完整候选时，runtime 生成 skill-sourced clarification，防止最终模型绕过 skill 平行制造账本候选。
+  - 更新 `docs/agent-detailed-design.md` 说明 planner -> skill runtime -> effect/persistence 的统一策略。
+  - 发布 OTA `0.1.0-20260516203136`，消息 `统一Agent Skill Runtime并修复支出重试`，并部署后端到 Aliyun。
+- Verification run:
+  - `bash harness/init.sh`
+  - `mvn -f backend/pom.xml -Dtest=AgentPlannerTests,SkillRouterTests,AgentRuntimeTests,ExpenseRecognitionSkillTests,AgentBenchmarkTests test`
+  - `openspec validate standardize-agent-skill-runtime-contract --strict`
+  - `npm run test:agent-benchmark`
+  - `npm run build`
+  - `npm run verify:frontend`
+  - `mvn -f backend/pom.xml test`
+  - `MOBILE_UPDATE_MESSAGE='统一Agent Skill Runtime并修复支出重试' MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `MOBILE_UPDATE_OSS_SSH_TARGET=ai-baby-aliyun SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun scripts/upload-mobile-update-oss.sh`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`, OTA check, signed OSS checksum probe, and up-to-date probe.
+- Evidence:
+  - Targeted backend tests passed: 60 tests, 0 failures.
+  - Full backend tests passed: 179 tests, 0 failures.
+  - Agent benchmark passed: 23 tests, 0 failures, including previous-image retry without frontend attachment forwarding and category-only non-blocking coverage.
+  - Frontend smoke passed across desktop and six mobile viewports.
+  - OpenSpec change `standardize-agent-skill-runtime-contract` is valid and all tasks are complete.
+  - Cloud health returned `ok`.
+  - Cloud OTA check returns version `0.1.0-20260516203136`; downloaded bundle size was `2640023` bytes and SHA-256 matched manifest checksum `6a2ca6559f1441ad8444de3e084b2fe0c802abb97a289fa4d2a559644862bcfc`.
+  - Up-to-date probe using `currentBundleVersion=0.1.0-20260516203136` returned `updateAvailable=false`.
+- Known risks:
+  - Planner model selection is still probabilistic. Backend fallback covers common previous-image retry wording when recent visual metadata exists, but exotic references may still need future benchmark expansion.
+  - Real recognition quality still depends on whether the referenced screenshots remain accessible and contain readable actual payment evidence.
+
 ### Session 2026-05-16 Cloud AI Temporary Unavailable Root Cause Fix
 
 - Goal: 排查云端为什么在 13777892890 多图支出识别后提示“AI服务暂时不可用”，并修复真实线上故障点。

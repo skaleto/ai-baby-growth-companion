@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLog;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLogEvent;
+import com.xiaobao.babycompanion.dto.agent.AgentChatMessage;
 import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentEffectDecision;
@@ -316,6 +317,36 @@ class AgentBenchmarkTests {
     }
 
     @Test
+    void benchmarkPreviousImageRetryDoesNotDependOnFrontendAttachmentForwarding() {
+        AgentChatRequest request = previousExpenseImageRetryRequest("把刚才我上传的图片对应的花费再记录一下");
+        AgentPlan plan = planner.heuristic(request, extractor.extract(request.message()));
+        SkillRouter router = new SkillRouter(skillDisclosureService);
+
+        SkillPlan skillPlan = router.plan(request, plan, extractor.extract(request.message()));
+
+        assertThat(request.attachments()).isEmpty();
+        assertThat(plan.skillRequests()).extracting(SkillPlanEntry::skillId).contains("expense-recognition");
+        assertThat(skillPlan.executes("expense-recognition")).isTrue();
+    }
+
+    @Test
+    void benchmarkExpenseSkillDoesNotAskCategoryOnlyClarification() {
+        AgentChatRequest request = expenseImageRequest("把月子鞋和摇奶器这些花费记到账本", List.of("attachment-1"));
+        ExpenseRecognitionSkill skill = new ExpenseRecognitionSkill(objectMapper);
+
+        ExpenseRecognitionResult result = skill.execute(
+                expenseInput(request, 4),
+                (modelRequest, batchNumber, batchCount) -> new ExpenseRecognitionModelResponse("req-1", "doubao", categoryFallbackExpenseJson(), null),
+                null
+        );
+
+        assertThat(result.status()).isEqualTo("complete");
+        assertThat(result.clarifications()).isEmpty();
+        assertThat(result.effectCandidates()).extracting((decision) -> decision.payload().path("category").asText())
+                .containsExactly("clothing", "daily");
+    }
+
+    @Test
     void benchmarkRecognizedExpenseAmountDoesNotBecomeRedundantAmountAsk() {
         String message = "给宝宝买尿裤记账";
         ObjectNode payload = objectMapper.createObjectNode();
@@ -517,6 +548,27 @@ class AgentBenchmarkTests {
         );
     }
 
+    private AgentChatRequest previousExpenseImageRetryRequest(String message) {
+        return new AgentChatRequest(
+                message,
+                null,
+                null,
+                List.of(new AgentChatMessage(
+                        "msg-prior",
+                        "parent",
+                        "刚才这些宝宝用品花费帮我识别一下",
+                        "2026-05-16T20:01:00",
+                        List.of(new AgentAttachment("attachment-prior-1", "receipt.jpg", "image", "/api/uploads/attachment-prior-1", null)),
+                        List.of()
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false
+        );
+    }
+
     private ExpenseRecognitionInput expenseInput(AgentChatRequest request, int batchSize) {
         com.xiaobao.babycompanion.config.AgentRuntimeProperties.ModelProfile profile =
                 new com.xiaobao.babycompanion.config.AgentRuntimeProperties.ModelProfile();
@@ -558,6 +610,34 @@ class AgentBenchmarkTests {
                   "evidence": [{"attachmentId":"%s","visibleFacts":["实付款"],"confidence":0.9}]
                 }
                 """.formatted(amount, attachmentId, attachmentId);
+    }
+
+    private String categoryFallbackExpenseJson() {
+        return """
+                {
+                  "status": "needs_clarification",
+                  "aiTextDraft": "需要确认分类",
+                  "expenses": [{
+                    "title": "月子鞋",
+                    "amount": 59.9,
+                    "currency": "CNY",
+                    "category": "unknown",
+                    "date": "2026-05-13",
+                    "attachmentIds": ["attachment-1"],
+                    "note": "截图显示月子鞋实付款"
+                  }, {
+                    "title": "摇奶器",
+                    "amount": 129,
+                    "currency": "CNY",
+                    "category": "",
+                    "date": "2026-05-13",
+                    "attachmentIds": ["attachment-1"],
+                    "note": "截图显示摇奶器实付款"
+                  }],
+                  "clarifications": ["请确认月子鞋和摇奶器分别属于什么分类？"],
+                  "evidence": [{"attachmentId":"attachment-1","visibleFacts":["实付款"],"confidence":0.9}]
+                }
+                """;
     }
 
     private void assertUserFacingTextIsNatural(AgentEffectDecision decision) {

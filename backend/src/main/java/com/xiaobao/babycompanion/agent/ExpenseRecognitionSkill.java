@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -23,6 +24,18 @@ public class ExpenseRecognitionSkill {
 
     static final String SKILL_ID = SkillRouter.EXPENSE_RECOGNITION_SKILL_ID;
     private static final int DEFAULT_BATCH_SIZE = 4;
+    private static final Set<String> EXPENSE_CATEGORIES = Set.of(
+            "formula",
+            "diaper",
+            "food",
+            "clothing",
+            "toy",
+            "health",
+            "vaccine",
+            "daily",
+            "education",
+            "other"
+    );
 
     private final ObjectMapper objectMapper;
 
@@ -109,7 +122,9 @@ public class ExpenseRecognitionSkill {
         List<AgentEffectDecision> candidates = new ArrayList<>();
         for (BatchResult result : batchResults) {
             evidence.addAll(result.evidence());
-            clarifications.addAll(result.clarifications());
+            clarifications.addAll(result.clarifications().stream()
+                    .filter(this::isActionableClarification)
+                    .toList());
             for (JsonNode expense : result.expenses()) {
                 AgentEffectDecision candidate = effectCandidate(expense, input, result.evidence());
                 if (candidate != null) {
@@ -188,7 +203,8 @@ public class ExpenseRecognitionSkill {
         return """
                 你是“小宝记”的支出图片识别 skill worker。你只做订单、小票、收据、发票、付款截图的事实抽取。
                 禁止联网搜索、禁止查询参考价格、禁止猜测不可读字段、禁止把标价当作实际支付金额。
-                只有图片或用户文字里能看到实际支付金额、宝宝相关用途/商品、分类、日期和证据时，才输出可记账 expenses。
+                只有图片或用户文字里能看到实际支付金额、宝宝相关用途/商品、日期和证据时，才输出可记账 expenses。
+                分类不确定时必须自己按商品名/用途推断，仍不确定就填 other；不要因为分类向用户澄清。
                 输出必须是严格 JSON 对象，不要输出 Markdown。schema:
                 {
                   "status": "complete|needs_clarification|no_recognizable_amount",
@@ -221,7 +237,7 @@ public class ExpenseRecognitionSkill {
         context.put("userMessage", input.request().message());
         context.put("targetDates", input.signals() == null ? List.of() : input.signals().targetDates());
         context.put("attachmentOrder", batch.stream().map(VisualAttachmentInput::metadata).toList());
-        context.put("rule", "每个识别字段都必须来自图片或用户文字；如果金额、用途、分类或日期缺失，返回 clarification，不要造完整账本。");
+        context.put("rule", "每个识别字段都必须来自图片或用户文字；如果金额、用途或日期缺失，返回 clarification，不要造完整账本。分类不作为阻断条件：月子鞋/月子服归 clothing，摇奶器/恒温壶/暖奶器/奶瓶/洗衣机等宝宝日用设备归 daily，仍不确定填 other，不要追问分类。");
         try {
             return "请识别本批支出图片并返回 JSON。\n上下文:\n%s".formatted(objectMapper.writeValueAsString(context));
         } catch (JsonProcessingException exception) {
@@ -262,13 +278,12 @@ public class ExpenseRecognitionSkill {
         if (expense == null || !expense.isObject()) return null;
         String title = text(expense, "title");
         Double amount = positiveDouble(expense, "amount");
-        String category = text(expense, "category");
         String date = text(expense, "date");
         if (!StringUtils.hasText(date) && input.signals() != null && !input.signals().targetDates().isEmpty()) {
             date = input.signals().targetDates().get(0);
         }
-        if (!StringUtils.hasText(category)) category = categoryFromText(title + " " + text(expense, "note"));
-        if (!StringUtils.hasText(title) || amount == null || !StringUtils.hasText(category) || !StringUtils.hasText(date)) {
+        String category = normalizedCategory(text(expense, "category"), title + " " + text(expense, "note"));
+        if (!StringUtils.hasText(title) || amount == null || !StringUtils.hasText(date)) {
             return null;
         }
 
@@ -468,6 +483,18 @@ public class ExpenseRecognitionSkill {
         if (text.matches(".*(摇奶器|恒温壶|奶瓶|奶瓶刷|消毒柜|消毒器|温奶器|吸奶器|湿巾|棉柔巾|洗护|沐浴|润肤|日用|洗衣机).*")) return "daily";
         if (text.matches(".*(早教|课程|摄影|游泳|娱乐).*")) return "education";
         return "other";
+    }
+
+    private String normalizedCategory(String category, String fallbackText) {
+        if (StringUtils.hasText(category) && EXPENSE_CATEGORIES.contains(category)) return category;
+        return categoryFromText(fallbackText);
+    }
+
+    private boolean isActionableClarification(String clarification) {
+        if (!StringUtils.hasText(clarification)) return false;
+        boolean categoryOnly = clarification.matches(".*(分类|类别|归类).*")
+                && !clarification.matches(".*(金额|实付|付款|支付|日期|时间|哪天|商品|用途|看不清|不清晰|截图).*");
+        return !categoryOnly;
     }
 
     private String errorCode(RuntimeException exception) {

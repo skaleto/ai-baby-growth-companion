@@ -45,6 +45,7 @@ import com.xiaobao.babycompanion.exception.AgentResponseParseException;
 import com.xiaobao.babycompanion.exception.DeepSeekApiException;
 import com.xiaobao.babycompanion.persistence.entity.AgentRunRecord;
 import com.xiaobao.babycompanion.service.AppStateService;
+import com.xiaobao.babycompanion.service.AttachmentStorageService;
 import com.xiaobao.babycompanion.service.AiUsageLogService;
 import com.xiaobao.babycompanion.service.ExpensePersistenceResult;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
@@ -86,6 +87,7 @@ public class AgentRuntime {
     private final AgentPlanner agentPlanner;
     private final AgentContextService agentContextService;
     private final AppStateService appStateService;
+    private final AttachmentStorageService attachmentStorageService;
     private final AiUsageLogService aiUsageLogService;
     private final RecordSignalExtractor recordSignalExtractor;
     private final EffectPolicy effectPolicy;
@@ -110,6 +112,7 @@ public class AgentRuntime {
             AgentPlanner agentPlanner,
             AgentContextService agentContextService,
             AppStateService appStateService,
+            AttachmentStorageService attachmentStorageService,
             RecordSignalExtractor recordSignalExtractor,
             EffectPolicy effectPolicy,
             CurrentUser currentUser,
@@ -125,6 +128,7 @@ public class AgentRuntime {
                 agentPlanner,
                 agentContextService,
                 appStateService,
+                attachmentStorageService,
                 recordSignalExtractor,
                 effectPolicy,
                 currentUser,
@@ -150,6 +154,7 @@ public class AgentRuntime {
             AgentPlanner agentPlanner,
             AgentContextService agentContextService,
             AppStateService appStateService,
+            AttachmentStorageService attachmentStorageService,
             RecordSignalExtractor recordSignalExtractor,
             EffectPolicy effectPolicy,
             CurrentUser currentUser,
@@ -172,6 +177,7 @@ public class AgentRuntime {
         this.agentPlanner = agentPlanner;
         this.agentContextService = agentContextService;
         this.appStateService = appStateService;
+        this.attachmentStorageService = attachmentStorageService;
         this.aiUsageLogService = aiUsageLogService;
         this.recordSignalExtractor = recordSignalExtractor;
         this.effectPolicy = effectPolicy;
@@ -244,8 +250,10 @@ public class AgentRuntime {
             return profileBoundary;
         }
         RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
-        List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(
-                request.attachments(),
+        List<VisualAttachmentInput> visualInputs = visualInputsForSkillExecution(
+                request,
+                skillPlan,
+                familyId,
                 skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID) ? expenseRuntimeModel : runtimeModel
         );
         ExpenseRecognitionResult expenseRecognitionResult = executeExpenseRecognition(
@@ -622,8 +630,10 @@ public class AgentRuntime {
                 return;
             }
             RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
-            List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(
-                    request.attachments(),
+            List<VisualAttachmentInput> visualInputs = visualInputsForSkillExecution(
+                    request,
+                    skillPlan,
+                    familyId,
                     skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID) ? expenseRuntimeModel : runtimeModel
             );
             ExpenseRecognitionResult expenseRecognitionResult = executeExpenseRecognition(
@@ -2266,6 +2276,45 @@ public class AgentRuntime {
                 .toList();
     }
 
+    List<VisualAttachmentInput> visualInputsForSkillExecution(
+            AgentChatRequest request,
+            SkillPlan skillPlan,
+            String familyId,
+            RuntimeModel runtimeModel
+    ) {
+        List<VisualAttachmentInput> current = visualAttachmentInputs(request.attachments(), runtimeModel);
+        if (!current.isEmpty()) return current;
+        if (skillPlan == null || !skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID)) return List.of();
+        List<AgentAttachment> referenced = referencedRecentVisualAttachments(request, familyId);
+        return visualAttachmentInputs(referenced, runtimeModel);
+    }
+
+    private List<AgentAttachment> referencedRecentVisualAttachments(AgentChatRequest request, String familyId) {
+        if (attachmentStorageService == null || request == null || request.recentMessages() == null) return List.of();
+        List<AgentAttachment> fallback = List.of();
+        for (int messageIndex = request.recentMessages().size() - 1; messageIndex >= 0; messageIndex -= 1) {
+            var message = request.recentMessages().get(messageIndex);
+            if (message == null || !"parent".equals(message.role()) || message.attachments() == null || message.attachments().isEmpty()) {
+                continue;
+            }
+            List<AgentAttachment> visual = message.attachments().stream()
+                    .filter((attachment) -> attachment != null && List.of("image", "video").contains(attachment.kind()))
+                    .limit(MAX_AGENT_VISUAL_ATTACHMENTS)
+                    .map((attachment) -> attachmentStorageService.loadAgentAttachmentDataUrl(attachment.id(), familyId))
+                    .filter((attachment) -> attachment != null)
+                    .toList();
+            if (visual.isEmpty()) continue;
+            if (fallback.isEmpty()) fallback = visual;
+            if (looksLikeExpenseEvidence(message.text())) return visual;
+        }
+        return fallback;
+    }
+
+    private boolean looksLikeExpenseEvidence(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        return text.matches(".*(花费|支出|账本|记账|费用|订单|小票|收据|发票|付款|支付|金额).*");
+    }
+
     private String extractJsonObject(String content) {
         String trimmed = content.trim();
         if (trimmed.startsWith("```")) {
@@ -2362,7 +2411,16 @@ public class AgentRuntime {
     ) {
         if (result == null) return List.of();
         if (!expenseRecordingIntent) return List.of();
-        if (persistenceResult == null || !persistenceResult.hasFacts()) return result.effectCandidates();
+        if (persistenceResult == null || !persistenceResult.hasFacts()) {
+            if (!result.effectCandidates().isEmpty()) return result.effectCandidates();
+            if (!result.clarifications().isEmpty()) {
+                return List.of(expenseSkillClarificationDecision(result.clarifications().get(0)));
+            }
+            if (StringUtils.hasText(result.userFacingError())) {
+                return List.of(expenseSkillClarificationDecision(result.userFacingError()));
+            }
+            return List.of();
+        }
         List<AgentEffectDecision> decisions = new ArrayList<>();
         persistenceResult.saved().forEach((payload) -> decisions.add(expensePersistenceDecision("auto", payload, "支出已自动保存到账本。", "saved")));
         persistenceResult.duplicates().forEach((payload) -> decisions.add(expensePersistenceDecision("ignore", payload, "支出已存在，未重复保存。", "duplicate")));
@@ -2382,6 +2440,24 @@ public class AgentRuntime {
                 next,
                 "auto".equals(mode) ? 0.96 : 0.9,
                 reason,
+                SkillRouter.EXPENSE_RECOGNITION_SKILL_ID
+        );
+    }
+
+    private AgentEffectDecision expenseSkillClarificationDecision(String question) {
+        ObjectNode ask = objectMapper.createObjectNode();
+        ask.put("topic", "expense");
+        ask.put("question", StringUtils.hasText(question)
+                ? question.trim()
+                : "这次没有拿到足够稳定的支出识别结果，可以补充更清晰的图片或金额后再记录。");
+        ask.set("missingFields", objectMapper.createArrayNode().add("支出图片证据"));
+        return new AgentEffectDecision(
+                "decision-" + UUID.randomUUID(),
+                "ask",
+                "expenseItem",
+                ask,
+                0.82,
+                "支出识别 skill 没有产生完整可保存候选。",
                 SkillRouter.EXPENSE_RECOGNITION_SKILL_ID
         );
     }

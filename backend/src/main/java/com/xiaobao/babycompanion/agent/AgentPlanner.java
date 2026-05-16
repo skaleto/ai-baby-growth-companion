@@ -33,6 +33,7 @@ public class AgentPlanner {
               "contextNeeds": ["profile|careHistory|growthHistory|reminders|memories|web"],
               "toolRequests": [{"toolId":"web_search","query":"string","reason":"string"}],
               "riskHints": ["fever|medicine|vaccine|allergy|breathing|injury|none"],
+              "skillRequests": [{"skillId":"expense-recognition","mode":"execute","reason":"string"}],
               "mediaAction": null | {
                 "intent": "save_to_album|describe|none",
                 "targetScope": "current|previous|recent|unspecified",
@@ -46,6 +47,8 @@ public class AgentPlanner {
             需要最新政策、地点信息、官方通知、疫苗政策、办事流程、天气等外部资料时，加入 web_search。
             需要查询商品信息或参考价格时，加入 web_search，但实际记账金额必须由用户确认。
             如果用户上传订单、小票、收据、发票、支付或付款截图，并要求识别花费、支出或记账，不要加入 web_search；这类任务应依赖上传图片中的实际付款信息。
+            executable skills 由 planner 显式选择，runtime 负责执行和验收。目前可执行 skill:
+            - expense-recognition: 订单、小票、收据、发票、支付/付款截图的实际支出识别。当前消息有相关图片，或用户引用 recentMediaCandidates 中刚才/上面/之前的支出图片并要求记录时，必须加入 {"skillId":"expense-recognition","mode":"execute"}。
             日常记录优先保留目标日期和主题，不要编造用户没说的事实。
             selectedSkills 只是可用技能目录。若看到 pediatric-care-guide，只代表系统可在后续最终回复中按需渐进式加载育儿基础知识；planner 不要把技能目录当成已经执行或已经加载的事实。
             用户可能用 12 小时制描述时间；没有上午/下午时，结合 currentTime 判断今天最近已经发生过的候选时间。
@@ -120,7 +123,10 @@ public class AgentPlanner {
                 ? List.of(new AgentToolRequest("web_search", message, "用户问题需要外部资料验证"))
                 : List.of();
         List<String> risks = signals.riskHints().isEmpty() ? List.of("none") : signals.riskHints();
-        return new AgentPlan(intent, topics, signals.targetDates(), contextNeeds, tools, risks, null);
+        List<SkillPlanEntry> skillRequests = shouldSuppressWebForExpense(request, signals)
+                ? List.of(new SkillPlanEntry(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID, SkillMode.EXECUTE, "规则 fallback 识别到支出图片任务"))
+                : List.of();
+        return new AgentPlan(intent, topics, signals.targetDates(), contextNeeds, tools, risks, null, skillRequests);
     }
 
     private String buildPrompt(AgentChatRequest request, List<Skill> selectedSkills, RecordSignals signals) {
@@ -164,7 +170,27 @@ public class AgentPlanner {
         if ((toolRequests == null || toolRequests.isEmpty()) && fallback.toolRequests() != null && !fallback.toolRequests().isEmpty()) {
             toolRequests = fallback.toolRequests();
         }
-        return new AgentPlan(intent, topics, targetDates, contextNeeds, toolRequests, riskHints, normalizeMediaAction(parsed.mediaAction()));
+        List<SkillPlanEntry> skillRequests = normalizeSkillRequests(parsed.skillRequests());
+        if (skillRequests.isEmpty()) {
+            skillRequests = fallback.skillRequests();
+        }
+        return new AgentPlan(intent, topics, targetDates, contextNeeds, toolRequests, riskHints, normalizeMediaAction(parsed.mediaAction()), skillRequests);
+    }
+
+    private List<SkillPlanEntry> normalizeSkillRequests(List<SkillPlanEntry> entries) {
+        if (entries == null || entries.isEmpty()) return List.of();
+        return entries.stream()
+                .filter((entry) -> entry != null
+                        && SkillRouter.EXPENSE_RECOGNITION_SKILL_ID.equals(entry.skillId())
+                        && SkillMode.EXECUTE.equals(entry.mode()))
+                .map((entry) -> new SkillPlanEntry(
+                        entry.skillId(),
+                        entry.mode(),
+                        StringUtils.hasText(entry.reason()) ? entry.reason().trim() : "planner 选择执行支出识别 skill"
+                ))
+                .distinct()
+                .limit(4)
+                .toList();
     }
 
     private boolean likelyNeedsExternalLookup(String message) {
@@ -178,10 +204,29 @@ public class AgentPlanner {
         if (message.matches(".*(参考价|参考价格|比价|商品信息|哪里买|官网|最新价格|价格趋势).*")) return false;
         boolean hasVisualAttachment = request.attachments() != null && request.attachments().stream()
                 .anyMatch((attachment) -> attachment != null && List.of("image", "video").contains(attachment.kind()));
+        boolean referencesRecentVisual = referencesPreviousExpenseEvidence(message) && hasRecentVisualAttachment(request.recentMessages());
         boolean expenseTopic = signals.expenseSignal() != null || signals.topics().contains("expense");
         boolean expenseImageTask = message.matches(".*(识别|看一下|帮我|整理|记录|记账).*(花费|支出|账本|订单|小票|收据|发票|支付|付款|金额).*")
                 || message.matches(".*(订单|小票|收据|发票|支付截图|付款截图|支付凭证|付款凭证).*(记账|账本|花费|支出|金额).*");
-        return expenseTopic && (expenseImageTask || hasVisualAttachment && message.matches(".*(花费|支出|账本|记账|订单|小票|收据|发票|支付|付款|金额).*"));
+        return expenseTopic && (expenseImageTask
+                || referencesRecentVisual
+                || hasVisualAttachment && message.matches(".*(花费|支出|账本|记账|订单|小票|收据|发票|支付|付款|金额).*"));
+    }
+
+    private boolean referencesPreviousExpenseEvidence(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        boolean expenseIntent = text.matches(".*(花费|支出|账本|记账|费用|记录).*");
+        boolean previousReference = text.matches(".*(刚才|上面|上面的|前面|之前|上一条|这些|那几张|前几张).*");
+        boolean recordIntent = text.matches(".*(记录|记账|重新|再|一遍|重记|再记|再记录).*");
+        return expenseIntent && previousReference && recordIntent;
+    }
+
+    private boolean hasRecentVisualAttachment(List<AgentChatMessage> messages) {
+        if (messages == null || messages.isEmpty()) return false;
+        return messages.stream()
+                .filter((message) -> message != null && "parent".equals(message.role()) && message.attachments() != null)
+                .flatMap((message) -> message.attachments().stream())
+                .anyMatch((attachment) -> attachment != null && List.of("image", "video").contains(attachment.kind()));
     }
 
     private List<Map<String, String>> attachmentSummaries(List<AgentAttachment> attachments) {

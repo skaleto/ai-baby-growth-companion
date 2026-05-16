@@ -20,13 +20,16 @@ import com.xiaobao.babycompanion.config.AgentRuntimeProperties;
 import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
+import com.xiaobao.babycompanion.dto.agent.AgentChatMessage;
+import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
+import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentEffectDecision;
 import com.xiaobao.babycompanion.dto.agent.AgentGrowthEvent;
-import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentExpense;
 import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
 import com.xiaobao.babycompanion.service.AppStateService;
+import com.xiaobao.babycompanion.service.AttachmentStorageService;
 import com.xiaobao.babycompanion.service.ExpensePersistenceResult;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekMessage;
@@ -50,6 +53,15 @@ class AgentRuntimeTests {
             AgentRuntimeProperties runtimeProperties,
             AppStateService appStateService
     ) {
+        return runtimeWith(doubaoProperties, runtimeProperties, appStateService, null);
+    }
+
+    private AgentRuntime runtimeWith(
+            DoubaoProperties doubaoProperties,
+            AgentRuntimeProperties runtimeProperties,
+            AppStateService appStateService,
+            AttachmentStorageService attachmentStorageService
+    ) {
         ObjectMapper objectMapper = new ObjectMapper();
         SkillDisclosureService disclosureService = new SkillDisclosureService(skillRegistry);
         return new AgentRuntime(
@@ -59,6 +71,7 @@ class AgentRuntimeTests {
                 new AgentPlanner(objectMapper),
                 null,
                 appStateService,
+                attachmentStorageService,
                 new RecordSignalExtractor(objectMapper),
                 new EffectPolicy(objectMapper, new CareEventCompletenessPolicy(objectMapper)),
                 new CurrentUser(),
@@ -446,6 +459,49 @@ class AgentRuntimeTests {
     }
 
     @Test
+    void hydratesRecentVisualAttachmentsForPlannerSelectedExpenseSkill() {
+        AttachmentStorageService attachmentStorageService = mock(AttachmentStorageService.class);
+        AgentRuntime runtime = runtimeWith(new DoubaoProperties(), new AgentRuntimeProperties(), null, attachmentStorageService);
+        when(attachmentStorageService.loadAgentAttachmentDataUrl(eq("attachment-prior-1"), eq("family-1")))
+                .thenReturn(new AgentAttachment("attachment-prior-1", "receipt.jpg", "image", "/api/uploads/attachment-prior-1", "data:image/jpeg;base64,AAAA"));
+        AgentChatRequest request = new AgentChatRequest(
+                "把刚才我上传的图片对应的花费再记录一下",
+                null,
+                null,
+                List.of(new AgentChatMessage(
+                        "msg-prior",
+                        "parent",
+                        "这几张宝宝用品花费帮我识别一下",
+                        "2026-05-16T20:01:00",
+                        List.of(new AgentAttachment("attachment-prior-1", "receipt.jpg", "image", "/api/uploads/attachment-prior-1", null)),
+                        List.of()
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false
+        );
+        SkillPlan skillPlan = new SkillPlan(List.of(new SkillPlanEntry(
+                "expense-recognition",
+                SkillMode.EXECUTE,
+                "planner 选择执行上一轮支出图片识别"
+        )));
+
+        List<VisualAttachmentInput> visualInputs = runtime.visualInputsForSkillExecution(
+                request,
+                skillPlan,
+                "family-1",
+                visionRuntimeModel()
+        );
+
+        assertThat(visualInputs).hasSize(1);
+        assertThat(visualInputs.get(0).id()).isEqualTo("attachment-prior-1");
+        assertThat(visualInputs.get(0).dataUrl()).startsWith("data:image/jpeg;base64,");
+        verify(attachmentStorageService).loadAgentAttachmentDataUrl(eq("attachment-prior-1"), eq("family-1"));
+    }
+
+    @Test
     void keepsModelTextWhenRuleAskAddsAClarification() {
         String userMessage = "帮我把这些花费记到账本";
         AgentChatResponse modelResponse = new AgentChatResponse(
@@ -720,5 +776,20 @@ class AgentRuntimeTests {
         payload.put("source", "agent");
         payload.put("persistenceStatus", persistenceStatus);
         return payload;
+    }
+
+    private RuntimeModel visionRuntimeModel() {
+        return new RuntimeModel(
+                "doubao-seed-2.0-pro",
+                Provider.DOUBAO,
+                "doubao-seed-2-0-pro-260215",
+                true,
+                true,
+                false,
+                "https://example.test",
+                "/chat/completions",
+                java.time.Duration.ofSeconds(30),
+                "DOUBAO_API_KEY"
+        );
     }
 }

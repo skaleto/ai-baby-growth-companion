@@ -101,6 +101,7 @@
 | `targetDates` | 目标日期 |
 | `contextNeeds` | 需要资料、照护历史、成长历史、提醒、记忆、联网等 |
 | `toolRequests` | web_search 等工具请求 |
+| `skillRequests` | 可执行 skill 请求，例如 `expense-recognition` 的 `execute` 模式 |
 | `riskHints` | 健康/用药/疫苗等风险线索 |
 | `mediaAction` | 保存相册、描述媒体、目标附件范围 |
 
@@ -108,6 +109,7 @@
 
 - Planner JSON 解析失败时使用 `heuristic()`。
 - 如果模型返回空工具列表，但规则判断需要联网，会补回 fallback `web_search`。
+- 如果模型或兜底判断选择了 executable skill，后续由 runtime 执行和验收，最终回复模型不能绕过 skill 自行生成同类结构化效果。
 - mediaAction 只代表保存意图，不代表已保存，真正保存由系统执行。
 
 ## 6. 上下文构建
@@ -159,6 +161,17 @@
 纯结构化记录，例如“今天 18:30 配方奶 120ml”，不会加载育儿知识正文。
 
 单次披露有数量和字符上限，避免百科内容污染普通记录。
+
+可执行 skill 使用另一条契约：
+
+| 阶段 | 责任 |
+| --- | --- |
+| Planner | 根据当前输入、最近消息、最近媒体候选和用户意图选择 `skillRequests`。 |
+| SkillRouter | 只允许已登记、已授权的 skill 进入执行计划，并保留安全兜底。 |
+| AgentRuntime | 读取当前或历史附件证据，执行 skill，记录 trace，把结果交给 EffectPolicy 和持久化闸口。 |
+| Final composer | 只负责解释和汇总 skill 结果，不再平行生成同类结构化候选。 |
+
+当前已落地的 executable skill 是 `expense-recognition`。用户说“刚才/上面那些花费再记录一下”时，前端只提交最近消息和附件元数据；是否引用上一轮图片、是否执行支出识别，由 planner 和 runtime 在后端完成。后端读取附件时必须受 familyId 边界约束，不能依赖前端正则转发图片。
 
 ## 8. 工具调用
 
@@ -313,14 +326,15 @@ Agent 对媒体有三种行为：
 
 ## 15. 账本设计
 
-账本是家庭共享数据，Agent 只创建待确认草稿：
+账本是家庭共享数据。文本中缺少核心字段时，Agent 创建待确认草稿；可执行支出识别 skill 已经识别出完整支出且用户明确要求记账时，后端可以直接保存，并返回 saved/duplicate/needs-input 的真实结果。
 
 | 场景 | 行为 |
 | --- | --- |
 | “今天给小宝买奶粉花了 268” | 生成 `pending expenseItem`。 |
 | “这个条码多少钱” | 可以查询/回答候选信息，但不自动入账。 |
 | 缺商品或金额 | `ask`，用自然语言追问。 |
-| 上传订单/小票/支付截图 | 只有能识别实际付款信息时才可生成待确认草稿。 |
+| 上传订单/小票/支付截图并要求记账 | 走 `expense-recognition`，完整候选直接保存，重复候选跳过，不完整候选只追问缺失核心字段。 |
+| 只要求识别支出图片 | 走 `expense-recognition` 只读识别，不写入账本。 |
 
 字段：
 
@@ -415,9 +429,9 @@ npm run test:agent-benchmark
 
 新增 skill 时遵循：
 
-1. 资源文件放在 `backend/src/main/resources/agent-skills/`。
-2. 配置 section 的 topics、riskHints、triggers 和 maxChars。
-3. 默认使用渐进披露，不把大段知识每轮塞进 Prompt。
+1. 如果是知识披露 skill，资源文件放在 `backend/src/main/resources/agent-skills/`，默认使用渐进披露，不把大段知识每轮塞进 Prompt。
+2. 如果是可执行 skill，先定义 skill input/output、mode、trace、错误文案和 effect contract，再接入 `AgentPlanner`、`SkillRouter`、`AgentRuntime`、`EffectPolicy`。
+3. 可执行 skill 不直接写库；写入必须通过 runtime/AppStateService 的权限、幂等和重复保护。
 4. 不引入受版权保护文本的逐字复述。
 
 ## 20. 当前风险
