@@ -191,6 +191,72 @@ class AgentRuntimeTests {
     }
 
     @Test
+    void keepsModelTextWhenRuleAskAddsAClarification() {
+        String userMessage = "帮我把这些花费记到账本";
+        AgentChatResponse modelResponse = new AgentChatResponse(
+                "我先按宝宝支出帮你整理，但这条还差一点关键信息。",
+                List.of("记账"),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        AgentChatResponse response = agentRuntime.withSafetyAlertsAndDecisions(
+                modelResponse,
+                userMessage,
+                new RecordSignalExtractor(new ObjectMapper()).extract(userMessage),
+                new AgentPlan("record", List.of("expense"), List.of("2026-05-01"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),
+                null
+        );
+
+        assertThat(response.aiText()).startsWith("我先按宝宝支出帮你整理");
+        assertThat(response.aiText()).contains("实际花了多少钱");
+        assertThat(response.effectDecisions()).hasSize(1);
+        assertThat(response.effectDecisions().get(0).mode()).isEqualTo("ask");
+    }
+
+    @Test
+    void defersRuleAmountAskWhenRetryingPreviousExpenseImages() {
+        String userMessage = "把刚才上面的这些花费重新再记录一遍。";
+        AgentChatResponse modelResponse = new AgentChatResponse(
+                "我会重新读取上面的订单图片，识别到金额后整理成待确认的账本草稿。",
+                List.of("记账"),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        AgentChatResponse response = agentRuntime.withSafetyAlertsAndDecisions(
+                modelResponse,
+                userMessage,
+                new RecordSignalExtractor(new ObjectMapper()).extract(userMessage),
+                new AgentPlan("record", List.of("expense"), List.of("2026-05-01"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),
+                null
+        );
+
+        assertThat(response.aiText()).isEqualTo(modelResponse.aiText());
+        assertThat(response.effectDecisions()).isEmpty();
+    }
+
+    @Test
     void returnsActionableTimeoutCopyForVisualStreams() {
         String message = agentRuntime.userFacingModelErrorMessage(
                 new java.net.http.HttpTimeoutException("request timed out"),

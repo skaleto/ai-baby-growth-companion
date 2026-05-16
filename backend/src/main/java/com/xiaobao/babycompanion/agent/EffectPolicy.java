@@ -49,7 +49,9 @@ public class EffectPolicy {
                 .filter((decision) -> decision != null)
                 .toList();
         boolean hasModelPendingExpense = modelExpenseDecisions.stream().anyMatch((decision) -> "pending".equals(decision.mode()));
-        if (expenseDecision != null && !("ask".equals(expenseDecision.mode()) && hasModelPendingExpense)) {
+        boolean deferPreviousExpenseReference = "ask".equals(expenseDecision == null ? "" : expenseDecision.mode())
+                && referencesPreviousExpenseEvidence(userMessage);
+        if (expenseDecision != null && !("ask".equals(expenseDecision.mode()) && hasModelPendingExpense) && !deferPreviousExpenseReference) {
             decisions.add(expenseDecision);
         }
         boolean expenseAlreadyCapturedByRule = "pending".equals(expenseDecision == null ? "" : expenseDecision.mode());
@@ -91,6 +93,16 @@ public class EffectPolicy {
             );
         }
         return decisions;
+    }
+
+    private boolean referencesPreviousExpenseEvidence(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        String value = text.trim();
+        boolean expenseIntent = value.matches(".*(花费|支出|账本|记账|费用|记录).*");
+        boolean previousReference = value.matches(".*(上面|上面的|前面|之前|上一条|这些|那几张|刚才.*(图|图片|照片|截图|订单|小票|收据|花费)).*");
+        boolean repeatIntent = value.matches(".*(重新|再|一遍|再记|再记录|重记).*");
+        boolean directRecordReference = value.matches(".*(上面|上面的|前面|之前|上一条|这些|那几张).*记录.*");
+        return expenseIntent && previousReference && (repeatIntent || directRecordReference);
     }
 
     private AgentEffectDecision expenseSignalDecision(RecordSignals signals) {

@@ -52,7 +52,8 @@
         "2026-05-14 docs/agent-benchmark-results.md reports PASS, 15 tests, 0 failures, including daily summary gentle-copy and private-content boundary cases.",
         "2026-05-16 npm run test:agent-benchmark passed after adding expense-image no-web-search coverage.",
         "2026-05-16 npm run test:agent-benchmark passed after multi-image status and timeout handling; expense-image no-web-search coverage remained passing.",
-        "2026-05-16 npm run test:agent-benchmark passed after adding automatic multi-image batching; expense-image no-web-search coverage remained passing."
+        "2026-05-16 npm run test:agent-benchmark passed after adding automatic multi-image batching; expense-image no-web-search coverage remained passing.",
+        "2026-05-16 npm run test:agent-benchmark passed after preserving model text during rule clarifications and deferring previous-expense retry asks."
       ],
       "notes": "New Agent work should add at least one positive and one boundary benchmark case."
     },
@@ -76,7 +77,8 @@
         "2026-05-14 official-site cloud smoke: Playwright opened http://120.55.188.242/official, verified title 小宝记官网, H1 小宝记, and mobile scroll changed 0 -> 900.",
         "2026-05-16 npm run verify:frontend passed after raising chat attachment cap and adding over-limit notice.",
         "2026-05-16 npm run verify:frontend passed after AI stream status tags and frontend image downscaling changes.",
-        "2026-05-16 npm run verify:frontend passed after adding agent_visual_analysis usage label and batched-analysis timeout copy."
+        "2026-05-16 npm run verify:frontend passed after adding agent_visual_analysis usage label and batched-analysis timeout copy.",
+        "2026-05-16 npm run verify:frontend passed after adding previous expense image retry forwarding."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -98,7 +100,8 @@
         "2026-05-14 official-site port-80 deployment: Nginx active on 120.55.188.242, /official returned 200 OK, and /api/health returned ok through same-origin reverse proxy.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516140358.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for multi-image AI availability; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516144004.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for automatic multi-image batching; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516145942."
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for automatic multi-image batching; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516145942.",
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for previous expense retry and postprocess copy; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516152314."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },
@@ -123,7 +126,8 @@
         "2026-05-14 OTA timeout fix: raised CapacitorUpdater responseTimeout to 120 seconds, npm run mobile:sync passed, Android debug APK passed, and iOS simulator build passed.",
         "2026-05-16 OTA 0.1.0-20260516140358 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2638963 bytes and checksum 4a98ea216826e56cdde2115d8a721b9a6fb8b7a9463d73ed319fbaf9b093dde2.",
         "2026-05-16 OTA 0.1.0-20260516144004 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2639867 bytes and checksum c677fb3cd5fcc5eac4eeae5492f15113670b528335cad9dc06cb0618c0b433bf.",
-        "2026-05-16 OTA 0.1.0-20260516145942 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2639905 bytes and checksum 9f4e5454bd1d9c5e842a69e8981f975b5e757a7d5b339a0678b36a45815d9a98."
+        "2026-05-16 OTA 0.1.0-20260516145942 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2639905 bytes and checksum 9f4e5454bd1d9c5e842a69e8981f975b5e757a7d5b339a0678b36a45815d9a98.",
+        "2026-05-16 OTA 0.1.0-20260516152314 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640317 bytes and checksum 455a69da31438dc9f37aa6866ab7e8574d668b7b4540ee6e061ef15c41502d44."
       ],
       "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
     },

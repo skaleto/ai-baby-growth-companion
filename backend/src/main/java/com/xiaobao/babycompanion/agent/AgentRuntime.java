@@ -1267,7 +1267,7 @@ public class AgentRuntime {
 
     private String adjustedAiText(String aiText, RecordSignals signals, List<AgentEffectDecision> decisions) {
         if (signals.unsupportedMutationRequest()) {
-            return AgentCapabilityContract.unsupportedMutationMessage();
+            return containsBoundaryExplanation(aiText) ? aiText : AgentCapabilityContract.unsupportedMutationMessage();
         }
         String askQuestion = decisions.stream()
                 .filter((decision) -> "ask".equals(decision.mode()))
@@ -1276,7 +1276,7 @@ public class AgentRuntime {
                 .filter(StringUtils::hasText)
                 .findFirst()
                 .orElse("");
-        if (StringUtils.hasText(askQuestion)) return askQuestion;
+        if (StringUtils.hasText(askQuestion)) return mergeFollowUpQuestion(aiText, askQuestion);
 
         boolean hasPendingExpense = decisions.stream().anyMatch((decision) ->
                 "expenseItem".equals(decision.type()) && "pending".equals(decision.mode())
@@ -1285,6 +1285,21 @@ public class AgentRuntime {
             return "我已识别出这笔支出，并整理成待确认的账本草稿。请确认后我再记到账本里。";
         }
         return aiText;
+    }
+
+    private boolean containsBoundaryExplanation(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        return text.matches(".*(不能|暂不支持|不支持|无法).*(撤销|删除|修改|回滚|改历史|历史记录).*")
+                || text.matches(".*(记录页|撤销按钮|重新记录|重新添加).*");
+    }
+
+    private String mergeFollowUpQuestion(String aiText, String question) {
+        String normalizedQuestion = question == null ? "" : question.trim();
+        if (!StringUtils.hasText(normalizedQuestion)) return aiText;
+        if (!StringUtils.hasText(aiText)) return normalizedQuestion;
+        String normalizedText = aiText.trim();
+        if (normalizedText.contains(normalizedQuestion)) return normalizedText;
+        return normalizedText + "\n\n" + normalizedQuestion;
     }
 
     private boolean looksLikeAmountClarification(String text) {

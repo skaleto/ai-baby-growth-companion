@@ -2187,6 +2187,35 @@ const formatAgentFailureMessage = (error: unknown, attachments: Attachment[]) =>
   return "AI 服务暂时不可用，请稍后再试。";
 };
 
+const isVisualAttachment = (attachment: Attachment) => attachment.kind === "image" || attachment.kind === "video";
+
+const referencesPreviousExpenseAttachments = (text: string) => {
+  const value = text.trim();
+  if (!value) return false;
+  const expenseIntent = /花费|支出|账本|记账|费用|订单|小票|收据|发票|付款|支付/.test(value);
+  const previousReference = /刚才|上面|上面的|前面|之前|上一条|这些|那几张|前几张/.test(value);
+  const repeatIntent = /重新|再|一遍|重记|再记|再记录/.test(value);
+  const directRecordReference = /(上面|上面的|前面|之前|上一条|这些|那几张|前几张).*记录/.test(value);
+  return expenseIntent && previousReference && (repeatIntent || directRecordReference);
+};
+
+const looksLikeExpenseEvidenceMessage = (message: ChatMessage) =>
+  /花费|支出|账本|记账|费用|订单|小票|收据|发票|付款|支付/.test(message.text);
+
+const referencedExpenseAttachmentsForAgent = (text: string, messages: ChatMessage[]) => {
+  if (!referencesPreviousExpenseAttachments(text)) return [];
+  let fallback: Attachment[] = [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "parent") continue;
+    const visualAttachments = (message.attachments ?? []).filter(isVisualAttachment);
+    if (!visualAttachments.length) continue;
+    if (!fallback.length) fallback = visualAttachments;
+    if (looksLikeExpenseEvidenceMessage(message)) return visualAttachments.slice(0, MAX_CHAT_ATTACHMENTS);
+  }
+  return fallback.slice(0, MAX_CHAT_ATTACHMENTS);
+};
+
 const mergeVoiceText = (baseText: string, transcript: string) => {
   const base = baseText.trim();
   const text = transcript.trim();
@@ -3972,7 +4001,8 @@ function App() {
     if (!canAttachVisuals) return undefined;
     try {
       if (attachment.kind === "image") {
-        const dataUrl = attachment.dataUrl ?? (attachment.url ? await fetchAsDataUrl(attachment.url) : undefined);
+        const imageUrl = attachment.url ?? attachment.publicUrl;
+        const dataUrl = attachment.dataUrl ?? (imageUrl ? await fetchAsDataUrl(imageUrl) : undefined);
         return resizeImageDataUrlForAgent(dataUrl, visualCount);
       }
       if (attachment.kind === "video") {
@@ -4608,9 +4638,13 @@ function App() {
 
     let toolActivities: ToolActivity[] = [];
     try {
-      const visualAttachmentCount = submittedAttachments.filter((item) => item.kind === "image" || item.kind === "video").length;
+      const referencedAgentAttachments = submittedAttachments.length
+        ? []
+        : referencedExpenseAttachmentsForAgent(parentMessage.text, messages);
+      const agentSourceAttachments = submittedAttachments.length ? submittedAttachments : referencedAgentAttachments;
+      const visualAttachmentCount = agentSourceAttachments.filter(isVisualAttachment).length;
       const agentAttachments = await Promise.all(
-        submittedAttachments.map(async (item) => ({
+        agentSourceAttachments.map(async (item) => ({
           id: item.id,
           name: item.kind === "video" ? `${item.name}（视频缩略图）` : item.name,
           kind: item.kind,
@@ -4862,10 +4896,14 @@ function App() {
         // Local state stays usable; the status chip tells the parent that the backend sync needs attention.
       }
     } catch (error) {
+      const referencedAgentAttachments = submittedAttachments.length
+        ? []
+        : referencedExpenseAttachmentsForAgent(parentMessage.text, messages);
+      const agentSourceAttachments = submittedAttachments.length ? submittedAttachments : referencedAgentAttachments;
       const aiMessage: ChatMessage = {
         id: makeId("msg"),
         role: "ai",
-        text: formatAgentFailureMessage(error, submittedAttachments),
+        text: formatAgentFailureMessage(error, agentSourceAttachments),
         createdAt: new Date().toISOString(),
         tags: ["系统"],
         isStreaming: false,
