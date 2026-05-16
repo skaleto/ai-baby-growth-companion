@@ -487,6 +487,8 @@ public class AgentRuntime {
             List<AgentToolResult> toolResults = executePlannedTools(plan, request, (event) -> sendEvent(emitter, "tool", event));
             List<String> usedSkills = usedSkillIds(selectedSkills, toolResults, plan, signals, request.message());
             List<AgentSource> sources = collectSources(toolResults);
+            List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(request.attachments(), runtimeModel);
+            sendModelWorkStatus(emitter, visualInputs);
 
             String body = objectMapper.writeValueAsString(buildDeepSeekRequest(request, selectedSkills, toolResults, runtimeModel, traceId, true, plan, contextSnapshot, signals, principal));
             HttpRequest httpRequest = HttpRequest.newBuilder()
@@ -507,7 +509,7 @@ public class AgentRuntime {
                     rootCauseMessage(exception),
                     exception
             );
-            sendEvent(emitter, "error", Map.of("message", exception.getMessage()));
+            sendEvent(emitter, "error", Map.of("message", userFacingModelErrorMessage(exception, inputType(request))));
             emitter.complete();
         }
     }
@@ -870,7 +872,7 @@ public class AgentRuntime {
                     exception
             );
             recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, rootCauseMessage(exception), false, true);
-            sendEvent(emitter, "error", Map.of("message", exception.getMessage()));
+            sendEvent(emitter, "error", Map.of("message", userFacingModelErrorMessage(exception, inputType)));
             emitter.complete();
         }
     }
@@ -1130,6 +1132,50 @@ public class AgentRuntime {
         } catch (Exception exception) {
             emitter.completeWithError(exception);
         }
+    }
+
+    private void sendModelWorkStatus(SseEmitter emitter, List<VisualAttachmentInput> visualInputs) {
+        if (visualInputs == null || visualInputs.isEmpty()) {
+            Map<String, String> event = Map.of("message", "正在生成回复");
+            sendEvent(emitter, "retrieving_context", event);
+            sendEvent(emitter, "generating", event);
+            return;
+        }
+        Map<String, String> event = Map.of("message", analyzingMediaMessage(visualInputs));
+        sendEvent(emitter, "retrieving_context", event);
+        sendEvent(emitter, "analyzing_media", event);
+    }
+
+    private String analyzingMediaMessage(List<VisualAttachmentInput> visualInputs) {
+        if (visualInputs == null || visualInputs.isEmpty()) return "正在分析素材";
+        long imageCount = visualInputs.stream()
+                .filter((input) -> "image".equals(input.kind()))
+                .count();
+        long videoCount = visualInputs.stream()
+                .filter((input) -> "video".equals(input.kind()) && input.dataUrl().startsWith("data:video/"))
+                .count();
+        long videoThumbnailCount = visualInputs.stream()
+                .filter((input) -> "video".equals(input.kind()) && input.dataUrl().startsWith("data:image/"))
+                .count();
+
+        List<String> parts = new ArrayList<>();
+        if (imageCount > 0) parts.add(imageCount + " 张图片");
+        if (videoCount > 0) parts.add(videoCount + " 段视频");
+        if (videoThumbnailCount > 0) parts.add(videoThumbnailCount + " 个视频封面");
+        if (parts.isEmpty()) return "正在分析素材";
+        return "正在分析 " + String.join("和", parts);
+    }
+
+    String userFacingModelErrorMessage(Exception exception, String inputType) {
+        String message = rootCauseMessage(exception);
+        boolean timedOut = message != null && message.matches("(?is).*(timeout|timed out|超时).*");
+        if (timedOut && ("image".equals(inputType) || "video".equals(inputType))) {
+            return "图片分析超时了：这次素材较多，模型没有及时返回。请稍后重试；如果仍失败，可以先分批发送图片。";
+        }
+        if (timedOut) {
+            return "AI 响应超时了：模型没有及时返回，请稍后重试。";
+        }
+        return StringUtils.hasText(message) ? message : "AI 服务暂时不可用，请稍后再试。";
     }
 
     private RuntimeModel resolveModel(String requestedModel) {

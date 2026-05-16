@@ -50,7 +50,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { compressConversationSummary, runAgentChatStream } from "./agentApi";
+import { compressConversationSummary, runAgentChatStream, type AgentStreamStatusType } from "./agentApi";
 import {
   ALBUM_CATEGORIES,
   albumCategoryFromTags,
@@ -290,6 +290,11 @@ const MAX_VIDEO_UPLOAD_BYTES = 300 * 1024 * 1024;
 const MAX_CHAT_ATTACHMENTS = 8;
 const MAX_ALBUM_PICKER_ATTACHMENTS = 20;
 const MAX_AGENT_ATTACHMENT_DATA_URL_CHARS = 8 * 1024 * 1024;
+const AGENT_IMAGE_TARGET_CHARS_SINGLE = 4 * 1024 * 1024;
+const AGENT_IMAGE_TARGET_CHARS_SMALL_BATCH = 2 * 1024 * 1024;
+const AGENT_IMAGE_TARGET_CHARS_LARGE_BATCH = 1400 * 1024;
+const AGENT_IMAGE_MAX_EDGE_SINGLE = 2200;
+const AGENT_IMAGE_MAX_EDGE_BATCH = 1800;
 const VIDEO_THUMBNAIL_TIMEOUT_MS = 8000;
 const AI_USAGE_FEATURE_LABELS: Record<string, string> = {
   agent_chat: "聊天回复",
@@ -2105,6 +2110,82 @@ const fetchAsDataUrl = async (url: string) => {
 const dataUrlWithinAgentLimit = (dataUrl?: string) =>
   dataUrl && dataUrl.length <= MAX_AGENT_ATTACHMENT_DATA_URL_CHARS ? dataUrl : undefined;
 
+const agentImageTargetChars = (visualCount: number) => {
+  if (visualCount >= 6) return AGENT_IMAGE_TARGET_CHARS_LARGE_BATCH;
+  if (visualCount >= 3) return AGENT_IMAGE_TARGET_CHARS_SMALL_BATCH;
+  return AGENT_IMAGE_TARGET_CHARS_SINGLE;
+};
+
+const agentImageMaxEdge = (visualCount: number) =>
+  visualCount >= 3 ? AGENT_IMAGE_MAX_EDGE_BATCH : AGENT_IMAGE_MAX_EDGE_SINGLE;
+
+const resizeImageDataUrlForAgent = async (dataUrl?: string, visualCount = 1) => {
+  if (!dataUrl?.startsWith("data:image/")) return dataUrlWithinAgentLimit(dataUrl);
+  if (typeof window === "undefined" || typeof document === "undefined") return dataUrlWithinAgentLimit(dataUrl);
+
+  const targetChars = agentImageTargetChars(visualCount);
+  const baseMaxEdge = agentImageMaxEdge(visualCount);
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const nextImage = new window.Image();
+    nextImage.onload = () => resolve(nextImage);
+    nextImage.onerror = () => reject(new Error("无法读取图片内容"));
+    nextImage.src = dataUrl;
+  });
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) return dataUrlWithinAgentLimit(dataUrl);
+  if (Math.max(sourceWidth, sourceHeight) <= baseMaxEdge && dataUrl.length <= targetChars) {
+    return dataUrlWithinAgentLimit(dataUrl);
+  }
+
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return dataUrlWithinAgentLimit(dataUrl);
+
+  const attempts = [
+    { edge: baseMaxEdge, quality: 0.82 },
+    { edge: Math.round(baseMaxEdge * 0.88), quality: 0.78 },
+    { edge: Math.round(baseMaxEdge * 0.76), quality: 0.74 },
+    { edge: Math.round(baseMaxEdge * 0.64), quality: 0.72 },
+  ];
+  let smallest = dataUrl;
+
+  for (const attempt of attempts) {
+    const scale = Math.min(1, attempt.edge / Math.max(sourceWidth, sourceHeight));
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const compressed = canvas.toDataURL("image/jpeg", attempt.quality);
+    if (compressed.length < smallest.length) smallest = compressed;
+    if (compressed.length <= targetChars) return dataUrlWithinAgentLimit(compressed);
+  }
+
+  return dataUrlWithinAgentLimit(smallest);
+};
+
+const agentStatusTag = (type: AgentStreamStatusType) => {
+  if (type === "planning") return "理解中";
+  if (type === "retrieving_context") return "查找中";
+  if (type === "analyzing_media") return "分析中";
+  return "生成中";
+};
+
+const formatAgentFailureMessage = (error: unknown, attachments: Attachment[]) => {
+  const message = error instanceof Error ? error.message.trim() : "";
+  const hasVisualAttachments = attachments.some((attachment) => attachment.kind === "image" || attachment.kind === "video");
+  if (/图片分析超时|AI 响应超时/.test(message)) return message;
+  if (/timeout|timed out|超时/i.test(message)) {
+    return hasVisualAttachments
+      ? "图片分析超时了：这次素材较多，模型没有及时返回。请稍后重试；如果仍失败，可以先分批发送图片。"
+      : "AI 响应超时了：模型没有及时返回，请稍后重试。";
+  }
+  if (message) return `AI 服务暂时不可用：${message}`;
+  return "AI 服务暂时不可用，请稍后再试。";
+};
+
 const mergeVoiceText = (baseText: string, transcript: string) => {
   const base = baseText.trim();
   const text = transcript.trim();
@@ -3886,12 +3967,12 @@ function App() {
       video.src = objectUrl;
     });
 
-  const readAgentAttachmentDataUrl = async (attachment: Attachment) => {
+  const readAgentAttachmentDataUrl = async (attachment: Attachment, visualCount: number) => {
     if (!canAttachVisuals) return undefined;
     try {
       if (attachment.kind === "image") {
         const dataUrl = attachment.dataUrl ?? (attachment.url ? await fetchAsDataUrl(attachment.url) : undefined);
-        return dataUrlWithinAgentLimit(dataUrl);
+        return resizeImageDataUrlForAgent(dataUrl, visualCount);
       }
       if (attachment.kind === "video") {
         const thumbnailUrl = attachment.thumbnailUrl;
@@ -3899,7 +3980,7 @@ function App() {
         const dataUrl = thumbnailUrl.startsWith("data:image/")
           ? thumbnailUrl
           : await fetchAsDataUrl(thumbnailUrl);
-        return dataUrlWithinAgentLimit(dataUrl);
+        return resizeImageDataUrlForAgent(dataUrl, visualCount);
       }
     } catch {
       return undefined;
@@ -4526,12 +4607,13 @@ function App() {
 
     let toolActivities: ToolActivity[] = [];
     try {
+      const visualAttachmentCount = submittedAttachments.filter((item) => item.kind === "image" || item.kind === "video").length;
       const agentAttachments = await Promise.all(
         submittedAttachments.map(async (item) => ({
           id: item.id,
           name: item.kind === "video" ? `${item.name}（视频缩略图）` : item.name,
           kind: item.kind,
-          dataUrl: await readAgentAttachmentDataUrl(item),
+          dataUrl: await readAgentAttachmentDataUrl(item, visualAttachmentCount),
         })),
       );
       let reasoningText = "";
@@ -4598,7 +4680,7 @@ function App() {
             setMessages((current) =>
               current.map((message) =>
                 message.id === pendingAiMessage.id && !contentText
-                  ? { ...message, text: status.message, tags: [status.type === "planning" ? "理解中" : "查找中"] }
+                  ? { ...message, text: status.message, tags: [agentStatusTag(status.type)] }
                   : message,
               ),
             );
@@ -4782,7 +4864,7 @@ function App() {
       const aiMessage: ChatMessage = {
         id: makeId("msg"),
         role: "ai",
-        text: error instanceof Error ? `AI 服务暂时不可用：${error.message}` : "AI 服务暂时不可用，请稍后再试。",
+        text: formatAgentFailureMessage(error, submittedAttachments),
         createdAt: new Date().toISOString(),
         tags: ["系统"],
         isStreaming: false,

@@ -19,7 +19,7 @@ public class DoubaoProperties {
     private String seed20ProModel = "doubao-seed-2-0-pro-260215";
     private String lowLatencyServiceTier = "fast";
     private Duration connectTimeout = Duration.ofSeconds(5);
-    private Duration readTimeout = Duration.ofSeconds(60);
+    private Duration readTimeout = Duration.ofSeconds(120);
 
     public String getApiKey() {
         return apiKey;

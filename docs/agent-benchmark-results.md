@@ -1,6 +1,6 @@
 # Agent Benchmark Results
 
-Generated at: 2026-05-16T06:01:50.874Z
+Generated at: 2026-05-16T06:41:27.635Z
 
 ## Command
 
@@ -15,24 +15,24 @@ npm run test:agent-benchmark
 - Failures: 0
 - Errors: 0
 - Skipped: 0
-- Time: 0.421s
+- Time: 0.452s
 
 ## Cases
 
-- PASS `benchmarkCompleteMixedFeedingRecordAutoWritesCareLog` (0.095s)
+- PASS `benchmarkCompleteMixedFeedingRecordAutoWritesCareLog` (0.103s)
 - PASS `benchmarkGenericIntervalDefaultsToNotificationUnlessRingingRequested` (0.005s)
 - PASS `benchmarkDailySummaryMissingItemsUseGentleNonTechnicalCopy` (0.002s)
 - PASS `benchmarkSharedDailySummaryContractExcludesPrivateAccountCopy` (0.001s)
-- PASS `benchmarkExpenseCreatesPendingDraftButBarcodePriceQueryDoesNotRecord` (0.003s)
+- PASS `benchmarkExpenseCreatesPendingDraftButBarcodePriceQueryDoesNotRecord` (0.004s)
 - PASS `benchmarkExpenseImageRecognitionDoesNotUseWebSearch` (0.003s)
-- PASS `benchmarkSkillDisclosureOnlyLoadsCareGuideWhenNeeded` (0.004s)
+- PASS `benchmarkSkillDisclosureOnlyLoadsCareGuideWhenNeeded` (0.005s)
 - PASS `benchmarkVagueReminderAsksForNaturalTimeOnly` (0.005s)
-- PASS `benchmarkSleepDurationAutoWritesAndSleepStartAsks` (0.012s)
+- PASS `benchmarkSleepDurationAutoWritesAndSleepStartAsks` (0.011s)
 - PASS `benchmarkHighRiskFeverStaysPending` (0.005s)
-- PASS `benchmarkUnsupportedChatMutationIsBoundaryOnly` (0.001s)
+- PASS `benchmarkUnsupportedChatMutationIsBoundaryOnly` (0.0s)
 - PASS `benchmarkTwelveHourFeedingTimeUsesCurrentAppClock` (0.001s)
 - PASS `benchmarkPlannerKeepsWebSearchFallbackWhenModelReturnsEmptyTools` (0.02s)
 - PASS `benchmarkMilkIntervalReminderOverridesBadModelOutputAndSuppressesMemory` (0.001s)
-- PASS `benchmarkFeedingStartWithoutAmountAsksInsteadOfWriting` (0.004s)
-- PASS `benchmarkOnceMilkReminderDoesNotAskCareRecordFields` (0.004s)
+- PASS `benchmarkFeedingStartWithoutAmountAsksInsteadOfWriting` (0.006s)
+- PASS `benchmarkOnceMilkReminderDoesNotAskCareRecordFields` (0.006s)
 

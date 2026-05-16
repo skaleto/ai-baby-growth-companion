@@ -6,6 +6,15 @@ type ApiErrorResponse = {
   message?: string;
 };
 
+export type AgentStreamStatusType = "planning" | "retrieving_context" | "analyzing_media" | "generating";
+
+const AGENT_STATUS_EVENTS = new Set<AgentStreamStatusType>([
+  "planning",
+  "retrieving_context",
+  "analyzing_media",
+  "generating",
+]);
+
 export async function runAgentChat(request: AgentChatRequest): Promise<AgentChatResponse> {
   const response = await apiFetch(`${apiBaseUrl}/api/agent/chat`, {
     method: "POST",
@@ -35,7 +44,7 @@ type StreamHandlers = {
   onReasoning?: (delta: string) => void;
   onContent?: (delta: string) => void;
   onTool?: (activity: ToolActivity) => void;
-  onStatus?: (status: { type: "planning" | "retrieving_context"; message: string }) => void;
+  onStatus?: (status: { type: AgentStreamStatusType; message: string }) => void;
 };
 
 type StreamEnvelope = {
@@ -110,8 +119,9 @@ export async function runAgentChatStream(
         query: envelope.query,
       });
     }
-    if ((event === "planning" || event === "retrieving_context") && envelope.message) {
-      handlers.onStatus?.({ type: event, message: envelope.message });
+    const statusType = event as AgentStreamStatusType;
+    if (AGENT_STATUS_EVENTS.has(statusType) && envelope.message) {
+      handlers.onStatus?.({ type: statusType, message: envelope.message });
     }
     if (event === "error") {
       throw new Error(envelope.message ?? "AI 流式响应失败");

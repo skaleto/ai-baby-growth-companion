@@ -190,6 +190,17 @@ class AgentRuntimeTests {
     }
 
     @Test
+    void returnsActionableTimeoutCopyForVisualStreams() {
+        String message = agentRuntime.userFacingModelErrorMessage(
+                new java.net.http.HttpTimeoutException("request timed out"),
+                "image"
+        );
+
+        assertThat(message).contains("图片分析超时");
+        assertThat(message).contains("分批发送图片");
+    }
+
+    @Test
     void rejectsNonJsonModelContent() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> agentRuntime.parseModelContent(
                 "我已经帮你记录好了。",

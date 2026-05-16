@@ -13,6 +13,40 @@
 
 ## Session Log
 
+### Session 2026-05-16 Multi Image Agent Availability
+
+- Goal: Investigate user `13777892890`'s latest 8-image expense recognition failure and remove misleading in-chat status copy while improving AI vision availability.
+- Completed:
+  - Checked production logs for `13777892890` and confirmed the 8 image uploads completed successfully; the failure was a Doubao model stream timeout while analyzing image input, not upload failure.
+  - Confirmed the UI stayed on `查找相关记录` because no later SSE status was emitted before the long model stream call.
+  - Added backend model-work status events so clients see `正在分析 N 张图片` / `正在生成回复`; kept a compatible `retrieving_context` update so older clients still see truthful text.
+  - Added frontend stream status handling for `analyzing_media` and `generating`, with chips `分析中` / `生成中`.
+  - Added frontend image downscaling for the AI vision copy before sending attachments to the model, while preserving the original uploaded attachments in storage.
+  - Raised Doubao read timeout default from `60s` to `120s` and replaced raw timeout errors with actionable image-analysis timeout copy.
+  - Published backend code plus OTA `0.1.0-20260516144004` with message `优化多图AI分析提示和可用性`.
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run build`
+  - `mvn -Dtest=AgentRuntimeTests test`
+  - `mvn test -q`
+  - `npm run verify:frontend`
+  - `npm run test:agent-benchmark`
+  - `MOBILE_UPDATE_MESSAGE='优化多图AI分析提示和可用性' MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `MOBILE_UPDATE_OSS_SSH_TARGET=ai-baby-aliyun scripts/upload-mobile-update-oss.sh`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`, OTA check, OSS signed URL download, checksum probe, and up-to-date probe.
+- Evidence:
+  - Production log chain showed 8 upload presign/complete pairs succeeded, then `Agent model stream failed ... provider=DOUBAO ... cause=request timed out`.
+  - Backend full Maven tests passed.
+  - Frontend smoke passed across desktop and six mobile viewports.
+  - Agent benchmark passed and kept the expense-image no-web-search case green.
+  - Cloud health returned `ok`.
+  - Cloud OTA check returns version `0.1.0-20260516144004`, signed OSS host `ai-baby-growth-companion.oss-cn-hangzhou.aliyuncs.com`, and object path `/baby-companion/mobile-updates/app-0.1.0-20260516144004.zip`.
+  - Downloaded bundle size was `2639867` bytes and SHA-256 matched manifest checksum `c677fb3cd5fcc5eac4eeae5492f15113670b528335cad9dc06cb0618c0b433bf`.
+  - Up-to-date probe using `currentBundleVersion=0.1.0-20260516144004` returned `updateAvailable=false`.
+- Known risks:
+  - Real 8-image OCR quality still depends on the model and image legibility; the fix reduces payload size and timeout risk but does not guarantee every low-quality receipt or screenshot can be read.
+
 ### Session 2026-05-16 Expense Fix Cloud And OTA Release
 
 - Goal: Review the cross-session OTA upload/download path changes, then commit, push, and release the current backend plus a fresh OTA bundle.
