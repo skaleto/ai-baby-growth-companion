@@ -1,6 +1,13 @@
 package com.xiaobao.babycompanion.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -19,6 +26,7 @@ import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentExpense;
 import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
+import com.xiaobao.babycompanion.service.AppStateService;
 import com.xiaobao.babycompanion.service.ExpensePersistenceResult;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekMessage;
@@ -34,6 +42,14 @@ class AgentRuntimeTests {
     }
 
     private AgentRuntime runtimeWith(DoubaoProperties doubaoProperties, AgentRuntimeProperties runtimeProperties) {
+        return runtimeWith(doubaoProperties, runtimeProperties, null);
+    }
+
+    private AgentRuntime runtimeWith(
+            DoubaoProperties doubaoProperties,
+            AgentRuntimeProperties runtimeProperties,
+            AppStateService appStateService
+    ) {
         ObjectMapper objectMapper = new ObjectMapper();
         SkillDisclosureService disclosureService = new SkillDisclosureService(skillRegistry);
         return new AgentRuntime(
@@ -42,7 +58,7 @@ class AgentRuntimeTests {
                 objectMapper,
                 new AgentPlanner(objectMapper),
                 null,
-                null,
+                appStateService,
                 new RecordSignalExtractor(objectMapper),
                 new EffectPolicy(objectMapper, new CareEventCompletenessPolicy(objectMapper)),
                 new CurrentUser(),
@@ -392,6 +408,41 @@ class AgentRuntimeTests {
         assertThat(response.aiText()).contains("已记录 1 笔支出到账本");
         assertThat(response.effectDecisions()).hasSize(1);
         assertThat(response.effectDecisions().get(0).mode()).isEqualTo("auto");
+    }
+
+    @Test
+    void expenseRecognitionPersistenceUsesExplicitPrincipalForAsyncStreams() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        AppStateService appStateService = mock(AppStateService.class);
+        AgentRuntime runtime = runtimeWith(new DoubaoProperties(), new AgentRuntimeProperties(), appStateService);
+        ObjectNode savedExpense = expensePayload(objectMapper, "奶粉", 268.0, "saved");
+        ExpensePersistenceResult expected = new ExpensePersistenceResult(List.<JsonNode>of(savedExpense), List.of(), List.of(), List.of());
+        ExpenseRecognitionResult result = new ExpenseRecognitionResult(
+                "ok",
+                null,
+                null,
+                List.of(new AgentEffectDecision(
+                        "decision-saved",
+                        "auto",
+                        "expenseItem",
+                        savedExpense,
+                        0.96,
+                        "支出已自动保存到账本。",
+                        "expense-recognition"
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                null
+        );
+        when(appStateService.persistAgentExpenseCandidates(anyList(), eq(true), eq("family-1"), eq("user-1")))
+                .thenReturn(expected);
+
+        ExpensePersistenceResult actual = runtime.persistExpenseRecognitionResult(result, true, "family-1", "user-1");
+
+        assertThat(actual).isSameAs(expected);
+        verify(appStateService).persistAgentExpenseCandidates(anyList(), eq(true), eq("family-1"), eq("user-1"));
+        verify(appStateService, never()).persistAgentExpenseCandidates(anyList(), anyBoolean());
     }
 
     @Test

@@ -13,6 +13,33 @@
 
 ## Session Log
 
+### Session 2026-05-16 Cloud AI Temporary Unavailable Root Cause Fix
+
+- Goal: 排查云端为什么在 13777892890 多图支出识别后提示“AI服务暂时不可用”，并修复真实线上故障点。
+- Completed:
+  - 查云端日志确认 2026-05-16 19:52:16 的失败不是模型厂商、API Key、额度或上传问题；上传链路和 `/api/health` 都正常。
+  - 根因定位为新加的支出自动入账持久化在 `agent-stream-*` 异步线程里调用 `CurrentUser.requirePrincipal()`，线程内没有请求登录上下文，抛出 `AUTH_REQUIRED`，随后被前端展示成通用“AI服务暂时不可用”。
+  - 为 `AppStateService.persistAgentExpenseCandidates` 增加显式 `familyId/userId` 入口。
+  - 修改 Agent 同步与流式路径，在已知 `AuthPrincipal` 的位置把 `familyId/userId` 传入支出识别持久化，避免异步线程再依赖 thread-local 登录上下文。
+  - 增加 `AgentRuntimeTests.expenseRecognitionPersistenceUsesExplicitPrincipalForAsyncStreams`，保护该异步保存回归。
+  - 已用 `SYNC_DATA=0` 后端-only 方式部署到 Aliyun；未发布 OTA，因为前端 bundle 没变。
+- Verification run:
+  - `bash harness/init.sh`
+  - `mvn -f backend/pom.xml -Dtest=AgentRuntimeTests,AppStateControllerTests,AgentBenchmarkTests test`
+  - `npm run test:agent-benchmark`
+  - `SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`
+  - Cloud journal probe for `AUTH_REQUIRED` / `Agent stream failed before model stream`
+- Evidence:
+  - Harness smoke passed before the fix: `git diff --check`, `npm run build`, and `npm run test:agent-benchmark`.
+  - Targeted backend tests passed: 65 tests, 0 failures.
+  - Agent benchmark passed: 21 tests, 0 failures.
+  - Cloud health returned `ok` after deploy.
+  - Cloud log shows the original failure at `2026-05-16T19:52:16+08:00`: `Agent stream failed before model stream ... cause=AUTH_REQUIRED`.
+  - Cloud log shows new backend started at `2026-05-16T19:57:44+08:00`; no `AUTH_REQUIRED` / `Agent stream failed before model stream` entries appeared after that timestamp in the verification window.
+- Known risks:
+  - This fix removes the confirmed async-auth failure. A live user retry is still the best end-to-end proof for the exact 8-image conversation path because the real model call depends on current provider response and image legibility.
+
 ### Session 2026-05-16 Expense Agent Auto Save Interaction Contract
 
 - Goal: Implement the grilled interaction contract for expense recognition: complete recognized expenses should be saved directly when the user asks to record them, duplicate confirms must be idempotent, category uncertainty must not block recording, and final AI copy must reflect actual saved/duplicate/needs-input state instead of asking again.

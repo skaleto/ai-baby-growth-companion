@@ -293,6 +293,16 @@ public class AppStateService {
         return persistAgentExpenseCandidates(candidates, shouldSave, Instant.now().toString(), principal.familyId(), principal.userId());
     }
 
+    @Transactional
+    public ExpensePersistenceResult persistAgentExpenseCandidates(
+            List<JsonNode> candidates,
+            boolean shouldSave,
+            String familyId,
+            String userId
+    ) {
+        return persistAgentExpenseCandidates(candidates, shouldSave, Instant.now().toString(), familyId, userId);
+    }
+
     private ExpensePersistenceResult persistAgentExpenseCandidates(
             List<JsonNode> candidates,
             boolean shouldSave,

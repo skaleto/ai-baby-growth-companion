@@ -278,7 +278,12 @@ public class AgentRuntime {
                 ? List.of()
                 : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
         boolean expenseRecordingIntent = hasExpenseRecordingIntent(request.message());
-        ExpensePersistenceResult expensePersistenceResult = persistExpenseRecognitionResult(expenseRecognitionResult, expenseRecordingIntent);
+        ExpensePersistenceResult expensePersistenceResult = persistExpenseRecognitionResult(
+                expenseRecognitionResult,
+                expenseRecordingIntent,
+                familyId,
+                principal.userId()
+        );
 
         DeepSeekChatRequest chatRequest = buildDeepSeekRequest(
                 request,
@@ -652,7 +657,12 @@ public class AgentRuntime {
                     ? List.of()
                     : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
             boolean expenseRecordingIntent = hasExpenseRecordingIntent(request.message());
-            ExpensePersistenceResult expensePersistenceResult = persistExpenseRecognitionResult(expenseRecognitionResult, expenseRecordingIntent);
+            ExpensePersistenceResult expensePersistenceResult = persistExpenseRecognitionResult(
+                    expenseRecognitionResult,
+                    expenseRecordingIntent,
+                    familyId,
+                    principal.userId()
+            );
             sendModelWorkStatus(emitter, finalVisualInputs, visualAnalysisResults);
 
             String body = objectMapper.writeValueAsString(buildDeepSeekRequest(
@@ -2325,7 +2335,12 @@ public class AgentRuntime {
         return expenseContext && recordIntent;
     }
 
-    private ExpensePersistenceResult persistExpenseRecognitionResult(ExpenseRecognitionResult result, boolean shouldSave) {
+    ExpensePersistenceResult persistExpenseRecognitionResult(
+            ExpenseRecognitionResult result,
+            boolean shouldSave,
+            String familyId,
+            String userId
+    ) {
         if (result == null || result.effectCandidates().isEmpty() || appStateService == null) {
             return ExpensePersistenceResult.empty();
         }
@@ -2334,7 +2349,9 @@ public class AgentRuntime {
                         .map(AgentEffectDecision::payload)
                         .filter((payload) -> payload != null && payload.isObject())
                         .toList(),
-                shouldSave
+                shouldSave,
+                familyId,
+                userId
         );
     }
 
