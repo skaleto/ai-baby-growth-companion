@@ -2451,6 +2451,10 @@ function App() {
   const albumUploadItems = mediaUploadItems.filter((item) => item.target === "album");
   const isUploadingChatMedia = chatUploadItems.some((item) => activeUploadStatuses.includes(item.status));
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
+  const visibleChatAttachmentCount = Math.min(MAX_CHAT_ATTACHMENTS, attachments.length + chatUploadItems.length);
+  const chatAttachmentLimitLabel = visibleChatAttachmentCount >= MAX_CHAT_ATTACHMENTS
+    ? `已添加 ${MAX_CHAT_ATTACHMENTS}/${MAX_CHAT_ATTACHMENTS} 个素材，已达上限`
+    : `已添加 ${visibleChatAttachmentCount}/${MAX_CHAT_ATTACHMENTS} 个素材`;
   const visualToolTitle = isUploadingChatMedia
     ? "素材正在上传"
     : currentModelSupportsVisuals
@@ -4032,6 +4036,13 @@ function App() {
           tags: ["系统"],
         },
       ]);
+    }
+    if (target === "chat" && queue.length > 0 && queue.length >= availableSlots) {
+      showSystemWeakNotice(
+        `这条消息最多识别 ${MAX_CHAT_ATTACHMENTS} 个素材，本次已添加 ${queue.length} 个；更多请发送后再继续。`,
+        skippedByLimit > 0 ? "warning" : "info",
+        3600,
+      );
     }
   };
 
@@ -6617,6 +6628,9 @@ function App() {
           <form className="composer" onSubmit={handleSubmit}>
             {chatUploadItems.length || attachments.length ? (
               <div className="pending-attachments">
+                <div className={`pending-attachment-limit ${visibleChatAttachmentCount >= MAX_CHAT_ATTACHMENTS ? "full" : ""}`}>
+                  {chatAttachmentLimitLabel}
+                </div>
                 {chatUploadItems.map((item) => (
                   <div className={`pending-item upload-item ${item.status}`} key={item.id}>
                     <div className="pending-preview-button upload-state-icon" aria-hidden="true">

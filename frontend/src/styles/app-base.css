@@ -773,6 +773,26 @@ h3 {
   scrollbar-width: none;
 }
 
+.pending-attachment-limit {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(91, 127, 109, 0.2);
+  border-radius: 8px;
+  background: rgba(91, 127, 109, 0.08);
+  color: var(--sage-dark);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pending-attachment-limit.full {
+  border-color: rgba(174, 107, 61, 0.28);
+  background: rgba(174, 107, 61, 0.12);
+  color: #8b4b24;
+}
+
 .pending-item {
   display: grid;
   grid-template-columns: 34px minmax(80px, 150px) 28px;
