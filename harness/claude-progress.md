@@ -652,6 +652,34 @@
 - Known risks:
   - Chat still intentionally caps one message at 8 visual attachments because backend validation and model input forwarding are aligned to 8; selecting more than 8 now surfaces an explicit notice instead of silently dropping extras.
 
+### Session 2026-05-16 Agent Stream Timeout And Progress Detail
+
+- Goal: Explain and fix why user `13777892890` saw `AI 流式响应缺少最终结果` after an 8-image expense retry, and make long-running backend work visible as concrete frontend progress.
+- Completed:
+  - Confirmed the failed stream timed out before the expense-recognition skill completed: 8 prior screenshots were processed as 2 sequential vision batches, the skill took about 171 seconds, while the previous SSE budget was about 165 seconds.
+  - Changed stream timeout budgeting to account for planner time, expense-recognition batch count, final response generation, and a 12 minute upper cap for visual requests.
+  - Added cancellation checks before expense persistence and final delivery so a timed-out/disconnected stream does not continue into user-visible side effects.
+  - Changed stream trace completion to mark success only after the `final` SSE event is sent; failed final delivery is now recorded as a failed agent run.
+  - Added structured progress events for planning, context preparation, media preparation, each expense-recognition batch, 支出结果整理, 账本保存, and final response generation.
+  - Updated the chat UI to render backend progress as activity rows with running/completed/failed states instead of showing only a vague status line.
+  - Deployed backend and OTA assets to Aliyun `120.55.188.242` with production data sync disabled.
+- Verification run:
+  - `mvn -f backend/pom.xml -Dtest=AgentRuntimeTests test`
+  - `npm run build`
+  - `npm run test:agent-benchmark`
+  - `npm run verify:frontend`
+  - `git diff --check`
+  - `MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+- Evidence:
+  - `AgentRuntimeTests` passed with 23 tests, including new coverage that an 8-image previous-message retry expands stream timeout beyond the old 165 second budget while text-only requests keep the legacy budget.
+  - Agent benchmark passed with 23 tests, 0 failures, and refreshed `docs/agent-benchmark-results.md`.
+  - Frontend verification passed across desktop and six mobile viewports, with screenshots under `.verification/frontend-smoke/`.
+  - Cloud `/api/health` returned `ok`.
+  - OTA check returned version `0.1.0-20260516205323`, and the downloaded bundle checksum matched `6e95d4eb7de4776d9782648940d83f63b9d1ea62524925f4a718b1f1f968ec14`.
+- Known risks:
+  - This fixes timeout budgeting, cancellation, and progress visibility. It does not delete the production rows that were saved after the earlier frontend error; production data cleanup still needs explicit user confirmation of exact rows.
+
 ## Operational Notes
 
 - Use `npm run test:agent-benchmark` for Agent behavior changes.

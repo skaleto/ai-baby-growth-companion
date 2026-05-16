@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -612,6 +613,72 @@ class AgentRuntimeTests {
     }
 
     @Test
+    void streamTimeoutBudgetExpandsForPreviousVisualExpenseBatches() {
+        List<AgentAttachment> attachments = java.util.stream.IntStream.rangeClosed(1, 8)
+                .mapToObj((index) -> new AgentAttachment(
+                        "attachment-" + index,
+                        "image-" + index + ".jpg",
+                        "image",
+                        "/api/uploads/attachment-" + index,
+                        null
+                ))
+                .toList();
+        AgentChatRequest request = new AgentChatRequest(
+                "把刚才上传的图片花费记录一下",
+                null,
+                null,
+                List.of(new AgentChatMessage(
+                        "msg-prior",
+                        "parent",
+                        "这些订单截图帮我记账",
+                        "2026-05-16T20:01:00",
+                        attachments,
+                        List.of()
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false
+        );
+        RuntimeModel visionModel = visionRuntimeModel(Duration.ofSeconds(120));
+
+        Duration timeout = agentRuntime.streamTimeoutBudget(
+                request,
+                visionModel,
+                visionRuntimeModel(Duration.ofSeconds(45)),
+                visionModel
+        );
+
+        assertThat(timeout).isGreaterThan(Duration.ofSeconds(165));
+        assertThat(timeout).isGreaterThanOrEqualTo(Duration.ofMinutes(8));
+    }
+
+    @Test
+    void streamTimeoutBudgetKeepsLegacyBudgetForTextOnlyRequest() {
+        AgentChatRequest request = new AgentChatRequest(
+                "今天睡得怎么样？",
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false
+        );
+
+        Duration timeout = agentRuntime.streamTimeoutBudget(
+                request,
+                visionRuntimeModel(Duration.ofSeconds(30)),
+                visionRuntimeModel(Duration.ofSeconds(30)),
+                visionRuntimeModel(Duration.ofSeconds(30))
+        );
+
+        assertThat(timeout).isEqualTo(Duration.ofSeconds(165));
+    }
+
+    @Test
     void splitsMoreThanFourVisualInputsIntoModelBatches() throws Exception {
         Object runtimeModel = resolveRuntimeModel(agentRuntime, "doubao-seed-2.0-pro", false);
         Method visualInputsMethod = AgentRuntime.class.getDeclaredMethod("visualAttachmentInputs", List.class, runtimeModel.getClass());
@@ -779,6 +846,10 @@ class AgentRuntimeTests {
     }
 
     private RuntimeModel visionRuntimeModel() {
+        return visionRuntimeModel(Duration.ofSeconds(30));
+    }
+
+    private RuntimeModel visionRuntimeModel(Duration readTimeout) {
         return new RuntimeModel(
                 "doubao-seed-2.0-pro",
                 Provider.DOUBAO,
@@ -788,7 +859,7 @@ class AgentRuntimeTests {
                 false,
                 "https://example.test",
                 "/chat/completions",
-                java.time.Duration.ofSeconds(30),
+                readTimeout,
                 "DOUBAO_API_KEY"
         );
     }

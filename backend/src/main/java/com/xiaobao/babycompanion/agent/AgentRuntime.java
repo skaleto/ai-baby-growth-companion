@@ -22,6 +22,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -35,6 +36,7 @@ import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
 import com.xiaobao.babycompanion.dto.agent.AgentBabyProfile;
+import com.xiaobao.babycompanion.dto.agent.AgentChatMessage;
 import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentEffectDecision;
@@ -401,10 +403,8 @@ public class AgentRuntime {
         String familyId = principal.familyId();
         List<Skill> selectedSkills = skillRegistry.selectSkills(request);
         AgentRunRecord agentRun = startAgentRunTrace(traceId, familyId, principal.userId(), request, plannerRuntimeModel, runtimeModel);
-        Duration streamReadTimeout = runtimeModel.readTimeout().compareTo(doubaoProperties.getReadTimeout()) >= 0
-                ? runtimeModel.readTimeout()
-                : doubaoProperties.getReadTimeout();
-        SseEmitter emitter = new SseEmitter(streamReadTimeout.plusSeconds(45).toMillis());
+        RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
+        SseEmitter emitter = new SseEmitter(streamTimeoutBudget(request, runtimeModel, plannerRuntimeModel, expenseRuntimeModel).toMillis());
 
         String requestId = MDC.get("requestId");
         AtomicBoolean cancelled = new AtomicBoolean(false);
@@ -416,9 +416,13 @@ public class AgentRuntime {
                 task.cancel(true);
             }
         };
-        emitter.onCompletion(() -> cancelled.set(true));
-        emitter.onTimeout(cancelStreamTask);
-        emitter.onError((error) -> cancelStreamTask.run());
+        Runnable failAndCancelStreamTask = () -> {
+            failAgentRunTrace(agentRun, "stream_cancelled");
+            cancelStreamTask.run();
+        };
+        emitter.onCompletion(cancelStreamTask);
+        emitter.onTimeout(failAndCancelStreamTask);
+        emitter.onError((error) -> failAndCancelStreamTask.run());
         try {
             CompletableFuture<Void> task = CompletableFuture.runAsync(() -> {
                 if (cancelled.get()) return;
@@ -435,7 +439,8 @@ public class AgentRuntime {
                             apiKey,
                             plannerRuntimeModel,
                             plannerApiKey,
-                            agentRun
+                            agentRun,
+                            cancelled::get
                     );
                 } finally {
                     if (StringUtils.hasText(requestId)) MDC.remove("requestId");
@@ -448,6 +453,70 @@ public class AgentRuntime {
             emitter.completeWithError(new IllegalStateException("AI 服务繁忙，请稍后再试。", exception));
         }
         return emitter;
+    }
+
+    Duration streamTimeoutBudget(
+            AgentChatRequest request,
+            RuntimeModel runtimeModel,
+            RuntimeModel plannerRuntimeModel,
+            RuntimeModel expenseRuntimeModel
+    ) {
+        Duration legacyTimeout = maxDuration(runtimeModel.readTimeout(), doubaoProperties.getReadTimeout()).plusSeconds(45);
+        int visualCount = potentialVisualAttachmentCount(request);
+        if (visualCount <= 0) return legacyTimeout;
+        int batchSize = configuredExpenseBatchSize();
+        int batchCount = Math.max(1, (int) Math.ceil((double) visualCount / batchSize));
+        Duration plannerBudget = plannerRuntimeModel.readTimeout().plusSeconds(15);
+        Duration expenseBudget = expenseRuntimeModel.readTimeout().multipliedBy(batchCount).plusSeconds(45);
+        Duration finalBudget = runtimeModel.readTimeout().plusSeconds(45);
+        Duration visualBudget = plannerBudget.plus(expenseBudget).plus(finalBudget).plusSeconds(30);
+        return minDuration(maxDuration(legacyTimeout, visualBudget), Duration.ofMinutes(12));
+    }
+
+    private Duration maxDuration(Duration left, Duration right) {
+        if (left == null) return right == null ? Duration.ZERO : right;
+        if (right == null) return left;
+        return left.compareTo(right) >= 0 ? left : right;
+    }
+
+    private Duration minDuration(Duration left, Duration right) {
+        if (left == null) return right == null ? Duration.ZERO : right;
+        if (right == null) return left;
+        return left.compareTo(right) <= 0 ? left : right;
+    }
+
+    private int configuredExpenseBatchSize() {
+        Integer configured = Optional.ofNullable(agentRuntimeProperties.getModels())
+                .map(AgentRuntimeProperties.ModelProfiles::getExpenseRecognition)
+                .map(AgentRuntimeProperties.ModelProfile::getBatchSize)
+                .orElse(null);
+        if (configured == null || configured <= 0) return VISUAL_ANALYSIS_BATCH_SIZE;
+        return Math.max(1, Math.min(MAX_AGENT_VISUAL_ATTACHMENTS, configured));
+    }
+
+    private int potentialVisualAttachmentCount(AgentChatRequest request) {
+        if (request == null) return 0;
+        int directCount = visualAttachmentMetadataCount(request.attachments());
+        if (directCount > 0) return directCount;
+        List<AgentChatMessage> messages = listOrEmpty(request.recentMessages());
+        for (int index = messages.size() - 1; index >= 0; index -= 1) {
+            int count = visualAttachmentMetadataCount(messages.get(index).attachments());
+            if (count > 0) return count;
+        }
+        return 0;
+    }
+
+    private int visualAttachmentMetadataCount(List<AgentAttachment> attachments) {
+        if (attachments == null || attachments.isEmpty()) return 0;
+        int count = 0;
+        for (AgentAttachment attachment : attachments) {
+            if (attachment == null) continue;
+            if ("image".equals(attachment.kind()) || "video".equals(attachment.kind())) {
+                count += 1;
+            }
+            if (count >= MAX_AGENT_VISUAL_ATTACHMENTS) return MAX_AGENT_VISUAL_ATTACHMENTS;
+        }
+        return count;
     }
 
     public ConversationSummaryResponse compressConversationSummary() {
@@ -598,23 +667,27 @@ public class AgentRuntime {
             String apiKey,
             RuntimeModel plannerRuntimeModel,
             String plannerApiKey,
-            AgentRunRecord agentRun
+            AgentRunRecord agentRun,
+            BooleanSupplier cancelled
     ) {
         try {
             RecordSignals signals = recordSignalExtractor.extract(request.message());
             AgentChatResponse immediate = immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills);
             if (immediate != null) {
-                sendEvent(emitter, "final", immediate);
-                completeAgentRunTrace(agentRun, immediate.effectDecisions());
+                completeAfterFinalSent(emitter, agentRun, immediate);
                 emitter.complete();
                 return;
             }
-            sendEvent(emitter, "planning", Map.of("message", "理解记录中"));
+            sendProgressEvent(emitter, "planning", "running", "理解请求并选择处理能力");
+            sendStatusEvent(emitter, "planning", "理解请求并选择处理能力");
             AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey, familyId, principal.userId());
-            sendEvent(emitter, "retrieving_context", Map.of("message", "查找相关记录"));
+            sendProgressEvent(emitter, "planning", "completed", "已确定处理计划");
+            sendProgressEvent(emitter, "context", "running", "整理宝宝档案、历史消息和账本上下文");
+            sendStatusEvent(emitter, "retrieving_context", "整理宝宝档案、历史消息和账本上下文");
             AgentContextSnapshot contextSnapshot = agentContextService.build(familyId, principal.userId(), request, plan, signals);
             SkillPlan skillPlan = skillRouter == null ? SkillPlan.empty() : skillRouter.plan(request, plan, signals);
             recordAgentPlanTrace(agentRun, plan, skillPlan);
+            sendProgressEvent(emitter, "context", "completed", "上下文已准备好");
             AgentChatResponse profileBoundary = immediateBoundaryResponse(
                     signals,
                     traceId,
@@ -624,8 +697,7 @@ public class AgentRuntime {
                     request.message()
             );
             if (profileBoundary != null) {
-                sendEvent(emitter, "final", profileBoundary);
-                completeAgentRunTrace(agentRun, profileBoundary.effectDecisions());
+                completeAfterFinalSent(emitter, agentRun, profileBoundary);
                 emitter.complete();
                 return;
             }
@@ -636,6 +708,14 @@ public class AgentRuntime {
                     familyId,
                     skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID) ? expenseRuntimeModel : runtimeModel
             );
+            if (!visualInputs.isEmpty()) {
+                sendProgressEvent(
+                        emitter,
+                        "media-preparation",
+                        "completed",
+                        "已准备 " + visualInputs.size() + " 个图片/视频素材"
+                );
+            }
             ExpenseRecognitionResult expenseRecognitionResult = executeExpenseRecognition(
                     request,
                     signals,
@@ -648,7 +728,9 @@ public class AgentRuntime {
                     visualInputs,
                     emitter
             );
+            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "expense_recognition")) return;
             List<AgentToolResult> toolResults = executePlannedTools(plan, request, (event) -> sendEvent(emitter, "tool", event));
+            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "tools")) return;
             List<String> usedSkills = mergeSkillIds(usedSkillIds(selectedSkills, toolResults, plan, signals, request.message()), skillPlan);
             List<AgentSource> sources = collectSources(toolResults);
             List<VisualAnalysisResult> visualAnalysisResults = expenseRecognitionResult == null
@@ -663,17 +745,30 @@ public class AgentRuntime {
                             emitter
                     )
                     : expenseRecognitionResult.visualAnalysisResults();
+            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "visual_analysis")) return;
             List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
                     ? List.of()
                     : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
             boolean expenseRecordingIntent = hasExpenseRecordingIntent(request.message());
+            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "before_expense_persistence")) return;
+            if (expenseRecognitionResult != null && expenseRecordingIntent && !expenseRecognitionResult.effectCandidates().isEmpty()) {
+                sendProgressEvent(emitter, "expense-persistence", "running", "把识别出的支出写入账本");
+                sendStatusEvent(emitter, "generating", "正在保存账本记录");
+            }
             ExpensePersistenceResult expensePersistenceResult = persistExpenseRecognitionResult(
                     expenseRecognitionResult,
                     expenseRecordingIntent,
                     familyId,
                     principal.userId()
             );
+            if (!expensePersistenceResult.saved().isEmpty()) {
+                sendProgressEvent(emitter, "expense-persistence", "completed", "已保存 " + expensePersistenceResult.saved().size() + " 条账本记录");
+            } else if (expenseRecognitionResult != null && expenseRecordingIntent && !expenseRecognitionResult.effectCandidates().isEmpty()) {
+                sendProgressEvent(emitter, "expense-persistence", "completed", "账本记录已由后续确认处理");
+            }
+            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "after_expense_persistence")) return;
             sendModelWorkStatus(emitter, finalVisualInputs, visualAnalysisResults);
+            sendProgressEvent(emitter, "final-composer", "running", "生成最终回复");
 
             String body = objectMapper.writeValueAsString(buildDeepSeekRequest(
                     request,
@@ -716,7 +811,8 @@ public class AgentRuntime {
                     inputType(request),
                     skillEffectCandidates(expenseRecognitionResult, expensePersistenceResult, expenseRecordingIntent),
                     expensePersistenceResult,
-                    agentRun
+                    agentRun,
+                    cancelled
             );
         } catch (Exception exception) {
             LOGGER.warn(
@@ -890,19 +986,43 @@ public class AgentRuntime {
         String expenseApiKey = resolvedApiKey(expenseRuntimeModel);
         ExpenseRecognitionResult result = expenseRecognitionSkill.execute(
                 input,
-                (modelRequest, batchNumber, batchCount) -> callExpenseRecognitionModel(
-                        expenseRuntimeModel,
-                        expenseApiKey,
-                        modelRequest,
-                        batchNumber,
-                        batchCount,
-                        request,
-                        familyId,
-                        userId,
-                        traceId
-                ),
-                (message) -> sendStatusEvent(emitter, "analyzing_media", message)
+                (modelRequest, batchNumber, batchCount) -> {
+                    String batchId = "expense-recognition-batch-" + batchNumber;
+                    String batchMessage = batchCount > 1
+                            ? "识别第 " + batchNumber + "/" + batchCount + " 批支出图片"
+                            : "识别支出图片";
+                    sendProgressEvent(emitter, batchId, "running", batchMessage);
+                    try {
+                        ExpenseRecognitionModelResponse response = callExpenseRecognitionModel(
+                                expenseRuntimeModel,
+                                expenseApiKey,
+                                modelRequest,
+                                batchNumber,
+                                batchCount,
+                                request,
+                                familyId,
+                                userId,
+                                traceId
+                        );
+                        sendProgressEvent(emitter, batchId, "completed", batchMessage + "完成");
+                        return response;
+                    } catch (RuntimeException exception) {
+                        sendProgressEvent(emitter, batchId, "failed", batchMessage + "失败");
+                        throw exception;
+                    }
+                },
+                (message) -> {
+                    sendStatusEvent(emitter, "analyzing_media", message);
+                    sendProgressEvent(emitter, "expense-recognition", "running", message);
+                }
         );
+        if ("complete".equals(result.status())) {
+            sendProgressEvent(emitter, "expense-recognition", "completed", "已整理出 " + result.effectCandidates().size() + " 条支出草稿");
+        } else if ("failed".equals(result.status())) {
+            sendProgressEvent(emitter, "expense-recognition", "failed", StringUtils.hasText(result.userFacingError()) ? result.userFacingError() : "支出图片识别失败");
+        } else {
+            sendProgressEvent(emitter, "expense-recognition", "completed", result.aiTextDraft());
+        }
         recordSkillRunTrace(agentRun, traceId, result);
         return result;
     }
@@ -1304,7 +1424,8 @@ public class AgentRuntime {
             String inputType,
             List<AgentEffectDecision> skillCandidates,
             ExpensePersistenceResult expensePersistenceResult,
-            AgentRunRecord agentRun
+            AgentRunRecord agentRun,
+            BooleanSupplier cancelled
     ) {
         StringBuilder content = new StringBuilder();
         AtomicReference<String> model = new AtomicReference<>(runtimeModel.apiModel());
@@ -1338,12 +1459,12 @@ public class AgentRuntime {
                             sources
                     );
                     if (fallbackResponse != null) {
-                        completeAgentRunTrace(agentRun, fallbackResponse.effectDecisions());
-                        sendEvent(emitter, "final", fallbackResponse);
+                        completeAfterFinalSent(emitter, agentRun, fallbackResponse);
                         emitter.complete();
                         return;
                     }
                     failAgentRunTrace(agentRun, "HTTP_" + response.statusCode());
+                    sendProgressEvent(emitter, "final-composer", "failed", "最终回复生成失败");
                     sendEvent(emitter, "error", Map.of("message", runtimeModel.id() + " stream failed: " + errorBody));
                     emitter.complete();
                     return;
@@ -1351,6 +1472,7 @@ public class AgentRuntime {
 
                 lines.forEach((line) -> handleStreamLine(line, emitter, content, model, requestId));
             }
+            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "before_final_delivery")) return;
 
             AgentChatResponse parsed = parseModelContent(
                     content.toString(),
@@ -1362,8 +1484,7 @@ public class AgentRuntime {
             );
             recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, requestId.get(), null, true, null, false, true);
             AgentChatResponse finalResponse = withSafetyAlertsAndDecisions(parsed, userMessage, signals, plan, babyProfile, skillCandidates, expensePersistenceResult);
-            completeAgentRunTrace(agentRun, finalResponse.effectDecisions());
-            sendEvent(emitter, "final", finalResponse);
+            completeAfterFinalSent(emitter, agentRun, finalResponse);
             emitter.complete();
         } catch (Exception exception) {
             LOGGER.warn(
@@ -1389,12 +1510,12 @@ public class AgentRuntime {
                     sources
             );
             if (fallbackResponse != null) {
-                completeAgentRunTrace(agentRun, fallbackResponse.effectDecisions());
-                sendEvent(emitter, "final", fallbackResponse);
+                completeAfterFinalSent(emitter, agentRun, fallbackResponse);
                 emitter.complete();
                 return;
             }
             failAgentRunTrace(agentRun, rootCauseMessage(exception));
+            sendProgressEvent(emitter, "final-composer", "failed", "最终回复生成失败");
             sendEvent(emitter, "error", Map.of("message", userFacingModelErrorMessage(exception, inputType)));
             emitter.complete();
         }
@@ -1779,11 +1900,14 @@ public class AgentRuntime {
         return value != null && value.isTextual() && StringUtils.hasText(value.asText()) ? value.asText() : fallback;
     }
 
-    private void sendEvent(SseEmitter emitter, String name, Object data) {
+    private boolean sendEvent(SseEmitter emitter, String name, Object data) {
+        if (emitter == null) return false;
         try {
             emitter.send(SseEmitter.event().name(name).data(data));
+            return true;
         } catch (Exception exception) {
             emitter.completeWithError(exception);
+            return false;
         }
     }
 
@@ -1806,10 +1930,34 @@ public class AgentRuntime {
     private void sendStatusEvent(SseEmitter emitter, String name, String message) {
         if (emitter == null) return;
         Map<String, String> event = Map.of("message", message);
-        if (!"retrieving_context".equals(name)) {
-            sendEvent(emitter, "retrieving_context", event);
-        }
         sendEvent(emitter, name, event);
+    }
+
+    private void sendProgressEvent(SseEmitter emitter, String id, String status, String message) {
+        if (emitter == null || !StringUtils.hasText(id) || !StringUtils.hasText(message)) return;
+        sendEvent(emitter, "tool", Map.of(
+                "id", "progress-" + id,
+                "toolId", "agent-progress",
+                "name", "处理进度",
+                "status", status,
+                "message", message
+        ));
+    }
+
+    private void completeAfterFinalSent(SseEmitter emitter, AgentRunRecord agentRun, AgentChatResponse response) {
+        sendProgressEvent(emitter, "final-composer", "completed", "最终回复已生成");
+        if (sendEvent(emitter, "final", response)) {
+            completeAgentRunTrace(agentRun, response.effectDecisions());
+        } else {
+            failAgentRunTrace(agentRun, "final_delivery_failed");
+        }
+    }
+
+    private boolean stopStreamIfCancelled(BooleanSupplier cancelled, AgentRunRecord agentRun, String traceId, String stage) {
+        if (cancelled == null || !cancelled.getAsBoolean()) return false;
+        LOGGER.warn("Agent stream was cancelled before completing stage. traceId={}, stage={}", traceId, stage);
+        failAgentRunTrace(agentRun, "stream_cancelled_" + stage);
+        return true;
     }
 
     private String analyzingMediaMessage(List<VisualAttachmentInput> visualInputs) {

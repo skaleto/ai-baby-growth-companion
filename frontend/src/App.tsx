@@ -2096,6 +2096,11 @@ const upsertToolActivity = (items: ToolActivity[] | undefined, activity: ToolAct
   return [...current, activity];
 };
 
+const isAgentProgressActivity = (activity: ToolActivity) => activity.toolId === "agent-progress";
+
+const failedRunningActivities = (items: ToolActivity[]) =>
+  items.map((item) => (item.status === "running" ? { ...item, status: "failed" as const } : item));
+
 const fetchAsDataUrl = async (url: string) => {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`无法读取附件内容（${response.status}）`);
@@ -4676,7 +4681,7 @@ function App() {
                       ...message,
                       toolActivities,
                       text: contentText ? message.text : activity.message,
-                      tags: activity.status === "running" ? ["查询中"] : message.tags,
+                      tags: activity.status === "running" ? [isAgentProgressActivity(activity) ? "处理中" : "查询中"] : message.tags,
                     }
                   : message,
               ),
@@ -4876,6 +4881,7 @@ function App() {
         // Local state stays usable; the status chip tells the parent that the backend sync needs attention.
       }
     } catch (error) {
+      const failedActivities = failedRunningActivities(toolActivities);
       const aiMessage: ChatMessage = {
         id: makeId("msg"),
         role: "ai",
@@ -4883,7 +4889,7 @@ function App() {
         createdAt: new Date().toISOString(),
         tags: ["系统"],
         isStreaming: false,
-        toolActivities,
+        toolActivities: failedActivities,
       };
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
@@ -6259,7 +6265,17 @@ function App() {
                   <div className="tool-activity-list">
                     {message.toolActivities.map((activity) => (
                       <div className={`tool-activity ${activity.status}`} key={activity.id}>
-                        <Globe2 size={14} />
+                        {isAgentProgressActivity(activity) ? (
+                          activity.status === "completed" ? (
+                            <CheckCircle2 size={14} />
+                          ) : activity.status === "failed" ? (
+                            <X size={14} />
+                          ) : (
+                            <Clock3 size={14} />
+                          )
+                        ) : (
+                          <Globe2 size={14} />
+                        )}
                         <span>{activity.message}</span>
                         {activity.query ? <small>{activity.query}</small> : null}
                       </div>
