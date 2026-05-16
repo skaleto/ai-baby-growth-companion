@@ -13,6 +13,36 @@
 
 ## Session Log
 
+### Session 2026-05-16 Voice Hold Pointer Drift Fix
+
+- Goal: 修复语音按钮按住后手指稍微移动就断开的问题，让移动端按住说话只在松手、取消或页面失焦时结束。
+- Completed:
+  - 移除语音按住按钮的 `pointerleave` 停止录音逻辑，避免手指自然滑出按钮边界时提前断开。
+  - 增加按压会话追踪，并用 window 级 `pointerup` / `pointercancel` / `blur` 兜底收尾；即使 WebView 拒绝 `setPointerCapture`，也能保持按住状态稳定。
+  - 重新同步 iOS/Android web 资源，并确认 iOS debug build 通过，方便继续打 iOS 包。
+  - 发布 OTA `0.1.0-20260516223427`，消息 `修复语音按住移动中断`，并部署到 Aliyun。
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run build`
+  - `npm run verify:frontend`
+  - Local Playwright pointer-drift probe for voice hold.
+  - `npm run mobile:sync`
+  - `npm run build:ios:debug`
+  - `MOBILE_UPDATE_MESSAGE='修复语音按住移动中断' MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `MOBILE_UPDATE_OSS_SSH_TARGET=ai-baby-aliyun SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun scripts/upload-mobile-update-oss.sh`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`, OTA check, signed OSS checksum probe, and up-to-date probe.
+- Evidence:
+  - Frontend verification passed across desktop and six mobile viewports.
+  - Local pointer-drift probe stayed in `connecting` after `pointerleave`, then returned to `idle` after `pointerup`.
+  - `npm run mobile:sync` passed and copied the updated web assets into iOS/Android projects.
+  - `npm run build:ios:debug` succeeded for iPhone 17 simulator.
+  - Cloud health returned `ok`.
+  - OTA check returns version `0.1.0-20260516223427`; downloaded bundle size was `2641156` bytes and SHA-256 matched manifest checksum `c2bb9c56a60b404f2a8ed967996697c2b02fe2da52cb0ee08f70a34e4c9f6592`.
+  - Up-to-date probe using `currentBundleVersion=0.1.0-20260516223427` returned `updateAvailable=false`.
+- Known risks:
+  - The automated pointer probe mocks browser media/ASR and validates the frontend gesture lifecycle. Real iOS microphone permission state still needs normal device-level validation during packaging or TestFlight install.
+
 ### Session 2026-05-16 Chat Attachment Tray Layout
 
 - Goal: 修复聊天输入区多图附件上传时过度拥挤的问题，让 8 张图片场景下附件清单可收起/展开，并顺手优化删除叉叉按钮的样式和对齐。

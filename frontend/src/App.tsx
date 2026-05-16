@@ -2450,6 +2450,8 @@ function App() {
   const voiceAsrReadyRef = useRef(false);
   const voiceAutoSubmitRef = useRef(false);
   const voicePressingRef = useRef(false);
+  const voicePointerRef = useRef<{ pointerId: number } | null>(null);
+  const voicePointerCleanupRef = useRef<(() => void) | null>(null);
   const voiceAutoSubmitTimerRef = useRef<number | null>(null);
   const inputValueRef = useRef(input);
   const isSubmittingRef = useRef(isSubmitting);
@@ -4399,7 +4401,14 @@ function App() {
     setVoiceStatus("processing");
   };
 
+  const clearVoicePointerTracking = () => {
+    voicePointerCleanupRef.current?.();
+    voicePointerCleanupRef.current = null;
+    voicePointerRef.current = null;
+  };
+
   const stopVoiceCapture = (autoSubmit = false, keepStandby = true) => {
+    clearVoicePointerTracking();
     voicePressingRef.current = false;
     if (autoSubmit) {
       hapticSelection();
@@ -4560,12 +4569,75 @@ function App() {
     }
   };
 
+  const finishVoicePress = () => {
+    if (!voicePointerRef.current) return;
+    stopVoiceCapture(true);
+  };
+
+  const cancelVoicePress = () => {
+    if (!voicePointerRef.current && !voicePressingRef.current) return;
+    stopVoiceCapture(false);
+  };
+
+  const startVoicePress = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (isSubmitting || voicePointerRef.current) return;
+    event.preventDefault();
+    const button = event.currentTarget;
+    const pointerId = event.pointerId;
+    voicePointerRef.current = { pointerId };
+
+    const finishFromWindow = (pointerEvent: PointerEvent) => {
+      if (voicePointerRef.current?.pointerId !== pointerEvent.pointerId) return;
+      pointerEvent.preventDefault();
+      finishVoicePress();
+    };
+    const cancelFromWindow = (pointerEvent: PointerEvent) => {
+      if (voicePointerRef.current?.pointerId !== pointerEvent.pointerId) return;
+      cancelVoicePress();
+    };
+    const cancelOnBlur = () => cancelVoicePress();
+
+    window.addEventListener("pointerup", finishFromWindow, true);
+    window.addEventListener("pointercancel", cancelFromWindow, true);
+    window.addEventListener("blur", cancelOnBlur);
+    voicePointerCleanupRef.current = () => {
+      window.removeEventListener("pointerup", finishFromWindow, true);
+      window.removeEventListener("pointercancel", cancelFromWindow, true);
+      window.removeEventListener("blur", cancelOnBlur);
+    };
+
+    try {
+      button.setPointerCapture(pointerId);
+    } catch {
+      // Some WebViews reject pointer capture during long-press gestures; the window listeners keep the press stable.
+    }
+    voicePressingRef.current = true;
+    void startVoiceCapture();
+  };
+
+  const releaseVoicePress = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (voicePointerRef.current?.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // The pointer may already be released when the native view cancels a gesture.
+    }
+    finishVoicePress();
+  };
+
+  const cancelVoicePointer = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (voicePointerRef.current?.pointerId !== event.pointerId) return;
+    cancelVoicePress();
+  };
+
   useEffect(
     () => () => {
       voiceSessionRef.current += 1;
       voiceShouldStopRef.current = true;
       voiceAutoSubmitRef.current = false;
       voicePressingRef.current = false;
+      clearVoicePointerTracking();
       clearVoiceAutoSubmitTimer();
       cleanupLocalVoiceCapture();
       stopVoiceStandbyStream();
@@ -6940,29 +7012,9 @@ function App() {
                     style={voiceButtonStyle}
                     disabled={isSubmitting}
                     aria-label="按住说话"
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      try {
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                      } catch {
-                        // Some WebViews can reject pointer capture during long-press gestures.
-                      }
-                      voicePressingRef.current = true;
-                      startVoiceCapture();
-                    }}
-                    onPointerUp={(event) => {
-                      event.preventDefault();
-                      try {
-                        event.currentTarget.releasePointerCapture(event.pointerId);
-                      } catch {
-                        // The pointer may already be released when the native view cancels a gesture.
-                      }
-                      stopVoiceCapture(true);
-                    }}
-                    onPointerCancel={() => stopVoiceCapture()}
-                    onPointerLeave={() => {
-                      if (isListening) stopVoiceCapture();
-                    }}
+                    onPointerDown={startVoicePress}
+                    onPointerUp={releaseVoicePress}
+                    onPointerCancel={cancelVoicePointer}
                     onContextMenu={(event) => event.preventDefault()}
                   >
                     <span>{voiceHoldLabel}</span>

@@ -129,7 +129,8 @@
         "2026-05-16 npm run verify:frontend passed after adding auto-saved expense ledger refresh and pending-effect confirm saving state.",
         "2026-05-16 npm run verify:frontend passed after removing frontend regex-based previous expense attachment forwarding and relying on backend skill runtime hydration.",
         "2026-05-16 npm run verify:frontend passed after rendering backend Agent progress events as running/completed/failed activity rows in chat.",
-        "2026-05-16 npm run verify:frontend passed after replacing the crowded chat attachment strip with a collapsible attachment tray and aligned remove buttons; a local 8-image Playwright probe on 390x844 found no horizontal overflow."
+        "2026-05-16 npm run verify:frontend passed after replacing the crowded chat attachment strip with a collapsible attachment tray and aligned remove buttons; a local 8-image Playwright probe on 390x844 found no horizontal overflow.",
+        "2026-05-16 npm run verify:frontend passed after stabilizing the voice hold button pointer lifecycle; a local pointer-drift probe stayed connecting after pointerleave and returned idle after pointerup."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -161,7 +162,8 @@
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent Skill Runtime contract standardization; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516203136.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent stream timeout/progress handling; /api/health returned ok and OTA check returned version 0.1.0-20260516205323.",
         "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for previous-image retry latency optimization; /api/health returned ok.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for collapsible chat attachment tray layout; /api/health returned ok, OTA check returned 0.1.0-20260516220400, and up-to-date probe returned updateAvailable=false."
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for collapsible chat attachment tray layout; /api/health returned ok, OTA check returned 0.1.0-20260516220400, and up-to-date probe returned updateAvailable=false.",
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for voice hold pointer drift; /api/health returned ok, OTA check returned 0.1.0-20260516223427, and up-to-date probe returned updateAvailable=false."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },
@@ -192,7 +194,9 @@
         "2026-05-16 OTA 0.1.0-20260516194139 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640408 bytes and checksum 2999bfa53dc6806f5262b9fcadd39aefeb4406e6055c876552d0b75bb16c08d2.",
         "2026-05-16 OTA 0.1.0-20260516203136 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640023 bytes and checksum 6a2ca6559f1441ad8444de3e084b2fe0c802abb97a289fa4d2a559644862bcfc.",
         "2026-05-16 OTA 0.1.0-20260516205323 uploaded under baby-companion/mobile-updates; downloaded bundle returned 2640140 bytes and checksum 6e95d4eb7de4776d9782648940d83f63b9d1ea62524925f4a718b1f1f968ec14.",
-        "2026-05-16 OTA 0.1.0-20260516220400 uploaded under baby-companion/mobile-updates; signed download returned 2640958 bytes and checksum 7b504315d9aa9db266035dcd6636d4509120be6b0e990baccd49253502e340f6."
+        "2026-05-16 OTA 0.1.0-20260516220400 uploaded under baby-companion/mobile-updates; signed download returned 2640958 bytes and checksum 7b504315d9aa9db266035dcd6636d4509120be6b0e990baccd49253502e340f6.",
+        "2026-05-16 npm run mobile:sync and npm run build:ios:debug passed after voice hold pointer drift fix.",
+        "2026-05-16 OTA 0.1.0-20260516223427 uploaded under baby-companion/mobile-updates; signed download returned 2641156 bytes and checksum c2bb9c56a60b404f2a8ed967996697c2b02fe2da52cb0ee08f70a34e4c9f6592."
       ],
       "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
     },
