@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.CompletionException;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -48,6 +51,15 @@ public class ExpenseRecognitionSkill {
             ExpenseRecognitionModelClient modelClient,
             SkillStatusSink statusSink
     ) {
+        return execute(input, modelClient, statusSink, Runnable::run);
+    }
+
+    public ExpenseRecognitionResult execute(
+            ExpenseRecognitionInput input,
+            ExpenseRecognitionModelClient modelClient,
+            SkillStatusSink statusSink,
+            Executor batchExecutor
+    ) {
         Instant startedAt = Instant.now();
         RuntimeModel runtimeModel = input.runtimeModel();
         int batchSize = configuredBatchSize(input);
@@ -78,44 +90,23 @@ public class ExpenseRecognitionSkill {
         sendStatus(statusSink, batches.size() > 1
                 ? "正在分批识别 " + input.visualInputs().size() + " 张支出图片"
                 : "正在识别支出图片");
-        List<BatchResult> batchResults = new ArrayList<>();
-        List<VisualAnalysisResult> visualSummaries = new ArrayList<>();
-
-        for (int index = 0; index < batches.size(); index += 1) {
-            int batchNumber = index + 1;
-            List<VisualAttachmentInput> batch = batches.get(index);
-            if (batches.size() > 1) {
-                sendStatus(statusSink, "正在识别第 " + batchNumber + "/" + batches.size() + " 批支出图片");
-            }
-            try {
-                ExpenseRecognitionModelResponse response = modelClient.call(
-                        buildModelRequest(input, batch, batchNumber, batches.size()),
-                        batchNumber,
-                        batches.size()
-                );
-                String content = response == null ? "" : response.content();
-                BatchResult parsed = parseBatchResult(content, batch, batchNumber, batches.size());
-                batchResults.add(parsed);
-                visualSummaries.add(new VisualAnalysisResult(
-                        batchNumber,
-                        batches.size(),
-                        batch.size(),
-                        batch.stream().map(VisualAttachmentInput::metadata).toList(),
-                        StringUtils.hasText(content) ? content : parsed.summary()
-                ));
-            } catch (RuntimeException exception) {
-                String code = errorCode(exception);
-                return failure(
-                        input,
-                        startedAt,
-                        code,
-                        userFacingError(code),
-                        batches.size(),
-                        input.visualInputs().stream().map(VisualAttachmentInput::metadata).toList(),
-                        visualSummaries
-                );
-            }
+        List<BatchExecutionResult> executionResults;
+        try {
+            executionResults = executeBatches(input, modelClient, statusSink, batches, batchExecutor);
+        } catch (RuntimeException exception) {
+            String code = errorCode(exception);
+            return failure(
+                    input,
+                    startedAt,
+                    code,
+                    userFacingError(code),
+                    batches.size(),
+                    input.visualInputs().stream().map(VisualAttachmentInput::metadata).toList(),
+                    List.of()
+            );
         }
+        List<BatchResult> batchResults = executionResults.stream().map(BatchExecutionResult::batch).toList();
+        List<VisualAnalysisResult> visualSummaries = executionResults.stream().map(BatchExecutionResult::visualSummary).toList();
 
         List<Map<String, Object>> evidence = new ArrayList<>();
         List<String> clarifications = new ArrayList<>();
@@ -167,6 +158,69 @@ public class ExpenseRecognitionSkill {
                 completedAt
         );
         return new ExpenseRecognitionResult(status, aiTextDraft, userFacingError, candidates, clarifications, evidence, visualSummaries, traceSummary);
+    }
+
+    private List<BatchExecutionResult> executeBatches(
+            ExpenseRecognitionInput input,
+            ExpenseRecognitionModelClient modelClient,
+            SkillStatusSink statusSink,
+            List<List<VisualAttachmentInput>> batches,
+            Executor batchExecutor
+    ) {
+        if (batches.size() <= 1 || batchExecutor == null) {
+            List<BatchExecutionResult> results = new ArrayList<>();
+            for (int index = 0; index < batches.size(); index += 1) {
+                results.add(executeBatch(input, modelClient, statusSink, batches.get(index), index + 1, batches.size()));
+            }
+            return results;
+        }
+        List<CompletableFuture<BatchExecutionResult>> futures = new ArrayList<>();
+        for (int index = 0; index < batches.size(); index += 1) {
+            int batchNumber = index + 1;
+            List<VisualAttachmentInput> batch = batches.get(index);
+            futures.add(CompletableFuture.supplyAsync(
+                    () -> executeBatch(input, modelClient, statusSink, batch, batchNumber, batches.size()),
+                    batchExecutor
+            ));
+        }
+        try {
+            CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+            return futures.stream().map(CompletableFuture::join).toList();
+        } catch (CompletionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtimeException) throw runtimeException;
+            throw new RuntimeException(cause == null ? exception : cause);
+        }
+    }
+
+    private BatchExecutionResult executeBatch(
+            ExpenseRecognitionInput input,
+            ExpenseRecognitionModelClient modelClient,
+            SkillStatusSink statusSink,
+            List<VisualAttachmentInput> batch,
+            int batchNumber,
+            int batchCount
+    ) {
+        if (batchCount > 1) {
+            sendStatus(statusSink, "正在识别第 " + batchNumber + "/" + batchCount + " 批支出图片");
+        }
+        ExpenseRecognitionModelResponse response = modelClient.call(
+                buildModelRequest(input, batch, batchNumber, batchCount),
+                batchNumber,
+                batchCount
+        );
+        String content = response == null ? "" : response.content();
+        BatchResult parsed = parseBatchResult(content, batch, batchNumber, batchCount);
+        return new BatchExecutionResult(
+                parsed,
+                new VisualAnalysisResult(
+                        batchNumber,
+                        batchCount,
+                        batch.size(),
+                        batch.stream().map(VisualAttachmentInput::metadata).toList(),
+                        StringUtils.hasText(content) ? content : parsed.summary()
+                )
+        );
     }
 
     DeepSeekChatRequest buildModelRequest(
@@ -532,6 +586,12 @@ public class ExpenseRecognitionSkill {
             List<String> clarifications,
             List<Map<String, Object>> evidence,
             String summary
+    ) {
+    }
+
+    private record BatchExecutionResult(
+            BatchResult batch,
+            VisualAnalysisResult visualSummary
     ) {
     }
 }

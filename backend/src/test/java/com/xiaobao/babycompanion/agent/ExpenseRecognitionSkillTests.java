@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.config.AgentRuntimeProperties;
@@ -64,6 +67,39 @@ class ExpenseRecognitionSkillTests {
         assertThat(result.traceSummary().batchCount()).isEqualTo(2);
         assertThat(result.visualAnalysisResults()).hasSize(2);
         assertThat(result.effectCandidates()).hasSize(1);
+    }
+
+    @Test
+    void canRunMultipleExpenseModelBatchesConcurrently() {
+        ExpenseRecognitionInput input = input(
+                "帮我识别这 8 张小票花费并记账",
+                java.util.stream.IntStream.rangeClosed(1, 8).mapToObj((index) -> image("attachment-" + index)).toList(),
+                4
+        );
+        CountDownLatch started = new CountDownLatch(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            ExpenseRecognitionResult result = skill.execute(input, (request, batchNumber, batchCount) -> {
+                started.countDown();
+                try {
+                    assertThat(started.await(1, TimeUnit.SECONDS)).isTrue();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(exception);
+                }
+                return new ExpenseRecognitionModelResponse(
+                        "req-" + batchNumber,
+                        "doubao",
+                        batchNumber == 1 ? completeJson("attachment-1") : noExpenseJson(),
+                        null
+                );
+            }, null, executor);
+
+            assertThat(result.status()).isEqualTo("complete");
+            assertThat(result.traceSummary().batchCount()).isEqualTo(2);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test

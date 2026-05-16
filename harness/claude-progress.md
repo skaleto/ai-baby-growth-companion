@@ -680,6 +680,31 @@
 - Known risks:
   - This fixes timeout budgeting, cancellation, and progress visibility. It does not delete the production rows that were saved after the earlier frontend error; production data cleanup still needs explicit user confirmation of exact rows.
 
+### Session 2026-05-16 Previous Image Retry Latency Follow-Up
+
+- Goal: Explain and reduce why a follow-up message asking to recognize previously uploaded images was much slower than sending images directly in the same message.
+- Completed:
+  - Confirmed user `13777892890` latest trace `agent-1ff31579-9370-4820-ba58-be2bfa6ed1fa` started at 20:58:48, expense recognition completed at 21:01:51, and final agent response completed at 21:02:27.
+  - Confirmed the two expense-recognition batches took about 86 seconds and 93 seconds respectively; the UI appeared stuck on the second batch because each batch was a blocking vision-model call with no inner progress.
+  - Found the direct-image path was faster because the frontend sends agent-optimized compressed images, while previous-image retry reloaded persisted attachment originals from storage.
+  - Changed historical attachment hydration for Agent input to generate an agent-sized JPEG data URL with max edge 1800px, instead of sending the original stored image bytes to the vision model.
+  - Changed expense-recognition multi-batch execution to run batches concurrently using the agent executor, while preserving ordered result aggregation.
+  - Changed expense persistence intent to trust planner output when it has `intent=record`, `topic=expense`, and `expense-recognition` execute mode, so ASR typos like `画飞记录一` do not block the recognized expense flow.
+  - Deployed backend-only update to Aliyun `120.55.188.242` with production data sync disabled.
+- Verification run:
+  - `mvn -f backend/pom.xml -Dtest=AgentRuntimeTests,ExpenseRecognitionSkillTests test`
+  - `npm run test:agent-benchmark`
+  - `mvn -f backend/pom.xml test`
+  - `git diff --check`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+- Evidence:
+  - Targeted runtime and expense skill tests passed with 29 tests, including concurrent batch execution and planner-record intent surviving ASR typo coverage.
+  - Full backend test suite passed with 183 tests, 0 failures.
+  - Agent benchmark passed with 23 tests, 0 failures, and refreshed `docs/agent-benchmark-results.md`.
+  - Cloud `/api/health` returned `ok` after backend-only deploy.
+- Known risks:
+  - Historical screenshot OCR now uses a compressed 1800px JPEG instead of the original file; this is intended to match the direct-send path and should preserve enough resolution for order screenshots, but extremely tiny text could still depend on upstream model quality.
+
 ## Operational Notes
 
 - Use `npm run test:agent-benchmark` for Agent behavior changes.

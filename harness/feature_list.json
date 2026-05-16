@@ -58,7 +58,8 @@
         "2026-05-16 npm run test:agent-benchmark passed with 20 tests after fixing pending expense id collisions, duplicate expense candidates, and redundant amount questions.",
         "2026-05-16 npm run test:agent-benchmark passed with 21 tests after adding saved expense no-confirm-again coverage.",
         "2026-05-16 npm run test:agent-benchmark passed with 21 tests after fixing async expense persistence to use explicit family/user identity instead of CurrentUser in the stream thread.",
-        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after adding visual stream timeout budgeting, cancellation guards, and detailed backend progress events."
+        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after adding visual stream timeout budgeting, cancellation guards, and detailed backend progress events.",
+        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after previous-image retry was optimized to use agent-sized JPEG hydration, concurrent expense-recognition batches, and planner-backed persistence intent."
       ],
       "notes": "New Agent work should add at least one positive and one boundary benchmark case."
     },
@@ -95,7 +96,9 @@
         "2026-05-16 npm run test:agent-benchmark passed with 23 tests after adding previous-image retry without frontend forwarding and category-only clarification coverage.",
         "2026-05-16 OTA 0.1.0-20260516203136 published after standardizing Agent Skill Runtime; cloud health, OTA check, signed OSS checksum, and up-to-date probes passed.",
         "2026-05-16 mvn -f backend/pom.xml -Dtest=AgentRuntimeTests test passed with 23 tests after expanding visual stream timeout budgets and preventing cancelled streams from reaching expense persistence/final delivery.",
-        "2026-05-16 OTA 0.1.0-20260516205323 published after adding detailed Agent stream progress rows and final-delivery trace handling; cloud health, OTA check, and checksum probes passed."
+        "2026-05-16 OTA 0.1.0-20260516205323 published after adding detailed Agent stream progress rows and final-delivery trace handling; cloud health, OTA check, and checksum probes passed.",
+        "2026-05-16 mvn -f backend/pom.xml test passed with 183 tests after optimizing previous-image retry latency and ASR-typo expense persistence intent.",
+        "2026-05-16 backend-only Aliyun redeploy completed with SYNC_DATA=0 after previous-image retry optimization; /api/health returned ok."
       ],
       "notes": "The skill uses the configured expense-recognition model profile, or falls back to Doubao Pro when the final composer model has no vision support. Latest runtime contract standardization includes both backend changes and OTA because frontend attachment forwarding was removed."
     },
@@ -155,7 +158,8 @@
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for expense Agent auto-save interaction contract; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516194139.",
         "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for stream-thread AUTH_REQUIRED fix in expense auto-save persistence; /api/health returned ok and post-start journal probe showed no same-class AUTH_REQUIRED entries.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent Skill Runtime contract standardization; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516203136.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent stream timeout/progress handling; /api/health returned ok and OTA check returned version 0.1.0-20260516205323."
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent stream timeout/progress handling; /api/health returned ok and OTA check returned version 0.1.0-20260516205323.",
+        "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for previous-image retry latency optimization; /api/health returned ok."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },

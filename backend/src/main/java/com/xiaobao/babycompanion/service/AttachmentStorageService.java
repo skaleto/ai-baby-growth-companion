@@ -63,6 +63,7 @@ public class AttachmentStorageService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AttachmentStorageService.class);
     private static final int THUMBNAIL_MAX_EDGE = 480;
+    private static final int AGENT_IMAGE_MAX_EDGE = 1800;
     private static final long DIRECT_UPLOAD_TTL_SECONDS = 15L * 60L;
 
     private final Path dataDir;
@@ -361,12 +362,45 @@ public class AttachmentStorageService {
         try {
             byte[] bytes = readStoredObject(record.getFilePath());
             String mimeType = StringUtils.hasText(record.getMimeType()) ? record.getMimeType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
-            String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+            String dataUrl = agentInputDataUrl(mimeType, bytes);
             return new AgentAttachment(record.getId(), record.getName(), record.getKind(), record.getPublicUrl(), dataUrl);
         } catch (Exception exception) {
             LOGGER.warn("Failed to load attachment {} for agent input: {}", id, exception.getMessage());
             return null;
         }
+    }
+
+    private String agentInputDataUrl(String mimeType, byte[] bytes) throws IOException {
+        if (!StringUtils.hasText(mimeType) || !mimeType.startsWith("image/")) {
+            return dataUrl(mimeType, bytes);
+        }
+        BufferedImage source = ImageIO.read(new ByteArrayInputStream(bytes));
+        if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) {
+            return dataUrl(mimeType, bytes);
+        }
+        double scale = Math.min(1.0, AGENT_IMAGE_MAX_EDGE / (double) Math.max(source.getWidth(), source.getHeight()));
+        int width = Math.max(1, (int) Math.round(source.getWidth() * scale));
+        int height = Math.max(1, (int) Math.round(source.getHeight() * scale));
+        BufferedImage resized = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = resized.createGraphics();
+        try {
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, width, height);
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            graphics.drawImage(source, 0, 0, width, height, null);
+        } finally {
+            graphics.dispose();
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ImageIO.write(resized, "jpg", output);
+        return dataUrl(MediaType.IMAGE_JPEG_VALUE, output.toByteArray());
+    }
+
+    private String dataUrl(String mimeType, byte[] bytes) {
+        String safeMimeType = StringUtils.hasText(mimeType) ? mimeType : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        return "data:" + safeMimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
     }
 
     private AttachmentDto saveBytes(

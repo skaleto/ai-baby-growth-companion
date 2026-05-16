@@ -602,6 +602,36 @@ class AgentRuntimeTests {
     }
 
     @Test
+    void plannerRecordExpenseIntentSurvivesAsrExpenseTypo() {
+        SkillPlan skillPlan = new SkillPlan(List.of(new SkillPlanEntry(
+                "expense-recognition",
+                SkillMode.EXECUTE,
+                "planner selected previous expense image recognition"
+        )));
+        AgentPlan recordExpensePlan = new AgentPlan(
+                "record",
+                List.of("expense"),
+                List.of("2026-05-16"),
+                List.of("profile"),
+                List.of(),
+                List.of("none"),
+                null
+        );
+        AgentPlan readOnlyExpensePlan = new AgentPlan(
+                "question",
+                List.of("expense"),
+                List.of("2026-05-16"),
+                List.of("profile"),
+                List.of(),
+                List.of("none"),
+                null
+        );
+
+        assertThat(agentRuntime.shouldPersistExpenseRecognition("继续把我刚才上传的图片画飞记录一。", recordExpensePlan, skillPlan)).isTrue();
+        assertThat(agentRuntime.shouldPersistExpenseRecognition("帮我识别这张小票花费", readOnlyExpensePlan, skillPlan)).isFalse();
+    }
+
+    @Test
     void returnsActionableTimeoutCopyForVisualStreams() {
         String message = agentRuntime.userFacingModelErrorMessage(
                 new java.net.http.HttpTimeoutException("request timed out"),

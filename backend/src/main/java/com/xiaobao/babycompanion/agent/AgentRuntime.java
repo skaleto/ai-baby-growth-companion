@@ -287,7 +287,7 @@ public class AgentRuntime {
         List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
                 ? List.of()
                 : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
-        boolean expenseRecordingIntent = hasExpenseRecordingIntent(request.message());
+        boolean expenseRecordingIntent = shouldPersistExpenseRecognition(request.message(), plan, skillPlan);
         ExpensePersistenceResult expensePersistenceResult = persistExpenseRecognitionResult(
                 expenseRecognitionResult,
                 expenseRecordingIntent,
@@ -749,7 +749,7 @@ public class AgentRuntime {
             List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
                     ? List.of()
                     : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
-            boolean expenseRecordingIntent = hasExpenseRecordingIntent(request.message());
+            boolean expenseRecordingIntent = shouldPersistExpenseRecognition(request.message(), plan, skillPlan);
             if (stopStreamIfCancelled(cancelled, agentRun, traceId, "before_expense_persistence")) return;
             if (expenseRecognitionResult != null && expenseRecordingIntent && !expenseRecognitionResult.effectCandidates().isEmpty()) {
                 sendProgressEvent(emitter, "expense-persistence", "running", "把识别出的支出写入账本");
@@ -1014,7 +1014,8 @@ public class AgentRuntime {
                 (message) -> {
                     sendStatusEvent(emitter, "analyzing_media", message);
                     sendProgressEvent(emitter, "expense-recognition", "running", message);
-                }
+                },
+                agentStreamExecutor
         );
         if ("complete".equals(result.status())) {
             sendProgressEvent(emitter, "expense-recognition", "completed", "已整理出 " + result.effectCandidates().size() + " 条支出草稿");
@@ -2530,6 +2531,14 @@ public class AgentRuntime {
         boolean expenseContext = text.matches(".*(花费|支出|账本|记账|费用|订单|小票|收据|发票|付款|支付).*");
         boolean recordIntent = text.matches(".*(记下来|记下|记录|再记录|重新记录|记到账本|记入账本|存到账本|写到账本|记一遍|入账).*");
         return expenseContext && recordIntent;
+    }
+
+    boolean shouldPersistExpenseRecognition(String message, AgentPlan plan, SkillPlan skillPlan) {
+        if (hasExpenseRecordingIntent(message)) return true;
+        if (plan == null || skillPlan == null || !skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID)) return false;
+        boolean plannerRecordIntent = "record".equalsIgnoreCase(plan.intent());
+        boolean plannerExpenseTopic = listOrEmpty(plan.topics()).stream().anyMatch((topic) -> "expense".equalsIgnoreCase(topic));
+        return plannerRecordIntent && plannerExpenseTopic;
     }
 
     ExpensePersistenceResult persistExpenseRecognitionResult(
