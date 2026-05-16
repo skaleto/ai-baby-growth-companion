@@ -13,6 +13,41 @@
 
 ## Session Log
 
+### Session 2026-05-16 Executable Expense Recognition Skill Worker
+
+- Goal: Implement OpenSpec change `add-expense-recognition-skill-worker` so expense screenshot recognition becomes an executable, traceable skill instead of scattered prompt/runtime/postprocess behavior.
+- Completed:
+  - Added `agent_run` and `skill_run` SQLite tables, MyBatis entities/mappers/services, and `AgentTraceService` with trace payload scrubbing so image `dataUrl`, video bytes, and base64 payloads are not persisted.
+  - Added explicit skill modes (`execute`, `disclose`, `guard`), `SkillPlan`, `SkillRouter`, and routing for current expense images plus forwarded previous-image retry attachments.
+  - Added model profile configuration for planner, final composer, and expense recognition; expense recognition has independent model, max tokens, temperature, batch size, and retry fields.
+  - Added `ExpenseRecognitionSkill` as the first executable skill worker. It runs no-tools, low-temperature visual extraction, batches multi-image requests, forbids web/reference-price lookup, returns structured pending `expenseItem` candidates only when required fields are present, and returns stage-specific Chinese failure/clarification copy otherwise.
+  - Integrated the skill into `AgentRuntime` before final composition, injected skill results into the final composer context, kept non-expense visual analysis on the old path, preserved public Agent API compatibility, and recorded agent/skill traces.
+  - Updated `EffectPolicy` so complete expense skill candidates are first-class candidates and are not overridden by text-only rule asks; final copy still suppresses redundant “实际花了多少钱” questions when a pending expense already has amount.
+  - Deployed backend-only update to Aliyun with `SYNC_DATA=0`; no OTA was published because no frontend bundle assets changed.
+- Verification run:
+  - `bash harness/init.sh`
+  - `mvn -DskipTests compile`
+  - `mvn -Dtest=SkillRouterTests,ExpenseRecognitionSkillTests,AgentTraceServiceTests,AgentRuntimeTests,EffectPolicyTests,AgentBenchmarkTests test`
+  - `mvn test`
+  - `npm run test:agent-benchmark`
+  - `npm run verify:frontend`
+  - `openspec validate add-expense-recognition-skill-worker`
+  - `git diff --check`
+  - `SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`
+  - Production SQLite table probe for `agent_run` / `skill_run`
+- Evidence:
+  - Targeted backend tests passed: 69 tests, 0 failures.
+  - Full backend tests passed: 161 tests, 0 failures.
+  - Agent benchmark passed: 20 tests, 0 failures, with new coverage for one-image expense skill draft, 8-image batching without web search, previous-image retry routing, and no redundant amount ask.
+  - Frontend smoke passed across desktop and six mobile viewports.
+  - OpenSpec validation passed for `add-expense-recognition-skill-worker`.
+  - Cloud health returned `ok`.
+  - Production DB `/var/lib/ai-baby-growth-companion/baby-companion.sqlite` contains `agent_run` and `skill_run`.
+- Known risks:
+  - Real recognition quality still depends on image legibility and model output; the skill now returns stage-specific failure or clarification instead of pretending an unreadable image is a normal missing-amount text request.
+  - The first implementation executes expense image batches sequentially. This is simpler and safer for provider load, but a later latency pass can evaluate bounded parallelism.
+
 ### Session 2026-05-16 Previous Expense Retry And Postprocess Copy
 
 - Goal: Fix user `13777892890`'s follow-up request to "record the above expenses again" and stop rule postprocessing from wiping out useful model text.

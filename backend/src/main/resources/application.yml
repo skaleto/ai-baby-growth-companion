@@ -15,6 +15,24 @@ app:
     stream-core-threads: ${APP_AGENT_STREAM_CORE_THREADS:2}
     stream-max-threads: ${APP_AGENT_STREAM_MAX_THREADS:8}
     stream-queue-capacity: ${APP_AGENT_STREAM_QUEUE_CAPACITY:32}
+    models:
+      planner:
+        model: ${APP_AGENT_PLANNER_MODEL:}
+        max-tokens: ${APP_AGENT_PLANNER_MAX_TOKENS:700}
+        temperature: ${APP_AGENT_PLANNER_TEMPERATURE:0.0}
+        tools-enabled: false
+      final-composer:
+        model: ${APP_AGENT_FINAL_COMPOSER_MODEL:}
+        max-tokens: ${APP_AGENT_FINAL_COMPOSER_MAX_TOKENS:0}
+        temperature: ${APP_AGENT_FINAL_COMPOSER_TEMPERATURE:-1}
+        tools-enabled: false
+      expense-recognition:
+        model: ${APP_AGENT_EXPENSE_RECOGNITION_MODEL:}
+        max-tokens: ${APP_AGENT_EXPENSE_RECOGNITION_MAX_TOKENS:1400}
+        temperature: ${APP_AGENT_EXPENSE_RECOGNITION_TEMPERATURE:0.0}
+        tools-enabled: false
+        batch-size: ${APP_AGENT_EXPENSE_RECOGNITION_BATCH_SIZE:4}
+        retry-attempts: ${APP_AGENT_EXPENSE_RECOGNITION_RETRY_ATTEMPTS:0}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost,https://localhost,capacitor://localhost}
   storage:

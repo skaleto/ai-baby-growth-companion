@@ -30,6 +30,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xiaobao.babycompanion.auth.AuthPrincipal;
 import com.xiaobao.babycompanion.auth.CurrentUser;
+import com.xiaobao.babycompanion.config.AgentRuntimeProperties;
 import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
@@ -42,6 +43,7 @@ import com.xiaobao.babycompanion.dto.agent.ConversationSummaryResponse;
 import com.xiaobao.babycompanion.dto.app.AppStateDto;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
 import com.xiaobao.babycompanion.exception.DeepSeekApiException;
+import com.xiaobao.babycompanion.persistence.entity.AgentRunRecord;
 import com.xiaobao.babycompanion.service.AppStateService;
 import com.xiaobao.babycompanion.service.AiUsageLogService;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
@@ -78,6 +80,7 @@ public class AgentRuntime {
 
     private final DeepSeekProperties properties;
     private final DoubaoProperties doubaoProperties;
+    private final AgentRuntimeProperties agentRuntimeProperties;
     private final ObjectMapper objectMapper;
     private final AgentPlanner agentPlanner;
     private final AgentContextService agentContextService;
@@ -88,6 +91,9 @@ public class AgentRuntime {
     private final CurrentUser currentUser;
     private final SkillRegistry skillRegistry;
     private final SkillDisclosureService skillDisclosureService;
+    private final SkillRouter skillRouter;
+    private final ExpenseRecognitionSkill expenseRecognitionSkill;
+    private final AgentTraceService agentTraceService;
     private final ToolRegistry toolRegistry;
     private final SafetyGuard safetyGuard;
     private final Executor agentStreamExecutor;
@@ -123,6 +129,10 @@ public class AgentRuntime {
                 currentUser,
                 skillRegistry,
                 skillDisclosureService,
+                new AgentRuntimeProperties(),
+                new SkillRouter(skillDisclosureService),
+                new ExpenseRecognitionSkill(objectMapper),
+                null,
                 toolRegistry,
                 safetyGuard,
                 null,
@@ -144,6 +154,10 @@ public class AgentRuntime {
             CurrentUser currentUser,
             SkillRegistry skillRegistry,
             SkillDisclosureService skillDisclosureService,
+            AgentRuntimeProperties agentRuntimeProperties,
+            SkillRouter skillRouter,
+            ExpenseRecognitionSkill expenseRecognitionSkill,
+            AgentTraceService agentTraceService,
             ToolRegistry toolRegistry,
             SafetyGuard safetyGuard,
             AiUsageLogService aiUsageLogService,
@@ -152,6 +166,7 @@ public class AgentRuntime {
     ) {
         this.properties = properties;
         this.doubaoProperties = doubaoProperties;
+        this.agentRuntimeProperties = agentRuntimeProperties == null ? new AgentRuntimeProperties() : agentRuntimeProperties;
         this.objectMapper = objectMapper;
         this.agentPlanner = agentPlanner;
         this.agentContextService = agentContextService;
@@ -162,6 +177,9 @@ public class AgentRuntime {
         this.currentUser = currentUser;
         this.skillRegistry = skillRegistry;
         this.skillDisclosureService = skillDisclosureService;
+        this.skillRouter = skillRouter;
+        this.expenseRecognitionSkill = expenseRecognitionSkill;
+        this.agentTraceService = agentTraceService;
         this.toolRegistry = toolRegistry;
         this.safetyGuard = safetyGuard;
         this.agentStreamExecutor = agentStreamExecutor;
@@ -200,12 +218,18 @@ public class AgentRuntime {
         AuthPrincipal principal = currentUser.requirePrincipal();
         String familyId = principal.familyId();
         String traceId = "agent-" + UUID.randomUUID();
+        AgentRunRecord agentRun = startAgentRunTrace(traceId, familyId, principal.userId(), request, plannerRuntimeModel, runtimeModel);
         List<Skill> selectedSkills = skillRegistry.selectSkills(request);
         RecordSignals signals = recordSignalExtractor.extract(request.message());
         AgentChatResponse immediate = immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills);
-        if (immediate != null) return immediate;
+        if (immediate != null) {
+            completeAgentRunTrace(agentRun, immediate.effectDecisions());
+            return immediate;
+        }
         AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey, familyId, principal.userId());
         AgentContextSnapshot contextSnapshot = agentContextService.build(familyId, principal.userId(), request, plan, signals);
+        SkillPlan skillPlan = skillRouter == null ? SkillPlan.empty() : skillRouter.plan(request, plan, signals);
+        recordAgentPlanTrace(agentRun, plan, skillPlan);
         AgentChatResponse profileBoundary = immediateBoundaryResponse(
                 signals,
                 traceId,
@@ -214,21 +238,44 @@ public class AgentRuntime {
                 contextSnapshot.babyProfile(),
                 request.message()
         );
-        if (profileBoundary != null) return profileBoundary;
-        List<AgentToolResult> toolResults = executePlannedTools(plan, request, null);
-        List<String> usedSkills = usedSkillIds(selectedSkills, toolResults, plan, signals, request.message());
-        List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(request.attachments(), runtimeModel);
-        List<VisualAnalysisResult> visualAnalysisResults = analyzeVisualInputsInBatches(
+        if (profileBoundary != null) {
+            completeAgentRunTrace(agentRun, profileBoundary.effectDecisions());
+            return profileBoundary;
+        }
+        RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
+        List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(
+                request.attachments(),
+                skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID) ? expenseRuntimeModel : runtimeModel
+        );
+        ExpenseRecognitionResult expenseRecognitionResult = executeExpenseRecognition(
                 request,
-                runtimeModel,
-                apiKey,
+                signals,
                 traceId,
                 familyId,
                 principal.userId(),
+                agentRun,
+                skillPlan,
+                expenseRuntimeModel,
                 visualInputs,
                 null
         );
-        List<VisualAttachmentInput> finalVisualInputs = visualAnalysisResults.isEmpty() ? visualInputs : List.of();
+        List<AgentToolResult> toolResults = executePlannedTools(plan, request, null);
+        List<String> usedSkills = mergeSkillIds(usedSkillIds(selectedSkills, toolResults, plan, signals, request.message()), skillPlan);
+        List<VisualAnalysisResult> visualAnalysisResults = expenseRecognitionResult == null
+                ? analyzeVisualInputsInBatches(
+                        request,
+                        runtimeModel,
+                        apiKey,
+                        traceId,
+                        familyId,
+                        principal.userId(),
+                        visualInputs,
+                        null
+                )
+                : expenseRecognitionResult.visualAnalysisResults();
+        List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
+                ? List.of()
+                : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
 
         DeepSeekChatRequest chatRequest = buildDeepSeekRequest(
                 request,
@@ -242,7 +289,9 @@ public class AgentRuntime {
                 signals,
                 principal,
                 finalVisualInputs,
-                visualAnalysisResults
+                visualAnalysisResults,
+                skillPlan,
+                expenseRecognitionResult
         );
 
         try {
@@ -263,16 +312,23 @@ public class AgentRuntime {
                     .filter(StringUtils::hasText)
                     .orElseThrow(() -> new DeepSeekApiException(runtimeModel.id() + " response did not include message content"));
 
-            return withSafetyAlertsAndDecisions(
+            AgentChatResponse finalResponse = withSafetyAlertsAndDecisions(
                     parseModelContent(content, traceId, response.model(), response.id(), usedSkills, collectSources(toolResults)),
                     request.message(),
                     signals,
                     plan,
-                    contextSnapshot.babyProfile()
+                    contextSnapshot.babyProfile(),
+                    skillEffectCandidates(expenseRecognitionResult)
             );
+            completeAgentRunTrace(agentRun, finalResponse.effectDecisions());
+            return finalResponse;
         } catch (RestClientException exception) {
             recordUsage(runtimeModel, "agent_chat", inputType(request), familyId, principal.userId(), traceId, null, false, rootCauseMessage(exception), false, true);
+            failAgentRunTrace(agentRun, rootCauseMessage(exception));
             throw new DeepSeekApiException("Failed to call " + runtimeModel.id() + " API", exception);
+        } catch (RuntimeException exception) {
+            failAgentRunTrace(agentRun, rootCauseMessage(exception));
+            throw exception;
         }
     }
 
@@ -292,7 +348,11 @@ public class AgentRuntime {
         AuthPrincipal principal = currentUser.requirePrincipal();
         String familyId = principal.familyId();
         List<Skill> selectedSkills = skillRegistry.selectSkills(request);
-        SseEmitter emitter = new SseEmitter(runtimeModel.readTimeout().plusSeconds(45).toMillis());
+        AgentRunRecord agentRun = startAgentRunTrace(traceId, familyId, principal.userId(), request, plannerRuntimeModel, runtimeModel);
+        Duration streamReadTimeout = runtimeModel.readTimeout().compareTo(doubaoProperties.getReadTimeout()) >= 0
+                ? runtimeModel.readTimeout()
+                : doubaoProperties.getReadTimeout();
+        SseEmitter emitter = new SseEmitter(streamReadTimeout.plusSeconds(45).toMillis());
 
         String requestId = MDC.get("requestId");
         AtomicBoolean cancelled = new AtomicBoolean(false);
@@ -322,7 +382,8 @@ public class AgentRuntime {
                             runtimeModel,
                             apiKey,
                             plannerRuntimeModel,
-                            plannerApiKey
+                            plannerApiKey,
+                            agentRun
                     );
                 } finally {
                     if (StringUtils.hasText(requestId)) MDC.remove("requestId");
@@ -331,6 +392,7 @@ public class AgentRuntime {
             streamTask.set(task);
         } catch (RejectedExecutionException exception) {
             LOGGER.warn("Agent stream executor is saturated; rejecting traceId={}", traceId);
+            failAgentRunTrace(agentRun, "stream_executor_saturated");
             emitter.completeWithError(new IllegalStateException("AI 服务繁忙，请稍后再试。", exception));
         }
         return emitter;
@@ -483,13 +545,15 @@ public class AgentRuntime {
             RuntimeModel runtimeModel,
             String apiKey,
             RuntimeModel plannerRuntimeModel,
-            String plannerApiKey
+            String plannerApiKey,
+            AgentRunRecord agentRun
     ) {
         try {
             RecordSignals signals = recordSignalExtractor.extract(request.message());
             AgentChatResponse immediate = immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills);
             if (immediate != null) {
                 sendEvent(emitter, "final", immediate);
+                completeAgentRunTrace(agentRun, immediate.effectDecisions());
                 emitter.complete();
                 return;
             }
@@ -497,6 +561,8 @@ public class AgentRuntime {
             AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey, familyId, principal.userId());
             sendEvent(emitter, "retrieving_context", Map.of("message", "查找相关记录"));
             AgentContextSnapshot contextSnapshot = agentContextService.build(familyId, principal.userId(), request, plan, signals);
+            SkillPlan skillPlan = skillRouter == null ? SkillPlan.empty() : skillRouter.plan(request, plan, signals);
+            recordAgentPlanTrace(agentRun, plan, skillPlan);
             AgentChatResponse profileBoundary = immediateBoundaryResponse(
                     signals,
                     traceId,
@@ -507,24 +573,45 @@ public class AgentRuntime {
             );
             if (profileBoundary != null) {
                 sendEvent(emitter, "final", profileBoundary);
+                completeAgentRunTrace(agentRun, profileBoundary.effectDecisions());
                 emitter.complete();
                 return;
             }
-            List<AgentToolResult> toolResults = executePlannedTools(plan, request, (event) -> sendEvent(emitter, "tool", event));
-            List<String> usedSkills = usedSkillIds(selectedSkills, toolResults, plan, signals, request.message());
-            List<AgentSource> sources = collectSources(toolResults);
-            List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(request.attachments(), runtimeModel);
-            List<VisualAnalysisResult> visualAnalysisResults = analyzeVisualInputsInBatches(
+            RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
+            List<VisualAttachmentInput> visualInputs = visualAttachmentInputs(
+                    request.attachments(),
+                    skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID) ? expenseRuntimeModel : runtimeModel
+            );
+            ExpenseRecognitionResult expenseRecognitionResult = executeExpenseRecognition(
                     request,
-                    runtimeModel,
-                    apiKey,
+                    signals,
                     traceId,
                     familyId,
                     principal.userId(),
+                    agentRun,
+                    skillPlan,
+                    expenseRuntimeModel,
                     visualInputs,
                     emitter
             );
-            List<VisualAttachmentInput> finalVisualInputs = visualAnalysisResults.isEmpty() ? visualInputs : List.of();
+            List<AgentToolResult> toolResults = executePlannedTools(plan, request, (event) -> sendEvent(emitter, "tool", event));
+            List<String> usedSkills = mergeSkillIds(usedSkillIds(selectedSkills, toolResults, plan, signals, request.message()), skillPlan);
+            List<AgentSource> sources = collectSources(toolResults);
+            List<VisualAnalysisResult> visualAnalysisResults = expenseRecognitionResult == null
+                    ? analyzeVisualInputsInBatches(
+                            request,
+                            runtimeModel,
+                            apiKey,
+                            traceId,
+                            familyId,
+                            principal.userId(),
+                            visualInputs,
+                            emitter
+                    )
+                    : expenseRecognitionResult.visualAnalysisResults();
+            List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
+                    ? List.of()
+                    : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
             sendModelWorkStatus(emitter, finalVisualInputs, visualAnalysisResults);
 
             String body = objectMapper.writeValueAsString(buildDeepSeekRequest(
@@ -539,7 +626,9 @@ public class AgentRuntime {
                     signals,
                     principal,
                     finalVisualInputs,
-                    visualAnalysisResults
+                    visualAnalysisResults,
+                    skillPlan,
+                    expenseRecognitionResult
             ));
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create(endpointUrl(runtimeModel)))
@@ -549,7 +638,7 @@ public class AgentRuntime {
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
 
-            streamDeepSeekResponse(httpRequest, emitter, traceId, runtimeModel, usedSkills, sources, request.message(), signals, plan, contextSnapshot.babyProfile(), familyId, principal.userId(), inputType(request));
+            streamDeepSeekResponse(httpRequest, emitter, traceId, runtimeModel, usedSkills, sources, request.message(), signals, plan, contextSnapshot.babyProfile(), familyId, principal.userId(), inputType(request), skillEffectCandidates(expenseRecognitionResult), agentRun);
         } catch (Exception exception) {
             LOGGER.warn(
                     "Agent stream failed before model stream. traceId={}, provider={}, model={}, cause={}",
@@ -559,6 +648,7 @@ public class AgentRuntime {
                     rootCauseMessage(exception),
                     exception
             );
+            failAgentRunTrace(agentRun, rootCauseMessage(exception));
             sendEvent(emitter, "error", Map.of("message", userFacingModelErrorMessage(exception, inputType(request))));
             emitter.complete();
         }
@@ -610,7 +700,9 @@ public class AgentRuntime {
             RecordSignals signals,
             AuthPrincipal principal,
             List<VisualAttachmentInput> visualInputs,
-            List<VisualAnalysisResult> visualAnalysisResults
+            List<VisualAnalysisResult> visualAnalysisResults,
+            SkillPlan skillPlan,
+            ExpenseRecognitionResult expenseRecognitionResult
     ) {
         return new DeepSeekChatRequest(
                 runtimeModel.apiModel(),
@@ -626,12 +718,14 @@ public class AgentRuntime {
                                 signals,
                                 principal,
                                 visualInputs,
-                                visualAnalysisResults
+                                visualAnalysisResults,
+                                skillPlan,
+                                expenseRecognitionResult
                         ), null, null)
                 ),
                 stream,
-                properties.getAgentMaxTokens(),
-                Math.min(properties.getTemperature(), 0.2),
+                finalComposerMaxTokens(),
+                finalComposerTemperature(),
                 responseFormat(runtimeModel),
                 thinkingConfig(request),
                 null,
@@ -686,6 +780,95 @@ public class AgentRuntime {
             );
             recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, "planner-" + UUID.randomUUID(), null, false, rootCauseMessage(exception), false, true);
             throw new DeepSeekApiException("Failed to call model API for agent planning", exception);
+        }
+    }
+
+    private ExpenseRecognitionResult executeExpenseRecognition(
+            AgentChatRequest request,
+            RecordSignals signals,
+            String traceId,
+            String familyId,
+            String userId,
+            AgentRunRecord agentRun,
+            SkillPlan skillPlan,
+            RuntimeModel expenseRuntimeModel,
+            List<VisualAttachmentInput> visualInputs,
+            SseEmitter emitter
+    ) {
+        if (expenseRecognitionSkill == null || skillPlan == null || !skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID)) {
+            return null;
+        }
+        ExpenseRecognitionInput input = new ExpenseRecognitionInput(
+                request,
+                signals,
+                traceId,
+                expenseRuntimeModel,
+                agentRuntimeProperties.getModels().getExpenseRecognition(),
+                visualInputs
+        );
+        String expenseApiKey = resolvedApiKey(expenseRuntimeModel);
+        ExpenseRecognitionResult result = expenseRecognitionSkill.execute(
+                input,
+                (modelRequest, batchNumber, batchCount) -> callExpenseRecognitionModel(
+                        expenseRuntimeModel,
+                        expenseApiKey,
+                        modelRequest,
+                        batchNumber,
+                        batchCount,
+                        request,
+                        familyId,
+                        userId,
+                        traceId
+                ),
+                (message) -> sendStatusEvent(emitter, "analyzing_media", message)
+        );
+        recordSkillRunTrace(agentRun, traceId, result);
+        return result;
+    }
+
+    private ExpenseRecognitionModelResponse callExpenseRecognitionModel(
+            RuntimeModel runtimeModel,
+            String apiKey,
+            DeepSeekChatRequest modelRequest,
+            int batchNumber,
+            int batchCount,
+            AgentChatRequest originalRequest,
+            String familyId,
+            String userId,
+            String traceId
+    ) {
+        if (!StringUtils.hasText(apiKey)) {
+            throw new IllegalStateException(runtimeModel.apiKeyHelp() + " is not configured for expense recognition");
+        }
+        try {
+            DeepSeekChatResponse response = restClient(runtimeModel).post()
+                    .uri(runtimeModel.chatPath())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                    .body(modelRequest)
+                    .retrieve()
+                    .body(DeepSeekChatResponse.class);
+            if (response == null || response.choices() == null || response.choices().isEmpty()) {
+                throw new DeepSeekApiException(runtimeModel.id() + " expense recognition returned an empty response");
+            }
+            recordUsage(runtimeModel, "agent_expense_recognition", inputType(originalRequest), familyId, userId, response.id(), response.usage(), true, null, false, true);
+            String content = Optional.ofNullable(response.choices().get(0).message())
+                    .map(DeepSeekMessage::contentAsText)
+                    .filter(StringUtils::hasText)
+                    .orElseThrow(() -> new DeepSeekApiException(runtimeModel.id() + " expense recognition did not include message content"));
+            return new ExpenseRecognitionModelResponse(response.id(), response.model(), content, response.usage());
+        } catch (RuntimeException exception) {
+            recordUsage(runtimeModel, "agent_expense_recognition", inputType(originalRequest), familyId, userId, traceId + "-expense-" + batchNumber, null, false, rootCauseMessage(exception), false, true);
+            LOGGER.warn(
+                    "Expense recognition skill model call failed. traceId={}, provider={}, model={}, batch={}/{}, cause={}",
+                    traceId,
+                    runtimeModel.provider(),
+                    runtimeModel.id(),
+                    batchNumber,
+                    batchCount,
+                    rootCauseMessage(exception),
+                    exception
+            );
+            throw exception;
         }
     }
 
@@ -1037,7 +1220,9 @@ public class AgentRuntime {
             JsonNode babyProfile,
             String familyId,
             String userId,
-            String inputType
+            String inputType,
+            List<AgentEffectDecision> skillCandidates,
+            AgentRunRecord agentRun
     ) {
         StringBuilder content = new StringBuilder();
         AtomicReference<String> model = new AtomicReference<>(runtimeModel.apiModel());
@@ -1057,6 +1242,7 @@ public class AgentRuntime {
                             abbreviate(errorBody, 1200)
                     );
                     recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, "HTTP_" + response.statusCode(), false, true);
+                    failAgentRunTrace(agentRun, "HTTP_" + response.statusCode());
                     sendEvent(emitter, "error", Map.of("message", runtimeModel.id() + " stream failed: " + errorBody));
                     emitter.complete();
                     return;
@@ -1074,7 +1260,9 @@ public class AgentRuntime {
                     sources
             );
             recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, requestId.get(), null, true, null, false, true);
-            sendEvent(emitter, "final", withSafetyAlertsAndDecisions(parsed, userMessage, signals, plan, babyProfile));
+            AgentChatResponse finalResponse = withSafetyAlertsAndDecisions(parsed, userMessage, signals, plan, babyProfile, skillCandidates);
+            completeAgentRunTrace(agentRun, finalResponse.effectDecisions());
+            sendEvent(emitter, "final", finalResponse);
             emitter.complete();
         } catch (Exception exception) {
             LOGGER.warn(
@@ -1086,6 +1274,7 @@ public class AgentRuntime {
                     exception
             );
             recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, rootCauseMessage(exception), false, true);
+            failAgentRunTrace(agentRun, rootCauseMessage(exception));
             sendEvent(emitter, "error", Map.of("message", userFacingModelErrorMessage(exception, inputType)));
             emitter.complete();
         }
@@ -1097,6 +1286,17 @@ public class AgentRuntime {
             RecordSignals signals,
             AgentPlan plan,
             JsonNode babyProfile
+    ) {
+        return withSafetyAlertsAndDecisions(response, userMessage, signals, plan, babyProfile, List.of());
+    }
+
+    AgentChatResponse withSafetyAlertsAndDecisions(
+            AgentChatResponse response,
+            String userMessage,
+            RecordSignals signals,
+            AgentPlan plan,
+            JsonNode babyProfile,
+            List<AgentEffectDecision> skillCandidates
     ) {
         var alerts = safetyGuard.assess(userMessage, response.aiText());
         AgentChatResponse withSafety = new AgentChatResponse(
@@ -1119,7 +1319,7 @@ public class AgentRuntime {
         boolean albumSaveOnly = isAlbumSaveOnly(plan, userMessage);
         List<AgentEffectDecision> decisions = albumSaveOnly
                 ? new ArrayList<>()
-                : new ArrayList<>(effectPolicy.decide(withSafety, signals, babyProfile, userMessage));
+                : new ArrayList<>(effectPolicy.decide(withSafety, signals, babyProfile, userMessage, skillCandidates));
         decisions.addAll(mediaDecisions);
         String aiText = albumSaveOnly && !mediaDecisions.isEmpty()
                 ? albumSaveAiText(plan)
@@ -1425,7 +1625,10 @@ public class AgentRuntime {
     }
 
     private RuntimeModel resolveModel(String requestedModel, boolean lowLatencyEnabled) {
-        String model = StringUtils.hasText(requestedModel) ? requestedModel.trim() : properties.getModel();
+        String configuredFinalModel = agentRuntimeProperties.getModels().getFinalComposer().getModel();
+        String model = StringUtils.hasText(requestedModel)
+                ? requestedModel.trim()
+                : StringUtils.hasText(configuredFinalModel) ? configuredFinalModel.trim() : properties.getModel();
         return switch (model) {
             case "deepseek-v4-flash" -> new RuntimeModel(
                     "deepseek-v4-flash",
@@ -1485,7 +1688,30 @@ public class AgentRuntime {
     }
 
     private RuntimeModel resolvePlannerModel() {
-        return resolveModel(properties.getPlannerModel());
+        String configured = agentRuntimeProperties.getModels().getPlanner().getModel();
+        return resolveModel(StringUtils.hasText(configured) ? configured : properties.getPlannerModel());
+    }
+
+    private RuntimeModel resolveExpenseRecognitionModel(RuntimeModel fallback) {
+        String configured = agentRuntimeProperties.getModels().getExpenseRecognition().getModel();
+        if (StringUtils.hasText(configured)) {
+            return resolveModel(configured.trim(), false);
+        }
+        if (fallback != null && fallback.supportsImageInput()) {
+            return fallback;
+        }
+        return resolveModel("doubao-seed-2.0-pro", false);
+    }
+
+    private int finalComposerMaxTokens() {
+        Integer configured = agentRuntimeProperties.getModels().getFinalComposer().getMaxTokens();
+        return configured == null || configured <= 0 ? properties.getAgentMaxTokens() : configured;
+    }
+
+    private double finalComposerTemperature() {
+        Double configured = agentRuntimeProperties.getModels().getFinalComposer().getTemperature();
+        if (configured == null || configured < 0) return Math.min(properties.getTemperature(), 0.2);
+        return Math.max(0.0, Math.min(1.0, configured));
     }
 
     private String resolvedApiKey(RuntimeModel runtimeModel) {
@@ -1664,7 +1890,9 @@ public class AgentRuntime {
             RecordSignals signals,
             AuthPrincipal principal,
             List<VisualAnalysisResult> visualAnalysisResults,
-            boolean visualInputsAttachedToFinalRequest
+            boolean visualInputsAttachedToFinalRequest,
+            SkillPlan skillPlan,
+            ExpenseRecognitionResult expenseRecognitionResult
     ) {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("traceId", traceId);
@@ -1679,6 +1907,7 @@ public class AgentRuntime {
         context.put("requester", requesterContext(principal));
         context.put("baseContext", baseContext(request, principal, contextSnapshot));
         context.put("agentPlan", plan);
+        context.put("skillPlan", skillPlan == null ? SkillPlan.empty() : skillPlan);
         context.put("recordSignals", signals);
         context.put("toolResults", toolResults);
         context.put("babyProfile", contextSnapshot.babyProfile());
@@ -1692,6 +1921,22 @@ public class AgentRuntime {
             context.put(
                     "visualAnalysisUsageRule",
                     "图片较多时已由前置模型分批完成 OCR/视觉摘要；最终回复应优先使用 visualAnalysisResults，不要重新要求用户确认已经识别到的金额。若多张图属于同一订单或支付链路，注意去重并保留相关 attachment id。"
+            );
+        }
+        if (expenseRecognitionResult != null) {
+            Map<String, Object> skillResult = new LinkedHashMap<>();
+            skillResult.put("skillId", SkillRouter.EXPENSE_RECOGNITION_SKILL_ID);
+            skillResult.put("status", expenseRecognitionResult.status());
+            skillResult.put("aiTextDraft", expenseRecognitionResult.aiTextDraft());
+            skillResult.put("userFacingError", expenseRecognitionResult.userFacingError());
+            skillResult.put("clarifications", expenseRecognitionResult.clarifications());
+            skillResult.put("evidence", expenseRecognitionResult.evidence());
+            skillResult.put("effectCandidateCount", expenseRecognitionResult.effectCandidates().size());
+            skillResult.put("effectCandidates", expenseRecognitionResult.effectCandidates());
+            context.put("executedSkillResults", List.of(skillResult));
+            context.put(
+                    "skillResultUsageRule",
+                    "expense-recognition 是已执行的能力模块；最终回复必须尊重该 skill 的 status、证据和 effectCandidates。若 effectCandidates 已包含实际支付金额，不要再追问实际花了多少钱。若 skill 失败，应说明真实失败阶段。"
             );
         }
         context.put("userMessage", request.message());
@@ -1717,7 +1962,9 @@ public class AgentRuntime {
             RecordSignals signals,
             AuthPrincipal principal,
             List<VisualAttachmentInput> visualInputs,
-            List<VisualAnalysisResult> visualAnalysisResults
+            List<VisualAnalysisResult> visualAnalysisResults,
+            SkillPlan skillPlan,
+            ExpenseRecognitionResult expenseRecognitionResult
     ) {
         String prompt = buildUserPrompt(
                 request,
@@ -1729,7 +1976,9 @@ public class AgentRuntime {
                 signals,
                 principal,
                 visualAnalysisResults,
-                visualInputs != null && !visualInputs.isEmpty()
+                visualInputs != null && !visualInputs.isEmpty(),
+                skillPlan,
+                expenseRecognitionResult
         );
         if (visualInputs == null || visualInputs.isEmpty()) return prompt;
 
@@ -1846,10 +2095,83 @@ public class AgentRuntime {
                 .toList();
     }
 
+    private List<String> mergeSkillIds(List<String> usedSkills, SkillPlan skillPlan) {
+        Stream<String> planned = skillPlan == null ? Stream.empty() : skillPlan.usedSkillIds().stream();
+        return Stream.concat(listOrEmpty(usedSkills).stream(), planned)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+    }
+
+    private List<AgentEffectDecision> skillEffectCandidates(ExpenseRecognitionResult result) {
+        return result == null ? List.of() : result.effectCandidates();
+    }
+
     private List<AgentSource> collectSources(List<AgentToolResult> toolResults) {
         return toolResults.stream()
                 .flatMap((result) -> listOrEmpty(result.sources()).stream())
                 .toList();
+    }
+
+    private AgentRunRecord startAgentRunTrace(
+            String traceId,
+            String familyId,
+            String userId,
+            AgentChatRequest request,
+            RuntimeModel plannerRuntimeModel,
+            RuntimeModel runtimeModel
+    ) {
+        if (agentTraceService == null) return null;
+        try {
+            return agentTraceService.startAgentRun(
+                    traceId,
+                    familyId,
+                    userId,
+                    "",
+                    inputType(request),
+                    plannerRuntimeModel == null ? "" : plannerRuntimeModel.id(),
+                    runtimeModel == null ? "" : runtimeModel.id()
+            );
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Failed to start agent trace. traceId={}, cause={}", traceId, rootCauseMessage(exception));
+            return null;
+        }
+    }
+
+    private void recordAgentPlanTrace(AgentRunRecord agentRun, AgentPlan plan, SkillPlan skillPlan) {
+        if (agentTraceService == null || agentRun == null) return;
+        try {
+            agentTraceService.recordPlan(agentRun, plan, skillPlan);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Failed to update agent trace plan. traceId={}, cause={}", agentRun.getTraceId(), rootCauseMessage(exception));
+        }
+    }
+
+    private void recordSkillRunTrace(AgentRunRecord agentRun, String traceId, ExpenseRecognitionResult result) {
+        if (agentTraceService == null || result == null || result.traceSummary() == null) return;
+        try {
+            agentTraceService.recordSkillRun(agentRun == null ? null : agentRun.getId(), traceId, result.traceSummary());
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Failed to record skill trace. traceId={}, cause={}", traceId, rootCauseMessage(exception));
+        }
+    }
+
+    private void completeAgentRunTrace(AgentRunRecord agentRun, List<AgentEffectDecision> decisions) {
+        if (agentTraceService == null || agentRun == null) return;
+        try {
+            agentTraceService.completeAgentRun(agentRun, decisions);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Failed to complete agent trace. traceId={}, cause={}", agentRun.getTraceId(), rootCauseMessage(exception));
+        }
+    }
+
+    private void failAgentRunTrace(AgentRunRecord agentRun, String errorCode) {
+        if (agentTraceService == null || agentRun == null) return;
+        try {
+            agentTraceService.failAgentRun(agentRun, errorCode);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Failed to fail agent trace. traceId={}, cause={}", agentRun.getTraceId(), rootCauseMessage(exception));
+        }
     }
 
     private String rootCauseMessage(Throwable throwable) {
@@ -1873,46 +2195,4 @@ public class AgentRuntime {
         void send(Map<String, Object> event);
     }
 
-    private enum Provider {
-        DEEPSEEK,
-        DOUBAO
-    }
-
-    private record RuntimeModel(
-            String id,
-            Provider provider,
-            String apiModel,
-            boolean supportsImageInput,
-            boolean supportsVideoInput,
-            boolean lowLatencyEnabled,
-            String baseUrl,
-            String chatPath,
-            Duration readTimeout,
-            String apiKeyHelp
-    ) {
-    }
-
-    private record VisualAttachmentInput(
-            String id,
-            String name,
-            String kind,
-            String dataUrl
-    ) {
-        Map<String, String> metadata() {
-            Map<String, String> values = new LinkedHashMap<>();
-            if (StringUtils.hasText(id)) values.put("id", id);
-            if (StringUtils.hasText(name)) values.put("name", name);
-            if (StringUtils.hasText(kind)) values.put("kind", kind);
-            return values;
-        }
-    }
-
-    private record VisualAnalysisResult(
-            int batchIndex,
-            int batchCount,
-            int visualCount,
-            List<Map<String, String>> attachments,
-            String summary
-    ) {
-    }
 }

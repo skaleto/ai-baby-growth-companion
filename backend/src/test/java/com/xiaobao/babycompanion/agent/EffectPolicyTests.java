@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLog;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLogEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
@@ -259,6 +260,40 @@ class EffectPolicyTests {
         assertThat(decisions).hasSize(1);
         assertThat(decisions.get(0).mode()).isEqualTo("auto");
         assertThat(decisions.get(0).type()).isEqualTo("careLog");
+    }
+
+    @Test
+    void preservesCompleteExpenseSkillCandidateOverTextOnlyRuleAsk() {
+        String message = "给宝宝买尿裤记账";
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("title", "纸尿裤");
+        payload.put("amount", 129.9);
+        payload.put("currency", "CNY");
+        payload.put("category", "diaper");
+        payload.put("date", "2026-05-16");
+        payload.putArray("attachmentIds").add("attachment-1");
+        payload.put("sourceSkill", "expense-recognition");
+
+        var decisions = policy.decide(
+                response((AgentCareLog) null, List.of()),
+                extractor.extract(message),
+                null,
+                message,
+                List.of(new com.xiaobao.babycompanion.dto.agent.AgentEffectDecision(
+                        "decision-skill",
+                        "pending",
+                        "expenseItem",
+                        payload,
+                        0.9,
+                        "skill recognized complete expense",
+                        "expense-recognition"
+                ))
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("pending");
+        assertThat(decisions.get(0).source()).isEqualTo("expense-recognition");
+        assertThat(decisions.get(0).payload().path("amount").asDouble()).isEqualTo(129.9);
     }
 
     @Test

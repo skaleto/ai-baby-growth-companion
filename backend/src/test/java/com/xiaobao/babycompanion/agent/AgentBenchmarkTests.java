@@ -259,6 +259,87 @@ class AgentBenchmarkTests {
     }
 
     @Test
+    void benchmarkOneImageExpenseSkillCreatesPendingDraft() {
+        AgentChatRequest request = expenseImageRequest("帮我识别这张奶粉订单花费并记到账本", List.of("attachment-1"));
+        ExpenseRecognitionSkill skill = new ExpenseRecognitionSkill(objectMapper);
+
+        ExpenseRecognitionResult result = skill.execute(
+                expenseInput(request, 4),
+                (modelRequest, batchNumber, batchCount) -> new ExpenseRecognitionModelResponse("req-1", "doubao", expenseJson("attachment-1", 268), null),
+                null
+        );
+
+        assertThat(result.status()).isEqualTo("complete");
+        assertThat(result.effectCandidates()).hasSize(1);
+        assertThat(result.effectCandidates().get(0).mode()).isEqualTo("pending");
+        assertThat(result.effectCandidates().get(0).payload().path("amount").asDouble()).isEqualTo(268);
+    }
+
+    @Test
+    void benchmarkEightImageExpenseSkillBatchesWithoutWebSearch() {
+        AgentChatRequest request = expenseImageRequest(
+                "帮我识别这 8 张小票花费并记到账本",
+                java.util.stream.IntStream.rangeClosed(1, 8).mapToObj((index) -> "attachment-" + index).toList()
+        );
+        AgentPlan plan = planner.heuristic(request, extractor.extract(request.message()));
+        ExpenseRecognitionSkill skill = new ExpenseRecognitionSkill(objectMapper);
+        List<Integer> batchNumbers = new java.util.ArrayList<>();
+
+        ExpenseRecognitionResult result = skill.execute(
+                expenseInput(request, 4),
+                (modelRequest, batchNumber, batchCount) -> {
+                    batchNumbers.add(batchNumber);
+                    return new ExpenseRecognitionModelResponse(
+                            "req-" + batchNumber,
+                            "doubao",
+                            batchNumber == 1 ? expenseJson("attachment-1", 268) : "{\"status\":\"no_recognizable_amount\",\"expenses\":[],\"clarifications\":[],\"evidence\":[]}",
+                            null
+                    );
+                },
+                null
+        );
+
+        assertThat(plan.toolRequests()).isEmpty();
+        assertThat(batchNumbers).containsExactly(1, 2);
+        assertThat(result.traceSummary().batchCount()).isEqualTo(2);
+    }
+
+    @Test
+    void benchmarkPreviousImageRetryRoutesIntoExpenseSkill() {
+        AgentChatRequest request = expenseImageRequest("把刚才上面的这些花费再记录一遍", List.of("attachment-prior-1"));
+        AgentPlan plan = new AgentPlan("record", List.of("expense"), List.of(), List.of("profile"), List.of(), List.of("none"), null);
+        SkillRouter router = new SkillRouter(skillDisclosureService);
+
+        SkillPlan skillPlan = router.plan(request, plan, extractor.extract(request.message()));
+
+        assertThat(skillPlan.executes("expense-recognition")).isTrue();
+    }
+
+    @Test
+    void benchmarkRecognizedExpenseAmountDoesNotBecomeRedundantAmountAsk() {
+        String message = "给宝宝买尿裤记账";
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("title", "纸尿裤");
+        payload.put("amount", 129.9);
+        payload.put("currency", "CNY");
+        payload.put("category", "diaper");
+        payload.put("date", "2026-05-13");
+        payload.putArray("attachmentIds").add("attachment-1");
+
+        var decisions = policy.decide(
+                response(null, List.of(), List.of(), List.of(), List.of()),
+                extractor.extract(message),
+                null,
+                message,
+                List.of(new AgentEffectDecision("decision-skill", "pending", "expenseItem", payload, 0.9, "skill recognized", "expense-recognition"))
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("pending");
+        assertThat(decisions.get(0).payload().path("amount").asDouble()).isEqualTo(129.9);
+    }
+
+    @Test
     void benchmarkSkillDisclosureOnlyLoadsCareGuideWhenNeeded() {
         SkillDisclosureResult recordOnly = skillDisclosureService.disclose(
                 new AgentPlan("record", List.of("feeding"), List.of("2026-05-13"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),
@@ -385,6 +466,65 @@ class AgentBenchmarkTests {
                 "benchmark-fixture",
                 "benchmark-request"
         );
+    }
+
+    private AgentChatRequest expenseImageRequest(String message, List<String> attachmentIds) {
+        return new AgentChatRequest(
+                message,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                attachmentIds.stream()
+                        .map((id) -> new AgentAttachment(id, id + ".jpg", "image", null, "data:image/jpeg;base64,abc"))
+                        .toList(),
+                null,
+                false
+        );
+    }
+
+    private ExpenseRecognitionInput expenseInput(AgentChatRequest request, int batchSize) {
+        com.xiaobao.babycompanion.config.AgentRuntimeProperties.ModelProfile profile =
+                new com.xiaobao.babycompanion.config.AgentRuntimeProperties.ModelProfile();
+        profile.setBatchSize(batchSize);
+        profile.setTemperature(0.0);
+        RuntimeModel runtimeModel = new RuntimeModel(
+                "doubao-seed-2.0-pro",
+                Provider.DOUBAO,
+                "doubao-seed-2-0-pro-260215",
+                true,
+                true,
+                false,
+                "https://example.test",
+                "/chat/completions",
+                java.time.Duration.ofSeconds(30),
+                "DOUBAO_API_KEY"
+        );
+        List<VisualAttachmentInput> visualInputs = request.attachments().stream()
+                .map((attachment) -> new VisualAttachmentInput(attachment.id(), attachment.name(), attachment.kind(), attachment.dataUrl()))
+                .toList();
+        return new ExpenseRecognitionInput(request, extractor.extract(request.message()), "benchmark-trace", runtimeModel, profile, visualInputs);
+    }
+
+    private String expenseJson(String attachmentId, double amount) {
+        return """
+                {
+                  "status": "complete",
+                  "aiTextDraft": "已识别出支出。",
+                  "expenses": [{
+                    "title": "奶粉",
+                    "amount": %s,
+                    "currency": "CNY",
+                    "category": "formula",
+                    "date": "2026-05-13",
+                    "attachmentIds": ["%s"],
+                    "note": "截图显示实付款"
+                  }],
+                  "clarifications": [],
+                  "evidence": [{"attachmentId":"%s","visibleFacts":["实付款"],"confidence":0.9}]
+                }
+                """.formatted(amount, attachmentId, attachmentId);
     }
 
     private void assertUserFacingTextIsNatural(AgentEffectDecision decision) {

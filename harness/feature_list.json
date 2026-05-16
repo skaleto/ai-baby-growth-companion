@@ -53,9 +53,34 @@
         "2026-05-16 npm run test:agent-benchmark passed after adding expense-image no-web-search coverage.",
         "2026-05-16 npm run test:agent-benchmark passed after multi-image status and timeout handling; expense-image no-web-search coverage remained passing.",
         "2026-05-16 npm run test:agent-benchmark passed after adding automatic multi-image batching; expense-image no-web-search coverage remained passing.",
-        "2026-05-16 npm run test:agent-benchmark passed after preserving model text during rule clarifications and deferring previous-expense retry asks."
+        "2026-05-16 npm run test:agent-benchmark passed after preserving model text during rule clarifications and deferring previous-expense retry asks.",
+        "2026-05-16 npm run test:agent-benchmark passed with 20 tests after adding executable expense-recognition skill worker coverage."
       ],
       "notes": "New Agent work should add at least one positive and one boundary benchmark case."
+    },
+    {
+      "id": "agent-002",
+      "priority": 2,
+      "area": "agent",
+      "title": "Executable expense-recognition skill worker",
+      "userVisibleBehavior": "Expense screenshots and prior-image retry requests are handled by an executable expense-recognition skill that batches images, avoids web search, produces pending ledger candidates, records agent/skill traces, and does not ask for an amount that was already recognized.",
+      "status": "passing",
+      "verification": [
+        "Run targeted backend tests for skill router, expense skill, runtime, effect policy, trace persistence, and benchmark cases.",
+        "Run full backend mvn test.",
+        "Run npm run test:agent-benchmark.",
+        "Run npm run verify:frontend for chat status display compatibility.",
+        "Deploy backend with SYNC_DATA=0 and verify cloud health plus trace table migration."
+      ],
+      "evidence": [
+        "2026-05-16 mvn -Dtest=SkillRouterTests,ExpenseRecognitionSkillTests,AgentTraceServiceTests,AgentRuntimeTests,EffectPolicyTests,AgentBenchmarkTests test passed: 69 tests, 0 failures.",
+        "2026-05-16 mvn test passed: 161 tests, 0 failures.",
+        "2026-05-16 npm run test:agent-benchmark passed: 20 tests, 0 failures; docs/agent-benchmark-results.md updated.",
+        "2026-05-16 npm run verify:frontend passed across desktop and six mobile viewports.",
+        "2026-05-16 SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun completed; cloud /api/health returned ok.",
+        "2026-05-16 production SQLite /var/lib/ai-baby-growth-companion/baby-companion.sqlite contains agent_run and skill_run tables after deploy."
+      ],
+      "notes": "No frontend bundle assets changed, so no OTA was published for this backend-only release. The skill uses the configured expense-recognition model profile, or falls back to Doubao Pro when the final composer model has no vision support."
     },
     {
       "id": "frontend-001",
@@ -78,7 +103,8 @@
         "2026-05-16 npm run verify:frontend passed after raising chat attachment cap and adding over-limit notice.",
         "2026-05-16 npm run verify:frontend passed after AI stream status tags and frontend image downscaling changes.",
         "2026-05-16 npm run verify:frontend passed after adding agent_visual_analysis usage label and batched-analysis timeout copy.",
-        "2026-05-16 npm run verify:frontend passed after adding previous expense image retry forwarding."
+        "2026-05-16 npm run verify:frontend passed after adding previous expense image retry forwarding.",
+        "2026-05-16 npm run verify:frontend passed after backend expense skill status integration; no frontend bundle changes were required."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -101,7 +127,8 @@
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516140358.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for multi-image AI availability; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516144004.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for automatic multi-image batching; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516145942.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for previous expense retry and postprocess copy; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516152314."
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for previous expense retry and postprocess copy; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516152314.",
+        "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for executable expense-recognition skill worker; /api/health returned ok and production SQLite has agent_run / skill_run trace tables."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },

@@ -48,6 +48,7 @@ public class DatabaseInitializer implements ApplicationRunner {
             createRecordTable(connection, statement, "conversation_summary");
             createAuthTables(connection, statement);
             createProTrialTables(statement);
+            createAgentTraceTables(statement);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS attachment (
                       id TEXT PRIMARY KEY,
@@ -166,6 +167,59 @@ public class DatabaseInitializer implements ApplicationRunner {
                 )
                 """);
         statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_summary_setting_family_user ON daily_summary_setting(family_id, user_id)");
+    }
+
+    private void createAgentTraceTables(Statement statement) throws Exception {
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS agent_run (
+                  id TEXT PRIMARY KEY,
+                  trace_id TEXT NOT NULL,
+                  family_id TEXT,
+                  user_id TEXT,
+                  message_id TEXT,
+                  status TEXT,
+                  input_type TEXT,
+                  planner_model TEXT,
+                  final_model TEXT,
+                  planner_result_json TEXT,
+                  skill_plan_json TEXT,
+                  effect_summary_json TEXT,
+                  error_code TEXT,
+                  started_at TEXT,
+                  completed_at TEXT,
+                  created_at TEXT
+                )
+                """);
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_agent_run_trace ON agent_run(trace_id)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_agent_run_family_created ON agent_run(family_id, created_at)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_agent_run_status ON agent_run(status)");
+
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS skill_run (
+                  id TEXT PRIMARY KEY,
+                  trace_id TEXT NOT NULL,
+                  agent_run_id TEXT,
+                  skill_id TEXT NOT NULL,
+                  mode TEXT,
+                  status TEXT,
+                  model_profile TEXT,
+                  model TEXT,
+                  batch_count INTEGER,
+                  attachment_ids_json TEXT,
+                  input_summary_json TEXT,
+                  result_summary_json TEXT,
+                  effect_candidate_summary_json TEXT,
+                  user_facing_error TEXT,
+                  error_code TEXT,
+                  latency_ms INTEGER,
+                  started_at TEXT,
+                  completed_at TEXT,
+                  created_at TEXT
+                )
+                """);
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_skill_run_trace ON skill_run(trace_id)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_skill_run_agent ON skill_run(agent_run_id)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_skill_run_skill_status ON skill_run(skill_id, status)");
     }
 
     private void createRecordTable(Connection connection, Statement statement, String tableName) throws Exception {

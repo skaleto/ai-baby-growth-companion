@@ -39,11 +39,25 @@ public class EffectPolicy {
     }
 
     public List<AgentEffectDecision> decide(AgentChatResponse response, RecordSignals signals, JsonNode babyProfile, String userMessage) {
+        return decide(response, signals, babyProfile, userMessage, List.of());
+    }
+
+    public List<AgentEffectDecision> decide(
+            AgentChatResponse response,
+            RecordSignals signals,
+            JsonNode babyProfile,
+            String userMessage,
+            List<AgentEffectDecision> skillCandidates
+    ) {
         List<AgentEffectDecision> decisions = new ArrayList<>();
         boolean highRisk = highRisk(response.safetyAlerts(), signals);
         decisions.addAll(completenessPolicy.boundaryDecisions(signals));
         if (signals.unsupportedMutationRequest()) return decisions;
         AgentEffectDecision expenseDecision = expenseSignalDecision(signals);
+        List<AgentEffectDecision> expenseSkillCandidates = listOrEmpty(skillCandidates).stream()
+                .filter(this::validExpenseSkillCandidate)
+                .toList();
+        boolean hasSkillPendingExpense = expenseSkillCandidates.stream().anyMatch((decision) -> "pending".equals(decision.mode()));
         List<AgentEffectDecision> modelExpenseDecisions = listOrEmpty(response.expenses()).stream()
                 .map((expense) -> expenseDecision(expense, signals))
                 .filter((decision) -> decision != null)
@@ -51,11 +65,14 @@ public class EffectPolicy {
         boolean hasModelPendingExpense = modelExpenseDecisions.stream().anyMatch((decision) -> "pending".equals(decision.mode()));
         boolean deferPreviousExpenseReference = "ask".equals(expenseDecision == null ? "" : expenseDecision.mode())
                 && referencesPreviousExpenseEvidence(userMessage);
-        if (expenseDecision != null && !("ask".equals(expenseDecision.mode()) && hasModelPendingExpense) && !deferPreviousExpenseReference) {
+        if (expenseDecision != null
+                && !("ask".equals(expenseDecision.mode()) && (hasModelPendingExpense || hasSkillPendingExpense))
+                && !deferPreviousExpenseReference) {
             decisions.add(expenseDecision);
         }
         boolean expenseAlreadyCapturedByRule = "pending".equals(expenseDecision == null ? "" : expenseDecision.mode());
         if (!expenseAlreadyCapturedByRule) {
+            decisions.addAll(expenseSkillCandidates);
             decisions.addAll(modelExpenseDecisions);
         }
         AgentEffectDecision mixedFeedingClarification = mixedFeedingClarification(response, signals, babyProfile, userMessage);
@@ -93,6 +110,20 @@ public class EffectPolicy {
             );
         }
         return decisions;
+    }
+
+    private boolean validExpenseSkillCandidate(AgentEffectDecision decision) {
+        if (decision == null) return false;
+        if (!"expenseItem".equals(decision.type())) return false;
+        if (!"pending".equals(decision.mode()) && !"ask".equals(decision.mode())) return false;
+        JsonNode payload = decision.payload();
+        if (!"pending".equals(decision.mode())) return payload != null && payload.isObject();
+        return payload != null
+                && payload.isObject()
+                && StringUtils.hasText(text(payload, "title"))
+                && number(payload, "amount") > 0
+                && StringUtils.hasText(text(payload, "category"))
+                && StringUtils.hasText(text(payload, "date"));
     }
 
     private boolean referencesPreviousExpenseEvidence(String text) {

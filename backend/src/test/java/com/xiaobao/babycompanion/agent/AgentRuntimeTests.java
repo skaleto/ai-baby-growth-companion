@@ -7,6 +7,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.auth.CurrentUser;
+import com.xiaobao.babycompanion.config.AgentRuntimeProperties;
 import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
@@ -25,20 +26,33 @@ class AgentRuntimeTests {
     private final AgentRuntime agentRuntime = runtimeWith(new DoubaoProperties());
 
     private AgentRuntime runtimeWith(DoubaoProperties doubaoProperties) {
+        return runtimeWith(doubaoProperties, new AgentRuntimeProperties());
+    }
+
+    private AgentRuntime runtimeWith(DoubaoProperties doubaoProperties, AgentRuntimeProperties runtimeProperties) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        SkillDisclosureService disclosureService = new SkillDisclosureService(skillRegistry);
         return new AgentRuntime(
                 new DeepSeekProperties(),
                 doubaoProperties,
-                new ObjectMapper(),
-                new AgentPlanner(new ObjectMapper()),
+                objectMapper,
+                new AgentPlanner(objectMapper),
                 null,
                 null,
-                new RecordSignalExtractor(new ObjectMapper()),
-                new EffectPolicy(new ObjectMapper(), new CareEventCompletenessPolicy(new ObjectMapper())),
+                new RecordSignalExtractor(objectMapper),
+                new EffectPolicy(objectMapper, new CareEventCompletenessPolicy(objectMapper)),
                 new CurrentUser(),
                 skillRegistry,
-                new SkillDisclosureService(skillRegistry),
+                disclosureService,
+                runtimeProperties,
+                new SkillRouter(disclosureService),
+                new ExpenseRecognitionSkill(objectMapper),
+                null,
                 new ToolRegistry(List.of()),
-                new SafetyGuard()
+                new SafetyGuard(),
+                null,
+                Runnable::run,
+                java.time.Clock.system(java.time.ZoneId.of("Asia/Shanghai"))
         );
     }
 
@@ -188,6 +202,57 @@ class AgentRuntimeTests {
         assertThat(response.aiText()).doesNotContain("实际花了多少钱");
         assertThat(response.effectDecisions()).hasSize(1);
         assertThat(response.effectDecisions().get(0).mode()).isEqualTo("pending");
+    }
+
+    @Test
+    void replacesAmountQuestionWhenExpenseSkillCandidateIsAlreadyPending() {
+        String userMessage = "帮我识别这几张小票花费并记到账本";
+        AgentChatResponse modelResponse = new AgentChatResponse(
+                "这笔支出实际花了多少钱？确认金额后我再帮你记到账本里。",
+                List.of("记账"),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("expense-recognition"),
+                "trace",
+                "model",
+                "request"
+        );
+        var payload = new ObjectMapper().createObjectNode();
+        payload.put("title", "奶粉");
+        payload.put("amount", 268);
+        payload.put("currency", "CNY");
+        payload.put("category", "formula");
+        payload.put("date", "2026-05-16");
+        payload.putArray("attachmentIds").add("attachment-1");
+        payload.put("sourceSkill", "expense-recognition");
+
+        AgentChatResponse response = agentRuntime.withSafetyAlertsAndDecisions(
+                modelResponse,
+                userMessage,
+                new RecordSignalExtractor(new ObjectMapper()).extract(userMessage),
+                new AgentPlan("record", List.of("expense"), List.of("2026-05-16"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),
+                null,
+                List.of(new com.xiaobao.babycompanion.dto.agent.AgentEffectDecision(
+                        "decision-skill",
+                        "pending",
+                        "expenseItem",
+                        payload,
+                        0.9,
+                        "skill recognized expense",
+                        "expense-recognition"
+                ))
+        );
+
+        assertThat(response.aiText()).contains("已识别出这笔支出");
+        assertThat(response.aiText()).doesNotContain("实际花了多少钱");
+        assertThat(response.effectDecisions()).hasSize(1);
+        assertThat(response.effectDecisions().get(0).source()).isEqualTo("expense-recognition");
     }
 
     @Test
@@ -358,6 +423,33 @@ class AgentRuntimeTests {
 
         assertThat(runtimeModelValue(runtimeModel, "apiModel")).isEqualTo("doubao-seed-2-0-lite-260215");
         assertThat(runtimeModelValue(runtimeModel, "lowLatencyEnabled")).isEqualTo(true);
+    }
+
+    @Test
+    void expenseRecognitionProfileFallsBackToVisionModelWhenFinalModelHasNoVision() throws Exception {
+        Object finalModel = resolveRuntimeModel(agentRuntime, "deepseek-v4-pro", false);
+        Method method = AgentRuntime.class.getDeclaredMethod("resolveExpenseRecognitionModel", finalModel.getClass());
+        method.setAccessible(true);
+
+        Object expenseModel = method.invoke(agentRuntime, finalModel);
+
+        assertThat(runtimeModelValue(expenseModel, "id")).isEqualTo("doubao-seed-2.0-pro");
+        assertThat(runtimeModelValue(expenseModel, "supportsImageInput")).isEqualTo(true);
+    }
+
+    @Test
+    void configuredExpenseRecognitionProfileIsResolvedSeparately() throws Exception {
+        AgentRuntimeProperties properties = new AgentRuntimeProperties();
+        properties.getModels().getExpenseRecognition().setModel("doubao-seed-2.0-lite");
+        AgentRuntime runtime = runtimeWith(new DoubaoProperties(), properties);
+        Object finalModel = resolveRuntimeModel(runtime, "deepseek-v4-pro", false);
+        Method method = AgentRuntime.class.getDeclaredMethod("resolveExpenseRecognitionModel", finalModel.getClass());
+        method.setAccessible(true);
+
+        Object expenseModel = method.invoke(runtime, finalModel);
+
+        assertThat(runtimeModelValue(expenseModel, "id")).isEqualTo("doubao-seed-2.0-lite");
+        assertThat(runtimeModelValue(finalModel, "id")).isEqualTo("deepseek-v4-pro");
     }
 
     @Test
