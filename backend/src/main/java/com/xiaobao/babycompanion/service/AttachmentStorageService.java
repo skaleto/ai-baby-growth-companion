@@ -8,14 +8,12 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
@@ -46,6 +44,7 @@ import com.xiaobao.babycompanion.dto.app.UploadPresignResponse;
 import com.xiaobao.babycompanion.dto.app.UploadRequest;
 import com.xiaobao.babycompanion.persistence.entity.AttachmentRecord;
 import com.xiaobao.babycompanion.persistence.service.AttachmentRecordService;
+import com.xiaobao.babycompanion.service.AttachmentUploadRules.DataUrlPayload;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,25 +63,13 @@ public class AttachmentStorageService {
     private static final int THUMBNAIL_MAX_EDGE = 480;
     private static final long DIRECT_UPLOAD_TTL_SECONDS = 15L * 60L;
 
-    private static final Map<String, String> EXTENSIONS = Map.of(
-            "image/jpeg", "jpg",
-            "image/png", "png",
-            "image/webp", "webp",
-            "image/gif", "gif",
-            "video/mp4", "mp4",
-            "video/webm", "webm",
-            "video/quicktime", "mov",
-            "audio/mpeg", "mp3",
-            "audio/mp4", "m4a",
-            "audio/wav", "wav"
-    );
-
     private final Path dataDir;
     private final AppStorageProperties properties;
     private final AttachmentRecordService attachmentService;
     private final ObjectMapper objectMapper;
     private final CurrentUser currentUser;
     private final Clock clock;
+    private final AttachmentUploadRules uploadRules;
     private final OSS ossClient;
     private final String ossAccessKeyId;
     private final String ossAccessKeySecret;
@@ -101,6 +88,7 @@ public class AttachmentStorageService {
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
         this.clock = clock;
+        this.uploadRules = new AttachmentUploadRules(properties);
         this.ossAccessKeyId = readSecret(properties.getOss().getAccessKeyId(), properties.getOss().getAccessKeyIdFile());
         this.ossAccessKeySecret = readSecret(properties.getOss().getAccessKeySecret(), properties.getOss().getAccessKeySecretFile());
         if (isOssMode()) {
@@ -206,11 +194,11 @@ public class AttachmentStorageService {
     public AttachmentDto saveDataUrl(UploadRequest request) {
         currentUser.requireCaregiver();
         AuthPrincipal principal = currentUser.requirePrincipal();
-        DataUrlPayload payload = parseDataUrl(request.dataUrl());
-        DataUrlPayload thumbnailPayload = parseOptionalImageDataUrl(request.thumbnailDataUrl());
+        DataUrlPayload payload = uploadRules.parseDataUrl(request.dataUrl());
+        DataUrlPayload thumbnailPayload = uploadRules.parseOptionalImageDataUrl(request.thumbnailDataUrl());
         String id = normalizedId(request.id());
-        String kind = normalizedKind(request.kind(), payload.mimeType());
-        String name = StringUtils.hasText(request.name()) ? request.name().trim() : id + "." + extension(payload.mimeType());
+        String kind = uploadRules.normalizedKind(request.kind(), payload.mimeType());
+        String name = StringUtils.hasText(request.name()) ? request.name().trim() : id + "." + uploadRules.extension(payload.mimeType());
         return saveBytes(id, name, kind, payload.mimeType(), payload.bytes(), thumbnailPayload, null, null, principal.familyId(), principal.userId());
     }
 
@@ -223,11 +211,11 @@ public class AttachmentStorageService {
             throw new IllegalArgumentException("Upload request is required");
         }
         String id = normalizedId(request.id());
-        String mimeType = normalizedMimeType(request.mimeType());
-        validateMetadata(mimeType, request.sizeBytes());
-        long maxUploadBytes = maxUploadBytesFor(mimeType);
+        String mimeType = uploadRules.normalizedMimeType(request.mimeType());
+        uploadRules.validateMetadata(mimeType, request.sizeBytes());
+        long maxUploadBytes = uploadRules.maxUploadBytesFor(mimeType);
         Path relativeDir = todayUploadDir();
-        String objectKey = storedPath(relativeDir.resolve(id + "." + extension(mimeType)));
+        String objectKey = storedPath(relativeDir.resolve(id + "." + uploadRules.extension(mimeType)));
         Date expiration = new Date(System.currentTimeMillis() + DIRECT_UPLOAD_TTL_SECONDS * 1000L);
         GeneratePresignedUrlRequest presignRequest = new GeneratePresignedUrlRequest(
                 properties.getOss().getBucket().trim(),
@@ -259,9 +247,9 @@ public class AttachmentStorageService {
         }
         AuthPrincipal principal = currentUser.requirePrincipal();
         String id = normalizedId(request.id());
-        String mimeType = normalizedMimeType(request.mimeType());
-        validateMetadata(mimeType, request.sizeBytes());
-        String kind = normalizedKind(request.kind(), mimeType);
+        String mimeType = uploadRules.normalizedMimeType(request.mimeType());
+        uploadRules.validateMetadata(mimeType, request.sizeBytes());
+        String kind = uploadRules.normalizedKind(request.kind(), mimeType);
         String objectKey = validatedDirectObjectKey(id, mimeType, request.objectKey());
         if (!ossObjectExists(objectKey)) {
             throw new IllegalArgumentException("Uploaded object is not available");
@@ -269,12 +257,12 @@ public class AttachmentStorageService {
         try {
             AttachmentRecord record = new AttachmentRecord();
             record.setId(id);
-            record.setName(safeName(StringUtils.hasText(request.name()) ? request.name() : id + "." + extension(mimeType)));
+            record.setName(safeName(StringUtils.hasText(request.name()) ? request.name() : id + "." + uploadRules.extension(mimeType)));
             record.setKind(kind);
             record.setMimeType(mimeType);
             record.setFilePath(objectKey);
             record.setPublicUrl("/api/uploads/" + id);
-            DataUrlPayload thumbnailPayload = parseOptionalImageDataUrl(request.thumbnailDataUrl());
+            DataUrlPayload thumbnailPayload = uploadRules.parseOptionalImageDataUrl(request.thumbnailDataUrl());
             ThumbnailPaths thumbnail = thumbnailPayload == null ? null : createThumbnail(id, thumbnailPayload.mimeType(), thumbnailPayload.bytes(), parentPath(objectKey));
             if (thumbnail == null && mimeType.startsWith("image/")) {
                 thumbnail = createThumbnail(id, mimeType, readStoredObject(objectKey), parentPath(objectKey));
@@ -296,11 +284,11 @@ public class AttachmentStorageService {
     }
 
     public AttachmentDto saveDataUrlAttachment(String id, String name, String kind, String dataUrl, String ownerType, String ownerId, String familyId, String ownerUserId) {
-        DataUrlPayload payload = parseDataUrl(dataUrl);
+        DataUrlPayload payload = uploadRules.parseDataUrl(dataUrl);
         return saveBytes(
                 normalizedId(id),
-                StringUtils.hasText(name) ? name : normalizedId(id) + "." + extension(payload.mimeType()),
-                normalizedKind(kind, payload.mimeType()),
+                StringUtils.hasText(name) ? name : normalizedId(id) + "." + uploadRules.extension(payload.mimeType()),
+                uploadRules.normalizedKind(kind, payload.mimeType()),
                 payload.mimeType(),
                 payload.bytes(),
                 null,
@@ -374,9 +362,9 @@ public class AttachmentStorageService {
             String familyId,
             String ownerUserId
     ) {
-        validate(mimeType, bytes);
+        uploadRules.validate(mimeType, bytes);
         try {
-            String extension = extension(mimeType);
+            String extension = uploadRules.extension(mimeType);
             Path relativeDir = todayUploadDir();
             String relativePath = storedPath(relativeDir.resolve(id + "." + extension));
             String publicUrl = "/api/uploads/" + id;
@@ -839,37 +827,6 @@ public class AttachmentStorageService {
         return baseName.replaceAll("\\.[^.]+$", "") + "-thumb.jpg";
     }
 
-    private void validate(String mimeType, byte[] bytes) {
-        if (!isAllowed(mimeType)) {
-            throw new IllegalArgumentException("Unsupported attachment type: " + mimeType);
-        }
-        if (bytes.length <= 0) {
-            throw new IllegalArgumentException("Attachment is empty");
-        }
-        if (bytes.length > maxUploadBytesFor(mimeType)) {
-            throw new IllegalArgumentException("Attachment exceeds size limit");
-        }
-    }
-
-    private void validateMetadata(String mimeType, Long sizeBytes) {
-        if (!isAllowed(mimeType)) {
-            throw new IllegalArgumentException("Unsupported attachment type: " + mimeType);
-        }
-        long size = sizeBytes == null ? 0L : sizeBytes;
-        if (size <= 0) {
-            throw new IllegalArgumentException("Attachment is empty");
-        }
-        if (size > maxUploadBytesFor(mimeType)) {
-            throw new IllegalArgumentException("Attachment exceeds size limit");
-        }
-    }
-
-    private long maxUploadBytesFor(String mimeType) {
-        return mimeType != null && mimeType.startsWith("video/")
-                ? properties.getMaxVideoUploadBytes()
-                : properties.getMaxUploadBytes();
-    }
-
     private String validatedDirectObjectKey(String id, String mimeType, String objectKey) {
         if (!StringUtils.hasText(objectKey)) {
             throw new IllegalArgumentException("Uploaded object key is required");
@@ -880,58 +837,11 @@ public class AttachmentStorageService {
         }
         String prefix = normalizedOssPrefix();
         String expectedPrefix = StringUtils.hasText(prefix) ? prefix + "/uploads/" : "uploads/";
-        String expectedSuffix = "/" + id + "." + extension(mimeType);
+        String expectedSuffix = "/" + id + "." + uploadRules.extension(mimeType);
         if (!normalized.startsWith(expectedPrefix) || !normalized.endsWith(expectedSuffix)) {
             throw new IllegalArgumentException("Uploaded object key does not match the attachment");
         }
         return normalized;
-    }
-
-    private String normalizedMimeType(String mimeType) {
-        if (!StringUtils.hasText(mimeType)) return "";
-        return mimeType.split(";", 2)[0].trim().toLowerCase();
-    }
-
-    private DataUrlPayload parseDataUrl(String dataUrl) {
-        if (!StringUtils.hasText(dataUrl) || !dataUrl.startsWith("data:")) {
-            throw new IllegalArgumentException("Invalid dataUrl");
-        }
-        int comma = dataUrl.indexOf(',');
-        int semicolon = dataUrl.indexOf(';');
-        if (comma < 0 || semicolon < 0 || semicolon > comma || !dataUrl.substring(semicolon, comma).contains("base64")) {
-            throw new IllegalArgumentException("Only base64 dataUrl attachments are supported");
-        }
-        String mimeType = dataUrl.substring("data:".length(), semicolon).toLowerCase();
-        byte[] bytes = Base64.getDecoder().decode(dataUrl.substring(comma + 1).getBytes(StandardCharsets.UTF_8));
-        return new DataUrlPayload(mimeType, bytes);
-    }
-
-    private DataUrlPayload parseOptionalImageDataUrl(String dataUrl) {
-        if (!StringUtils.hasText(dataUrl)) return null;
-        DataUrlPayload payload = parseDataUrl(dataUrl);
-        return payload.mimeType().startsWith("image/") ? payload : null;
-    }
-
-    private boolean isAllowed(String mimeType) {
-        return StringUtils.hasText(mimeType)
-                && (mimeType.startsWith("image/") || mimeType.startsWith("video/") || mimeType.startsWith("audio/"))
-                && EXTENSIONS.containsKey(mimeType);
-    }
-
-    private String extension(String mimeType) {
-        String extension = EXTENSIONS.get(mimeType);
-        if (!StringUtils.hasText(extension)) {
-            throw new IllegalArgumentException("Unsupported attachment type: " + mimeType);
-        }
-        return extension;
-    }
-
-    private String normalizedKind(String kind, String mimeType) {
-        if ("image".equals(kind) || "video".equals(kind) || "audio".equals(kind)) return kind;
-        if (mimeType.startsWith("image/")) return "image";
-        if (mimeType.startsWith("video/")) return "video";
-        if (mimeType.startsWith("audio/")) return "audio";
-        return "image";
     }
 
     private String normalizedId(String id) {
@@ -983,9 +893,6 @@ public class AttachmentStorageService {
         } catch (JsonProcessingException exception) {
             return "{}";
         }
-    }
-
-    private record DataUrlPayload(String mimeType, byte[] bytes) {
     }
 
     private record ThumbnailPaths(String path, String url) {

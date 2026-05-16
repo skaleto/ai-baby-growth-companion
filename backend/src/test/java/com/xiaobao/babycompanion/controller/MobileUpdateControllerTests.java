@@ -71,6 +71,36 @@ class MobileUpdateControllerTests {
     }
 
     @Test
+    void returnsExternalBundleUrlWithoutRequiringLocalZip() throws Exception {
+        Path root = Path.of("target/test-data/mobile-updates/mobile-updates");
+        Files.deleteIfExists(root.resolve("bundles/app-0.1.1.zip"));
+        Files.writeString(root.resolve("manifest.json"), """
+                {
+                  "enabled": true,
+                  "version": "0.1.2",
+                  "fileName": "app-0.1.2.zip",
+                  "url": "https://cdn.example.test/mobile-updates/app-0.1.2.zip",
+                  "checksum": "def456"
+                }
+                """);
+
+        mockMvc.perform(post("/api/mobile-updates/check")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nativeVersion": "0.1.0",
+                                  "currentBundleVersion": "0.1.1"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.updateAvailable").value(true))
+                .andExpect(jsonPath("$.version").value("0.1.2"))
+                .andExpect(jsonPath("$.url").value("https://cdn.example.test/mobile-updates/app-0.1.2.zip"))
+                .andExpect(jsonPath("$.checksum").value("def456"));
+    }
+
+    @Test
     void returnsUpToDateWhenCurrentBundleMatchesManifest() throws Exception {
         mockMvc.perform(post("/api/mobile-updates/check")
                         .contentType(MediaType.APPLICATION_JSON)

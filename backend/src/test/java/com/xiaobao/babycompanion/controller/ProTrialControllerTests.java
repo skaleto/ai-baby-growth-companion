@@ -199,6 +199,35 @@ class ProTrialControllerTests {
                 .andExpect(jsonPath("$.message").value("当前家庭还没有开通 Pro 内测，先申请后再使用今日小结。"));
     }
 
+    @Test
+    void usageSummaryIsFamilyScopedAndLimitedToRequestedWindow() throws Exception {
+        LoginResult login = login(phone(), inviteCode(), "妈妈", true);
+        LoginResult otherFamily = login(phone(), inviteCode(), "爸爸", true);
+        Instant now = Instant.now();
+
+        saveUsage(login.familyId(), login.userId(), "agent_chat", "deepseek", "deepseek-v4-pro", 100, 20, 120, now.minusSeconds(3600).toString());
+        saveUsage(login.familyId(), login.userId(), "daily_summary", "rules", "daily-summary-v1", 25, 5, 30, now.minusSeconds(7200).toString());
+        saveUsage(login.familyId(), login.userId(), "agent_stream", "doubao", "doubao-seed-2.0-pro", null, null, null, now.minusSeconds(9000).toString());
+        saveUsage(login.familyId(), login.userId(), "old_call", "deepseek", "deepseek-v4-pro", 400, 100, 500, now.minusSeconds(40L * 24 * 3600).toString());
+        saveUsage(otherFamily.familyId(), otherFamily.userId(), "agent_chat", "deepseek", "deepseek-v4-pro", 700, 80, 780, now.toString());
+
+        mockMvc.perform(get("/api/pro/usage?days=30")
+                        .header(HttpHeaders.AUTHORIZATION, login.bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.days").value(30))
+                .andExpect(jsonPath("$.requestCount").value(3))
+                .andExpect(jsonPath("$.successfulRequestCount").value(3))
+                .andExpect(jsonPath("$.meteredRequestCount").value(2))
+                .andExpect(jsonPath("$.unmeteredRequestCount").value(1))
+                .andExpect(jsonPath("$.inputTokens").value(125))
+                .andExpect(jsonPath("$.outputTokens").value(25))
+                .andExpect(jsonPath("$.totalTokens").value(150))
+                .andExpect(jsonPath("$.byFeature[0].feature").value("agent_chat"))
+                .andExpect(jsonPath("$.byFeature[0].totalTokens").value(120))
+                .andExpect(jsonPath("$.byModel[0].provider").value("deepseek"))
+                .andExpect(jsonPath("$.byModel[0].totalTokens").value(120));
+    }
+
     private LoginResult login(String phone, String inviteCode, String roleName, boolean caregiver) throws Exception {
         ensureInviteCode(inviteCode);
         String body = mockMvc.perform(post("/api/auth/login")
@@ -235,6 +264,35 @@ class ProTrialControllerTests {
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
         entitlementService.saveOrUpdate(record);
+    }
+
+    private void saveUsage(
+            String familyId,
+            String userId,
+            String feature,
+            String provider,
+            String model,
+            Integer inputTokens,
+            Integer outputTokens,
+            Integer totalTokens,
+            String createdAt
+    ) {
+        AiUsageLogRecord record = new AiUsageLogRecord();
+        record.setId("ai-usage-test-" + UUID.randomUUID());
+        record.setFamilyId(familyId);
+        record.setUserId(userId);
+        record.setRequestId("request-" + UUID.randomUUID());
+        record.setProvider(provider);
+        record.setModel(model);
+        record.setFeature(feature);
+        record.setInputType("text");
+        record.setInputTokens(inputTokens);
+        record.setOutputTokens(outputTokens);
+        record.setTotalTokens(totalTokens);
+        record.setSuccess("true");
+        record.setQuotaCounted("true");
+        record.setCreatedAt(createdAt);
+        aiUsageLogRecordService.save(record);
     }
 
     private String inviteCode() {

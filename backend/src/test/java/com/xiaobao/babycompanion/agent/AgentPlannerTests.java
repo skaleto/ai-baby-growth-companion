@@ -81,4 +81,47 @@ class AgentPlannerTests {
         assertThat(plan.toolRequests()).hasSize(1);
         assertThat(plan.toolRequests().get(0).toolId()).isEqualTo("web_search");
     }
+
+    @Test
+    void heuristicDoesNotRequestWebForExpenseImageRecognition() {
+        AgentChatRequest request = expenseImageRequest("帮我识别这几张小票花费并记到账本");
+
+        AgentPlan plan = planner.heuristic(request, extractor.extract(request.message()));
+
+        assertThat(plan.intent()).isEqualTo("record");
+        assertThat(plan.topics()).contains("expense");
+        assertThat(plan.contextNeeds()).doesNotContain("web");
+        assertThat(plan.toolRequests()).isEmpty();
+    }
+
+    @Test
+    void parseFiltersPlannerWebSearchForExpenseImageRecognition() {
+        AgentChatRequest request = expenseImageRequest("帮我识别这几张小票花费并记到账本");
+        RecordSignals signals = extractor.extract(request.message());
+
+        AgentPlan plan = planner.parse(
+                """
+                        {"intent":"record","topics":["expense"],"targetDates":["2026-05-01"],"contextNeeds":["profile","web"],"toolRequests":[{"toolId":"web_search","query":"小票花费","reason":"查询价格"}],"riskHints":["none"]}
+                        """,
+                request,
+                signals
+        );
+
+        assertThat(plan.contextNeeds()).doesNotContain("web");
+        assertThat(plan.toolRequests()).isEmpty();
+    }
+
+    private AgentChatRequest expenseImageRequest(String message) {
+        return new AgentChatRequest(
+                message,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(new AgentAttachment("attachment-1", "receipt.jpg", "image", null, "data:image/jpeg;base64,abc")),
+                null,
+                false
+        );
+    }
 }

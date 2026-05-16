@@ -11,6 +11,8 @@ VERSION="${MOBILE_UPDATE_VERSION:-${1:-${PACKAGE_VERSION}-$(date +%Y%m%d%H%M%S)}
 FILE_NAME="app-${VERSION}.zip"
 BUNDLE_PATH="$BUNDLE_DIR/$FILE_NAME"
 PUBLIC_BASE_URL="${MOBILE_UPDATE_PUBLIC_BASE_URL:-${APP_MOBILE_UPDATES_PUBLIC_BASE_URL:-}}"
+BUNDLE_PUBLIC_BASE_URL="${MOBILE_UPDATE_BUNDLE_PUBLIC_BASE_URL:-}"
+BUNDLE_URL="${MOBILE_UPDATE_BUNDLE_URL:-}"
 API_BASE_URL="${VITE_AGENT_API_BASE_URL:-$PUBLIC_BASE_URL}"
 MIN_NATIVE_VERSION="${MOBILE_UPDATE_MIN_NATIVE_VERSION:-}"
 MESSAGE="${MOBILE_UPDATE_MESSAGE:-}"
@@ -24,9 +26,9 @@ fi
 cd "$ROOT_DIR"
 echo "Building web assets..."
 if [[ -n "$API_BASE_URL" ]]; then
-  VITE_MOBILE_UPDATE_VERSION="$VERSION" VITE_AGENT_API_BASE_URL="$API_BASE_URL" npm run build
+  VITE_BUILD_TARGET=mobile VITE_MOBILE_UPDATE_VERSION="$VERSION" VITE_AGENT_API_BASE_URL="$API_BASE_URL" npm run build
 else
-  VITE_MOBILE_UPDATE_VERSION="$VERSION" npm run build
+  VITE_BUILD_TARGET=mobile VITE_MOBILE_UPDATE_VERSION="$VERSION" npm run build
 fi
 
 mkdir -p "$BUNDLE_DIR"
@@ -44,6 +46,8 @@ VERSION="$VERSION" \
 FILE_NAME="$FILE_NAME" \
 CHECKSUM="$CHECKSUM" \
 PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
+BUNDLE_PUBLIC_BASE_URL="$BUNDLE_PUBLIC_BASE_URL" \
+BUNDLE_URL="$BUNDLE_URL" \
 MIN_NATIVE_VERSION="$MIN_NATIVE_VERSION" \
 MESSAGE="$MESSAGE" \
 ENABLED="$ENABLED" \
@@ -54,12 +58,14 @@ const path = require("node:path");
 
 const trim = (value) => (value || "").replace(/\/+$/, "");
 const publicBaseUrl = trim(process.env.PUBLIC_BASE_URL);
+const bundlePublicBaseUrl = trim(process.env.BUNDLE_PUBLIC_BASE_URL);
+const bundleUrl = process.env.BUNDLE_URL || "";
 const fileName = process.env.FILE_NAME;
 const manifest = {
   enabled: process.env.ENABLED !== "false",
   version: process.env.VERSION,
   fileName,
-  url: publicBaseUrl ? `${publicBaseUrl}/api/mobile-updates/bundles/${fileName}` : "",
+  url: bundleUrl || (bundlePublicBaseUrl ? `${bundlePublicBaseUrl}/${fileName}` : (publicBaseUrl ? `${publicBaseUrl}/api/mobile-updates/bundles/${fileName}` : "")),
   checksum: process.env.CHECKSUM,
   minNativeVersion: process.env.MIN_NATIVE_VERSION || "",
   message: process.env.MESSAGE || "",

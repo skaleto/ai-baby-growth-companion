@@ -1,4 +1,4 @@
-import { AppStateSnapshot, Attachment, AttachmentKind, DailySummary, DailySummarySettings, ProTrialStatus } from "./types";
+import { AiUsageSummary, AppStateSnapshot, Attachment, AttachmentKind, DailySummary, DailySummarySettings, ProTrialStatus } from "./types";
 import { apiBaseUrl, apiFetch, authHeaders, withAuthQuery } from "./authApi";
 
 export type AppStateCollection =
@@ -170,6 +170,14 @@ export async function updateDailySummarySettings(settings: DailySummarySettings)
   });
   if (!response.ok) throw new Error(await parseError(response, `保存小结提醒设置失败（${response.status}）`));
   return (await response.json()) as DailySummarySettings;
+}
+
+export async function readAiUsageSummary(days = 30): Promise<AiUsageSummary> {
+  const response = await apiFetch(`${apiBaseUrl}/api/pro/usage?days=${encodeURIComponent(String(days))}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error(await parseError(response, `读取 AI 用量失败（${response.status}）`));
+  return (await response.json()) as AiUsageSummary;
 }
 
 export async function uploadDataUrlAttachment(input: {

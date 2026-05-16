@@ -44,13 +44,17 @@ public class EffectPolicy {
         decisions.addAll(completenessPolicy.boundaryDecisions(signals));
         if (signals.unsupportedMutationRequest()) return decisions;
         AgentEffectDecision expenseDecision = expenseSignalDecision(signals);
-        if (expenseDecision != null) decisions.add(expenseDecision);
+        List<AgentEffectDecision> modelExpenseDecisions = listOrEmpty(response.expenses()).stream()
+                .map((expense) -> expenseDecision(expense, signals))
+                .filter((decision) -> decision != null)
+                .toList();
+        boolean hasModelPendingExpense = modelExpenseDecisions.stream().anyMatch((decision) -> "pending".equals(decision.mode()));
+        if (expenseDecision != null && !("ask".equals(expenseDecision.mode()) && hasModelPendingExpense)) {
+            decisions.add(expenseDecision);
+        }
         boolean expenseAlreadyCapturedByRule = "pending".equals(expenseDecision == null ? "" : expenseDecision.mode());
         if (!expenseAlreadyCapturedByRule) {
-            listOrEmpty(response.expenses()).forEach((expense) -> {
-                AgentEffectDecision decision = expenseDecision(expense, signals);
-                if (decision != null) decisions.add(decision);
-            });
+            decisions.addAll(modelExpenseDecisions);
         }
         AgentEffectDecision mixedFeedingClarification = mixedFeedingClarification(response, signals, babyProfile, userMessage);
         if (mixedFeedingClarification != null) decisions.add(mixedFeedingClarification);

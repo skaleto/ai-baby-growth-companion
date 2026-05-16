@@ -1,7 +1,12 @@
 package com.xiaobao.babycompanion.service;
 
+import com.aliyun.oss.HttpMethod;
+import com.aliyun.oss.OSS;
+import com.aliyun.oss.OSSClientBuilder;
+import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiaobao.babycompanion.config.AppStorageProperties;
 import com.xiaobao.babycompanion.config.MobileUpdateProperties;
 import com.xiaobao.babycompanion.dto.app.MobileUpdateCheckRequest;
 import com.xiaobao.babycompanion.dto.app.MobileUpdateCheckResponse;
@@ -9,6 +14,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Date;
 import java.util.Objects;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -21,12 +28,23 @@ public class MobileUpdateService {
 
     private final Path updateRoot;
     private final MobileUpdateProperties properties;
+    private final AppStorageProperties storageProperties;
     private final ObjectMapper objectMapper;
+    private final String ossAccessKeyId;
+    private final String ossAccessKeySecret;
 
-    public MobileUpdateService(Path appDataDir, MobileUpdateProperties properties, ObjectMapper objectMapper) throws IOException {
+    public MobileUpdateService(
+            Path appDataDir,
+            MobileUpdateProperties properties,
+            AppStorageProperties storageProperties,
+            ObjectMapper objectMapper
+    ) throws IOException {
         this.updateRoot = appDataDir.resolve(safeRelativeDirectory(properties.getDirectory())).normalize();
         this.properties = properties;
+        this.storageProperties = storageProperties;
         this.objectMapper = objectMapper;
+        this.ossAccessKeyId = readSecret(storageProperties.getOss().getAccessKeyId(), storageProperties.getOss().getAccessKeyIdFile());
+        this.ossAccessKeySecret = readSecret(storageProperties.getOss().getAccessKeySecret(), storageProperties.getOss().getAccessKeySecretFile());
         Files.createDirectories(bundleRoot());
     }
 
@@ -63,14 +81,12 @@ public class MobileUpdateService {
             return MobileUpdateCheckResponse.upToDate(manifest.version(), "当前已是最新移动端资源。");
         }
 
-        Path bundleFile = resolveBundleFile(manifest.fileName());
-        if (!Files.isReadable(bundleFile)) {
+        boolean externalBundle = hasExternalBundle(manifest);
+        if (!externalBundle && !Files.isReadable(resolveBundleFile(manifest.fileName()))) {
             return MobileUpdateCheckResponse.disabled("移动端热更新包不存在或不可读。");
         }
 
-        String url = StringUtils.hasText(manifest.url())
-                ? manifest.url().trim()
-                : buildBundleUrl(servletRequest, manifest.fileName());
+        String url = resolveBundleUrl(manifest, servletRequest);
 
         return new MobileUpdateCheckResponse(
                 true,
@@ -93,6 +109,49 @@ public class MobileUpdateService {
             return resource;
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to load mobile update bundle", exception);
+        }
+    }
+
+    private boolean hasExternalBundle(Manifest manifest) {
+        return StringUtils.hasText(manifest.url()) || StringUtils.hasText(manifest.ossObjectKey());
+    }
+
+    private String resolveBundleUrl(Manifest manifest, HttpServletRequest request) {
+        String ossObjectKey = emptyToNull(manifest.ossObjectKey());
+        if (!StringUtils.hasText(ossObjectKey) && StringUtils.hasText(manifest.url()) && manifest.url().startsWith("oss://")) {
+            ossObjectKey = manifest.url().substring("oss://".length());
+        }
+        if (StringUtils.hasText(ossObjectKey)) {
+            return signedOssBundleUrl(ossObjectKey);
+        }
+        if (StringUtils.hasText(manifest.url())) {
+            return manifest.url().trim();
+        }
+        return buildBundleUrl(request, manifest.fileName());
+    }
+
+    private String signedOssBundleUrl(String objectKey) {
+        AppStorageProperties.Oss oss = storageProperties.getOss();
+        if (!StringUtils.hasText(oss.getEndpoint())
+                || !StringUtils.hasText(oss.getBucket())
+                || !StringUtils.hasText(ossAccessKeyId)
+                || !StringUtils.hasText(ossAccessKeySecret)) {
+            throw new IllegalStateException("OSS mobile update bundle is configured but OSS credentials are missing");
+        }
+        String safeObjectKey = safeOssObjectKey(objectKey);
+        OSS client = new OSSClientBuilder().build(oss.getEndpoint().trim(), ossAccessKeyId, ossAccessKeySecret);
+        try {
+            long ttlSeconds = Math.max(60L, oss.getSignedUrlTtlSeconds());
+            Date expiration = Date.from(Instant.now().plusSeconds(ttlSeconds));
+            GeneratePresignedUrlRequest presignRequest = new GeneratePresignedUrlRequest(
+                    oss.getBucket().trim(),
+                    safeObjectKey,
+                    HttpMethod.GET
+            );
+            presignRequest.setExpiration(expiration);
+            return client.generatePresignedUrl(presignRequest).toString();
+        } finally {
+            client.shutdown();
         }
     }
 
@@ -138,6 +197,21 @@ public class MobileUpdateService {
         return trimTrailingSlash(base) + "/api/mobile-updates/bundles/" + fileName;
     }
 
+    private static String safeOssObjectKey(String value) {
+        String next = value == null ? "" : value.trim().replace('\\', '/');
+        while (next.startsWith("/")) {
+            next = next.substring(1);
+        }
+        if (!StringUtils.hasText(next)) {
+            throw new IllegalArgumentException("OSS mobile update object key is required");
+        }
+        Path normalized = Path.of(next).normalize();
+        if (normalized.isAbsolute() || normalized.startsWith("..")) {
+            throw new IllegalArgumentException("Invalid OSS mobile update object key");
+        }
+        return normalized.toString().replace('\\', '/');
+    }
+
     private static String safeRelativeDirectory(String value) {
         String next = StringUtils.hasText(value) ? value.trim() : "mobile-updates";
         Path relative = Path.of(next).normalize();
@@ -153,6 +227,20 @@ public class MobileUpdateService {
 
     private static String emptyToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private static String readSecret(String inlineValue, String filePath) throws IOException {
+        if (StringUtils.hasText(inlineValue)) {
+            return inlineValue.trim();
+        }
+        if (!StringUtils.hasText(filePath)) {
+            return "";
+        }
+        Path path = Path.of(filePath.trim());
+        if (!Files.isReadable(path)) {
+            return "";
+        }
+        return Files.readString(path).trim();
     }
 
     private static String normalizedVersion(String value) {
@@ -188,6 +276,7 @@ public class MobileUpdateService {
             String version,
             String fileName,
             String url,
+            String ossObjectKey,
             String checksum,
             String minNativeVersion,
             String message

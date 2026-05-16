@@ -45,6 +45,7 @@ public class AgentPlanner {
             }
             需要最新政策、地点信息、官方通知、疫苗政策、办事流程、天气等外部资料时，加入 web_search。
             需要查询商品信息或参考价格时，加入 web_search，但实际记账金额必须由用户确认。
+            如果用户上传订单、小票、收据、发票、支付或付款截图，并要求识别花费、支出或记账，不要加入 web_search；这类任务应依赖上传图片中的实际付款信息。
             日常记录优先保留目标日期和主题，不要编造用户没说的事实。
             selectedSkills 只是可用技能目录。若看到 pediatric-care-guide，只代表系统可在后续最终回复中按需渐进式加载育儿基础知识；planner 不要把技能目录当成已经执行或已经加载的事实。
             用户可能用 12 小时制描述时间；没有上午/下午时，结合 currentTime 判断今天最近已经发生过的候选时间。
@@ -104,7 +105,7 @@ public class AgentPlanner {
 
     public AgentPlan heuristic(AgentChatRequest request, RecordSignals signals) {
         String message = request.message() == null ? "" : request.message();
-        boolean needsWeb = message.matches(".*(查|查询|搜|搜索|联网|最新|政策|规定|官方|通知|天气|哪里|地址|电话|办理|流程|价格|多少钱).*");
+        boolean needsWeb = likelyNeedsExternalLookup(message) && !shouldSuppressWebForExpense(request, signals);
         boolean reminder = message.matches(".*(提醒|闹钟|记得|定时|每隔\\s*[\\d一二两三四五六七八九十半]+\\s*(分钟|分|小时)).*");
         boolean record = signals.concreteCareLog() ||
                 signals.topics().stream().anyMatch((topic) -> List.of("feeding", "sleep", "poop", "temperature", "growth", "memory", "expense").contains(topic));
@@ -151,14 +152,36 @@ public class AgentPlanner {
         List<String> targetDates = clean(parsed.targetDates()).isEmpty() ? fallback.targetDates() : clean(parsed.targetDates());
         List<String> contextNeeds = clean(parsed.contextNeeds()).isEmpty() ? fallback.contextNeeds() : clean(parsed.contextNeeds());
         List<String> riskHints = clean(parsed.riskHints()).isEmpty() ? fallback.riskHints() : clean(parsed.riskHints());
+        boolean suppressExpenseWeb = shouldSuppressWebForExpense(request, signals);
+        if (suppressExpenseWeb) {
+            contextNeeds = contextNeeds.stream().filter((need) -> !"web".equals(need)).toList();
+        }
         List<AgentToolRequest> toolRequests = parsed.toolRequests() == null ? fallback.toolRequests() : parsed.toolRequests().stream()
                 .filter((tool) -> tool != null && StringUtils.hasText(tool.toolId()) && StringUtils.hasText(tool.query()))
+                .filter((tool) -> !suppressExpenseWeb || !"web_search".equals(tool.toolId()))
                 .limit(3)
                 .toList();
         if ((toolRequests == null || toolRequests.isEmpty()) && fallback.toolRequests() != null && !fallback.toolRequests().isEmpty()) {
             toolRequests = fallback.toolRequests();
         }
         return new AgentPlan(intent, topics, targetDates, contextNeeds, toolRequests, riskHints, normalizeMediaAction(parsed.mediaAction()));
+    }
+
+    private boolean likelyNeedsExternalLookup(String message) {
+        if (!StringUtils.hasText(message)) return false;
+        return message.matches(".*(查|查询|搜|搜索|联网|最新|政策|规定|官方|通知|天气|哪里|地址|电话|办理|流程|价格|多少钱).*")
+                || message.matches(".*(现在|当前|今天).*(天气|政策|规定|价格|新闻|通知).*");
+    }
+
+    private boolean shouldSuppressWebForExpense(AgentChatRequest request, RecordSignals signals) {
+        String message = request.message() == null ? "" : request.message();
+        if (message.matches(".*(参考价|参考价格|比价|商品信息|哪里买|官网|最新价格|价格趋势).*")) return false;
+        boolean hasVisualAttachment = request.attachments() != null && request.attachments().stream()
+                .anyMatch((attachment) -> attachment != null && List.of("image", "video").contains(attachment.kind()));
+        boolean expenseTopic = signals.expenseSignal() != null || signals.topics().contains("expense");
+        boolean expenseImageTask = message.matches(".*(识别|看一下|帮我|整理|记录|记账).*(花费|支出|账本|订单|小票|收据|发票|支付|付款|金额).*")
+                || message.matches(".*(订单|小票|收据|发票|支付截图|付款截图|支付凭证|付款凭证).*(记账|账本|花费|支出|金额).*");
+        return expenseTopic && (expenseImageTask || hasVisualAttachment && message.matches(".*(花费|支出|账本|记账|订单|小票|收据|发票|支付|付款|金额).*"));
     }
 
     private List<Map<String, String>> attachmentSummaries(List<AgentAttachment> attachments) {

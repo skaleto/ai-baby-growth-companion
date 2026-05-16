@@ -14,11 +14,11 @@ import {
   Image as ImageIcon,
   Keyboard as KeyboardIcon,
   LineChart,
-  MessageCircle,
   Mic,
   Music2,
   PencilLine,
   ReceiptText,
+  RefreshCw,
   Save,
   Send,
   ShieldAlert,
@@ -64,7 +64,6 @@ import {
   buildDerivedAlbumItems,
   decideAlbumMedia,
   dedupeAlbumItems,
-  isLikelyScreenshotAttachment,
   isVisibleAlbumMedia,
   resolveAlbumEffectTarget,
   type AlbumMediaDecision,
@@ -77,6 +76,7 @@ import {
   discardPendingEffectOnServer,
   importAppState,
   readAppState,
+  readAiUsageSummary,
   generateDailySummary,
   submitProTrialApplication,
   type AppStateCollection,
@@ -118,10 +118,95 @@ import { MOBILE_UPDATE_NOTICE_EVENT, type MobileUpdateNoticeDetail, type MobileU
 import { useStoredState } from "./storage";
 import { useStableViewport } from "./hooks/useStableViewport";
 import {
+  CARE_EVENT_TYPE_OPTIONS,
+  DEFAULT_MODEL,
+  EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_OPTIONS,
+  FEEDING_SELECT_OPTIONS,
+  LEDGER_VIEWS,
+  MAX_INTERVAL_MINUTES,
+  MOBILE_TABS,
+  MIN_INTERVAL_MINUTES,
+  MODEL_OPTIONS,
+  MODEL_SELECT_OPTIONS,
+  RECORD_VIEWS,
+  REGION_SELECT_OPTIONS,
+  REMINDER_ALERT_MODE_OPTIONS,
+  REMINDER_CATEGORY_OPTIONS,
+  REMINDER_SCHEDULE_MODE_OPTIONS,
+  REMINDER_SOUND_OPTIONS,
+  ROLE_OPTIONS,
+  ROLE_SELECT_OPTIONS,
+  STAGE_SELECT_OPTIONS,
+  UNIQUE_ROLE_OPTIONS,
+  isVisualModel,
+  type LedgerView,
+  type MobileTab,
+  type RecordView,
+} from "./appOptions";
+import {
+  addDays,
+  addMonths,
+  ageLabel,
+  babyProfileForAgent,
+  blankProfile,
+  calendarDatesForMonth,
+  canonicalCareEventTitle,
+  clearLocalAppState,
+  creatorMetaText,
+  currentClockText,
+  dedupeCareLogs,
+  displayProfileValue,
+  formatDate,
+  formatExpenseDateLabel,
+  formatFullDate,
+  formatReminderDueText,
+  formatTime,
+  hasCompleteProfile,
+  hasLegacyLocalState,
+  isIntervalMilkReminder,
+  isIntervalReminder,
+  localDateKey,
+  localTimeKey,
+  markLegacyImported,
+  monthTitle,
+  normalizeAlbumItem,
+  normalizeBabyProfile,
+  normalizeCareLog,
+  normalizeCareLogEvent,
+  normalizeChatMessage,
+  normalizeClockText,
+  normalizeConversationSummary,
+  normalizeDailySummary,
+  normalizeDailySummarySettings,
+  normalizeExpenseItem,
+  normalizeGrowthEvent,
+  normalizeMemoryCategory,
+  normalizeMemoryItem,
+  normalizePendingEffect,
+  normalizeProTrialStatus,
+  normalizeReminder,
+  normalizeReminderAlertMode,
+  normalizeReminderSchedule,
+  normalizeReminderScheduleMode,
+  normalizeReminderSoundId,
+  parseReminderDueAt,
+  reminderNotificationId,
+  reminderTimezone,
+  resolveStateAction,
+  splitListText,
+  stageLabel,
+  stripAttachmentUrlForStorage,
+  suggestedFamilyName,
+} from "./appStateDomain";
+import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
+import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
+import { StorybookScene } from "./components/StorybookScene";
+import {
   AgentChatResponse,
-  AgentBabyProfileContext,
   AgentModelId,
-  AgentModelOption,
+  AiUsageBreakdown,
+  AiUsageSummary,
   AlbumPrompt,
   AlbumItem,
   AlbumItemCategory,
@@ -170,76 +255,6 @@ import alarmSceneImage from "./assets/alarm/alarm-scene.png";
 import softBellSoundUrl from "./assets/sounds/xiaobao_bell.wav";
 import softChimeSoundUrl from "./assets/sounds/xiaobao_chime.wav";
 
-const MODEL_OPTIONS: AgentModelOption[] = [
-  {
-    id: "deepseek-v4-pro",
-    label: "DeepSeek V4 Pro",
-    supportsImageInput: false,
-    supportsVideoInput: false,
-    supportsLowLatency: false,
-  },
-  {
-    id: "deepseek-v4-flash",
-    label: "DeepSeek V4 Flash",
-    supportsImageInput: false,
-    supportsVideoInput: false,
-    supportsLowLatency: false,
-  },
-  {
-    id: "doubao-seed-2.0-pro",
-    label: "Doubao Seed 2.0 Pro",
-    supportsImageInput: true,
-    supportsVideoInput: true,
-    supportsLowLatency: true,
-  },
-  {
-    id: "doubao-seed-2.0-lite",
-    label: "Doubao Seed 2.0 Lite",
-    supportsImageInput: true,
-    supportsVideoInput: true,
-    supportsLowLatency: true,
-  },
-];
-
-const DEFAULT_MODEL: AgentModelId = "deepseek-v4-pro";
-
-const MOBILE_TABS = [
-  { id: "chat", label: "聊天", icon: MessageCircle },
-  { id: "records", label: "记录", icon: CalendarDays },
-  { id: "ledger", label: "账本", icon: ReceiptText },
-  { id: "album", label: "相册", icon: ImageIcon },
-  { id: "reminders", label: "提醒", icon: Bell },
-  { id: "profile", label: "我的", icon: UserRound },
-] as const;
-
-const ROLE_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "月嫂", "保姆", "亲友", "其他"] as const;
-const UNIQUE_ROLE_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆"] as const;
-
-const RECORD_VIEWS: Array<{ id: RecordView; label: string }> = [
-  { id: "today", label: "今日" },
-  { id: "trend", label: "趋势" },
-  { id: "calendar", label: "日历" },
-];
-
-const LEDGER_VIEWS: Array<{ id: LedgerView; label: string }> = [
-  { id: "month", label: "本月" },
-  { id: "year", label: "年度" },
-  { id: "details", label: "明细" },
-];
-
-const EXPENSE_CATEGORIES: Array<{ id: ExpenseCategory; label: string }> = [
-  { id: "formula", label: "奶粉" },
-  { id: "diaper", label: "尿裤" },
-  { id: "food", label: "辅食" },
-  { id: "clothing", label: "衣物" },
-  { id: "toy", label: "玩具" },
-  { id: "health", label: "医疗健康" },
-  { id: "vaccine", label: "疫苗体检" },
-  { id: "daily", label: "日用品" },
-  { id: "education", label: "教育娱乐" },
-  { id: "other", label: "其他" },
-];
-
 const REMINDER_QUICK_ACTIONS = [
   { label: "疫苗", prompt: "提醒我带小宝去社区医院打疫苗" },
   { label: "体检", prompt: "提醒我带小宝去做体检" },
@@ -270,12 +285,25 @@ const REMINDER_WEB_SOUND_URLS: Record<ReminderSoundId, string> = {
 
 const DAILY_SUMMARY_NOTIFICATION_ID = 210930;
 const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
-const MIN_INTERVAL_MINUTES = 10;
-const MAX_INTERVAL_MINUTES = 12 * 60;
 const MAX_IMAGE_UPLOAD_BYTES = 100 * 1024 * 1024;
 const MAX_VIDEO_UPLOAD_BYTES = 300 * 1024 * 1024;
+const MAX_CHAT_ATTACHMENTS = 8;
+const MAX_ALBUM_PICKER_ATTACHMENTS = 20;
 const MAX_AGENT_ATTACHMENT_DATA_URL_CHARS = 8 * 1024 * 1024;
 const VIDEO_THUMBNAIL_TIMEOUT_MS = 8000;
+const AI_USAGE_FEATURE_LABELS: Record<string, string> = {
+  agent_chat: "聊天回复",
+  agent_planner: "理解规划",
+  agent_stream: "流式回复",
+  conversation_summary: "上下文压缩",
+  daily_summary: "今日小结",
+};
+const AI_USAGE_PROVIDER_LABELS: Record<string, string> = {
+  deepseek: "DeepSeek",
+  doubao: "豆包",
+  rules: "规则",
+};
+const tokenFormatter = new Intl.NumberFormat("zh-CN");
 
 const maxMediaUploadBytes = (kind: AttachmentKind) => (kind === "video" ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES);
 
@@ -285,29 +313,26 @@ const formatFileSize = (bytes: number) => {
   return `${bytes} B`;
 };
 
-const StorybookScene = () => (
-  <div className="storybook-scene" aria-hidden="true">
-    <span className="storybook-sun" />
-    <span className="storybook-cloud cloud-one" />
-    <span className="storybook-cloud cloud-two" />
-    <span className="storybook-star star-one" />
-    <span className="storybook-star star-two" />
-    <span className="storybook-baby">
-      <img src={companionIcon} alt="" />
-    </span>
-  </div>
-);
+const formatTokenCount = (tokens: number | undefined | null) => tokenFormatter.format(Math.max(0, tokens ?? 0));
 
-type MobileTab = (typeof MOBILE_TABS)[number]["id"];
+const aiUsageFeatureLabel = (feature?: string | null) =>
+  feature ? AI_USAGE_FEATURE_LABELS[feature] ?? feature : "未分类";
+
+const aiUsageProviderLabel = (provider?: string | null) =>
+  provider ? AI_USAGE_PROVIDER_LABELS[provider] ?? provider : "未知模型";
+
+const aiUsageModelLabel = (item: AiUsageBreakdown) => {
+  const provider = aiUsageProviderLabel(item.provider);
+  if (!item.model || item.model === "unknown") return provider;
+  return `${provider} · ${item.model}`;
+};
 
 type ComposerMode = "keyboard" | "voice";
-
-type RecordView = "today" | "trend" | "calendar";
-type LedgerView = "month" | "year" | "details";
 
 type VoiceStatus = "idle" | "connecting" | "listening" | "processing" | "unsupported" | "error";
 
 type AuthStatus = "checking" | "authenticated" | "unauthenticated";
+type AiUsageStatus = "idle" | "loading" | "ready" | "error";
 
 type CompressionStatus = "idle" | "checking" | "compressing" | "done" | "failed";
 
@@ -439,233 +464,6 @@ type PendingEffectDraft = {
   expenses: ExpenseDraft[];
 };
 
-type SelectOption<T extends string> = {
-  value: T;
-  label: string;
-  hint?: string;
-  disabled?: boolean;
-};
-
-const ROLE_SELECT_OPTIONS: Array<SelectOption<"" | (typeof ROLE_OPTIONS)[number]>> = [
-  { value: "", label: "请选择身份", hint: "新成员首次加入时必选" },
-  ...ROLE_OPTIONS.map((role) => ({ value: role, label: role })),
-];
-
-const STAGE_SELECT_OPTIONS: Array<SelectOption<BabyProfile["stage"]>> = [
-  { value: "born", label: "已出生", hint: "按出生日期计算月龄" },
-  { value: "pregnancy", label: "孕期", hint: "按预产期记录准备事项" },
-];
-
-const REGION_SELECT_OPTIONS: Array<SelectOption<string>> = [
-  { value: "", label: "暂不填写", hint: "之后可以在“我的”里补充" },
-  { value: "北京", label: "北京" },
-  { value: "上海", label: "上海" },
-  { value: "广州", label: "广州" },
-  { value: "深圳", label: "深圳" },
-  { value: "杭州", label: "杭州" },
-  { value: "南京", label: "南京" },
-  { value: "苏州", label: "苏州" },
-  { value: "成都", label: "成都" },
-  { value: "重庆", label: "重庆" },
-  { value: "武汉", label: "武汉" },
-  { value: "西安", label: "西安" },
-  { value: "天津", label: "天津" },
-  { value: "其他地区", label: "其他地区", hint: "仅用于给 AI 一个大致地区" },
-];
-
-const FEEDING_SELECT_OPTIONS: Array<SelectOption<string>> = [
-  { value: "", label: "暂不确定", hint: "之后可以随时修改" },
-  { value: "母乳喂养", label: "母乳喂养" },
-  { value: "配方奶喂养", label: "配方奶喂养" },
-  { value: "混合喂养", label: "混合喂养" },
-  { value: "亲喂为主", label: "亲喂为主" },
-  { value: "瓶喂为主", label: "瓶喂为主" },
-  { value: "已添加辅食", label: "已添加辅食" },
-];
-
-const MODEL_SELECT_OPTIONS: Array<SelectOption<AgentModelId>> = MODEL_OPTIONS.map((model) => ({
-  value: model.id,
-  label: model.label,
-  hint: [
-    model.supportsImageInput || model.supportsVideoInput ? "支持视觉理解" : "文本对话模型",
-    model.supportsLowLatency ? "可选低延迟" : "",
-  ]
-    .filter(Boolean)
-    .join(" · "),
-}));
-
-const isVisualModel = (model: AgentModelOption) => model.supportsImageInput || model.supportsVideoInput;
-
-const CARE_EVENT_TYPE_OPTIONS: Array<SelectOption<CareLogEventType>> = [
-  { value: "milk", label: "喝奶" },
-  { value: "sleep", label: "睡觉" },
-  { value: "wake", label: "醒来" },
-  { value: "poop", label: "便便" },
-  { value: "solid", label: "辅食" },
-  { value: "temperature", label: "体温" },
-  { value: "soothing", label: "哄睡" },
-  { value: "note", label: "其他" },
-];
-
-const REMINDER_CATEGORY_OPTIONS: Array<SelectOption<Reminder["category"]>> = [
-  { value: "care", label: "照护", hint: "喂奶、洗澡、日常护理" },
-  { value: "routine", label: "日程", hint: "体检、复诊、普通待办" },
-  { value: "vaccine", label: "疫苗", hint: "接种、社区医院安排" },
-  { value: "custom", label: "自定义", hint: "其他家庭事项" },
-];
-
-const REMINDER_SCHEDULE_MODE_OPTIONS: Array<SelectOption<ReminderScheduleMode>> = [
-  { value: "once", label: "提醒一次", hint: "选一个具体日期和时间" },
-  { value: "interval", label: "循环提醒", hint: "按固定间隔重复提醒" },
-];
-
-const REMINDER_ALERT_MODE_OPTIONS: Array<SelectOption<ReminderAlertMode>> = [
-  { value: "notification", label: "普通通知", hint: "到点推送一条消息" },
-  { value: "ringing", label: "闹铃响起", hint: "进入全屏提醒页并播放提示音" },
-];
-
-const REMINDER_SOUND_OPTIONS: Array<SelectOption<ReminderSoundId>> = [
-  { value: "soft_chime", label: "柔和叮咚", hint: "短促、轻一点" },
-  { value: "soft_bell", label: "轻铃声", hint: "更清脆一点" },
-];
-
-const EXPENSE_CATEGORY_OPTIONS: Array<SelectOption<ExpenseCategory>> = EXPENSE_CATEGORIES.map((category) => ({
-  value: category.id,
-  label: category.label,
-}));
-
-type StorySelectProps<T extends string> = {
-  value: T;
-  options: Array<SelectOption<T>>;
-  onChange: (value: T) => void;
-  ariaLabel: string;
-  placeholder?: string;
-  disabled?: boolean;
-  className?: string;
-  title?: string;
-};
-
-const videoPosterFrameSrc = (url?: string) => {
-  if (!url || url.startsWith("data:") || url.startsWith("blob:") || url.includes("#")) return url;
-  return `${url}#t=0.1`;
-};
-
-function AlbumVideoThumbnail({ attachment, title }: { attachment: Attachment; title: string }) {
-  const [posterFailed, setPosterFailed] = useState(false);
-  const posterSrc = attachment.thumbnailUrl && !posterFailed ? attachment.thumbnailUrl : undefined;
-
-  if (posterSrc) {
-    return <img src={posterSrc} alt={title} loading="lazy" decoding="async" onError={() => setPosterFailed(true)} />;
-  }
-
-  if (!attachment.url) {
-    return <Video size={24} />;
-  }
-
-  return (
-    <video
-      src={videoPosterFrameSrc(attachment.url)}
-      muted
-      playsInline
-      preload="metadata"
-      aria-label={title}
-    />
-  );
-}
-
-function StorySelect<T extends string>({
-  value,
-  options,
-  onChange,
-  ariaLabel,
-  placeholder = "请选择",
-  disabled = false,
-  className = "",
-  title,
-}: StorySelectProps<T>) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const selectedOption = options.find((option) => option.value === value);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const closeWhenOutside = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeWhenOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeWhenOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  return (
-    <div ref={rootRef} className={`story-select ${open ? "open" : ""} ${className}`.trim()}>
-      <button
-        type="button"
-        className="story-select-trigger"
-        title={title}
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setOpen((current) => !current);
-        }}
-      >
-        <span className={selectedOption ? "" : "placeholder"}>{selectedOption?.label ?? placeholder}</span>
-        <ChevronDown size={17} aria-hidden="true" />
-      </button>
-      {open ? (
-        <div
-          className="story-select-menu"
-          role="listbox"
-          aria-label={ariaLabel}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
-          {options.map((option) => (
-            <button
-              type="button"
-              role="option"
-              aria-selected={option.value === value}
-              aria-disabled={option.disabled ? true : undefined}
-              className={`${option.value === value ? "selected" : ""} ${option.disabled ? "disabled" : ""}`.trim()}
-              disabled={option.disabled}
-              key={option.value}
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (option.disabled) return;
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              <span>{option.label}</span>
-              {option.hint ? <small>{option.hint}</small> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-const selectOptionsWithCurrent = <T extends string,>(options: Array<SelectOption<T>>, value: T): Array<SelectOption<T>> => {
-  if (!value || options.some((option) => option.value === value)) return options;
-  return [{ value, label: value, hint: "当前已保存" }, ...options];
-};
-
 type CareTrendPoint = {
   date: string;
   label: string;
@@ -745,933 +543,6 @@ type AutoRecordUndo = {
   recordId: string;
   previous?: CareLog;
   created: boolean;
-};
-
-const LEGACY_STORAGE_KEYS = [
-  "baby-companion-profile",
-  "baby-companion-messages",
-  "baby-companion-growth",
-  "baby-companion-care",
-  "baby-companion-reminders",
-  "baby-companion-memories",
-  "baby-companion-pending-effects",
-  "baby-companion-album-items",
-  "baby-companion-expenses",
-  "baby-companion-conversation-summary",
-];
-
-const LEGACY_IMPORT_MARKER_KEY = "baby-companion-legacy-imported";
-
-const readLocalJson = (key: string): unknown => {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-const hasLocalArrayItems = (key: string) => {
-  const value = readLocalJson(key);
-  return Array.isArray(value) && value.length > 0;
-};
-
-const hasLegacyLocalState = () => {
-  try {
-    if (window.localStorage.getItem(LEGACY_IMPORT_MARKER_KEY)) return false;
-    const profile = readLocalJson("baby-companion-profile") as Partial<BabyProfile> | null;
-    const hasProfile = Boolean(profile?.nickname?.trim() && (profile.birthDate?.trim() || profile.expectedDate?.trim()));
-    return (
-      hasProfile ||
-      hasLocalArrayItems("baby-companion-messages") ||
-      hasLocalArrayItems("baby-companion-growth") ||
-      hasLocalArrayItems("baby-companion-care") ||
-      hasLocalArrayItems("baby-companion-reminders") ||
-      hasLocalArrayItems("baby-companion-memories") ||
-      hasLocalArrayItems("baby-companion-pending-effects") ||
-      hasLocalArrayItems("baby-companion-expenses")
-    );
-  } catch {
-    return false;
-  }
-};
-
-const markLegacyImported = () => {
-  try {
-    window.localStorage.setItem(LEGACY_IMPORT_MARKER_KEY, "true");
-  } catch {
-    // Ignore storage failures; backend data remains authoritative after login.
-  }
-};
-
-const clearLocalAppState = () => {
-  try {
-    [...LEGACY_STORAGE_KEYS, "baby-companion-thinking-enabled", "baby-companion-model"].forEach((key) =>
-      window.localStorage.removeItem(key),
-    );
-    markLegacyImported();
-  } catch {
-    // Ignore local storage failures.
-  }
-};
-
-const blankProfile: BabyProfile = {
-  nickname: "",
-  stage: "born",
-  expectedDate: "",
-  birthDate: "",
-  region: "",
-  feeding: "",
-  allergies: [],
-  caregivers: [],
-};
-
-const hasCompleteProfile = (profile?: Partial<BabyProfile> | null) =>
-  Boolean(profile?.nickname?.trim() && (profile.birthDate?.trim() || profile.expectedDate?.trim()));
-
-const suggestedFamilyName = (nickname: string) => `${nickname.trim() || "小宝"}家`;
-
-const textValue = (value: unknown, fallback = "") => (typeof value === "string" ? value : fallback);
-
-const numberValue = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
-
-const stringList = (value: unknown) => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
-
-const normalizeBabyProfile = (value: Partial<BabyProfile> | null | undefined): BabyProfile => ({
-  nickname: textValue(value?.nickname),
-  stage: value?.stage === "pregnancy" ? "pregnancy" : "born",
-  expectedDate: textValue(value?.expectedDate),
-  birthDate: textValue(value?.birthDate),
-  region: textValue(value?.region),
-  feeding: textValue(value?.feeding),
-  allergies: stringList(value?.allergies),
-  caregivers: stringList(value?.caregivers),
-});
-
-const normalizeAttachment = (value: Partial<Attachment> | null | undefined, index: number): Attachment => ({
-  id: textValue(value?.id, `attachment-${index}`),
-  name: textValue(value?.name, "附件"),
-  kind: value?.kind === "video" || value?.kind === "audio" ? value.kind : "image",
-  url: textValue(value?.url) || undefined,
-  dataUrl: textValue(value?.dataUrl) || undefined,
-  mimeType: textValue(value?.mimeType) || undefined,
-  filePath: textValue(value?.filePath) || undefined,
-  publicUrl: textValue(value?.publicUrl) || undefined,
-  thumbnailPath: textValue(value?.thumbnailPath) || undefined,
-  thumbnailUrl: textValue(value?.thumbnailUrl) || undefined,
-  width: numberValue(value?.width),
-  height: numberValue(value?.height),
-  createdAt: textValue(value?.createdAt) || undefined,
-});
-
-const normalizeRecordedBy = (value: Partial<RecordedBy> | null | undefined): RecordedBy | undefined => {
-  if (!value || typeof value !== "object") return undefined;
-  const label = textValue(value.label) || textValue(value.roleName);
-  const userId = textValue(value.userId);
-  if (!label && !userId) return undefined;
-  return {
-    userId: userId || undefined,
-    roleName: textValue(value.roleName) || label || undefined,
-    label: label || "家庭成员",
-    caregiver: typeof value.caregiver === "boolean" ? value.caregiver : undefined,
-  };
-};
-
-const recordedByLabel = (recordedBy?: RecordedBy) => recordedBy?.label || recordedBy?.roleName || "家庭成员";
-
-const creatorMetaText = (recordedBy?: RecordedBy) => `记录人：${recordedByLabel(recordedBy)}`;
-
-const stripAttachmentUrlForStorage = (url?: string) => {
-  if (!url || url.startsWith("data:")) return undefined;
-  try {
-    const parsed = new URL(url, window.location.origin);
-    if (parsed.pathname.startsWith("/api/uploads/")) return parsed.pathname;
-    parsed.search = "";
-    parsed.hash = "";
-    return parsed.toString();
-  } catch {
-    return url.split("?")[0];
-  }
-};
-
-const normalizeAlbumCategory = (value: unknown): AlbumItemCategory => {
-  if (
-    value === "growth" ||
-    value === "feeding" ||
-    value === "sleep" ||
-    value === "health" ||
-    value === "reminder" ||
-    value === "daily"
-  ) {
-    return value;
-  }
-  return "daily";
-};
-
-const normalizeAlbumItem = (value: Partial<AlbumItem> | null | undefined, index: number): AlbumItem => ({
-  id: textValue(value?.id, `album-${index}`),
-  kind: value?.kind === "media" ? "media" : "keyEvent",
-  title: textValue(value?.title, "成长片段"),
-  date: textValue(value?.date, todayISO()),
-  occurredAt: textValue(value?.occurredAt) || undefined,
-  category: normalizeAlbumCategory(value?.category),
-  tags: stringList(value?.tags),
-  attachmentId: textValue(value?.attachmentId) || undefined,
-  attachment: value?.attachment ? normalizeAttachment(value.attachment, index) : undefined,
-  linkedType:
-    value?.linkedType === "chatMessage" ||
-    value?.linkedType === "careLogEvent" ||
-    value?.linkedType === "growthEvent" ||
-    value?.linkedType === "reminder"
-      ? value.linkedType
-      : undefined,
-  linkedId: textValue(value?.linkedId) || undefined,
-  source: value?.source === "agent" || value?.source === "manual" ? value.source : "rule",
-  recordedBy: normalizeRecordedBy(value?.recordedBy),
-  createdByUserId: textValue(value?.createdByUserId) || undefined,
-});
-
-const normalizeExpenseCategory = (value: unknown): ExpenseCategory =>
-  EXPENSE_CATEGORIES.some((category) => category.id === value) ? (value as ExpenseCategory) : "other";
-
-const normalizeExpenseItem = (value: Partial<ExpenseItem> | null | undefined, index: number): ExpenseItem => {
-  const now = new Date().toISOString();
-  const amount = numberValue(value?.amount) ?? 0;
-  return {
-    id: textValue(value?.id, `expense-${index}`),
-    title: textValue(value?.title, "小宝支出"),
-    amount: Number.isFinite(amount) ? amount : 0,
-    currency: textValue(value?.currency, "CNY"),
-    category: normalizeExpenseCategory(value?.category),
-    date: textValue(value?.date, todayISO()),
-    quantity: numberValue(value?.quantity),
-    unitPrice: numberValue(value?.unitPrice),
-    merchant: textValue(value?.merchant) || undefined,
-    note: textValue(value?.note) || undefined,
-    brand: textValue(value?.brand) || undefined,
-    spec: textValue(value?.spec) || undefined,
-    attachmentIds: stringList(value?.attachmentIds),
-    attachments: Array.isArray(value?.attachments)
-      ? value.attachments.map((attachment, attachmentIndex) => normalizeAttachment(attachment, attachmentIndex))
-      : undefined,
-    source: value?.source === "agent" ? "agent" : "manual",
-    createdAt: textValue(value?.createdAt, now),
-    updatedAt: textValue(value?.updatedAt, now),
-    recordedBy: normalizeRecordedBy(value?.recordedBy),
-    createdByUserId: textValue(value?.createdByUserId) || undefined,
-  };
-};
-
-const normalizeAlbumPrompt = (value: Partial<AlbumPrompt> | null | undefined, index: number): AlbumPrompt => ({
-  id: textValue(value?.id, `album-prompt-${index}`),
-  attachmentId: textValue(value?.attachmentId),
-  sourceMessageId: textValue(value?.sourceMessageId),
-  title: textValue(value?.title, "值得收藏的素材"),
-  category: normalizeAlbumCategory(value?.category),
-  reason: textValue(value?.reason, "这段素材可能值得保存到相册。"),
-  tags: stringList(value?.tags),
-  status: value?.status === "saved" || value?.status === "ignored" ? value.status : "pending",
-  createdAt: textValue(value?.createdAt, new Date().toISOString()),
-});
-
-const normalizeChatMessage = (value: Partial<ChatMessage> | null | undefined, index: number): ChatMessage => ({
-  id: textValue(value?.id, `message-${index}`),
-  role: value?.role === "parent" ? "parent" : "ai",
-  text: textValue(value?.text),
-  createdAt: textValue(value?.createdAt, new Date().toISOString()),
-  attachments: Array.isArray(value?.attachments)
-    ? value.attachments.map((attachment, attachmentIndex) => normalizeAttachment(attachment, attachmentIndex))
-    : undefined,
-  tags: stringList(value?.tags),
-  reasoning: textValue(value?.reasoning) || undefined,
-  isStreaming: Boolean(value?.isStreaming),
-  toolActivities: Array.isArray(value?.toolActivities) ? value.toolActivities : [],
-  sources: Array.isArray(value?.sources) ? value.sources : [],
-  safetyAlerts: Array.isArray(value?.safetyAlerts) ? value.safetyAlerts : [],
-  effectDecisions: Array.isArray(value?.effectDecisions) ? value.effectDecisions : [],
-  albumPrompts: Array.isArray(value?.albumPrompts) ? value.albumPrompts.map(normalizeAlbumPrompt) : [],
-});
-
-const normalizeCareLogEventType = (value: unknown): CareLogEventType => {
-  if (
-    value === "milk" ||
-    value === "sleep" ||
-    value === "wake" ||
-    value === "poop" ||
-    value === "solid" ||
-    value === "temperature" ||
-    value === "soothing" ||
-    value === "note"
-  ) {
-    return value;
-  }
-  return "note";
-};
-
-const normalizeClockText = (value: unknown) => {
-  if (typeof value !== "string") return undefined;
-  const raw = value.trim();
-  if (!raw) return undefined;
-  const match = raw.match(/(凌晨|早上|上午|中午|下午|晚上)?\s*(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*(?:点\s*(半|\d{1,2}|[一二两三四五六七八九十]{1,3})?|[:：]\s*(\d{1,2}))/);
-  if (!match) return undefined;
-  const period = match[1] ?? "";
-  const parsedHour = parseLooseNumber(match[2]);
-  if (parsedHour === undefined) return undefined;
-  let hour = parsedHour;
-  const minuteText = match[3] ?? match[4];
-  const parsedMinute = minuteText === "半" ? 30 : parseLooseNumber(minuteText ?? "0");
-  if (parsedMinute === undefined) return undefined;
-  const minute = parsedMinute;
-  if ((period === "下午" || period === "晚上") && hour < 12) hour += 12;
-  if (period === "凌晨" && hour === 12) hour = 0;
-  if (!Number.isFinite(hour) || hour < 0 || hour > 23 || !Number.isFinite(minute) || minute < 0 || minute > 59) {
-    return undefined;
-  }
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-};
-
-const localDateKey = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-const localTimeKey = (date: Date) =>
-  `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-
-const reminderTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
-
-const chineseNumberMap: Record<string, number> = {
-  零: 0,
-  一: 1,
-  二: 2,
-  两: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-  八: 8,
-  九: 9,
-};
-
-const parseLooseNumber = (value: string | undefined) => {
-  if (!value) return undefined;
-  if (/^\d+(?:\.\d+)?$/.test(value)) return Number(value);
-  if (value === "十") return 10;
-  const tenIndex = value.indexOf("十");
-  if (tenIndex >= 0) {
-    const left = value.slice(0, tenIndex);
-    const right = value.slice(tenIndex + 1);
-    const tens = left ? chineseNumberMap[left] : 1;
-    const ones = right ? chineseNumberMap[right] : 0;
-    return tens !== undefined && ones !== undefined ? tens * 10 + ones : undefined;
-  }
-  return chineseNumberMap[value];
-};
-
-const dateFromLocalParts = (year: number, month: number, day: number, hour = 9, minute = 0) =>
-  new Date(year, month - 1, day, hour, minute, 0, 0);
-
-const setClockOnDate = (date: Date, clockText: string) => {
-  const [hour, minute] = clockText.split(":").map(Number);
-  const next = new Date(date);
-  next.setHours(hour, minute, 0, 0);
-  return next;
-};
-
-const parseWeekdayIndex = (value: string) => {
-  if (value === "一" || value === "1") return 1;
-  if (value === "二" || value === "2") return 2;
-  if (value === "三" || value === "3") return 3;
-  if (value === "四" || value === "4") return 4;
-  if (value === "五" || value === "5") return 5;
-  if (value === "六" || value === "6") return 6;
-  return 0;
-};
-
-const parseReminderDueAt = (value: Partial<Reminder> | string | null | undefined, now = new Date()): Date | undefined => {
-  const reminder = typeof value === "string" ? { dueText: value } : value;
-  if (!reminder) return undefined;
-  const directDueAt = textValue(reminder.dueAt);
-  if (directDueAt) {
-    const parsed = new Date(directDueAt);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-
-  const text = [reminder.timeSourceText, reminder.dueText, reminder.title]
-    .map((item) => textValue(item))
-    .filter(Boolean)
-    .join(" ");
-  if (!text) return undefined;
-
-  const numberPattern = "(\\d+(?:\\.\\d+)?|[一二两三四五六七八九十]{1,4})";
-  const minuteRelative = text.match(new RegExp(`${numberPattern}\\s*(?:分钟|分)\\s*后`));
-  if (minuteRelative) {
-    const minutes = parseLooseNumber(minuteRelative[1]);
-    if (minutes !== undefined) return new Date(now.getTime() + minutes * 60 * 1000);
-  }
-  if (/半\s*(?:个)?小时\s*后/.test(text)) return new Date(now.getTime() + 30 * 60 * 1000);
-  if (/一刻钟后|15\s*分钟后/.test(text)) return new Date(now.getTime() + 15 * 60 * 1000);
-
-  const hourRelative = text.match(new RegExp(`${numberPattern}\\s*(?:个)?小时\\s*后`));
-  if (hourRelative) {
-    const hours = parseLooseNumber(hourRelative[1]);
-    if (hours !== undefined) return new Date(now.getTime() + hours * 60 * 60 * 1000);
-  }
-
-  const dayRelative = text.match(new RegExp(`${numberPattern}\\s*天\\s*后`));
-  if (dayRelative) {
-    const days = parseLooseNumber(dayRelative[1]);
-    if (days !== undefined) return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-  }
-
-  let target = new Date(now);
-  target.setSeconds(0, 0);
-  let hasDate = false;
-  const isoMatch = text.match(/(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})日?/);
-  const monthDay = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/);
-  const weekMatch = text.match(/(下周|下星期|周|星期)([一二三四五六日天1-7])/);
-
-  if (isoMatch) {
-    target = dateFromLocalParts(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
-    hasDate = true;
-  } else if (monthDay) {
-    target = dateFromLocalParts(now.getFullYear(), Number(monthDay[1]), Number(monthDay[2]));
-    if (target < now) target.setFullYear(target.getFullYear() + 1);
-    hasDate = true;
-  } else if (/大后天/.test(text)) {
-    target.setDate(now.getDate() + 3);
-    hasDate = true;
-  } else if (/后天/.test(text)) {
-    target.setDate(now.getDate() + 2);
-    hasDate = true;
-  } else if (/明天/.test(text)) {
-    target.setDate(now.getDate() + 1);
-    hasDate = true;
-  } else if (/今天/.test(text)) {
-    hasDate = true;
-  } else if (weekMatch) {
-    const targetDay = parseWeekdayIndex(weekMatch[2]);
-    const currentDay = now.getDay();
-    let offset = (targetDay - currentDay + 7) % 7;
-    if (weekMatch[1].startsWith("下") || offset === 0) offset += 7;
-    target.setDate(now.getDate() + offset);
-    hasDate = true;
-  }
-
-  const clock = normalizeClockText(text);
-  if (clock) {
-    target = setClockOnDate(target, clock);
-    if (!hasDate && target <= now) target.setDate(target.getDate() + 1);
-    return target;
-  }
-
-  if (hasDate) {
-    target.setHours(9, 0, 0, 0);
-    return target;
-  }
-
-  return undefined;
-};
-
-const formatReminderDueText = (dueAt: Date) => {
-  const today = localDateKey(new Date());
-  const tomorrowDate = new Date();
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrow = localDateKey(tomorrowDate);
-  const date = localDateKey(dueAt);
-  const time = localTimeKey(dueAt);
-  if (date === today) return `今天 ${time}`;
-  if (date === tomorrow) return `明天 ${time}`;
-  return `${date} ${time}`;
-};
-
-const reminderNotificationId = (reminder: Pick<Reminder, "id">, offset = 0) => {
-  let hash = 0;
-  for (let index = 0; index < reminder.id.length; index += 1) {
-    hash = (hash * 31 + reminder.id.charCodeAt(index)) & 0x7fffffff;
-  }
-  return Math.max(1, (hash + offset) % 2_000_000_000);
-};
-
-const normalizeReminderKind = (kind: unknown): ReminderKind =>
-  kind === "alarm" || kind === "schedule" ? kind : "schedule";
-
-const normalizeReminderScheduleMode = (mode: unknown, reminderKind?: unknown, repeatRule?: unknown): ReminderScheduleMode => {
-  if (mode === "once" || mode === "interval") return mode;
-  if (repeatRule && typeof repeatRule === "object") return "interval";
-  return reminderKind === "alarm" ? "interval" : "once";
-};
-
-const normalizeReminderAlertMode = (mode: unknown, reminderKind?: unknown): ReminderAlertMode => {
-  if (mode === "notification" || mode === "ringing") return mode;
-  return reminderKind === "alarm" ? "ringing" : "notification";
-};
-
-const normalizeReminderSoundId = (soundId: unknown): ReminderSoundId =>
-  soundId === "soft_bell" || soundId === "soft_chime" ? soundId : "soft_chime";
-
-const normalizeReminderRepeatRule = (value: unknown): ReminderRepeatRule | undefined => {
-  if (!value || typeof value !== "object") return undefined;
-  const source = value as Partial<ReminderRepeatRule>;
-  if (source.mode !== "fixedInterval") return undefined;
-  const anchorType = source.anchorType === "careEvent" ? "careEvent" : "now";
-  if (anchorType === "careEvent" && source.careEventType !== "milk") return undefined;
-  const intervalMinutes = typeof source.intervalMinutes === "number" && Number.isFinite(source.intervalMinutes)
-    ? Math.round(source.intervalMinutes)
-    : undefined;
-  if (!intervalMinutes) return undefined;
-  return {
-    mode: "fixedInterval",
-    intervalMinutes: Math.min(MAX_INTERVAL_MINUTES, Math.max(MIN_INTERVAL_MINUTES, intervalMinutes)),
-    anchorType,
-    careEventType: anchorType === "careEvent" ? "milk" : undefined,
-  };
-};
-
-const isIntervalReminder = (reminder: Pick<Reminder, "scheduleMode" | "repeatRule" | "status">) =>
-  reminder.status !== "done" &&
-  reminder.scheduleMode === "interval" &&
-  reminder.repeatRule?.mode === "fixedInterval";
-
-const isIntervalMilkReminder = (reminder: Pick<Reminder, "scheduleMode" | "repeatRule" | "status">) =>
-  isIntervalReminder(reminder) &&
-  reminder.repeatRule?.anchorType === "careEvent" &&
-  reminder.repeatRule?.careEventType === "milk";
-
-const normalizeReminderSchedule = (reminder: Reminder, now = new Date()): Reminder => {
-  const repeatRule = normalizeReminderRepeatRule(reminder.repeatRule);
-  const scheduleMode = normalizeReminderScheduleMode(reminder.scheduleMode, reminder.reminderKind, repeatRule);
-  const alertMode = normalizeReminderAlertMode(reminder.alertMode, reminder.reminderKind);
-  const reminderKind: ReminderKind = alertMode === "ringing" ? "alarm" : "schedule";
-  let dueAt = parseReminderDueAt(reminder, now);
-  if (!dueAt && scheduleMode === "interval" && repeatRule) {
-    dueAt = new Date(now.getTime() + repeatRule.intervalMinutes * 60 * 1000);
-  }
-  if (!dueAt) {
-    return {
-      ...reminder,
-      reminderKind,
-      scheduleMode,
-      alertMode,
-      repeatRule,
-      soundId: alertMode === "ringing" ? normalizeReminderSoundId(reminder.soundId) : reminder.soundId,
-      timeSourceText: reminder.timeSourceText || reminder.dueText,
-      timezone: reminder.timezone || reminderTimezone(),
-      notificationStatus: reminder.notificationStatus ?? "pending",
-    };
-  }
-  return {
-    ...reminder,
-    reminderKind,
-    scheduleMode,
-    alertMode,
-    dueAt: dueAt.toISOString(),
-    dueText: formatReminderDueText(dueAt),
-    timeSourceText: reminder.timeSourceText || reminder.dueText,
-    timezone: reminder.timezone || reminderTimezone(),
-    notificationId: reminder.notificationId ?? reminderNotificationId(reminder),
-    notificationStatus: reminder.notificationStatus ?? "pending",
-    repeatRule,
-    soundId: alertMode === "ringing" ? normalizeReminderSoundId(reminder.soundId) : reminder.soundId,
-  };
-};
-
-const normalizeEventClockText = (timeValue: unknown, noteValue: unknown) => {
-  const directTime = normalizeClockText(timeValue);
-  const noteTime = normalizeClockText(noteValue);
-  if (directTime && noteTime && directTime.endsWith(":00") && typeof noteValue === "string" && /点\s*半/.test(noteValue)) {
-    return noteTime;
-  }
-  return directTime ?? noteTime;
-};
-
-const canonicalCareEventTitle = (type: CareLogEventType, fallback?: string) => {
-  if (type === "milk") return "喝奶";
-  if (type === "sleep") return "睡觉";
-  if (type === "wake") return "醒来";
-  if (type === "poop") return "便便";
-  if (type === "solid") return "辅食";
-  if (type === "temperature") return "体温";
-  if (type === "soothing") return "哄睡";
-  return fallback || "照护记录";
-};
-
-const canonicalCareEventTags = (type: CareLogEventType, tags: string[]) => {
-  if (type === "sleep" || type === "wake" || type === "soothing") return ["睡眠"];
-  if (type === "note") return tags.length ? tags : ["照护记录"];
-  return [canonicalCareEventTitle(type)];
-};
-
-const normalizeCareLogEvent = (
-  value: Partial<CareLogEvent> | null | undefined,
-  index: number,
-  fallbackDate: string,
-): CareLogEvent => {
-  const type = normalizeCareLogEventType(value?.type);
-  const tags = canonicalCareEventTags(type, stringList(value?.tags));
-  return {
-    id: textValue(value?.id, `care-event-${index}`),
-    type,
-    date: textValue(value?.date, fallbackDate),
-    time: normalizeEventClockText(value?.time, value?.note),
-    title: canonicalCareEventTitle(type, textValue(value?.title) || undefined),
-    amountMl: numberValue(value?.amountMl),
-    durationHours: numberValue(value?.durationHours),
-    temperature: numberValue(value?.temperature),
-    note: textValue(value?.note) || undefined,
-    tags,
-    recordedBy: normalizeRecordedBy(value?.recordedBy),
-    createdByUserId: textValue(value?.createdByUserId) || undefined,
-  };
-};
-
-const normalizeCareLog = (value: Partial<CareLog> | null | undefined, index: number): CareLog => ({
-  id: textValue(value?.id, `care-${index}`),
-  date: textValue(value?.date, todayISO()),
-  milkMl: numberValue(value?.milkMl),
-  milkTimes: numberValue(value?.milkTimes),
-  sleepHours: numberValue(value?.sleepHours),
-  wakes: numberValue(value?.wakes),
-  soothing: value?.soothing === "easy" || value?.soothing === "normal" || value?.soothing === "hard" ? value.soothing : undefined,
-  solids: stringList(value?.solids),
-  poop: textValue(value?.poop) || undefined,
-  temperature: numberValue(value?.temperature),
-  notes: stringList(value?.notes),
-  events: Array.isArray(value?.events)
-    ? value.events.map((item, eventIndex) => normalizeCareLogEvent(item, eventIndex, textValue(value?.date, todayISO())))
-    : [],
-  recordedBy: normalizeRecordedBy(value?.recordedBy),
-  createdByUserId: textValue(value?.createdByUserId) || undefined,
-});
-
-const careEventTimelineKey = (event: CareLogEvent) =>
-  [
-    event.date,
-    event.type,
-    event.time ?? "",
-    event.amountMl ?? "",
-    event.durationHours ?? "",
-    event.temperature ?? "",
-  ].join("|");
-
-const dedupeCareEvents = (events: CareLogEvent[]) => {
-  const byKey = new Map<string, CareLogEvent>();
-  events.forEach((event) => {
-    if (event.type === "note" && !event.time) return;
-    const normalized: CareLogEvent = {
-      ...event,
-      title: canonicalCareEventTitle(event.type, event.title),
-      tags: canonicalCareEventTags(event.type, event.tags ?? []),
-    };
-    const key = careEventTimelineKey(normalized);
-    const existing = byKey.get(key);
-    byKey.set(key, {
-      ...normalized,
-      id: existing?.id ?? normalized.id,
-      amountMl: normalized.amountMl ?? existing?.amountMl,
-      durationHours: normalized.durationHours ?? existing?.durationHours,
-      temperature: normalized.temperature ?? existing?.temperature,
-      note: normalized.note ?? existing?.note,
-      tags: Array.from(new Set([...(existing?.tags ?? []), ...(normalized.tags ?? [])])),
-      recordedBy: existing?.recordedBy ?? normalized.recordedBy,
-      createdByUserId: existing?.createdByUserId ?? normalized.createdByUserId,
-    });
-  });
-  return Array.from(byKey.values());
-};
-
-const uniqueTexts = (items: string[]) => Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
-
-const dedupeCareLogs = (logs: CareLog[]) => {
-  const byDate = new Map<string, CareLog>();
-  logs.forEach((log) => {
-    const existing = byDate.get(log.date);
-    if (!existing) {
-      byDate.set(log.date, { ...log, notes: uniqueTexts(log.notes), events: dedupeCareEvents(log.events) });
-      return;
-    }
-    byDate.set(log.date, {
-      ...existing,
-      id: existing.id,
-      milkMl: log.milkMl ?? existing.milkMl,
-      milkTimes: log.milkTimes ?? existing.milkTimes,
-      sleepHours: log.sleepHours ?? existing.sleepHours,
-      wakes: log.wakes ?? existing.wakes,
-      soothing: log.soothing ?? existing.soothing,
-      solids: uniqueTexts([...(existing.solids ?? []), ...(log.solids ?? [])]),
-      poop: log.poop ?? existing.poop,
-      temperature: log.temperature ?? existing.temperature,
-      notes: uniqueTexts([...existing.notes, ...log.notes]).slice(-8),
-      events: dedupeCareEvents([...existing.events, ...log.events]),
-    });
-  });
-  return Array.from(byDate.values()).sort((left, right) => left.date.localeCompare(right.date));
-};
-
-const normalizeGrowthEvent = (value: Partial<GrowthEvent> | null | undefined, index: number): GrowthEvent => ({
-  id: textValue(value?.id, `growth-${index}`),
-  type: textValue(value?.type, "daily_growth"),
-  title: textValue(value?.title, "成长记录"),
-  date: textValue(value?.date, todayISO()),
-  summary: textValue(value?.summary),
-  firstTime: Boolean(value?.firstTime),
-  mediaKind: value?.mediaKind,
-  tags: stringList(value?.tags),
-  recordedBy: normalizeRecordedBy(value?.recordedBy),
-  createdByUserId: textValue(value?.createdByUserId) || undefined,
-});
-
-const normalizeReminder = (value: Partial<Reminder> | null | undefined, index: number): Reminder => {
-  const repeatRule = normalizeReminderRepeatRule(value?.repeatRule);
-  const scheduleMode = normalizeReminderScheduleMode(value?.scheduleMode, value?.reminderKind, repeatRule);
-  const alertMode = normalizeReminderAlertMode(value?.alertMode, value?.reminderKind);
-  const reminder: Reminder = {
-    id: textValue(value?.id, `reminder-${index}`),
-    title: textValue(value?.title, "照护提醒"),
-    reminderKind: alertMode === "ringing" ? "alarm" : "schedule",
-    scheduleMode,
-    alertMode,
-    dueText: textValue(value?.dueText, "待确认时间"),
-    dueAt: textValue(value?.dueAt) || undefined,
-    timeSourceText: textValue(value?.timeSourceText) || undefined,
-    timezone: textValue(value?.timezone) || undefined,
-    notificationId: numberValue(value?.notificationId),
-    notificationStatus:
-      value?.notificationStatus === "scheduled" ||
-      value?.notificationStatus === "scheduled_inexact" ||
-      value?.notificationStatus === "permission_denied" ||
-      value?.notificationStatus === "failed" ||
-      value?.notificationStatus === "in_app_only" ||
-      value?.notificationStatus === "cancelled"
-        ? value.notificationStatus
-        : value?.notificationStatus === "pending"
-          ? "pending"
-          : undefined,
-    notificationError: textValue(value?.notificationError) || undefined,
-    category: normalizeReminderCategory(value?.category),
-    recurrence: textValue(value?.recurrence) || undefined,
-    repeatRule,
-    soundId: normalizeReminderSoundId(value?.soundId),
-    lastAnchorEventId: textValue(value?.lastAnchorEventId) || undefined,
-    lastAnchorAt: textValue(value?.lastAnchorAt) || undefined,
-    status: normalizeReminderStatus(value?.status),
-    createdAt: textValue(value?.createdAt, new Date().toISOString()),
-    history: stringList(value?.history),
-  };
-  return normalizeReminderSchedule(reminder);
-};
-
-const normalizeMemoryItem = (value: Partial<MemoryItem> | null | undefined, index: number): MemoryItem => ({
-  id: textValue(value?.id, `memory-${index}`),
-  text: textValue(value?.text),
-  category: normalizeMemoryCategory(value?.category),
-  confidence: numberValue(value?.confidence) ?? 0.7,
-  updatedAt: textValue(value?.updatedAt, new Date().toISOString()),
-});
-
-const normalizeConversationSummary = (
-  value: Partial<ConversationSummary> | null | undefined,
-): ConversationSummary | null => {
-  const text = textValue(value?.text).trim();
-  if (!text) return null;
-  return {
-    id: textValue(value?.id, "conversation-summary"),
-    text,
-    coveredThroughMessageId: textValue(value?.coveredThroughMessageId),
-    coveredThroughCreatedAt: textValue(value?.coveredThroughCreatedAt),
-    sourceMessageCount: numberValue(value?.sourceMessageCount) ?? 0,
-    updatedAt: textValue(value?.updatedAt, new Date().toISOString()),
-  };
-};
-
-const normalizeProTrialStatus = (value: Partial<ProTrialStatus> | null | undefined): ProTrialStatus => ({
-  enabled: Boolean(value?.enabled),
-  entitlement: value?.entitlement
-    ? {
-        enabled: Boolean(value.entitlement.enabled),
-        planCode: textValue(value.entitlement.planCode) || undefined,
-        startsAt: textValue(value.entitlement.startsAt) || undefined,
-        expiresAt: textValue(value.entitlement.expiresAt) || undefined,
-      }
-    : null,
-  application: value?.application
-    ? {
-        id: textValue(value.application.id),
-        status: textValue(value.application.status, "pending"),
-        source: textValue(value.application.source) || undefined,
-        createdAt: textValue(value.application.createdAt) || undefined,
-        updatedAt: textValue(value.application.updatedAt) || undefined,
-      }
-    : null,
-  message: textValue(value?.message) || undefined,
-});
-
-const normalizeDailySummarySettings = (
-  value: Partial<DailySummarySettings> | null | undefined,
-): DailySummarySettings => ({
-  enabled: value?.enabled !== false,
-  reminderTime: textValue(value?.reminderTime, "21:30"),
-  mutedMissingTypes: stringList(value?.mutedMissingTypes),
-});
-
-const normalizeMissingPrompt = (value: Partial<DailySummary["missingItems"][number]> | null | undefined, index: number) => ({
-  id: textValue(value?.id, `missing-${index}`),
-  type: textValue(value?.type, "general"),
-  scope: textValue(value?.scope, "family"),
-  title: textValue(value?.title, "可能漏项"),
-  message: textValue(value?.message, "这条信息可以稍后再补。"),
-  action: textValue(value?.action) || undefined,
-});
-
-const normalizeDailySummary = (value: Partial<DailySummary> | null | undefined): DailySummary | null => {
-  if (!value || !textValue(value.text).trim()) return null;
-  return {
-    id: textValue(value.id, "daily-summary"),
-    date: textValue(value.date, todayISO()),
-    text: textValue(value.text),
-    facts: stringList(value.facts),
-    observations: stringList(value.observations),
-    missingItems: Array.isArray(value.missingItems) ? value.missingItems.map(normalizeMissingPrompt) : [],
-    accountMissingItems: Array.isArray(value.accountMissingItems) ? value.accountMissingItems.map(normalizeMissingPrompt) : [],
-    generatedAt: textValue(value.generatedAt, new Date().toISOString()),
-    generatedByUserId: textValue(value.generatedByUserId) || undefined,
-    sourceFingerprint: textValue(value.sourceFingerprint) || undefined,
-    stale: Boolean(value.stale),
-  };
-};
-
-const normalizePendingEffect = (value: Partial<PendingEffect> | null | undefined, index: number): PendingEffect => ({
-  id: textValue(value?.id, `pending-${index}`),
-  messageId: textValue(value?.messageId),
-  createdAt: textValue(value?.createdAt, new Date().toISOString()),
-  status: "pending",
-  tags: stringList(value?.tags),
-  growthEvent: value?.growthEvent ? normalizeGrowthEvent(value.growthEvent, index) : undefined,
-  careLogPatch: value?.careLogPatch ? normalizeCareLog(value.careLogPatch, index) : undefined,
-  reminders: Array.isArray(value?.reminders) ? value.reminders.map(normalizeReminder) : [],
-  memories: Array.isArray(value?.memories) ? value.memories.map(normalizeMemoryItem) : [],
-  expenses: Array.isArray(value?.expenses) ? value.expenses.map(normalizeExpenseItem) : [],
-  safetyAlerts: Array.isArray(value?.safetyAlerts) ? value.safetyAlerts : [],
-});
-
-const resolveStateAction = <T,>(action: SetStateAction<T>, current: T): T =>
-  typeof action === "function" ? (action as (current: T) => T)(current) : action;
-
-const safeDate = (value: string, dateOnly = false) => {
-  if (!value) return null;
-  const date = new Date(dateOnly ? `${value}T00:00:00` : value);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const formatTime = (value: string) => {
-  const date = safeDate(value);
-  return date ? new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date) : "--:--";
-};
-
-const formatDate = (value: string) => {
-  const date = safeDate(value);
-  return date ? new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(date) : "待设置";
-};
-
-const formatFullDate = (value: string) => {
-  const date = safeDate(value, true);
-  return date
-    ? new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(date)
-    : "待设置";
-};
-
-const formatExpenseDateLabel = (value: string) => {
-  const date = safeDate(value, true);
-  return date ? new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric" }).format(date) : "选择日期";
-};
-
-const monthTitle = (value: string) =>
-  new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long" }).format(new Date(`${value}-01T00:00:00`));
-
-const ageLabel = (birthDate: string) => {
-  const start = safeDate(birthDate, true);
-  if (!start) return "待设置生日";
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86400000));
-  const months = Math.floor(days / 30);
-  return months > 0 ? `${months}个月${days % 30}天` : `${days}天`;
-};
-
-const displayProfileValue = (value: string, fallback = "暂未设置") => value.trim() || fallback;
-
-const babyProfileForAgent = (profile: BabyProfile): AgentBabyProfileContext => {
-  if (profile.stage === "pregnancy") {
-    return {
-      ...profile,
-      ageLabel: profile.expectedDate ? `孕期，预产期 ${profile.expectedDate}` : "孕期，预产期待设置",
-    };
-  }
-
-  const birthDate = safeDate(profile.birthDate, true);
-  if (!birthDate) {
-    return { ...profile, ageLabel: "已出生，生日待设置" };
-  }
-
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const ageDays = Math.max(0, Math.floor((today.getTime() - birthDate.getTime()) / 86400000));
-  const ageWeeks = Math.floor(ageDays / 7);
-  const ageMonths = Math.floor(ageDays / 30);
-  const daysUntilFullMonth = Math.max(0, 30 - ageDays);
-  const fullMonth = ageDays >= 30;
-  const label = fullMonth
-    ? `出生${ageDays}天，约${ageMonths}个月${ageDays % 30}天`
-    : `出生${ageDays}天，未满月，还差${daysUntilFullMonth}天满30天`;
-
-  return {
-    ...profile,
-    ageDays,
-    ageWeeks,
-    ageMonths,
-    ageLabel: label,
-    fullMonth,
-    daysUntilFullMonth,
-  };
-};
-
-const stageLabel = (stage: BabyProfile["stage"]) => (stage === "pregnancy" ? "孕期" : "已出生");
-
-const toISODate = (date: Date) => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const addDays = (date: string, offset: number) => {
-  const source = safeDate(date, true) ?? new Date();
-  return toISODate(new Date(source.getFullYear(), source.getMonth(), source.getDate() + offset));
-};
-
-const addMonths = (month: string, offset: number) => {
-  const [year, monthIndex] = month.split("-").map(Number);
-  return toISODate(new Date(year, monthIndex - 1 + offset, 1)).slice(0, 7);
-};
-
-const calendarDatesForMonth = (month: string) => {
-  const [year, monthIndex] = month.split("-").map(Number);
-  const firstDay = new Date(year, monthIndex - 1, 1).getDay();
-  const totalDays = new Date(year, monthIndex, 0).getDate();
-  return [
-    ...Array.from({ length: firstDay }, () => ""),
-    ...Array.from({ length: totalDays }, (_, index) => `${month}-${`${index + 1}`.padStart(2, "0")}`),
-  ];
-};
-
-const splitListText = (value: string) =>
-  value
-    .split(/[、,，\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-const currentClockText = () => {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 };
 
 const extractCareEventsFromText = (text: string, date: string) =>
@@ -2886,31 +1757,6 @@ const expensesFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDra
     return nextDraft ? expenseFromDraft(nextDraft, expense) : expense;
   });
 
-function normalizeReminderCategory(category: string | undefined): Reminder["category"] {
-  if (category === "vaccine" || category === "routine" || category === "care" || category === "custom") {
-    return category;
-  }
-  return "custom";
-}
-
-function normalizeReminderStatus(status: string | undefined): Reminder["status"] {
-  if (status === "open" || status === "done" || status === "missed") return status;
-  return "open";
-}
-
-function normalizeMemoryCategory(category: string | undefined): MemoryItem["category"] {
-  if (
-    category === "routine" ||
-    category === "preference" ||
-    category === "health" ||
-    category === "caregiver" ||
-    category === "concern"
-  ) {
-    return category;
-  }
-  return "routine";
-}
-
 const normalizeSoothing = (value: CareLog["soothing"] | undefined): CareLog["soothing"] | undefined => {
   if (value === "easy" || value === "normal" || value === "hard") return value;
   return undefined;
@@ -3395,6 +2241,8 @@ function App() {
   const [proTrial, setProTrial] = useState<ProTrialStatus>(() => normalizeProTrialStatus(null));
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [dailySummarySettings, setDailySummarySettings] = useState<DailySummarySettings>(() => normalizeDailySummarySettings(null));
+  const [aiUsageSummary, setAiUsageSummary] = useState<AiUsageSummary | null>(null);
+  const [aiUsageStatus, setAiUsageStatus] = useState<AiUsageStatus>("idle");
   const [dismissedDailySummaryMissingItemIds, setDismissedDailySummaryMissingItemIds] = useState<string[]>([]);
   const [isApplyingProTrial, setIsApplyingProTrial] = useState(false);
   const [isGeneratingDailySummary, setIsGeneratingDailySummary] = useState(false);
@@ -3612,6 +2460,8 @@ function App() {
   const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
   const proApplicationPending = proTrial.application?.status === "pending";
   const proStatusText = proTrial.enabled ? "Pro 内测已开通" : proApplicationPending ? "Pro 内测申请中" : "可申请 Pro 内测";
+  const aiUsageTopFeatures = Array.isArray(aiUsageSummary?.byFeature) ? aiUsageSummary.byFeature.slice(0, 3) : [];
+  const aiUsageTopModel = Array.isArray(aiUsageSummary?.byModel) ? aiUsageSummary.byModel[0] : undefined;
   const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget);
   const reminderModalOpen = reminderEditorOpen || Boolean(completeReminderTarget) || Boolean(postponeReminderTarget) || Boolean(deleteReminderTarget);
   const appModalOpen = Boolean(deleteExpenseTarget);
@@ -3652,6 +2502,21 @@ function App() {
       systemWeakNoticeTimerRef.current = null;
     }, durationMs);
   }, []);
+
+  const refreshAiUsageSummary = useCallback(async (options: { quiet?: boolean } = {}) => {
+    setAiUsageStatus("loading");
+    try {
+      const summary = await readAiUsageSummary(30);
+      setAiUsageSummary(summary);
+      setAiUsageStatus("ready");
+      if (!options.quiet) showSystemWeakNotice("AI 用量已刷新。", "success");
+    } catch (error) {
+      setAiUsageStatus("error");
+      if (!options.quiet) {
+        showSystemWeakNotice(error instanceof Error ? error.message : "AI 用量读取失败。", "warning");
+      }
+    }
+  }, [showSystemWeakNotice]);
 
   const clearPreviewTimers = useCallback(() => {
     if (previewOpenTimerRef.current !== null) {
@@ -4543,6 +3408,7 @@ function App() {
     try {
       const summary = await generateDailySummary(selectedDate);
       setDailySummary(normalizeDailySummary(summary));
+      void refreshAiUsageSummary({ quiet: true });
       showSystemWeakNotice("今日小结已整理好。", "success");
     } catch (error) {
       showSystemWeakNotice(error instanceof Error ? error.message : "今日小结生成失败，请稍后再试。", "warning");
@@ -4841,6 +3707,15 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (authStatus !== "authenticated") {
+      setAiUsageSummary(null);
+      setAiUsageStatus("idle");
+      return;
+    }
+    void refreshAiUsageSummary({ quiet: true });
+  }, [authStatus, refreshAiUsageSummary]);
+
   useLayoutEffect(() => {
     const list = messageListRef.current;
     if (!list || activeMobileTab !== "chat") return;
@@ -5088,8 +3963,10 @@ function App() {
       }));
 
   const processSelectedMediaFiles = async (files: File[], target: MediaUploadTarget) => {
-    const availableSlots = target === "chat" ? Math.max(0, 4 - attachments.length) : 20;
+    const availableSlots = target === "chat" ? Math.max(0, MAX_CHAT_ATTACHMENTS - attachments.length) : MAX_ALBUM_PICKER_ATTACHMENTS;
     const queue = queueMediaFiles(files, availableSlots);
+    const mediaFileCount = files.filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/")).length;
+    const skippedByLimit = target === "chat" ? Math.max(0, mediaFileCount - availableSlots) : 0;
     if (queue.length) {
       setMediaUploadItems((current) => [
         ...current,
@@ -5122,7 +3999,7 @@ function App() {
         const attachment = await uploadMediaFile(item.id, item.file, item.kind, dimensions, thumbnailDataUrl);
         if (target === "chat") {
           removeMediaUploadItem(item.id);
-          setAttachments((current) => [...current, attachment].slice(0, 4));
+          setAttachments((current) => [...current, attachment].slice(0, MAX_CHAT_ATTACHMENTS));
         } else {
           const albumItem = albumItemFromStandaloneAttachment(attachment);
           setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
@@ -5138,10 +4015,13 @@ function App() {
         removeMediaUploadItemLater(item.id, 6000);
       }
     }
-    if (failures.length || (target === "chat" && availableSlots === 0)) {
+    if (failures.length || (target === "chat" && (availableSlots === 0 || skippedByLimit > 0))) {
+      const limitMessage = availableSlots === 0
+        ? `最多同时添加 ${MAX_CHAT_ATTACHMENTS} 个素材，先处理当前内容后再继续添加。`
+        : `最多同时添加 ${MAX_CHAT_ATTACHMENTS} 个素材，已先添加前 ${queue.length} 个。`;
       const message = failures.length
-        ? `${target === "album" ? "相册" : "素材"}上传失败：${failures.slice(0, 2).join("；")}${failures.length > 2 ? " 等" : ""}`
-        : "最多同时添加 4 个素材，先处理当前内容后再继续添加。";
+        ? `${target === "album" ? "相册" : "素材"}上传失败：${failures.slice(0, 2).join("；")}${failures.length > 2 ? " 等" : ""}${target === "chat" && skippedByLimit > 0 ? `；${limitMessage}` : ""}`
+        : limitMessage;
       setMessages((current) => [
         ...current,
         {
@@ -5185,7 +4065,7 @@ function App() {
       return;
     }
 
-    const availableSlots = Math.max(0, 4 - attachments.length);
+    const availableSlots = Math.max(0, MAX_CHAT_ATTACHMENTS - attachments.length);
     if (availableSlots <= 0) {
       await processSelectedMediaFiles([], "chat");
       return;
@@ -5212,7 +4092,7 @@ function App() {
     if (!canCaregive || isUploadingAlbumMedia) return;
     if (isNativeMediaPickerAvailable()) {
       try {
-        const files = await pickNativeMediaFiles({ limit: 20 });
+        const files = await pickNativeMediaFiles({ limit: MAX_ALBUM_PICKER_ATTACHMENTS });
         if (files.length) await processSelectedMediaFiles(files, "album");
         return;
       } catch (error) {
@@ -8704,7 +7584,7 @@ function App() {
                   {group.items.map((reminder) => (
                     <article className={`reminder-item ${reminder.category} status-${reminder.status}`} key={reminder.id}>
                       <div className="reminder-icon">
-                        {reminder.category === "vaccine" ? <Syringe size={18} /> : <Clock3 size={18} />}
+                        {reminder.category === "vaccine" ? <Syringe size={20} /> : <Clock3 size={20} />}
                       </div>
                       <div className="reminder-copy">
                         <h3>{reminder.title}</h3>
@@ -9089,6 +7969,58 @@ function App() {
                   </span>
                 </div>
                 <p>Pro 会先开放“少输入、少遗漏、自动整理”：今日小结、漏项轻提醒，以及语音/图片/视频辅助整理。当前为小范围免费内测。</p>
+                <div className="ai-usage-panel" aria-label="AI 用量">
+                  <div className="ai-usage-head">
+                    <div>
+                      <span>近 {aiUsageSummary?.days ?? 30} 天 AI 用量</span>
+                      <strong>{aiUsageStatus === "loading" && !aiUsageSummary ? "读取中" : `${formatTokenCount(aiUsageSummary?.totalTokens)} tokens`}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="ai-usage-refresh"
+                      onClick={() => void refreshAiUsageSummary({ quiet: false })}
+                      disabled={aiUsageStatus === "loading"}
+                      aria-label="刷新 AI 用量"
+                      title="刷新 AI 用量"
+                    >
+                      <RefreshCw size={16} />
+                    </button>
+                  </div>
+                  {aiUsageSummary ? (
+                    <>
+                      <div className="ai-usage-metrics">
+                        <span>
+                          <small>调用</small>
+                          <b>{formatTokenCount(aiUsageSummary.requestCount)}</b>
+                        </span>
+                        <span>
+                          <small>输入</small>
+                          <b>{formatTokenCount(aiUsageSummary.inputTokens)}</b>
+                        </span>
+                        <span>
+                          <small>输出</small>
+                          <b>{formatTokenCount(aiUsageSummary.outputTokens)}</b>
+                        </span>
+                      </div>
+                      {aiUsageTopFeatures.length ? (
+                        <div className="ai-usage-breakdown">
+                          {aiUsageTopFeatures.map((item) => (
+                            <span key={item.key}>
+                              {aiUsageFeatureLabel(item.feature)}
+                              <b>{formatTokenCount(item.totalTokens)}</b>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <p className="ai-usage-note">
+                        {aiUsageTopModel ? `主要模型：${aiUsageModelLabel(aiUsageTopModel)}` : "还没有可统计的 AI 调用。"}
+                        {aiUsageSummary.unmeteredRequestCount > 0 ? ` 另有 ${aiUsageSummary.unmeteredRequestCount} 次流式调用暂未回传 token。` : ""}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="ai-usage-note">{aiUsageStatus === "error" ? "用量暂时读取失败，可以稍后刷新。" : "正在读取家庭 AI 用量。"}</p>
+                  )}
+                </div>
                 <div className="summary-settings-row">
                   <label className="summary-reminder-toggle">
                     <input

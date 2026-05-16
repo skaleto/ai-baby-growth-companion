@@ -263,6 +263,37 @@ export interface ProTrialStatus {
   message?: string | null;
 }
 
+export interface AiUsageBreakdown {
+  key: string;
+  label: string;
+  provider?: string | null;
+  model?: string | null;
+  feature?: string | null;
+  inputType?: string | null;
+  requestCount: number;
+  successfulRequestCount: number;
+  meteredRequestCount: number;
+  unmeteredRequestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface AiUsageSummary {
+  days: number;
+  since: string;
+  generatedAt: string;
+  requestCount: number;
+  successfulRequestCount: number;
+  meteredRequestCount: number;
+  unmeteredRequestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  byFeature: AiUsageBreakdown[];
+  byModel: AiUsageBreakdown[];
+}
+
 export interface DailySummarySettings {
   enabled: boolean;
   reminderTime: string;

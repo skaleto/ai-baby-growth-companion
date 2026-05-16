@@ -698,6 +698,51 @@ class EffectPolicyTests {
     }
 
     @Test
+    void modelExpenseWithAmountOverridesRuleAmountQuestion() {
+        AgentChatResponse response = new AgentChatResponse(
+                "我已从截图识别出支出。",
+                List.of(),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(new AgentExpense(
+                        null,
+                        "奶粉",
+                        268.0,
+                        "CNY",
+                        "formula",
+                        "2026-05-01",
+                        null,
+                        null,
+                        "京东",
+                        "订单截图识别",
+                        null,
+                        null,
+                        List.of("attachment-1"),
+                        "agent",
+                        null,
+                        null
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        var decisions = policy.decide(response, extractor.extract("帮我识别这几张小票花费并记到账本"));
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("pending");
+        assertThat(decisions.get(0).type()).isEqualTo("expenseItem");
+        assertThat(decisions.get(0).payload().path("title").asText()).isEqualTo("奶粉");
+        assertThat(decisions.get(0).payload().path("amount").asDouble()).isEqualTo(268);
+    }
+
+    @Test
     void asksForMissingFieldsOnModelExpense() {
         AgentChatResponse response = new AgentChatResponse(
                 "我还需要确认一下金额。",

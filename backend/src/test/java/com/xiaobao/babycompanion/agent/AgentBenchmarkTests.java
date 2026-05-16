@@ -10,6 +10,7 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLog;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLogEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
@@ -234,6 +235,27 @@ class AgentBenchmarkTests {
 
         assertThat(plan.toolRequests()).hasSize(1);
         assertThat(plan.toolRequests().get(0).toolId()).isEqualTo("web_search");
+    }
+
+    @Test
+    void benchmarkExpenseImageRecognitionDoesNotUseWebSearch() {
+        AgentChatRequest request = new AgentChatRequest(
+                "帮我识别这几张小票花费并记到账本",
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(new AgentAttachment("attachment-1", "receipt.jpg", "image", null, "data:image/jpeg;base64,abc")),
+                null,
+                false
+        );
+
+        AgentPlan plan = planner.heuristic(request, extractor.extract(request.message()));
+
+        assertThat(plan.topics()).contains("expense");
+        assertThat(plan.contextNeeds()).doesNotContain("web");
+        assertThat(plan.toolRequests()).isEmpty();
     }
 
     @Test

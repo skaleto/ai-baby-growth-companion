@@ -14,6 +14,7 @@ REMOTE_CONFIG_DIR="${REMOTE_CONFIG_DIR:-/etc/ai-baby-growth-companion}"
 REMOTE_USER="${REMOTE_USER:-babyapp}"
 SYNC_DATA="${SYNC_DATA:-1}"
 SYNC_MOBILE_UPDATES="${SYNC_MOBILE_UPDATES:-0}"
+SYNC_MOBILE_UPDATE_MANIFEST_ONLY="${SYNC_MOBILE_UPDATE_MANIFEST_ONLY:-0}"
 OVERWRITE_REMOTE_DATA="${OVERWRITE_REMOTE_DATA:-0}"
 SKIP_BACKEND_BUILD="${SKIP_BACKEND_BUILD:-0}"
 SKIP_KEY_CHECK="${SKIP_KEY_CHECK:-0}"
@@ -47,6 +48,7 @@ Options:
   DEPLOY_PORT=8300                   Backend HTTP port.
   SYNC_DATA=1                        Upload backend/data on first deploy.
   SYNC_MOBILE_UPDATES=0              Upload backend/data/mobile-updates without syncing SQLite data.
+  SYNC_MOBILE_UPDATE_MANIFEST_ONLY=0 Upload only the OTA manifest when bundles are hosted externally.
   OVERWRITE_REMOTE_DATA=0            Refuse to overwrite an existing remote SQLite file.
   SKIP_KEY_CHECK=0                   Require remote API key files before starting service.
   BUILD_ANDROID=0                    Also build Android debug APK with the public API URL.
@@ -273,15 +275,31 @@ fi
 
 LOCAL_UPDATE_DIR="$LOCAL_DATA_DIR/mobile-updates"
 if [[ "$SYNC_MOBILE_UPDATES" == "1" && -d "$LOCAL_UPDATE_DIR" ]]; then
-  echo "Uploading mobile update bundles to remote persistent directory..."
-  rsync -az -e "ssh ${ssh_args[*]}" "$LOCAL_UPDATE_DIR"/ "$ECS_USER@$ECS_HOST:/tmp/${SERVICE_NAME}-mobile-updates/"
-  remote "SERVICE_NAME='$SERVICE_NAME' REMOTE_USER='$REMOTE_USER' REMOTE_DATA_DIR='$REMOTE_DATA_DIR' bash -s" <<'REMOTE_MOBILE_UPDATES'
+  if [[ "$SYNC_MOBILE_UPDATE_MANIFEST_ONLY" == "1" ]]; then
+    if [[ ! -f "$LOCAL_UPDATE_DIR/manifest.json" ]]; then
+      echo "Mobile update manifest was not found under $LOCAL_UPDATE_DIR." >&2
+      exit 1
+    fi
+    echo "Uploading mobile update manifest to remote persistent directory..."
+    copy_to_remote "$LOCAL_UPDATE_DIR/manifest.json" "/tmp/${SERVICE_NAME}-mobile-update-manifest.json"
+    remote "SERVICE_NAME='$SERVICE_NAME' REMOTE_USER='$REMOTE_USER' REMOTE_DATA_DIR='$REMOTE_DATA_DIR' bash -s" <<'REMOTE_MOBILE_UPDATE_MANIFEST'
+set -euo pipefail
+if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
+$SUDO mkdir -p "$REMOTE_DATA_DIR/mobile-updates"
+$SUDO mv "/tmp/${SERVICE_NAME}-mobile-update-manifest.json" "$REMOTE_DATA_DIR/mobile-updates/manifest.json"
+$SUDO chown "$REMOTE_USER:$REMOTE_USER" "$REMOTE_DATA_DIR/mobile-updates/manifest.json"
+REMOTE_MOBILE_UPDATE_MANIFEST
+  else
+    echo "Uploading mobile update bundles to remote persistent directory..."
+    rsync -az -e "ssh ${ssh_args[*]}" "$LOCAL_UPDATE_DIR"/ "$ECS_USER@$ECS_HOST:/tmp/${SERVICE_NAME}-mobile-updates/"
+    remote "SERVICE_NAME='$SERVICE_NAME' REMOTE_USER='$REMOTE_USER' REMOTE_DATA_DIR='$REMOTE_DATA_DIR' bash -s" <<'REMOTE_MOBILE_UPDATES'
 set -euo pipefail
 if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 $SUDO mkdir -p "$REMOTE_DATA_DIR/mobile-updates"
 $SUDO rsync -a "/tmp/${SERVICE_NAME}-mobile-updates/" "$REMOTE_DATA_DIR/mobile-updates/"
 $SUDO chown -R "$REMOTE_USER:$REMOTE_USER" "$REMOTE_DATA_DIR/mobile-updates"
 REMOTE_MOBILE_UPDATES
+  fi
 fi
 
 if [[ "$SKIP_KEY_CHECK" != "1" ]]; then

@@ -27,6 +27,8 @@ This app keeps the normal Capacitor bundled `dist` assets as the offline fallbac
 MOBILE_UPDATE_VERSION=0.1.1 npm run build:mobile:update
 ```
 
+The mobile update script builds with `VITE_BUILD_TARGET=mobile`, so website-only routes such as `/official` and their large landing assets are left out of the OTA bundle.
+
 This writes:
 
 - `backend/data/mobile-updates/manifest.json`
@@ -53,3 +55,21 @@ The remote service reads bundles from:
 ```
 
 The deploy script sets `APP_MOBILE_UPDATES_PUBLIC_BASE_URL` to `http://<host>:8300` for the systemd service. Use HTTPS and a domain before a public production release.
+
+## Publish Bundle To OSS
+
+For production, upload the zip to OSS/CDN and sync only the manifest back to ECS:
+
+```bash
+MOBILE_UPDATE_OSS_SSH_TARGET=ai-baby-aliyun \
+scripts/upload-mobile-update-oss.sh
+
+SYNC_DATA=0 \
+SYNC_MOBILE_UPDATES=1 \
+SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 \
+ECS_HOST=120.55.188.242 \
+SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun \
+scripts/deploy-aliyun-ecs.sh
+```
+
+The OSS upload script reads the current bundle name from `backend/data/mobile-updates/manifest.json`, uploads that zip under `baby-companion/mobile-updates/`, and rewrites the manifest with an `ossObjectKey`. The backend signs a fresh temporary OSS download URL on every `/api/mobile-updates/check`, so the bucket can remain private.

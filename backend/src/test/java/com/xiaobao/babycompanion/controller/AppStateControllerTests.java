@@ -40,6 +40,8 @@ import com.xiaobao.babycompanion.persistence.service.AttachmentRecordService;
 @AutoConfigureMockMvc
 class AppStateControllerTests {
 
+    private static final String DEFAULT_TEST_ROLE = "妈妈";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -257,11 +259,11 @@ class AppStateControllerTests {
         mockMvc.perform(get("/api/app/state")
                         .header(HttpHeaders.AUTHORIZATION, bearer()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state.careLogs[0].recordedBy.label").value("家庭照护人"))
-                .andExpect(jsonPath("$.state.careLogs[0].events[0].recordedBy.label").value("家庭照护人"))
-                .andExpect(jsonPath("$.state.albumItems[0].recordedBy.label").value("家庭照护人"))
+                .andExpect(jsonPath("$.state.careLogs[0].recordedBy.label").value(DEFAULT_TEST_ROLE))
+                .andExpect(jsonPath("$.state.careLogs[0].events[0].recordedBy.label").value(DEFAULT_TEST_ROLE))
+                .andExpect(jsonPath("$.state.albumItems[0].recordedBy.label").value(DEFAULT_TEST_ROLE))
                 .andExpect(jsonPath("$.state.albumItems[0].attachment.id").value("expense-receipt"))
-                .andExpect(jsonPath("$.state.expenses[0].recordedBy.label").value("家庭照护人"))
+                .andExpect(jsonPath("$.state.expenses[0].recordedBy.label").value(DEFAULT_TEST_ROLE))
                 .andExpect(jsonPath("$.state.expenses[0].attachments[0].id").value("expense-receipt"))
                 .andExpect(jsonPath("$.state.expenses[0].attachments[0].url").value("/api/uploads/expense-receipt"));
     }
@@ -784,7 +786,7 @@ class AppStateControllerTests {
     }
 
     private String login(String phone) throws Exception {
-        return login(phone, "妈妈", true);
+        return login(phone, DEFAULT_TEST_ROLE, true);
     }
 
     private String uniquePhone() {

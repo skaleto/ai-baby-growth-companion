@@ -11,6 +11,7 @@ import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentGrowthEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
+import com.xiaobao.babycompanion.dto.agent.AgentExpense;
 import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
@@ -135,6 +136,57 @@ class AgentRuntimeTests {
         assertThat(response.safetyAlerts().get(0).level()).isEqualTo("warning");
         assertThat(response.safetyAlerts().get(0).category()).isEqualTo("medical");
         assertThat(response.safetyAlerts().get(0).recommendedAction()).isEqualTo("按社区医院通知执行");
+    }
+
+    @Test
+    void replacesAmountQuestionWhenExpenseDraftIsAlreadyPending() {
+        String userMessage = "帮我识别这几张小票花费并记到账本";
+        AgentChatResponse modelResponse = new AgentChatResponse(
+                "这笔支出实际花了多少钱？确认金额后我再帮你记到账本里。",
+                List.of("记账"),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(new AgentExpense(
+                        null,
+                        "奶粉",
+                        268.0,
+                        "CNY",
+                        "formula",
+                        "2026-05-01",
+                        null,
+                        null,
+                        "京东",
+                        "订单截图识别",
+                        null,
+                        null,
+                        List.of("attachment-1"),
+                        "agent",
+                        null,
+                        null
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        AgentChatResponse response = agentRuntime.withSafetyAlertsAndDecisions(
+                modelResponse,
+                userMessage,
+                new RecordSignalExtractor(new ObjectMapper()).extract(userMessage),
+                new AgentPlan("record", List.of("expense"), List.of("2026-05-01"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),
+                null
+        );
+
+        assertThat(response.aiText()).contains("已识别出这笔支出");
+        assertThat(response.aiText()).doesNotContain("实际花了多少钱");
+        assertThat(response.effectDecisions()).hasSize(1);
+        assertThat(response.effectDecisions().get(0).mode()).isEqualTo("pending");
     }
 
     @Test

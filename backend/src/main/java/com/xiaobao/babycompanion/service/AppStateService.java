@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -56,6 +57,8 @@ import org.springframework.util.StringUtils;
 public class AppStateService {
 
     private static final String PROFILE_ID = "default";
+    private static final Set<String> ATTACHMENT_KINDS = Set.of("image", "video", "audio");
+    private static final List<String> SHARED_ATTACHMENT_OWNER_TYPES = List.of("profile", "growth", "care", "album", "expense");
 
     private final BabyProfileRecordService profileService;
     private final ChatMessageRecordService messageService;
@@ -362,22 +365,31 @@ public class AppStateService {
 
     private <T extends AppRecordEntity> List<JsonNode> readList(IService<T> service, String familyId) {
         QueryWrapper<T> query = familyQuery(null, familyId);
-        query.orderByAsc("sort_key").orderByAsc("created_at");
-        Map<String, AttachmentDto> attachmentCache = new LinkedHashMap<>();
-        Map<String, ObjectNode> contributorCache = new LinkedHashMap<>();
-        return service.list(query).stream()
-                .map((record) -> hydrateAttachmentMetadata(decorateRecordedBy(record, parse(record.getPayloadJson()), familyId, contributorCache), familyId, attachmentCache))
-                .toList();
+        return readRecords(service, query, familyId);
     }
 
     private <T extends AppRecordEntity> List<JsonNode> readPrivateList(IService<T> service, String familyId, String userId) {
         QueryWrapper<T> query = privateQuery(null, familyId, userId);
+        return readRecords(service, query, familyId);
+    }
+
+    private <T extends AppRecordEntity> List<JsonNode> readRecords(IService<T> service, QueryWrapper<T> query, String familyId) {
         query.orderByAsc("sort_key").orderByAsc("created_at");
         Map<String, AttachmentDto> attachmentCache = new LinkedHashMap<>();
         Map<String, ObjectNode> contributorCache = new LinkedHashMap<>();
         return service.list(query).stream()
-                .map((record) -> hydrateAttachmentMetadata(decorateRecordedBy(record, parse(record.getPayloadJson()), familyId, contributorCache), familyId, attachmentCache))
+                .map((record) -> hydratedRecordPayload(record, familyId, attachmentCache, contributorCache))
                 .toList();
+    }
+
+    private <T extends AppRecordEntity> JsonNode hydratedRecordPayload(
+            T record,
+            String familyId,
+            Map<String, AttachmentDto> attachmentCache,
+            Map<String, ObjectNode> contributorCache
+    ) {
+        JsonNode payload = decorateRecordedBy(record, parse(record.getPayloadJson()), familyId, contributorCache);
+        return hydrateAttachmentMetadata(payload, familyId, attachmentCache);
     }
 
     private List<JsonNode> readAlbumItems(String familyId) {
@@ -849,15 +861,8 @@ public class AppStateService {
     private void hydrateSingleAttachment(ObjectNode object, String familyId, Map<String, AttachmentDto> attachmentCache) {
         String id = text(object, "id", "");
         String kind = text(object, "kind", "");
-        if (!StringUtils.hasText(id) || !List.of("image", "video", "audio").contains(kind)) return;
-        String cacheKey = familyId + ":" + id;
-        AttachmentDto attachment;
-        if (attachmentCache.containsKey(cacheKey)) {
-            attachment = attachmentCache.get(cacheKey);
-        } else {
-            attachment = attachmentStorageService.metadata(id, familyId);
-            attachmentCache.put(cacheKey, attachment);
-        }
+        if (!StringUtils.hasText(id) || !ATTACHMENT_KINDS.contains(kind)) return;
+        AttachmentDto attachment = attachmentById(id, familyId, attachmentCache);
         if (attachment == null) return;
         if (!StringUtils.hasText(text(object, "name", ""))) object.put("name", attachment.name());
         if (!StringUtils.hasText(text(object, "mimeType", ""))) object.put("mimeType", attachment.mimeType());
@@ -926,21 +931,36 @@ public class AppStateService {
                 .eq("family_id", familyId), false);
         AttachmentRecord record = new AttachmentRecord();
         record.setId(id);
-        record.setName(existing != null && StringUtils.hasText(existing.getName()) ? existing.getName() : text(object, "name", id));
-        record.setKind(existing != null && StringUtils.hasText(existing.getKind()) ? existing.getKind() : text(object, "kind", "image"));
-        record.setMimeType(existing != null && StringUtils.hasText(existing.getMimeType()) ? existing.getMimeType() : text(object, "mimeType", ""));
-        record.setFilePath(existing != null && StringUtils.hasText(existing.getFilePath()) ? existing.getFilePath() : text(object, "filePath", ""));
-        record.setPublicUrl(existing != null && StringUtils.hasText(existing.getPublicUrl()) ? existing.getPublicUrl() : text(object, "publicUrl", text(object, "url", "/api/uploads/" + id)));
-        record.setThumbnailPath(existing != null && StringUtils.hasText(existing.getThumbnailPath()) ? existing.getThumbnailPath() : text(object, "thumbnailPath", ""));
-        record.setThumbnailUrl(existing != null && StringUtils.hasText(existing.getThumbnailUrl()) ? existing.getThumbnailUrl() : text(object, "thumbnailUrl", ""));
+        record.setName(preservedAttachmentField(existing, AttachmentRecord::getName, object, "name", id));
+        record.setKind(preservedAttachmentField(existing, AttachmentRecord::getKind, object, "kind", "image"));
+        record.setMimeType(preservedAttachmentField(existing, AttachmentRecord::getMimeType, object, "mimeType", ""));
+        record.setFilePath(preservedAttachmentField(existing, AttachmentRecord::getFilePath, object, "filePath", ""));
+        record.setPublicUrl(preservedAttachmentField(existing, AttachmentRecord::getPublicUrl, object, "publicUrl", text(object, "url", "/api/uploads/" + id)));
+        record.setThumbnailPath(preservedAttachmentField(existing, AttachmentRecord::getThumbnailPath, object, "thumbnailPath", ""));
+        record.setThumbnailUrl(preservedAttachmentField(existing, AttachmentRecord::getThumbnailUrl, object, "thumbnailUrl", ""));
         record.setOwnerType(ownerType);
         record.setOwnerId(ownerId);
-        record.setOwnerUserId(existing != null && StringUtils.hasText(existing.getOwnerUserId()) ? existing.getOwnerUserId() : userId);
+        record.setOwnerUserId(preservedAttachmentValue(existing, AttachmentRecord::getOwnerUserId, userId));
         record.setFamilyId(familyId);
-        record.setCreatedByUserId(existing != null && StringUtils.hasText(existing.getCreatedByUserId()) ? existing.getCreatedByUserId() : userId);
-        record.setCreatedAt(existing != null && StringUtils.hasText(existing.getCreatedAt()) ? existing.getCreatedAt() : text(object, "createdAt", Instant.now().toString()));
+        record.setCreatedByUserId(preservedAttachmentValue(existing, AttachmentRecord::getCreatedByUserId, userId));
+        record.setCreatedAt(preservedAttachmentField(existing, AttachmentRecord::getCreatedAt, object, "createdAt", Instant.now().toString()));
         record.setPayloadJson(write(attachmentRecordPayload(record)));
         attachmentRecordService.saveOrUpdate(record);
+    }
+
+    private String preservedAttachmentField(
+            AttachmentRecord existing,
+            Function<AttachmentRecord, String> existingValue,
+            ObjectNode object,
+            String field,
+            String fallback
+    ) {
+        return preservedAttachmentValue(existing, existingValue, text(object, field, fallback));
+    }
+
+    private String preservedAttachmentValue(AttachmentRecord existing, Function<AttachmentRecord, String> existingValue, String fallback) {
+        String value = existing == null ? null : existingValue.apply(existing);
+        return StringUtils.hasText(value) ? value : fallback;
     }
 
     private ObjectNode attachmentRecordPayload(AttachmentRecord record) {
@@ -985,7 +1005,7 @@ public class AppStateService {
         QueryWrapper<AttachmentRecord> attachments = new QueryWrapper<AttachmentRecord>()
                 .eq("family_id", familyId)
                 .and((wrapper) -> wrapper
-                        .in("owner_type", List.of("profile", "growth", "care", "album", "expense"))
+                        .in("owner_type", SHARED_ATTACHMENT_OWNER_TYPES)
                         .or()
                         .eq("owner_user_id", userId));
         attachmentRecordService.remove(attachments);

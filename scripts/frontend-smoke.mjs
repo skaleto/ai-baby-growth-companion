@@ -270,6 +270,75 @@ async function installApiMocks(page) {
       return;
     }
 
+    if (url.pathname === "/api/pro/usage") {
+      await route.fulfill({
+        status: 200,
+        headers,
+        body: JSON.stringify({
+          days: 30,
+          since: "2026-04-12T00:00:00.000Z",
+          generatedAt: new Date().toISOString(),
+          requestCount: 3,
+          successfulRequestCount: 3,
+          meteredRequestCount: 2,
+          unmeteredRequestCount: 1,
+          inputTokens: 1250,
+          outputTokens: 180,
+          totalTokens: 1430,
+          byFeature: [
+            {
+              key: "agent_chat",
+              label: "agent_chat",
+              provider: null,
+              model: null,
+              feature: "agent_chat",
+              inputType: null,
+              requestCount: 1,
+              successfulRequestCount: 1,
+              meteredRequestCount: 1,
+              unmeteredRequestCount: 0,
+              inputTokens: 980,
+              outputTokens: 120,
+              totalTokens: 1100,
+            },
+            {
+              key: "daily_summary",
+              label: "daily_summary",
+              provider: null,
+              model: null,
+              feature: "daily_summary",
+              inputType: null,
+              requestCount: 1,
+              successfulRequestCount: 1,
+              meteredRequestCount: 1,
+              unmeteredRequestCount: 0,
+              inputTokens: 270,
+              outputTokens: 60,
+              totalTokens: 330,
+            },
+          ],
+          byModel: [
+            {
+              key: "deepseek:deepseek-v4-pro",
+              label: "deepseek-v4-pro",
+              provider: "deepseek",
+              model: "deepseek-v4-pro",
+              feature: null,
+              inputType: null,
+              requestCount: 2,
+              successfulRequestCount: 2,
+              meteredRequestCount: 2,
+              unmeteredRequestCount: 0,
+              inputTokens: 1250,
+              outputTokens: 180,
+              totalTokens: 1430,
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
     if (url.pathname === "/api/uploads/smoke-video") {
       await route.fulfill({
         status: 200,
