@@ -290,6 +290,39 @@ class AgentRuntimeTests {
     }
 
     @Test
+    void doesNotAppendDuplicateAmountQuestionWhenModelAlreadyAsksForAmount() {
+        String userMessage = "和恒温壶这些全部都是宝宝相关的支出，关闭的那一笔不属于支出";
+        AgentChatResponse modelResponse = new AgentChatResponse(
+                "好的，我已经记录啦。剩下待记录的支出实际金额是多少呢？确认后我就帮你整理到账本里。",
+                List.of("记账"),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        AgentChatResponse response = agentRuntime.withSafetyAlertsAndDecisions(
+                modelResponse,
+                userMessage,
+                new RecordSignalExtractor(new ObjectMapper()).extract(userMessage),
+                new AgentPlan("record", List.of("expense"), List.of("2026-05-01"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),
+                null
+        );
+
+        assertThat(response.aiText()).isEqualTo(modelResponse.aiText());
+        assertThat(response.effectDecisions()).hasSize(1);
+        assertThat(response.effectDecisions().get(0).mode()).isEqualTo("ask");
+    }
+
+    @Test
     void defersRuleAmountAskWhenRetryingPreviousExpenseImages() {
         String userMessage = "把刚才上面的这些花费重新再记录一遍。";
         AgentChatResponse modelResponse = new AgentChatResponse(

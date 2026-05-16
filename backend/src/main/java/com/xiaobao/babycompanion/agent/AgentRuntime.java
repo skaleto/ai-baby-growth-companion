@@ -1499,12 +1499,15 @@ public class AgentRuntime {
         if (!StringUtils.hasText(aiText)) return normalizedQuestion;
         String normalizedText = aiText.trim();
         if (normalizedText.contains(normalizedQuestion)) return normalizedText;
+        if (looksLikeAmountClarification(normalizedQuestion) && looksLikeAmountClarification(normalizedText)) {
+            return normalizedText;
+        }
         return normalizedText + "\n\n" + normalizedQuestion;
     }
 
     private boolean looksLikeAmountClarification(String text) {
         if (!StringUtils.hasText(text)) return false;
-        return text.matches(".*(实际花了多少钱|实际支付金额|确认金额|告诉我.*金额|补充.*金额).*");
+        return text.matches(".*(实际花了多少钱|实际支付金额|实际金额|确认金额|金额是多少|告诉我.*金额|补充.*金额).*");
     }
 
     private void handleStreamLine(

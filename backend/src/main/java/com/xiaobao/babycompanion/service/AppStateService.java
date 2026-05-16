@@ -542,12 +542,26 @@ public class AppStateService {
             String userId
     ) {
         if (items == null || items.isEmpty()) return;
+        saveList(service, supplier, items, ownerType, now, familyId, userId, false);
+    }
+
+    private <T extends AppRecordEntity> void saveList(
+            IService<T> service,
+            Supplier<T> supplier,
+            List<JsonNode> items,
+            String ownerType,
+            String now,
+            String familyId,
+            String userId,
+            boolean regenerateEffectFallbackIds
+    ) {
+        if (items == null || items.isEmpty()) return;
         List<T> records = new ArrayList<>();
         List<JsonNode> dedupedItems = dedupeItems(items, ownerType);
         for (int index = 0; index < dedupedItems.size(); index += 1) {
             JsonNode item = dedupedItems.get(index);
             if (item == null || item.isNull()) continue;
-            String id = text(item, "id", ownerType + "-" + index);
+            String id = recordId(item, ownerType, index, regenerateEffectFallbackIds);
             ObjectNode payload = mutable(item, ownerType, id, familyId, userId);
             records.add(record(supplier, id, payload, ownerType, sortKey(payload, ownerType, index), now, familyId, userId));
         }
@@ -564,7 +578,7 @@ public class AppStateService {
             String userId
     ) {
         if (!(node instanceof ArrayNode array)) return;
-        saveList(service, supplier, toList(array), ownerType, now, familyId, userId);
+        saveList(service, supplier, toList(array), ownerType, now, familyId, userId, true);
     }
 
     private <T extends AppRecordEntity> void saveEffectObject(
@@ -577,10 +591,29 @@ public class AppStateService {
             String userId
     ) {
         if (node == null || node.isNull()) return;
-        String id = text(node, "id", ownerType + "-0");
+        String id = recordId(node, ownerType, 0, false);
         ObjectNode payload = mutable(node, ownerType, id, familyId, userId);
         T existing = service.getOne(new QueryWrapper<T>().eq("family_id", familyId).eq("id", id), false);
         service.saveOrUpdate(preserveCreator(record(supplier, id, payload, ownerType, sortKey(payload, ownerType, 0), now, familyId, userId), existing));
+    }
+
+    private String recordId(JsonNode item, String ownerType, int index, boolean regenerateEffectFallbackIds) {
+        String fallback = regenerateEffectFallbackIds ? generatedRecordId(ownerType) : ownerType + "-" + index;
+        String id = text(item, "id", fallback);
+        if (regenerateEffectFallbackIds && isGeneratedIndexId(ownerType, id)) {
+            return generatedRecordId(ownerType);
+        }
+        return id;
+    }
+
+    private boolean isGeneratedIndexId(String ownerType, String id) {
+        return StringUtils.hasText(ownerType)
+                && StringUtils.hasText(id)
+                && id.matches(ownerType + "-\\d+");
+    }
+
+    private String generatedRecordId(String ownerType) {
+        return ownerType + "-" + UUID.randomUUID();
     }
 
     private void saveCareLogPatch(JsonNode patch, String now, String familyId, String userId) {
@@ -743,7 +776,7 @@ public class AppStateService {
             objectNode = objectMapper.createObjectNode();
             objectNode.set("value", copy);
         }
-        if (!StringUtils.hasText(text(objectNode, "id", "")) && !"profile".equals(ownerType)) {
+        if (!"profile".equals(ownerType)) {
             objectNode.put("id", ownerId);
         }
         objectNode.remove(List.of("recordedBy", "createdByUserId"));

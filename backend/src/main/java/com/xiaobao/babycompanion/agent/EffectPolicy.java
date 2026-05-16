@@ -73,7 +73,9 @@ public class EffectPolicy {
         boolean expenseAlreadyCapturedByRule = "pending".equals(expenseDecision == null ? "" : expenseDecision.mode());
         if (!expenseAlreadyCapturedByRule) {
             decisions.addAll(expenseSkillCandidates);
-            decisions.addAll(modelExpenseDecisions);
+            if (!hasSkillPendingExpense) {
+                decisions.addAll(modelExpenseDecisions);
+            }
         }
         AgentEffectDecision mixedFeedingClarification = mixedFeedingClarification(response, signals, babyProfile, userMessage);
         if (mixedFeedingClarification != null) decisions.add(mixedFeedingClarification);

@@ -623,6 +623,57 @@ class AppStateControllerTests {
     }
 
     @Test
+    void confirmingPendingExpenseWithGeneratedIndexIdDoesNotOverwriteExistingExpense() throws Exception {
+        mockMvc.perform(put("/api/app/state/expenses/expense-0")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "expense-0",
+                                  "title": "住院费用",
+                                  "amount": 8887.24,
+                                  "currency": "CNY",
+                                  "category": "health",
+                                  "date": "2026-04-19",
+                                  "source": "agent"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/app/state/pendingEffects/effect-expense")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "effect-expense",
+                                  "status": "pending",
+                                  "createdAt": "2026-05-16T09:21:42Z",
+                                  "expenses": [
+                                    {
+                                      "id": "expense-0",
+                                      "title": "奶粉",
+                                      "amount": 97.1,
+                                      "currency": "CNY",
+                                      "category": "formula",
+                                      "date": "2026-03-18",
+                                      "source": "agent"
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/app/state/pending-effects/effect-expense/confirm")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.expenses.length()").value(2))
+                .andExpect(jsonPath("$.state.expenses[?(@.id == 'expense-0')].title")
+                        .value(org.hamcrest.Matchers.hasItem("住院费用")))
+                .andExpect(jsonPath("$.state.expenses[?(@.title == '奶粉')].id")
+                        .value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("expense-0"))));
+    }
+
+    @Test
     void importsDuplicateMemoryIdsWithoutPrimaryKeyConflict() throws Exception {
         mockMvc.perform(post("/api/app/state/import")
                         .header(HttpHeaders.AUTHORIZATION, bearer())

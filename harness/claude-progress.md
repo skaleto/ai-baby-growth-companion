@@ -13,6 +13,42 @@
 
 ## Session Log
 
+### Session 2026-05-16 Expense Ledger Id Collision Fix
+
+- Goal: Investigate user `13777892890`'s latest Agent expense recording flow, explain why the prior hospitalization expense was overwritten, and ship guards against repeat ledger overwrites.
+- Completed:
+  - Inspected production chat, Agent trace, skill trace, pending-effect confirmation requests, and expense rows for family `family-eb3f4751-2df9-46b4-920e-6634c4013d50`.
+  - Confirmed the 2026-05-16 17:20 expense image run produced 4 complete expense-recognition candidates, but the final composer also returned the same 4 model expenses, creating 8 pending expense items.
+  - Confirmed the previous hospitalization expense was recoverable from 2026-05-12 chat payloads as `芊宝出生住院生产花费` amount `8887.24`, but it is no longer present in `expense_item` because pending expense payloads with fallback ids like `expense-0` were confirmed with `saveOrUpdate`.
+  - Fixed frontend expense normalization to generate durable unique ids instead of `expense-${index}` for AI pending expense payloads.
+  - Fixed backend pending-effect confirmation to regenerate old fallback ids like `expense-0` and to canonicalize payload `id` to the actual persisted record id.
+  - Fixed `EffectPolicy` so executable `expense-recognition` candidates suppress duplicate model expense candidates.
+  - Fixed Agent reply postprocessing so an amount question is not appended when the model text already asks for the actual amount.
+  - Published backend code plus OTA `0.1.0-20260516173716` with message `修复账本覆盖和重复支出`.
+  - After explicit user approval to repair production data, restored the overwritten 2026-04-19 hospitalization expense to `expense_item` as `expense-restored-hospital-mp2lqef1`, preserving the original note and image attachment reference `attachment-mp2lomag-chc0xt`.
+- Verification run:
+  - `mvn -Dtest=AgentRuntimeTests,EffectPolicyTests,AppStateControllerTests test`
+  - `mvn test`
+  - `npm run test:agent-benchmark`
+  - `npm run verify:frontend`
+  - `git diff --check`
+  - `MOBILE_UPDATE_MESSAGE='修复账本覆盖和重复支出' MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `MOBILE_UPDATE_OSS_SSH_TARGET=ai-baby-aliyun SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun scripts/upload-mobile-update-oss.sh`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`, OTA check, OSS signed URL download checksum probe, and up-to-date probe.
+- Evidence:
+  - Targeted backend tests passed: 65 tests, 0 failures.
+  - Full backend tests passed: 164 tests, 0 failures.
+  - Agent benchmark passed: 20 tests, 0 failures.
+  - Frontend smoke passed across desktop and six mobile viewports.
+  - Cloud health returned `ok`.
+  - Cloud OTA check returns version `0.1.0-20260516173716`; downloaded bundle size was `2640325` bytes and SHA-256 matched manifest checksum `c8440860c0dc6a45c20b61737a647efd77a89a6e21d3fca3ad941adcfa4ad329`.
+  - Production DB backup was created at `/var/lib/ai-baby-growth-companion/baby-companion.sqlite.before-hospital-restore-20260516094541` before restoring the hospitalization expense.
+  - Production `expense_item` now contains `expense-restored-hospital-mp2lqef1` with title `芊宝出生住院生产花费`, amount `8887.24`, date `2026-04-19`, note `总消费额34189.43元，医保报销25302.19元，自费合计8887.24元，其中包含伙食费405元、温馨陪伴费1680元`, and `attachmentIds[0]=attachment-mp2lomag-chc0xt`.
+  - Production `attachment` still contains `attachment-mp2lomag-chc0xt` with image metadata, `/api/uploads/attachment-mp2lomag-chc0xt`, and thumbnail path `/api/uploads/attachment-mp2lomag-chc0xt/thumbnail`.
+- Known risks:
+  - The 2026-05-16 duplicate four expense rows created by the same bug were not deleted in this session; deleting duplicates is a destructive data change and should be done only with explicit user confirmation.
+
 ### Session 2026-05-16 Executable Expense Recognition Skill Worker
 
 - Goal: Implement OpenSpec change `add-expense-recognition-skill-worker` so expense screenshot recognition becomes an executable, traceable skill instead of scattered prompt/runtime/postprocess behavior.

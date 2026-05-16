@@ -1,5 +1,5 @@
 import type { SetStateAction } from "react";
-import { todayISO } from "./data";
+import { makeId, todayISO } from "./data";
 import {
   ALBUM_CATEGORY_VALUES,
   CARE_EVENT_TYPE_VALUES,
@@ -219,7 +219,7 @@ export const normalizeExpenseItem = (value: Partial<ExpenseItem> | null | undefi
   const now = new Date().toISOString();
   const amount = numberValue(value?.amount) ?? 0;
   return {
-    id: textValue(value?.id, `expense-${index}`),
+    id: textValue(value?.id, makeId("expense")),
     title: textValue(value?.title, "小宝支出"),
     amount: Number.isFinite(amount) ? amount : 0,
     currency: textValue(value?.currency, "CNY"),

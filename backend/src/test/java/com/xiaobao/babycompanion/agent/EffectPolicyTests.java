@@ -297,6 +297,72 @@ class EffectPolicyTests {
     }
 
     @Test
+    void skipsDuplicateModelExpenseWhenExpenseSkillAlreadyProducedCandidates() {
+        String message = "识别这些订单支出并记到账本";
+        ObjectNode skillPayload = objectMapper.createObjectNode();
+        skillPayload.put("title", "奶粉");
+        skillPayload.put("amount", 268.0);
+        skillPayload.put("currency", "CNY");
+        skillPayload.put("category", "formula");
+        skillPayload.put("date", "2026-05-16");
+        skillPayload.putArray("attachmentIds").add("attachment-1");
+        skillPayload.put("sourceSkill", "expense-recognition");
+        AgentChatResponse response = new AgentChatResponse(
+                "我已从截图识别出奶粉支出。",
+                List.of(),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(new AgentExpense(
+                        null,
+                        "奶粉",
+                        268.0,
+                        "CNY",
+                        "formula",
+                        "2026-05-16",
+                        null,
+                        null,
+                        "天猫",
+                        "订单截图识别",
+                        null,
+                        null,
+                        List.of("attachment-1"),
+                        "agent",
+                        null,
+                        null
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        var decisions = policy.decide(
+                response,
+                extractor.extract(message),
+                null,
+                message,
+                List.of(new com.xiaobao.babycompanion.dto.agent.AgentEffectDecision(
+                        "decision-skill",
+                        "pending",
+                        "expenseItem",
+                        skillPayload,
+                        0.9,
+                        "skill recognized complete expense",
+                        "expense-recognition"
+                ))
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).source()).isEqualTo("expense-recognition");
+        assertThat(decisions.get(0).payload().path("title").asText()).isEqualTo("奶粉");
+    }
+
+    @Test
     void ignoresUnsupportedChatMutationRequest() {
         var decisions = policy.decide(response((AgentCareLog) null, List.of()), extractor.extract("撤销刚才那条记录"));
 
