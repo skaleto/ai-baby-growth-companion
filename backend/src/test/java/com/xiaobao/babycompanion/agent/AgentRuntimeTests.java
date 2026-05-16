@@ -5,17 +5,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.lang.reflect.Method;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.config.AgentRuntimeProperties;
 import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
+import com.xiaobao.babycompanion.dto.agent.AgentEffectDecision;
 import com.xiaobao.babycompanion.dto.agent.AgentGrowthEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentExpense;
 import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
+import com.xiaobao.babycompanion.service.ExpensePersistenceResult;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekMessage;
 import org.junit.jupiter.api.Test;
@@ -253,6 +257,141 @@ class AgentRuntimeTests {
         assertThat(response.aiText()).doesNotContain("实际花了多少钱");
         assertThat(response.effectDecisions()).hasSize(1);
         assertThat(response.effectDecisions().get(0).source()).isEqualTo("expense-recognition");
+    }
+
+    @Test
+    void savedExpensePersistenceReplacesConfirmationCopyAndKeepsAutoDecisionOnly() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String userMessage = "帮我识别这几张小票花费并记到账本";
+        ObjectNode savedExpense = expensePayload(objectMapper, "奶粉", 268.0, "saved");
+        AgentChatResponse modelResponse = new AgentChatResponse(
+                "这笔支出实际花了多少钱？确认金额后我再帮你记到账本里。",
+                List.of("记账"),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("expense-recognition"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        AgentChatResponse response = agentRuntime.withSafetyAlertsAndDecisions(
+                modelResponse,
+                userMessage,
+                new RecordSignalExtractor(objectMapper).extract(userMessage),
+                new AgentPlan("record", List.of("expense"), List.of("2026-05-16"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),
+                null,
+                List.of(new AgentEffectDecision(
+                        "decision-saved",
+                        "auto",
+                        "expenseItem",
+                        savedExpense,
+                        0.96,
+                        "支出已自动保存到账本。",
+                        "expense-recognition"
+                )),
+                new ExpensePersistenceResult(List.<JsonNode>of(savedExpense), List.of(), List.of(), List.of())
+        );
+
+        assertThat(response.aiText()).contains("已记录 1 笔支出到账本");
+        assertThat(response.aiText()).doesNotContain("实际花了多少钱");
+        assertThat(response.effectDecisions()).hasSize(1);
+        assertThat(response.effectDecisions().get(0).mode()).isEqualTo("auto");
+        assertThat(response.effectDecisions()).noneMatch((decision) -> "pending".equals(decision.mode()));
+    }
+
+    @Test
+    void readOnlyExpenseRecognitionDoesNotCreatePendingExpenseDecision() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String userMessage = "帮我识别这张小票花费";
+        ObjectNode readOnlyExpense = expensePayload(objectMapper, "奶粉", 268.0, "readOnly");
+        AgentChatResponse modelResponse = new AgentChatResponse(
+                "这笔支出实际花了多少钱？确认金额后我再帮你记到账本里。",
+                List.of("记账"),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(new AgentExpense(
+                        null,
+                        "奶粉",
+                        268.0,
+                        "CNY",
+                        "formula",
+                        "2026-05-16",
+                        null,
+                        null,
+                        "京东",
+                        "订单截图识别",
+                        null,
+                        null,
+                        List.of("attachment-1"),
+                        "agent",
+                        null,
+                        null
+                )),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("expense-recognition"),
+                "trace",
+                "model",
+                "request"
+        );
+
+        AgentChatResponse response = agentRuntime.withSafetyAlertsAndDecisions(
+                modelResponse,
+                userMessage,
+                new RecordSignalExtractor(objectMapper).extract(userMessage),
+                new AgentPlan("question", List.of("expense"), List.of("2026-05-16"), List.of("profile"), List.of(), List.of("none"), null),
+                null,
+                List.of(),
+                new ExpensePersistenceResult(List.of(), List.of(), List.of(), List.<JsonNode>of(readOnlyExpense))
+        );
+
+        assertThat(response.aiText()).contains("只是识别，没有写入账本");
+        assertThat(response.effectDecisions()).noneMatch((decision) -> "expenseItem".equals(decision.type()));
+    }
+
+    @Test
+    void expensePersistenceFallbackStillReturnsSavedFactsWhenFinalModelFails() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String userMessage = "帮我识别这几张小票花费并记到账本";
+        ObjectNode savedExpense = expensePayload(objectMapper, "奶粉", 268.0, "saved");
+        AgentEffectDecision autoDecision = new AgentEffectDecision(
+                "decision-saved",
+                "auto",
+                "expenseItem",
+                savedExpense,
+                0.96,
+                "支出已自动保存到账本。",
+                "expense-recognition"
+        );
+
+        AgentChatResponse response = agentRuntime.expensePersistenceFallbackResponse(
+                userMessage,
+                new RecordSignalExtractor(objectMapper).extract(userMessage),
+                new AgentPlan("record", List.of("expense"), List.of("2026-05-16"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),
+                null,
+                List.of(autoDecision),
+                new ExpensePersistenceResult(List.<JsonNode>of(savedExpense), List.of(), List.of(), List.of()),
+                List.of("expense-recognition"),
+                "trace",
+                "model",
+                "request",
+                List.of()
+        );
+
+        assertThat(response).isNotNull();
+        assertThat(response.aiText()).contains("已记录 1 笔支出到账本");
+        assertThat(response.effectDecisions()).hasSize(1);
+        assertThat(response.effectDecisions().get(0).mode()).isEqualTo("auto");
     }
 
     @Test
@@ -515,5 +654,20 @@ class AgentRuntimeTests {
         Method method = runtimeModel.getClass().getDeclaredMethod(accessor);
         method.setAccessible(true);
         return method.invoke(runtimeModel);
+    }
+
+    private ObjectNode expensePayload(ObjectMapper objectMapper, String title, double amount, String persistenceStatus) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("title", title);
+        payload.put("amount", amount);
+        payload.put("currency", "CNY");
+        payload.put("category", "formula");
+        payload.put("date", "2026-05-16");
+        payload.put("merchant", "京东");
+        payload.put("note", "订单截图识别");
+        payload.putArray("attachmentIds").add("attachment-1");
+        payload.put("source", "agent");
+        payload.put("persistenceStatus", persistenceStatus);
+        return payload;
     }
 }

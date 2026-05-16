@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -59,6 +60,9 @@ public class AppStateService {
     private static final String PROFILE_ID = "default";
     private static final Set<String> ATTACHMENT_KINDS = Set.of("image", "video", "audio");
     private static final List<String> SHARED_ATTACHMENT_OWNER_TYPES = List.of("profile", "growth", "care", "album", "expense");
+    private static final Set<String> EXPENSE_CATEGORIES = Set.of(
+            "formula", "diaper", "food", "clothing", "toy", "health", "vaccine", "daily", "education", "other"
+    );
 
     private final BabyProfileRecordService profileService;
     private final ChatMessageRecordService messageService;
@@ -278,9 +282,73 @@ public class AppStateService {
         saveCareLogPatch(effect.get("careLogPatch"), now, familyId, userId);
         saveEffectArray(reminderService, ReminderRecord::new, effect.get("reminders"), "reminder", now, familyId, userId);
         saveEffectArray(memoryService, MemoryItemRecord::new, effect.get("memories"), "memory", now, familyId, userId);
-        saveEffectArray(expenseItemService, ExpenseItemRecord::new, effect.get("expenses"), "expense", now, familyId, userId);
+        persistAgentExpenseCandidates(toList(effect.get("expenses")), true, now, familyId, userId);
         pendingEffectService.remove(privateQuery(PendingEffectRecord.class, familyId, userId).eq("id", id));
         return readForUser(familyId, userId);
+    }
+
+    @Transactional
+    public ExpensePersistenceResult persistAgentExpenseCandidates(List<JsonNode> candidates, boolean shouldSave) {
+        AuthPrincipal principal = currentUser.requirePrincipal();
+        return persistAgentExpenseCandidates(candidates, shouldSave, Instant.now().toString(), principal.familyId(), principal.userId());
+    }
+
+    private ExpensePersistenceResult persistAgentExpenseCandidates(
+            List<JsonNode> candidates,
+            boolean shouldSave,
+            String now,
+            String familyId,
+            String userId
+    ) {
+        if (candidates == null || candidates.isEmpty()) return ExpensePersistenceResult.empty();
+
+        List<JsonNode> saved = new ArrayList<>();
+        List<JsonNode> duplicates = new ArrayList<>();
+        List<JsonNode> needsInput = new ArrayList<>();
+        List<JsonNode> readOnly = new ArrayList<>();
+        Set<String> existingKeys = existingExpenseDedupeKeys(familyId);
+        Set<String> batchKeys = new LinkedHashSet<>();
+
+        int index = 0;
+        for (JsonNode candidate : candidates) {
+            if (candidate == null || candidate.isNull()) continue;
+            ObjectNode payload = expensePayload(candidate);
+            normalizeExpenseCategory(payload);
+            String dedupeKey = expenseDedupeKey(payload);
+            if (StringUtils.hasText(dedupeKey)) {
+                payload.put("sourceExpenseKey", dedupeKey);
+                payload.put("dedupeKey", dedupeKey);
+            }
+
+            if (!completeExpensePayload(payload)) {
+                payload.put("persistenceStatus", "needsInput");
+                needsInput.add(payload);
+                index += 1;
+                continue;
+            }
+            if (!shouldSave) {
+                payload.put("persistenceStatus", "readOnly");
+                readOnly.add(payload);
+                index += 1;
+                continue;
+            }
+            if (StringUtils.hasText(dedupeKey) && (!batchKeys.add(dedupeKey) || existingKeys.contains(dedupeKey))) {
+                payload.put("persistenceStatus", "duplicate");
+                duplicates.add(payload);
+                index += 1;
+                continue;
+            }
+
+            String id = recordId(payload, "expense", index, true);
+            ObjectNode storedPayload = mutable(payload, "expense", id, familyId, userId);
+            storedPayload.put("persistenceStatus", "saved");
+            ExpenseItemRecord existing = expenseItemService.getOne(new QueryWrapper<ExpenseItemRecord>().eq("family_id", familyId).eq("id", id), false);
+            expenseItemService.saveOrUpdate(preserveCreator(record(ExpenseItemRecord::new, id, storedPayload, "expense", sortKey(storedPayload, "expense", index), now, familyId, userId), existing));
+            saved.add(storedPayload);
+            if (StringUtils.hasText(dedupeKey)) existingKeys.add(dedupeKey);
+            index += 1;
+        }
+        return new ExpensePersistenceResult(saved, duplicates, needsInput, readOnly);
     }
 
     @Transactional
@@ -732,6 +800,116 @@ public class AppStateService {
         List<JsonNode> items = new ArrayList<>();
         array.forEach((item) -> items.add(item));
         return items;
+    }
+
+    private List<JsonNode> toList(JsonNode node) {
+        return node instanceof ArrayNode array ? toList(array) : List.of();
+    }
+
+    private ObjectNode expensePayload(JsonNode node) {
+        JsonNode copy = node == null ? objectMapper.createObjectNode() : node.deepCopy();
+        if (copy instanceof ObjectNode object) return object;
+        ObjectNode object = objectMapper.createObjectNode();
+        object.set("value", copy);
+        return object;
+    }
+
+    private boolean completeExpensePayload(ObjectNode payload) {
+        return StringUtils.hasText(text(payload, "title", ""))
+                && expenseAmount(payload) > 0
+                && StringUtils.hasText(text(payload, "date", ""));
+    }
+
+    private void normalizeExpenseCategory(ObjectNode payload) {
+        String category = text(payload, "category", "");
+        if (!EXPENSE_CATEGORIES.contains(category)) {
+            category = "";
+        }
+        if (!StringUtils.hasText(category) || "other".equals(category)) {
+            String inferred = expenseCategoryFromText(
+                    text(payload, "title", "")
+                            + " "
+                            + text(payload, "note", "")
+                            + " "
+                            + text(payload, "brand", "")
+                            + " "
+                            + text(payload, "spec", "")
+            );
+            category = StringUtils.hasText(inferred) ? inferred : "other";
+        }
+        payload.put("category", category);
+    }
+
+    private String expenseCategoryFromText(String raw) {
+        String value = raw == null ? "" : raw;
+        if (value.matches(".*(奶粉|配方奶|水奶|液态奶).*")) return "formula";
+        if (value.matches(".*(尿裤|纸尿裤|拉拉裤|尿不湿).*")) return "diaper";
+        if (value.matches(".*(辅食|米粉|果泥|肉泥|零食).*")) return "food";
+        if (value.matches(".*(月子鞋|月子服|孕妇装|哺乳衣|衣服|裤子|帽子|袜|鞋|围兜|睡袋).*")) return "clothing";
+        if (value.matches(".*(玩具|绘本|摇铃|积木).*")) return "toy";
+        if (value.matches(".*(疫苗|接种).*")) return "vaccine";
+        if (value.matches(".*(体检|挂号|医院|药|护理|退烧|体温计|检查).*")) return "health";
+        if (value.matches(".*(摇奶器|恒温壶|奶瓶|奶瓶刷|消毒柜|消毒器|温奶器|吸奶器|湿巾|棉柔巾|洗护|沐浴|润肤|日用|洗衣机).*")) return "daily";
+        if (value.matches(".*(早教|课程|摄影|游泳|娱乐).*")) return "education";
+        return "other";
+    }
+
+    private Set<String> existingExpenseDedupeKeys(String familyId) {
+        Set<String> keys = new LinkedHashSet<>();
+        for (ExpenseItemRecord record : expenseItemService.list(familyQuery(ExpenseItemRecord.class, familyId))) {
+            JsonNode payload = parse(record.getPayloadJson());
+            addKey(keys, text(payload, "sourceExpenseKey", ""));
+            addKey(keys, text(payload, "dedupeKey", ""));
+            if (payload instanceof ObjectNode object) addKey(keys, expenseDedupeKey(object));
+        }
+        return keys;
+    }
+
+    private void addKey(Set<String> keys, String key) {
+        if (StringUtils.hasText(key)) keys.add(key);
+    }
+
+    private String expenseDedupeKey(ObjectNode payload) {
+        String date = text(payload, "date", "");
+        double amount = expenseAmount(payload);
+        String title = normalizedExpenseText(text(payload, "title", ""));
+        String merchant = normalizedExpenseText(text(payload, "merchant", ""));
+        String attachments = normalizedAttachmentIds(payload.get("attachmentIds"));
+        if (!StringUtils.hasText(date) || amount <= 0 || !StringUtils.hasText(title)) return "";
+        return String.join("|", date, String.format(Locale.ROOT, "%.2f", Math.round(amount * 100.0) / 100.0), title, merchant, attachments);
+    }
+
+    private String normalizedAttachmentIds(JsonNode node) {
+        if (!(node instanceof ArrayNode array)) return "";
+        List<String> values = new ArrayList<>();
+        for (JsonNode item : array) {
+            if (item != null && item.isTextual() && StringUtils.hasText(item.asText())) {
+                values.add(item.asText().trim());
+            }
+        }
+        values.sort(String::compareTo);
+        return String.join(",", values);
+    }
+
+    private String normalizedExpenseText(String value) {
+        if (!StringUtils.hasText(value)) return "";
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("[\\s　,，.。:：;；、/\\\\()（）\\[\\]【】\"'“”‘’]+", "")
+                .trim();
+    }
+
+    private double expenseAmount(JsonNode payload) {
+        JsonNode value = payload == null ? null : payload.get("amount");
+        if (value == null || value.isNull()) return 0;
+        if (value.isNumber()) return value.asDouble();
+        if (value.isTextual()) {
+            try {
+                return Double.parseDouble(value.asText().trim());
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private JsonNode withId(JsonNode item, String id) {

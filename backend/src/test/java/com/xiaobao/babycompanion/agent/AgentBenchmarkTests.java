@@ -340,6 +340,39 @@ class AgentBenchmarkTests {
     }
 
     @Test
+    void benchmarkSavedExpenseRecognitionDoesNotBecomeConfirmAgainAsk() {
+        String message = "帮我识别这几张小票花费并记到账本";
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("title", "奶粉");
+        payload.put("amount", 268.0);
+        payload.put("currency", "CNY");
+        payload.put("category", "formula");
+        payload.put("date", "2026-05-13");
+        payload.putArray("attachmentIds").add("attachment-1");
+        payload.put("persistenceStatus", "saved");
+
+        var decisions = policy.decide(
+                response(null, List.of(), List.of(), List.of(), List.of()),
+                extractor.extract(message),
+                null,
+                message,
+                List.of(new AgentEffectDecision(
+                        "decision-saved",
+                        "auto",
+                        "expenseItem",
+                        payload,
+                        0.96,
+                        "支出已自动保存到账本。",
+                        "expense-recognition"
+                ))
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).payload().path("persistenceStatus").asText()).isEqualTo("saved");
+    }
+
+    @Test
     void benchmarkSkillDisclosureOnlyLoadsCareGuideWhenNeeded() {
         SkillDisclosureResult recordOnly = skillDisclosureService.disclose(
                 new AgentPlan("record", List.of("feeding"), List.of("2026-05-13"), List.of("profile", "careHistory"), List.of(), List.of("none"), null),

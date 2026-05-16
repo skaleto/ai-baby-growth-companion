@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLog;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLogEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
+import com.xiaobao.babycompanion.dto.agent.AgentEffectDecision;
 import com.xiaobao.babycompanion.dto.agent.AgentExpense;
 import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.dto.agent.AgentReminder;
@@ -841,6 +842,39 @@ class EffectPolicyTests {
         assertThat(decisions.get(0).type()).isEqualTo("expenseItem");
         assertThat(decisions.get(0).payload().path("title").asText()).isEqualTo("奶粉");
         assertThat(decisions.get(0).payload().path("amount").asDouble()).isEqualTo(268);
+    }
+
+    @Test
+    void autoSavedExpenseSkillCandidateSuppressesRuleAmountQuestion() {
+        String message = "帮我识别这几张小票花费并记到账本";
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("title", "奶粉");
+        payload.put("amount", 268.0);
+        payload.put("currency", "CNY");
+        payload.put("category", "formula");
+        payload.put("date", "2026-05-16");
+        payload.putArray("attachmentIds").add("attachment-1");
+        payload.put("persistenceStatus", "saved");
+
+        var decisions = policy.decide(
+                response((AgentCareLog) null, List.of()),
+                extractor.extract(message),
+                null,
+                message,
+                List.of(new AgentEffectDecision(
+                        "decision-saved",
+                        "auto",
+                        "expenseItem",
+                        payload,
+                        0.96,
+                        "支出已自动保存到账本。",
+                        "expense-recognition"
+                ))
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).payload().path("persistenceStatus").asText()).isEqualTo("saved");
     }
 
     @Test

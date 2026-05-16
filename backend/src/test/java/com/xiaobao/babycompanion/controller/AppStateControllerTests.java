@@ -674,6 +674,82 @@ class AppStateControllerTests {
     }
 
     @Test
+    void confirmingDuplicateExpenseAcrossPendingEffectsSavesOnlyOnce() throws Exception {
+        String pendingExpense = """
+                {
+                  "status": "pending",
+                  "createdAt": "2026-05-16T09:21:42Z",
+                  "expenses": [
+                    {
+                      "id": null,
+                      "title": "a2紫白金奶粉",
+                      "amount": 97.1,
+                      "currency": "CNY",
+                      "category": "formula",
+                      "date": "2026-03-18",
+                      "merchant": "a2海外旗舰店",
+                      "attachmentIds": ["attachment-dup"],
+                      "source": "agent"
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(put("/api/app/state/pendingEffects/effect-a")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(pendingExpense.replaceFirst("\\{", "{\"id\":\"effect-a\",")))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/app/state/pendingEffects/effect-b")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(pendingExpense.replaceFirst("\\{", "{\"id\":\"effect-b\",")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/app/state/pending-effects/effect-a/confirm")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.expenses.length()").value(1));
+        mockMvc.perform(post("/api/app/state/pending-effects/effect-b/confirm")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.expenses.length()").value(1))
+                .andExpect(jsonPath("$.state.expenses[0].title").value("a2紫白金奶粉"));
+    }
+
+    @Test
+    void confirmingPendingExpenseInfersCategoryWithoutBlocking() throws Exception {
+        mockMvc.perform(put("/api/app/state/pendingEffects/effect-category")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "effect-category",
+                                  "status": "pending",
+                                  "createdAt": "2026-05-16T09:21:42Z",
+                                  "expenses": [
+                                    {
+                                      "id": null,
+                                      "title": "月子鞋",
+                                      "amount": 89.9,
+                                      "currency": "CNY",
+                                      "category": "",
+                                      "date": "2026-03-18",
+                                      "source": "agent"
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/app/state/pending-effects/effect-category/confirm")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.expenses.length()").value(1))
+                .andExpect(jsonPath("$.state.expenses[0].category").value("clothing"));
+    }
+
+    @Test
     void importsDuplicateMemoryIdsWithoutPrimaryKeyConflict() throws Exception {
         mockMvc.perform(post("/api/app/state/import")
                         .header(HttpHeaders.AUTHORIZATION, bearer())

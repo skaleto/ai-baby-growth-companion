@@ -13,6 +13,44 @@
 
 ## Session Log
 
+### Session 2026-05-16 Expense Agent Auto Save Interaction Contract
+
+- Goal: Implement the grilled interaction contract for expense recognition: complete recognized expenses should be saved directly when the user asks to record them, duplicate confirms must be idempotent, category uncertainty must not block recording, and final AI copy must reflect actual saved/duplicate/needs-input state instead of asking again.
+- Completed:
+  - Added an OpenSpec change at `openspec/changes/improve-expense-agent-recording-flow` covering the new expense Agent recording contract.
+  - Added `ExpensePersistenceResult` and backend persistence flow for saved, duplicate, needs-input, and read-only recognized expense candidates.
+  - Auto-save complete expense-recognition candidates when the user has clear recording intent; preserve recognition-only requests as read-only.
+  - Added stable expense dedupe keys from date, amount, normalized title/merchant, and attachment ids; pending-effect confirmation now uses the same dedupe path so two confirm cards or double confirms cannot insert duplicate expense rows.
+  - Extended expense category inference for `月子鞋/月子服` and feeding appliance terms such as `摇奶器/恒温壶/奶瓶/消毒器/温奶器`, with `other` fallback instead of category confirmation.
+  - Fed persistence facts into final Agent composition/postprocessing so saved rows show as saved, duplicates are summarized, and stale “确认金额后再记账” copy is replaced.
+  - Added a deterministic fallback response when expense persistence already happened but the final model reply fails, so the user still sees saved/duplicate/needs-input facts instead of a generic AI failure.
+  - Updated frontend chat handling so auto-saved expenses refresh local ledger state without creating a pending confirmation card, and confirmation buttons enter a `保存中` disabled state to prevent repeated taps.
+  - Left existing production duplicate rows untouched per user direction; users can delete unwanted duplicates manually from ledger details.
+  - Published backend code plus OTA `0.1.0-20260516194139` with message `优化支出识别自动入账`.
+- Verification run:
+  - `mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests,AgentRuntimeTests,EffectPolicyTests,AppStateControllerTests,ExpenseRecognitionSkillTests test`
+  - `npm run test:agent-benchmark`
+  - `npm run build`
+  - `npm run verify:frontend`
+  - `openspec status --change improve-expense-agent-recording-flow`
+  - `openspec validate improve-expense-agent-recording-flow --strict`
+  - `MOBILE_UPDATE_MESSAGE='优化支出识别自动入账' MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `MOBILE_UPDATE_OSS_SSH_TARGET=ai-baby-aliyun SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun scripts/upload-mobile-update-oss.sh`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - `SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`, OTA check, OSS signed URL download checksum probe, and up-to-date probe.
+- Evidence:
+  - Targeted backend tests passed: 95 tests, 0 failures.
+  - Agent benchmark passed: 21 tests, 0 failures, including `benchmarkSavedExpenseRecognitionDoesNotBecomeConfirmAgainAsk`.
+  - Frontend smoke passed across desktop and six mobile viewports.
+  - OpenSpec change `improve-expense-agent-recording-flow` is valid and has all artifacts complete.
+  - Cloud health returned `ok`.
+  - Cloud OTA check returns version `0.1.0-20260516194139`; downloaded bundle size was `2640408` bytes and SHA-256 matched manifest checksum `2999bfa53dc6806f5262b9fcadd39aefeb4406e6055c876552d0b75bb16c08d2`.
+  - Up-to-date probe using `currentBundleVersion=0.1.0-20260516194139` returned `updateAvailable=false`.
+  - Backend-only redeploy after fallback handling returned cloud health `ok`; OTA up-to-date probe still returned `updateAvailable=false`.
+- Known risks:
+  - Existing production duplicate expense rows were intentionally not cleaned up.
+
 ### Session 2026-05-16 Expense Ledger Id Collision Fix
 
 - Goal: Investigate user `13777892890`'s latest Agent expense recording flow, explain why the prior hospitalization expense was overwritten, and ship guards against repeat ledger overwrites.

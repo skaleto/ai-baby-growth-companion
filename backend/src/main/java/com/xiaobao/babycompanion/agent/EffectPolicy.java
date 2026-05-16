@@ -57,7 +57,7 @@ public class EffectPolicy {
         List<AgentEffectDecision> expenseSkillCandidates = listOrEmpty(skillCandidates).stream()
                 .filter(this::validExpenseSkillCandidate)
                 .toList();
-        boolean hasSkillPendingExpense = expenseSkillCandidates.stream().anyMatch((decision) -> "pending".equals(decision.mode()));
+        boolean hasSkillExpenseCandidate = !expenseSkillCandidates.isEmpty();
         List<AgentEffectDecision> modelExpenseDecisions = listOrEmpty(response.expenses()).stream()
                 .map((expense) -> expenseDecision(expense, signals))
                 .filter((decision) -> decision != null)
@@ -66,14 +66,14 @@ public class EffectPolicy {
         boolean deferPreviousExpenseReference = "ask".equals(expenseDecision == null ? "" : expenseDecision.mode())
                 && referencesPreviousExpenseEvidence(userMessage);
         if (expenseDecision != null
-                && !("ask".equals(expenseDecision.mode()) && (hasModelPendingExpense || hasSkillPendingExpense))
+                && !("ask".equals(expenseDecision.mode()) && (hasModelPendingExpense || hasSkillExpenseCandidate))
                 && !deferPreviousExpenseReference) {
             decisions.add(expenseDecision);
         }
         boolean expenseAlreadyCapturedByRule = "pending".equals(expenseDecision == null ? "" : expenseDecision.mode());
         if (!expenseAlreadyCapturedByRule) {
             decisions.addAll(expenseSkillCandidates);
-            if (!hasSkillPendingExpense) {
+            if (!hasSkillExpenseCandidate) {
                 decisions.addAll(modelExpenseDecisions);
             }
         }
@@ -117,7 +117,7 @@ public class EffectPolicy {
     private boolean validExpenseSkillCandidate(AgentEffectDecision decision) {
         if (decision == null) return false;
         if (!"expenseItem".equals(decision.type())) return false;
-        if (!"pending".equals(decision.mode()) && !"ask".equals(decision.mode())) return false;
+        if (!"pending".equals(decision.mode()) && !"ask".equals(decision.mode()) && !"auto".equals(decision.mode())) return false;
         JsonNode payload = decision.payload();
         if (!"pending".equals(decision.mode())) return payload != null && payload.isObject();
         return payload != null
@@ -180,17 +180,16 @@ public class EffectPolicy {
         if (expense == null) return null;
         boolean hasTitle = StringUtils.hasText(expense.title());
         boolean hasAmount = expense.amount() != null && expense.amount() > 0;
-        boolean hasCategory = StringUtils.hasText(expense.category());
+        String category = StringUtils.hasText(expense.category()) ? expense.category() : "other";
         String date = StringUtils.hasText(expense.date())
                 ? expense.date()
                 : signals.targetDates().stream().findFirst().orElse("");
-        if (!hasTitle || !hasAmount || !hasCategory || !StringUtils.hasText(date)) {
+        if (!hasTitle || !hasAmount || !StringUtils.hasText(date)) {
             ObjectNode ask = objectMapper.createObjectNode();
             ask.put("topic", "expense");
             ArrayNode missing = objectMapper.createArrayNode();
             if (!hasTitle) missing.add("买了什么或花在什么上");
             if (!hasAmount) missing.add("实际花了多少钱");
-            if (!hasCategory) missing.add("支出分类");
             if (!StringUtils.hasText(date)) missing.add("日期");
             ask.set("missingFields", missing);
             ask.put("question", "这笔账还缺少" + missingText(missing) + "，补充后我再整理成待确认草稿。");
@@ -202,7 +201,7 @@ public class EffectPolicy {
         payload.put("title", expense.title().trim());
         payload.put("amount", roundMoney(expense.amount()));
         payload.put("currency", StringUtils.hasText(expense.currency()) ? expense.currency() : "CNY");
-        payload.put("category", expense.category());
+        payload.put("category", category);
         payload.put("date", date);
         if (expense.quantity() == null) payload.putNull("quantity");
         else payload.put("quantity", expense.quantity());

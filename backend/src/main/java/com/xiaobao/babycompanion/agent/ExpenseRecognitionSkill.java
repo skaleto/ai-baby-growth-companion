@@ -461,10 +461,11 @@ public class ExpenseRecognitionSkill {
         if (text.matches(".*(奶粉|配方奶|水奶|液态奶).*")) return "formula";
         if (text.matches(".*(尿裤|纸尿裤|拉拉裤|尿不湿).*")) return "diaper";
         if (text.matches(".*(辅食|米粉|果泥|肉泥|零食).*")) return "food";
-        if (text.matches(".*(衣服|裤子|帽子|袜|鞋|围兜|睡袋).*")) return "clothing";
+        if (text.matches(".*(月子鞋|月子服|孕妇装|哺乳衣|衣服|裤子|帽子|袜|鞋|围兜|睡袋).*")) return "clothing";
         if (text.matches(".*(玩具|绘本|摇铃|积木).*")) return "toy";
-        if (text.matches(".*(体检|疫苗|挂号|医院|药|护理|退烧|体温计).*")) return "health";
-        if (text.matches(".*(湿巾|棉柔巾|洗护|沐浴|润肤|日用).*")) return "daily";
+        if (text.matches(".*(疫苗|接种).*")) return "vaccine";
+        if (text.matches(".*(体检|挂号|医院|药|护理|退烧|体温计|检查).*")) return "health";
+        if (text.matches(".*(摇奶器|恒温壶|奶瓶|奶瓶刷|消毒柜|消毒器|温奶器|吸奶器|湿巾|棉柔巾|洗护|沐浴|润肤|日用|洗衣机).*")) return "daily";
         if (text.matches(".*(早教|课程|摄影|游泳|娱乐).*")) return "education";
         return "other";
     }

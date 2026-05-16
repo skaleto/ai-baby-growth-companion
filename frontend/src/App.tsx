@@ -2418,6 +2418,7 @@ function App() {
   const [compressionStatus, setCompressionStatus] = useState<CompressionStatus>("idle");
   const [editingPendingId, setEditingPendingId] = useState("");
   const [pendingDraft, setPendingDraft] = useState<PendingEffectDraft | null>(null);
+  const [confirmingPendingEffectIds, setConfirmingPendingEffectIds] = useState<string[]>([]);
   const [autoRecordUndos, setAutoRecordUndos] = useState<AutoRecordUndo[]>([]);
   const [isCareLogEditing, setIsCareLogEditing] = useState(false);
   const [careLogDraft, setCareLogDraft] = useState({
@@ -4777,6 +4778,7 @@ function App() {
       let pendingExpenses: ExpenseItem[] = [];
       const autoCareLogPatches: Partial<CareLog>[] = [];
       let autoReminderCandidates: Reminder[] = [];
+      let autoSavedExpenses: ExpenseItem[] = [];
 
       if (hasServerDecisions) {
         result.effectDecisions.forEach((decision, index) => {
@@ -4804,7 +4806,8 @@ function App() {
           }
           if (decision.type === "expenseItem") {
             const expense = normalizeExpenseItem(decision.payload as Partial<ExpenseItem>, index);
-            if (decision.mode === "auto" || decision.mode === "pending") pendingExpenses = [...pendingExpenses, expense];
+            if (decision.mode === "auto") autoSavedExpenses = [...autoSavedExpenses, expense];
+            if (decision.mode === "pending") pendingExpenses = [...pendingExpenses, expense];
           }
         });
       } else if (isAutoRecordableCareLog(result.careLogPatch, result.safetyAlerts) && result.careLogPatch) {
@@ -4847,7 +4850,14 @@ function App() {
           return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
         });
       }
-      if (autoUndos.length || autoScheduledReminders.length) hapticSuccess();
+      if (autoSavedExpenses.length) {
+        setExpenses((current) => {
+          const byId = new Map(current.map((expense) => [expense.id, expense]));
+          autoSavedExpenses.forEach((expense) => byId.set(expense.id, expense));
+          return Array.from(byId.values()).sort((left, right) => left.date.localeCompare(right.date) || left.createdAt.localeCompare(right.createdAt));
+        });
+      }
+      if (autoUndos.length || autoScheduledReminders.length || autoSavedExpenses.length) hapticSuccess();
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
       );
@@ -5294,6 +5304,8 @@ function App() {
 
   const confirmPendingEffect = async (effect: PendingEffect) => {
     if (!canCaregive) return;
+    if (confirmingPendingEffectIds.includes(effect.id)) return;
+    setConfirmingPendingEffectIds((current) => (current.includes(effect.id) ? current : [...current, effect.id]));
     try {
       const response = await confirmPendingEffectOnServer(effect.id);
       applyAppSnapshot(response.state);
@@ -5307,6 +5319,8 @@ function App() {
       setPendingDraft(null);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "确认记录失败，请稍后再试。");
+    } finally {
+      setConfirmingPendingEffectIds((current) => current.filter((id) => id !== effect.id));
     }
   };
 
@@ -6414,7 +6428,9 @@ function App() {
                   <div className="pending-effect-list">
                     {pendingEffects
                       .filter((effect) => effect.messageId === message.id)
-                      .map((effect) => (
+                      .map((effect) => {
+                        const isConfirmingEffect = confirmingPendingEffectIds.includes(effect.id);
+                        return (
                         <section className="pending-effect-card" key={effect.id}>
                           <div className="pending-effect-head">
                             <div>
@@ -6729,17 +6745,18 @@ function App() {
                             )}
                             {editingPendingId === effect.id ? null : (
                               <>
-                                <button type="button" onClick={() => void confirmPendingEffect(effect)}>
-                                  确认
+                                <button type="button" disabled={isConfirmingEffect} onClick={() => void confirmPendingEffect(effect)}>
+                                  {isConfirmingEffect ? "保存中" : "确认"}
                                 </button>
-                                <button type="button" className="quiet" onClick={() => void discardPendingEffect(effect)}>
+                                <button type="button" className="quiet" disabled={isConfirmingEffect} onClick={() => void discardPendingEffect(effect)}>
                                   丢弃
                                 </button>
                               </>
                             )}
                           </div>
                         </section>
-                      ))}
+                        );
+                      })}
                   </div>
                 ) : null}
               </article>

@@ -55,7 +55,8 @@
         "2026-05-16 npm run test:agent-benchmark passed after adding automatic multi-image batching; expense-image no-web-search coverage remained passing.",
         "2026-05-16 npm run test:agent-benchmark passed after preserving model text during rule clarifications and deferring previous-expense retry asks.",
         "2026-05-16 npm run test:agent-benchmark passed with 20 tests after adding executable expense-recognition skill worker coverage.",
-        "2026-05-16 npm run test:agent-benchmark passed with 20 tests after fixing pending expense id collisions, duplicate expense candidates, and redundant amount questions."
+        "2026-05-16 npm run test:agent-benchmark passed with 20 tests after fixing pending expense id collisions, duplicate expense candidates, and redundant amount questions.",
+        "2026-05-16 npm run test:agent-benchmark passed with 21 tests after adding saved expense no-confirm-again coverage."
       ],
       "notes": "New Agent work should add at least one positive and one boundary benchmark case."
     },
@@ -82,7 +83,10 @@
         "2026-05-16 production SQLite /var/lib/ai-baby-growth-companion/baby-companion.sqlite contains agent_run and skill_run tables after deploy.",
         "2026-05-16 mvn -Dtest=AgentRuntimeTests,EffectPolicyTests,AppStateControllerTests test passed: 65 tests, 0 failures after ledger id collision regression coverage.",
         "2026-05-16 mvn test passed: 164 tests, 0 failures after preventing pending expense fallback ids like expense-0 from overwriting existing ledger rows.",
-        "2026-05-16 OTA 0.1.0-20260516173716 published after duplicate expense suppression and ledger id collision fixes; cloud health and OTA checksum probes passed."
+        "2026-05-16 OTA 0.1.0-20260516173716 published after duplicate expense suppression and ledger id collision fixes; cloud health and OTA checksum probes passed.",
+        "2026-05-16 mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests,AgentRuntimeTests,EffectPolicyTests,AppStateControllerTests,ExpenseRecognitionSkillTests test passed: 95 tests, 0 failures after auto-save expense persistence, read-only recognition, duplicate skipping, idempotent pending confirmation, category inference, and persisted-expense final-model-failure fallback coverage.",
+        "2026-05-16 OTA 0.1.0-20260516194139 published after expense Agent auto-save interaction contract; cloud health, OTA check, signed OSS checksum, and up-to-date probes passed.",
+        "2026-05-16 backend-only Aliyun redeploy completed with SYNC_DATA=0 after deterministic persisted-expense fallback handling; /api/health returned ok and OTA up-to-date probe for 0.1.0-20260516194139 returned updateAvailable=false."
       ],
       "notes": "No frontend bundle assets changed, so no OTA was published for this backend-only release. The skill uses the configured expense-recognition model profile, or falls back to Doubao Pro when the final composer model has no vision support."
     },
@@ -109,7 +113,8 @@
         "2026-05-16 npm run verify:frontend passed after adding agent_visual_analysis usage label and batched-analysis timeout copy.",
         "2026-05-16 npm run verify:frontend passed after adding previous expense image retry forwarding.",
         "2026-05-16 npm run verify:frontend passed after backend expense skill status integration; no frontend bundle changes were required.",
-        "2026-05-16 npm run verify:frontend passed after making AI pending expense fallback ids unique in frontend state normalization."
+        "2026-05-16 npm run verify:frontend passed after making AI pending expense fallback ids unique in frontend state normalization.",
+        "2026-05-16 npm run verify:frontend passed after adding auto-saved expense ledger refresh and pending-effect confirm saving state."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -135,7 +140,8 @@
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for previous expense retry and postprocess copy; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516152314.",
         "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for executable expense-recognition skill worker; /api/health returned ok and production SQLite has agent_run / skill_run trace tables.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for ledger id collision and duplicate expense fixes; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516173716.",
-        "2026-05-16 after explicit user approval, production DB was backed up and hospitalization expense expense-restored-hospital-mp2lqef1 was restored with original note and attachmentIds[0]=attachment-mp2lomag-chc0xt."
+        "2026-05-16 after explicit user approval, production DB was backed up and hospitalization expense expense-restored-hospital-mp2lqef1 was restored with original note and attachmentIds[0]=attachment-mp2lomag-chc0xt.",
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for expense Agent auto-save interaction contract; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516194139."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },
@@ -162,7 +168,8 @@
         "2026-05-16 OTA 0.1.0-20260516144004 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2639867 bytes and checksum c677fb3cd5fcc5eac4eeae5492f15113670b528335cad9dc06cb0618c0b433bf.",
         "2026-05-16 OTA 0.1.0-20260516145942 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2639905 bytes and checksum 9f4e5454bd1d9c5e842a69e8981f975b5e757a7d5b339a0678b36a45815d9a98.",
         "2026-05-16 OTA 0.1.0-20260516152314 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640317 bytes and checksum 455a69da31438dc9f37aa6866ab7e8574d668b7b4540ee6e061ef15c41502d44.",
-        "2026-05-16 OTA 0.1.0-20260516173716 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640325 bytes and checksum c8440860c0dc6a45c20b61737a647efd77a89a6e21d3fca3ad941adcfa4ad329."
+        "2026-05-16 OTA 0.1.0-20260516173716 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640325 bytes and checksum c8440860c0dc6a45c20b61737a647efd77a89a6e21d3fca3ad941adcfa4ad329.",
+        "2026-05-16 OTA 0.1.0-20260516194139 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640408 bytes and checksum 2999bfa53dc6806f5262b9fcadd39aefeb4406e6055c876552d0b75bb16c08d2."
       ],
       "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
     },
