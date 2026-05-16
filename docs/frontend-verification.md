@@ -61,6 +61,36 @@ It also captures viewport screenshots and writes a summary so the final handoff 
 
 For modal, drawer, sheet, composer, or form work, treat keyboard open/close as part of the interaction surface. At minimum, focus an input in the changed panel, simulate or exercise keyboard viewport shrink/restore, then confirm the app shell returns to `scrollX=0`, `scrollY=0`, has no horizontal overflow, and no bottom navigation or fixed element blocks the primary action.
 
+## Optional: Vision Review
+
+The smoke script's DOM checks catch structural failures but miss purely visual bugs (overlap, cut-off text, broken alignment that doesn't trigger overflow, etc.). Run the vision review to have Claude inspect each captured screenshot:
+
+```bash
+npm run review:vision
+```
+
+It reads every PNG under `.verification/frontend-smoke/`, asks Claude to flag visual issues, and writes `vision-review.md` + `vision-review.json` next to the screenshots. Exit code is non-zero if any `major` or `broken` issues are found, so it can gate CI.
+
+### Backends
+
+The script auto-detects which backend to use so it works under any driver:
+
+1. **`claude-cli`** — preferred when the local `claude` binary is on `$PATH` and logged in. Uses your Claude Code subscription credit, no API key needed. This is what Claude Code agents get for free.
+2. **`anthropic-api`** — fallback that calls the Anthropic API directly via `@anthropic-ai/sdk`. Requires `ANTHROPIC_API_KEY` and works under any agent (Codex, plain CI, etc.) or a bare Node environment.
+
+If neither is available the script prints an actionable error and exits 2. Pin a backend with `VISION_REVIEW_BACKEND=claude-cli|anthropic-api` to skip auto-detection.
+
+### Knobs (all optional env vars)
+
+- `VISION_REVIEW_BACKEND` — `auto` (default) | `claude-cli` | `anthropic-api`.
+- `VISION_REVIEW_MODEL` — defaults to `haiku` for `claude-cli`, `claude-haiku-4-5-20251001` for `anthropic-api`. Bump to `sonnet` / `claude-sonnet-4-6` for stricter review.
+- `VISION_REVIEW_CONCURRENCY` — defaults to `2` for `claude-cli`, `4` for `anthropic-api`.
+- `VISION_REVIEW_FAIL_ON` — `minor` | `major` | `broken`, defaults to `major`.
+- `CLAUDE_BIN` — path to the `claude` binary, defaults to `claude` on `$PATH`.
+- `ANTHROPIC_API_KEY` — required only for the `anthropic-api` backend.
+
+For cloud E2E artifacts use `npm run review:vision:cloud` (points at `.verification/cloud-feature-e2e/`). Any directory containing PNGs works: `node scripts/vision-review.mjs path/to/dir`.
+
 ## Native Escalation
 
 Browser verification is the default baseline. Escalate beyond it when a change touches native runtime behavior, including:

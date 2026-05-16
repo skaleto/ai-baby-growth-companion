@@ -8,6 +8,8 @@
     "build": "tsc -p frontend/tsconfig.json && vite build --config frontend/vite.config.ts",
     "setup:frontend-smoke": "playwright install chromium",
     "smoke:frontend": "node scripts/frontend-smoke.mjs",
+    "review:vision": "node scripts/vision-review.mjs",
+    "review:vision:cloud": "node scripts/vision-review.mjs .verification/cloud-feature-e2e",
     "test:cloud-e2e": "node scripts/cloud-feature-e2e.mjs",
     "test:agent-benchmark": "node scripts/agent-benchmark.mjs",
     "verify:frontend": "npm run build && npm run smoke:frontend",
@@ -38,6 +40,7 @@
     "vite": "^5.4.11"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "playwright": "^1.60.0"
