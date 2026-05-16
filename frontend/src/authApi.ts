@@ -112,6 +112,17 @@ function apiLogPath(input: RequestInfo | URL) {
   }
 }
 
+export const AUTH_EXPIRED_EVENT = "baby-companion-auth-expired";
+
+function dispatchAuthExpired(reason: "401" | "manual") {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { reason } }));
+  } catch {
+    // Custom events are best-effort; ignore environments without dispatchEvent.
+  }
+}
+
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   const requestId = headers.get(REQUEST_ID_HEADER) || createRequestId();
@@ -126,6 +137,10 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
     const durationMs = Math.round(performance.now() - startedAt);
     const logger = response.ok ? console.info : console.warn;
     logger("[api] <-", { requestId: responseRequestId, method, path, status: response.status, durationMs });
+    if (response.status === 401 && !path.endsWith("/api/auth/login")) {
+      clearAuthToken();
+      dispatchAuthExpired("401");
+    }
     return response;
   } catch (error) {
     console.warn("[api] xx", {
@@ -197,4 +212,16 @@ export async function logoutCurrentUser() {
     headers: authHeaders(),
   }).catch(() => undefined);
   clearAuthToken();
+  dispatchAuthExpired("manual");
+}
+
+export async function refreshAccessToken(): Promise<AuthLoginResponse> {
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/refresh`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error(await parseError(response, "登录已失效，请重新登录。"));
+  const payload = (await response.json()) as AuthLoginResponse;
+  setAuthToken(payload.accessToken);
+  return payload;
 }

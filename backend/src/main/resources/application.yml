@@ -15,6 +15,9 @@ app:
     stream-core-threads: ${APP_AGENT_STREAM_CORE_THREADS:2}
     stream-max-threads: ${APP_AGENT_STREAM_MAX_THREADS:8}
     stream-queue-capacity: ${APP_AGENT_STREAM_QUEUE_CAPACITY:32}
+    guard:
+      per-minute-limit: ${APP_AGENT_GUARD_PER_MINUTE_LIMIT:30}
+      monthly-token-budget: ${APP_AGENT_GUARD_MONTHLY_TOKEN_BUDGET:2000000}
     models:
       planner:
         model: ${APP_AGENT_PLANNER_MODEL:}
@@ -58,7 +61,8 @@ app:
 auth:
   jwt:
     secret-file: ${AUTH_JWT_SECRET_FILE:backend/data/auth/jwt_secret}
-    ttl: ${AUTH_JWT_TTL:30d}
+    ttl: ${AUTH_JWT_TTL:7d}
+    refresh-ttl: ${AUTH_JWT_REFRESH_TTL:30d}
   invite-codes-file: ${AUTH_INVITE_CODES_FILE:backend/data/auth/invite_codes}
   max-login-attempts: ${AUTH_MAX_LOGIN_ATTEMPTS:8}
   login-window: ${AUTH_LOGIN_WINDOW:10m}

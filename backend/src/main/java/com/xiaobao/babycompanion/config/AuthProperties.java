@@ -46,7 +46,8 @@ public class AuthProperties {
 
     public static class Jwt {
         private String secretFile = "backend/data/auth/jwt_secret";
-        private Duration ttl = Duration.ofDays(30);
+        private Duration ttl = Duration.ofDays(7);
+        private Duration refreshTtl = Duration.ofDays(30);
 
         public String getSecretFile() {
             return secretFile;
@@ -62,6 +63,14 @@ public class AuthProperties {
 
         public void setTtl(Duration ttl) {
             this.ttl = ttl;
+        }
+
+        public Duration getRefreshTtl() {
+            return refreshTtl;
+        }
+
+        public void setRefreshTtl(Duration refreshTtl) {
+            this.refreshTtl = refreshTtl;
         }
     }
 }

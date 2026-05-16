@@ -87,6 +87,7 @@ import {
 } from "./appStateApi";
 import { AsrStreamController, runAsrStream } from "./asrApi";
 import {
+  AUTH_EXPIRED_EVENT,
   AuthFamily,
   AuthMember,
   AuthUser,
@@ -97,6 +98,7 @@ import {
   loginWithInvite,
   logoutCurrentUser,
   readCurrentUser,
+  refreshAccessToken,
   updateFamilyName,
 } from "./authApi";
 import {
@@ -205,7 +207,6 @@ import { StorybookScene } from "./components/StorybookScene";
 import {
   AgentChatResponse,
   AgentModelId,
-  AiUsageBreakdown,
   AiUsageSummary,
   AlbumPrompt,
   AlbumItem,
@@ -252,86 +253,37 @@ import sleepIcon from "./assets/storybook-icons/sleep.png";
 import solidIcon from "./assets/storybook-icons/solid.png";
 import temperatureIcon from "./assets/storybook-icons/temperature.png";
 import alarmSceneImage from "./assets/alarm/alarm-scene.png";
-import softBellSoundUrl from "./assets/sounds/xiaobao_bell.wav";
-import softChimeSoundUrl from "./assets/sounds/xiaobao_chime.wav";
+import {
+  aiUsageFeatureLabel,
+  aiUsageModelLabel,
+  aiUsageProviderLabel,
+  formatTokenCount,
+} from "./utils/aiUsage";
+import {
+  AGENT_IMAGE_MAX_EDGE_BATCH,
+  AGENT_IMAGE_MAX_EDGE_SINGLE,
+  AGENT_IMAGE_TARGET_CHARS_LARGE_BATCH,
+  AGENT_IMAGE_TARGET_CHARS_SINGLE,
+  AGENT_IMAGE_TARGET_CHARS_SMALL_BATCH,
+  MAX_AGENT_ATTACHMENT_DATA_URL_CHARS,
+  MAX_ALBUM_PICKER_ATTACHMENTS,
+  MAX_CHAT_ATTACHMENTS,
+  MAX_IMAGE_UPLOAD_BYTES,
+  MAX_VIDEO_UPLOAD_BYTES,
+  VIDEO_THUMBNAIL_TIMEOUT_MS,
+  formatFileSize,
+  maxMediaUploadBytes,
+} from "./utils/uploadLimits";
+import {
+  DAILY_SUMMARY_NOTIFICATION_ID,
+  LEGACY_REMINDER_CHANNELS,
+  REMINDER_CHANNELS,
+  REMINDER_QUICK_ACTIONS,
+  REMINDER_SOUND_FILES,
+  REMINDER_WEB_SOUND_URLS,
+} from "./utils/reminderAssets";
 
-const REMINDER_QUICK_ACTIONS = [
-  { label: "疫苗", prompt: "提醒我带小宝去社区医院打疫苗" },
-  { label: "体检", prompt: "提醒我带小宝去做体检" },
-  { label: "洗澡", prompt: "晚上 8 点提醒我给小宝洗澡" },
-  { label: "喂奶闹钟", prompt: "每 3 小时提醒我喂奶" },
-  { label: "喂药", prompt: "提醒我给小宝喂药，具体用药以医生医嘱为准" },
-  { label: "复诊", prompt: "提醒我带小宝去复诊" },
-  { label: "自定义", prompt: "帮我设置一个照护提醒：" },
-];
-
-const REMINDER_CHANNELS = {
-  schedule: "baby_schedule_v1",
-  soft_chime: "baby_alarm_chime_v2",
-  soft_bell: "baby_alarm_bell_v2",
-} as const;
-
-const LEGACY_REMINDER_CHANNELS = ["baby_alarm_chime_v1", "baby_alarm_bell_v1"];
-
-const REMINDER_SOUND_FILES: Record<ReminderSoundId, string> = {
-  soft_chime: "xiaobao_chime.wav",
-  soft_bell: "xiaobao_bell.wav",
-};
-
-const REMINDER_WEB_SOUND_URLS: Record<ReminderSoundId, string> = {
-  soft_chime: softChimeSoundUrl,
-  soft_bell: softBellSoundUrl,
-};
-
-const DAILY_SUMMARY_NOTIFICATION_ID = 210930;
 const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
-const MAX_IMAGE_UPLOAD_BYTES = 100 * 1024 * 1024;
-const MAX_VIDEO_UPLOAD_BYTES = 300 * 1024 * 1024;
-const MAX_CHAT_ATTACHMENTS = 8;
-const MAX_ALBUM_PICKER_ATTACHMENTS = 20;
-const MAX_AGENT_ATTACHMENT_DATA_URL_CHARS = 8 * 1024 * 1024;
-const AGENT_IMAGE_TARGET_CHARS_SINGLE = 4 * 1024 * 1024;
-const AGENT_IMAGE_TARGET_CHARS_SMALL_BATCH = 2 * 1024 * 1024;
-const AGENT_IMAGE_TARGET_CHARS_LARGE_BATCH = 1400 * 1024;
-const AGENT_IMAGE_MAX_EDGE_SINGLE = 2200;
-const AGENT_IMAGE_MAX_EDGE_BATCH = 1800;
-const VIDEO_THUMBNAIL_TIMEOUT_MS = 8000;
-const AI_USAGE_FEATURE_LABELS: Record<string, string> = {
-  agent_chat: "聊天回复",
-  agent_planner: "理解规划",
-  agent_stream: "流式回复",
-  agent_visual_analysis: "图片分批分析",
-  conversation_summary: "上下文压缩",
-  daily_summary: "今日小结",
-};
-const AI_USAGE_PROVIDER_LABELS: Record<string, string> = {
-  deepseek: "DeepSeek",
-  doubao: "豆包",
-  rules: "规则",
-};
-const tokenFormatter = new Intl.NumberFormat("zh-CN");
-
-const maxMediaUploadBytes = (kind: AttachmentKind) => (kind === "video" ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES);
-
-const formatFileSize = (bytes: number) => {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
-};
-
-const formatTokenCount = (tokens: number | undefined | null) => tokenFormatter.format(Math.max(0, tokens ?? 0));
-
-const aiUsageFeatureLabel = (feature?: string | null) =>
-  feature ? AI_USAGE_FEATURE_LABELS[feature] ?? feature : "未分类";
-
-const aiUsageProviderLabel = (provider?: string | null) =>
-  provider ? AI_USAGE_PROVIDER_LABELS[provider] ?? provider : "未知模型";
-
-const aiUsageModelLabel = (item: AiUsageBreakdown) => {
-  const provider = aiUsageProviderLabel(item.provider);
-  if (!item.model || item.model === "unknown") return provider;
-  return `${provider} · ${item.model}`;
-};
 
 type ComposerMode = "keyboard" | "voice";
 
@@ -3824,6 +3776,29 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleExpired = () => {
+      backendReadyRef.current = false;
+      setAuthUser(null);
+      setAuthFamily(null);
+      setAuthMember(null);
+      setAuthStatus("unauthenticated");
+      setStorageStatus("loading");
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+  }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") return;
+    const refreshIntervalMs = 6 * 60 * 60 * 1000;
+    const interval = window.setInterval(() => {
+      void refreshAccessToken().catch(() => undefined);
+    }, refreshIntervalMs);
+    return () => window.clearInterval(interval);
+  }, [authStatus]);
 
   useEffect(() => {
     if (authStatus !== "authenticated") {

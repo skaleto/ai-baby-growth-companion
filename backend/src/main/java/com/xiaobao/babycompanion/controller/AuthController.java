@@ -64,6 +64,11 @@ public class AuthController {
         return authService.updateFamilyName(currentUser.requirePrincipal(), request.name());
     }
 
+    @PostMapping("/refresh")
+    public AuthLoginResponse refresh() {
+        return authService.refresh(currentUser.requirePrincipal());
+    }
+
     @PostMapping("/logout")
     public void logout() {
         authService.logout(currentUser.requirePrincipal().sessionId());

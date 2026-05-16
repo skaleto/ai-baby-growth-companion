@@ -184,7 +184,7 @@ public class AuthService {
         session.setId("session-" + UUID.randomUUID());
         session.setUserId(user.getId());
         session.setCreatedAt(now.toString());
-        session.setExpiresAt(now.plus(properties.getJwt().getTtl()).toString());
+        session.setExpiresAt(now.plus(properties.getJwt().getRefreshTtl()).toString());
         sessionService.save(session);
 
         return new AuthLoginResponse(
@@ -194,6 +194,35 @@ public class AuthService {
                 toMemberDto(member),
                 appStateService.isOnboardingRequired(family.getId()),
                 firstLocalUser
+        );
+    }
+
+    @Transactional
+    public AuthLoginResponse refresh(AuthPrincipal principal) {
+        AuthSessionRecord session = sessionService.getById(principal.sessionId());
+        if (session == null || StringUtils.hasText(session.getRevokedAt())) {
+            throw new AuthException("登录已失效，请重新登录。");
+        }
+        Instant now = Instant.now();
+        if (now.isAfter(Instant.parse(session.getExpiresAt()))) {
+            throw new AuthException("登录已过期，请重新登录。");
+        }
+        AuthUserRecord user = userService.getById(principal.userId());
+        if (user == null) {
+            throw new AuthException("登录已失效，请重新登录。");
+        }
+        AuthFamilyMemberRecord member = memberByUser(user.getId());
+        AuthFamilyRecord family = member == null ? ensureDefaultFamily() : familyService.getById(member.getFamilyId());
+        if (family == null) {
+            family = ensureDefaultFamily();
+        }
+        return new AuthLoginResponse(
+                jwtService.issue(user.getId(), user.getPhone(), session.getId()),
+                toDto(user),
+                toFamilyDto(family),
+                member == null ? new AuthMemberDto(principal.roleName(), principal.caregiver()) : toMemberDto(member),
+                appStateService.isOnboardingRequired(family.getId()),
+                false
         );
     }
 
