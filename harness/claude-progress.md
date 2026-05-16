@@ -13,6 +13,34 @@
 
 ## Session Log
 
+### Session 2026-05-16 Chat Attachment Tray Layout
+
+- Goal: 修复聊天输入区多图附件上传时过度拥挤的问题，让 8 张图片场景下附件清单可收起/展开，并顺手优化删除叉叉按钮的样式和对齐。
+- Completed:
+  - 将 composer 顶部的横向硬挤附件条改成附件摘要层：超过 2 个素材且无上传中任务时默认收起，只展示数量、类型摘要、上限状态和少量缩略预览。
+  - 展开后显示固定高度的 2 列附件清单，超过高度内部滚动，不再把模型选择、工具按钮和输入框挤乱。
+  - 删除按钮改为 28px 圆形轻按钮，和 30px 缩略图垂直对齐，避免默认方块按钮破坏视觉。
+  - 上传中的素材仍保持展开，让用户能看到进度；上传完成后可自动进入可收起状态。
+  - 发布 OTA `0.1.0-20260516220400`，消息 `优化多图附件上传层样式`，并部署到 Aliyun。
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run build`
+  - `npm run verify:frontend`
+  - Playwright local 8-image attachment tray probe with collapsed and expanded screenshots under `.verification/frontend-smoke/`.
+  - `git diff --check`
+  - `MOBILE_UPDATE_MESSAGE='优化多图附件上传层样式' MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`
+  - `MOBILE_UPDATE_OSS_SSH_TARGET=ai-baby-aliyun SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun scripts/upload-mobile-update-oss.sh`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Cloud `/api/health`, OTA check, signed OSS checksum probe, and up-to-date probe.
+- Evidence:
+  - Frontend verification passed across desktop and six mobile viewports.
+  - Local 8-image tray probe on 390x844 reported collapsed height 181px, expanded list height 134px, 8 rendered items, and no horizontal overflow.
+  - Cloud health returned `ok`.
+  - OTA check returns version `0.1.0-20260516220400`; downloaded bundle size was `2640958` bytes and SHA-256 matched manifest checksum `7b504315d9aa9db266035dcd6636d4509120be6b0e990baccd49253502e340f6`.
+  - Up-to-date probe using `currentBundleVersion=0.1.0-20260516220400` returned `updateAvailable=false`.
+- Known risks:
+  - This is a web/OTA layout change only; no native build was run because no Capacitor/native files changed.
+
 ### Session 2026-05-16 Agent Skill Runtime Contract And Previous Image Retry
 
 - Goal: 回应“不要靠前端正则判断刚才图片”的架构要求，把 Agent 能力统一到“模型选择 skill、后端 runtime 执行 skill 并做结构化兜底”的策略，并修复上一轮支出图片重试路径。

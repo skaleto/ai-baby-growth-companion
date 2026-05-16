@@ -2376,6 +2376,7 @@ function App() {
   const [voiceError, setVoiceError] = useState("");
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isAttachmentTrayExpanded, setIsAttachmentTrayExpanded] = useState(false);
   const [mediaUploadItems, setMediaUploadItems] = useState<MediaUploadItem[]>([]);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const [previewAlbumItem, setPreviewAlbumItem] = useState<AlbumItem | null>(null);
@@ -2539,12 +2540,27 @@ function App() {
   const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
   const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
   const albumUploadItems = mediaUploadItems.filter((item) => item.target === "album");
-  const isUploadingChatMedia = chatUploadItems.some((item) => activeUploadStatuses.includes(item.status));
+  const activeChatUploadItems = chatUploadItems.filter((item) => activeUploadStatuses.includes(item.status));
+  const isUploadingChatMedia = activeChatUploadItems.length > 0;
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
-  const visibleChatAttachmentCount = Math.min(MAX_CHAT_ATTACHMENTS, attachments.length + chatUploadItems.length);
-  const chatAttachmentLimitLabel = visibleChatAttachmentCount >= MAX_CHAT_ATTACHMENTS
-    ? `已添加 ${MAX_CHAT_ATTACHMENTS}/${MAX_CHAT_ATTACHMENTS} 个素材，已达上限`
-    : `已添加 ${visibleChatAttachmentCount}/${MAX_CHAT_ATTACHMENTS} 个素材`;
+  const visibleChatAttachmentCount = Math.min(MAX_CHAT_ATTACHMENTS, attachments.length + activeChatUploadItems.length);
+  const isChatAttachmentLimitReached = visibleChatAttachmentCount >= MAX_CHAT_ATTACHMENTS;
+  const chatAttachmentCountLabel = `已添加 ${visibleChatAttachmentCount}/${MAX_CHAT_ATTACHMENTS} 个素材`;
+  const chatAttachmentLimitLabel = isChatAttachmentLimitReached
+    ? `${chatAttachmentCountLabel}，已达上限`
+    : chatAttachmentCountLabel;
+  const pendingImageCount = attachments.filter((item) => item.kind === "image").length + activeChatUploadItems.filter((item) => item.kind === "image").length;
+  const pendingVideoCount = attachments.filter((item) => item.kind === "video").length + activeChatUploadItems.filter((item) => item.kind === "video").length;
+  const pendingUploadCount = activeChatUploadItems.length;
+  const attachmentTrayMetaLabel = [
+    pendingUploadCount ? `${pendingUploadCount} 个上传中` : "",
+    pendingImageCount ? `${pendingImageCount} 张照片` : "",
+    pendingVideoCount ? `${pendingVideoCount} 个视频` : "",
+  ].filter(Boolean).join(" · ");
+  const canCollapseAttachmentTray = visibleChatAttachmentCount > 2 && pendingUploadCount === 0;
+  const isAttachmentTrayOpen = !canCollapseAttachmentTray || isAttachmentTrayExpanded;
+  const attachmentTrayPreviewItems = attachments.slice(0, 3);
+  const attachmentTrayOverflowCount = Math.max(0, attachments.length - attachmentTrayPreviewItems.length);
   const visualToolTitle = isUploadingChatMedia
     ? "素材正在上传"
     : currentModelSupportsVisuals
@@ -3067,6 +3083,12 @@ function App() {
       largest: monthExpenses.slice().sort((left, right) => right.amount - left.amount).slice(0, 3),
     };
   }, [ledgerYearKey, monthExpenses, yearExpenses]);
+  useEffect(() => {
+    if (visibleChatAttachmentCount === 0 && isAttachmentTrayExpanded) {
+      setIsAttachmentTrayExpanded(false);
+    }
+  }, [isAttachmentTrayExpanded, visibleChatAttachmentCount]);
+
   useEffect(() => {
     previewAlbumItemsRef.current = albumPreviewItems;
   }, [albumPreviewItems]);
@@ -6747,54 +6769,95 @@ function App() {
 
           <form className="composer" onSubmit={handleSubmit}>
             {chatUploadItems.length || attachments.length ? (
-              <div className="pending-attachments">
-                <div className={`pending-attachment-limit ${visibleChatAttachmentCount >= MAX_CHAT_ATTACHMENTS ? "full" : ""}`}>
-                  {chatAttachmentLimitLabel}
-                </div>
-                {chatUploadItems.map((item) => (
-                  <div className={`pending-item upload-item ${item.status}`} key={item.id}>
-                    <div className="pending-preview-button upload-state-icon" aria-hidden="true">
-                      {item.kind === "video" ? <Video size={17} /> : <ImageIcon size={17} />}
-                    </div>
-                    <div className="upload-copy">
-                      <span title={item.name}>{item.name}</span>
-                      <small>{item.message ?? (item.status === "uploading" ? `上传 ${item.progress}%` : "准备中")}</small>
-                      <div className="upload-progress-track" aria-hidden="true">
-                        <div className="upload-progress-bar" style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
+              <div className={`pending-attachments ${isAttachmentTrayOpen ? "expanded" : "collapsed"}`}>
+                <button
+                  type="button"
+                  className="pending-attachment-summary"
+                  aria-expanded={isAttachmentTrayOpen}
+                  aria-controls="pending-attachment-list"
+                  aria-label={canCollapseAttachmentTray ? (isAttachmentTrayOpen ? "收起素材清单" : "展开素材清单") : "素材清单"}
+                  title={chatAttachmentLimitLabel}
+                  onClick={() => {
+                    if (canCollapseAttachmentTray) {
+                      setIsAttachmentTrayExpanded((current) => !current);
+                    }
+                  }}
+                >
+                  <span className="pending-attachment-summary-copy">
+                    <span className="pending-attachment-count">{chatAttachmentCountLabel}</span>
+                    {attachmentTrayMetaLabel ? <small>{attachmentTrayMetaLabel}</small> : null}
+                  </span>
+                  {isChatAttachmentLimitReached ? <span className="pending-attachment-limit full">已达上限</span> : null}
+                  {attachmentTrayPreviewItems.length ? (
+                    <span className="pending-attachment-stack" aria-hidden="true">
+                      {attachmentTrayPreviewItems.map((item) => (
+                        <span className="pending-stack-thumb" key={item.id}>
+                          {item.kind === "image" && attachmentListSrc(item) ? (
+                            <img src={attachmentListSrc(item)} alt="" loading="lazy" decoding="async" />
+                          ) : item.kind === "video" && item.thumbnailUrl ? (
+                            <img src={item.thumbnailUrl} alt="" loading="lazy" decoding="async" />
+                          ) : item.kind === "video" ? (
+                            <Video size={14} />
+                          ) : (
+                            <ImageIcon size={14} />
+                          )}
+                        </span>
+                      ))}
+                      {attachmentTrayOverflowCount ? <span className="pending-stack-thumb overflow">+{attachmentTrayOverflowCount}</span> : null}
+                    </span>
+                  ) : null}
+                  {canCollapseAttachmentTray ? <ChevronDown className="pending-attachment-chevron" size={17} aria-hidden="true" /> : null}
+                </button>
+                {isAttachmentTrayOpen ? (
+                  <div className="pending-attachment-list" id="pending-attachment-list">
+                    {chatUploadItems.map((item) => (
+                      <div className={`pending-item upload-item ${item.status}`} key={item.id}>
+                        <div className="pending-preview-button upload-state-icon" aria-hidden="true">
+                          {item.kind === "video" ? <Video size={17} /> : <ImageIcon size={17} />}
+                        </div>
+                        <div className="upload-copy">
+                          <span title={item.name}>{item.name}</span>
+                          <small>{item.message ?? (item.status === "uploading" ? `上传 ${item.progress}%` : "准备中")}</small>
+                          <div className="upload-progress-track" aria-hidden="true">
+                            <div className="upload-progress-bar" style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    ))}
+                    {attachments.map((item) => (
+                      <div className="pending-item" key={item.id}>
+                        <button
+                          type="button"
+                          className="pending-preview-button"
+                          title={item.url ? "查看大图" : item.name}
+                          disabled={!item.url}
+                          onClick={() => {
+                            if (!item.url) return;
+                            openPreviewAttachment(item, null);
+                          }}
+                        >
+                          {item.kind === "image" && attachmentListSrc(item) ? (
+                            <img src={attachmentListSrc(item)} alt={item.name} loading="lazy" decoding="async" />
+                          ) : item.kind === "video" && item.thumbnailUrl ? (
+                            <img src={item.thumbnailUrl} alt={item.name} loading="lazy" decoding="async" />
+                          ) : (
+                            <Video size={18} />
+                          )}
+                        </button>
+                        <span>{item.name}</span>
+                        <button
+                          type="button"
+                          className="pending-remove-button"
+                          title="移除"
+                          aria-label={`移除 ${item.name}`}
+                          onClick={() => setAttachments((current) => current.filter((attachment) => attachment.id !== item.id))}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-                {attachments.map((item) => (
-                  <div className="pending-item" key={item.id}>
-                    <button
-                      type="button"
-                      className="pending-preview-button"
-                      title={item.url ? "查看大图" : item.name}
-                      disabled={!item.url}
-                      onClick={() => {
-                        if (!item.url) return;
-                        openPreviewAttachment(item, null);
-                      }}
-                    >
-                      {item.kind === "image" && attachmentListSrc(item) ? (
-                        <img src={attachmentListSrc(item)} alt={item.name} loading="lazy" decoding="async" />
-                      ) : item.kind === "video" && item.thumbnailUrl ? (
-                        <img src={item.thumbnailUrl} alt={item.name} loading="lazy" decoding="async" />
-                      ) : (
-                        <Video size={18} />
-                      )}
-                    </button>
-                    <span>{item.name}</span>
-                    <button
-                      type="button"
-                      title="移除"
-                      onClick={() => setAttachments((current) => current.filter((attachment) => attachment.id !== item.id))}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
+                ) : null}
               </div>
             ) : null}
             <div className="composer-row">
