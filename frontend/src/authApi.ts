@@ -154,7 +154,7 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   }
 }
 
-async function parseError(response: Response, fallback: string) {
+export async function parseError(response: Response, fallback: string) {
   try {
     const body = (await response.json()) as ApiErrorResponse;
     return `${body.code ? `${body.code}: ` : ""}${body.message || fallback}`;

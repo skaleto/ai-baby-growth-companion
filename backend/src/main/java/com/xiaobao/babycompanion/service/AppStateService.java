@@ -198,11 +198,6 @@ public class AppStateService {
     }
 
     @Transactional
-    public AppStateResponse upsertRecord(String collection, String id, JsonNode item) {
-        return upsertRecord(collection, id, item, "merge");
-    }
-
-    @Transactional
     public AppStateResponse upsertRecord(String collection, String id, JsonNode item, String mode) {
         currentUser.requireCaregiver();
         AuthPrincipal principal = currentUser.requirePrincipal();

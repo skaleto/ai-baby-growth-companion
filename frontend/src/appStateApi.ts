@@ -1,5 +1,5 @@
 import { AiUsageSummary, AppStateSnapshot, Attachment, AttachmentKind, DailySummary, DailySummarySettings, ProTrialStatus } from "./types";
-import { apiBaseUrl, apiFetch, authHeaders, withAuthQuery } from "./authApi";
+import { apiBaseUrl, apiFetch, authHeaders, parseError, withAuthQuery } from "./authApi";
 
 export type AppStateCollection =
   | "profile"
@@ -73,14 +73,6 @@ const withAbsoluteAttachmentUrls = <T>(value: T): T => {
   return visit(value) as T;
 };
 
-async function parseError(response: Response, fallback: string) {
-  try {
-    const body = (await response.json()) as { code?: string; message?: string };
-    return `${body.code ? `${body.code}: ` : ""}${body.message || fallback}`;
-  } catch {
-    return fallback;
-  }
-}
 
 export async function readAppState(): Promise<AppStateResponse> {
   const response = await apiFetch(`${apiBaseUrl}/api/app/state`, { headers: authHeaders() });
