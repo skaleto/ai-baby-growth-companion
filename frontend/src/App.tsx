@@ -295,6 +295,8 @@ import {
   type ExpenseMonthGroup,
 } from "./utils/expense";
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
+import { MilestonesView } from "./views/MilestonesView";
+import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
 import {
   careAlbumCategory,
   careAlbumTitle,
@@ -2106,6 +2108,7 @@ function App() {
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(() => new Set());
   const [collapsedExpenseMonths, setCollapsedExpenseMonths] = useState<Set<string>>(() => new Set());
   const [bulkDeleteExpensesOpen, setBulkDeleteExpensesOpen] = useState(false);
+  const [milestonesViewOpen, setMilestonesViewOpen] = useState(false);
   const [albumCategory, setAlbumCategory] = useState<AlbumItemCategory | "all">("all");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
@@ -5086,6 +5089,25 @@ function App() {
     }
   }, [canCaregive, selectedExpenseIds]);
 
+  const openMilestones = useCallback(() => setMilestonesViewOpen(true), []);
+  const closeMilestones = useCallback(() => setMilestonesViewOpen(false), []);
+
+  const achieveMilestone = useCallback((milestone: GrowthMilestone) => {
+    if (!canCaregive) return;
+    const growth = normalizeGrowthEvent({
+      id: makeId("growth"),
+      type: "milestone",
+      title: milestone.title,
+      date: todayISO(),
+      summary: milestone.hint,
+      firstTime: true,
+      tags: [milestoneTag(milestone.id)],
+    }, 0);
+    setGrowthEvents((current) => [...current, growth]);
+    void persistRecord("growthEvents", growth.id, growth).catch(() => setStorageStatus("offline"));
+    hapticSuccess();
+  }, [canCaregive]);
+
   const editAlbumItem = (item: AlbumItem) => {
     if (!canCaregive) return;
     const title = window.prompt("给这段回忆起个名字", item.title);
@@ -7777,6 +7799,16 @@ function App() {
         </section>
 
         <section className="profile-screen" aria-label="我的">
+          {milestonesViewOpen ? (
+            <MilestonesView
+              profile={profile}
+              growthEvents={growthEvents}
+              canCaregive={canCaregive}
+              onClose={closeMilestones}
+              onAchieve={achieveMilestone}
+            />
+          ) : (
+          <>
           <div className="screen-head">
             <div className="screen-heading-with-icon">
               <img className="screen-head-icon" src={profileIcon} alt="" />
@@ -7821,6 +7853,17 @@ function App() {
               </div>
             </div>
           </section>
+
+          <button type="button" className="milestone-nav-card" onClick={openMilestones}>
+            <div className="milestone-nav-card__icon" aria-hidden="true">
+              <Sparkles size={18} />
+            </div>
+            <div className="milestone-nav-card__copy">
+              <strong>发育里程碑</strong>
+              <small>看看小宝走到哪一步了</small>
+            </div>
+            <ChevronRight size={16} aria-hidden="true" />
+          </button>
 
           {!isProfileEditing ? (
             <section className="profile-detail-card">
@@ -8059,6 +8102,8 @@ function App() {
                 </button>
               </div>
             </form>
+          )}
+          </>
           )}
         </section>
 
