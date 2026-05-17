@@ -123,6 +123,7 @@ import {
   CARE_EVENT_TYPE_OPTIONS,
   DEFAULT_MODEL,
   EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_COLORS,
   EXPENSE_CATEGORY_OPTIONS,
   FEEDING_SELECT_OPTIONS,
   LEDGER_VIEWS,
@@ -1829,6 +1830,42 @@ const expenseSourceLabel = (source: ExpenseItem["source"]) => {
   return "手动";
 };
 
+const expenseMonthLabel = (monthKey: string) => {
+  const [year, month] = monthKey.split("-");
+  return year && month ? `${year} 年 ${Number(month)} 月` : monthKey;
+};
+
+type ExpenseMonthGroup = {
+  monthKey: string;
+  label: string;
+  total: number;
+  items: ExpenseItem[];
+};
+
+const groupExpensesByMonth = (items: ExpenseItem[]): ExpenseMonthGroup[] => {
+  const byMonth = new Map<string, ExpenseItem[]>();
+  for (const item of items) {
+    const key = expenseMonthKey(item.date);
+    const bucket = byMonth.get(key);
+    if (bucket) {
+      bucket.push(item);
+    } else {
+      byMonth.set(key, [item]);
+    }
+  }
+  const groups: ExpenseMonthGroup[] = [];
+  byMonth.forEach((monthItems, monthKey) => {
+    groups.push({
+      monthKey,
+      label: expenseMonthLabel(monthKey),
+      total: sumExpenses(monthItems),
+      items: monthItems,
+    });
+  });
+  groups.sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  return groups;
+};
+
 const upsertToolActivity = (items: ToolActivity[] | undefined, activity: ToolActivity) => {
   const current = items ?? [];
   if (current.some((item) => item.id === activity.id)) {
@@ -2104,6 +2141,10 @@ function App() {
   const [editingExpenseId, setEditingExpenseId] = useState("");
   const [expenseDraft, setExpenseDraft] = useState<ExpenseDraft>(() => createExpenseDraft());
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<ExpenseItem | null>(null);
+  const [expenseBulkMode, setExpenseBulkMode] = useState(false);
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(() => new Set());
+  const [collapsedExpenseMonths, setCollapsedExpenseMonths] = useState<Set<string>>(() => new Set());
+  const [bulkDeleteExpensesOpen, setBulkDeleteExpensesOpen] = useState(false);
   const [albumCategory, setAlbumCategory] = useState<AlbumItemCategory | "all">("all");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
@@ -2315,9 +2356,9 @@ function App() {
   const proStatusText = proTrial.enabled ? "Pro 内测已开通" : proApplicationPending ? "Pro 内测申请中" : "可申请 Pro 内测";
   const aiUsageTopFeatures = Array.isArray(aiUsageSummary?.byFeature) ? aiUsageSummary.byFeature.slice(0, 3) : [];
   const aiUsageTopModel = Array.isArray(aiUsageSummary?.byModel) ? aiUsageSummary.byModel[0] : undefined;
-  const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget);
+  const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget) || bulkDeleteExpensesOpen;
   const reminderModalOpen = reminderEditorOpen || Boolean(completeReminderTarget) || Boolean(postponeReminderTarget) || Boolean(deleteReminderTarget);
-  const appModalOpen = Boolean(deleteExpenseTarget);
+  const appModalOpen = Boolean(deleteExpenseTarget) || bulkDeleteExpensesOpen;
   const loginRoleOptions = useMemo(
     () =>
       ROLE_SELECT_OPTIONS.map((option) => {
@@ -2793,6 +2834,7 @@ function App() {
     () => [...expenses].sort((left, right) => `${right.date}-${right.updatedAt}`.localeCompare(`${left.date}-${left.updatedAt}`)),
     [expenses],
   );
+  const expenseMonthGroups = useMemo(() => groupExpensesByMonth(sortedExpenses), [sortedExpenses]);
   const monthExpenses = useMemo(
     () => sortedExpenses.filter((expense) => expenseMonthKey(expense.date) === ledgerMonthKey),
     [sortedExpenses, ledgerMonthKey],
@@ -5028,6 +5070,61 @@ function App() {
     }
   };
 
+  const exitExpenseBulkMode = useCallback(() => {
+    setExpenseBulkMode(false);
+    setSelectedExpenseIds(new Set());
+  }, []);
+
+  const toggleExpenseBulkMode = useCallback(() => {
+    setExpenseBulkMode((current) => {
+      if (current) setSelectedExpenseIds(new Set());
+      return !current;
+    });
+  }, []);
+
+  const toggleExpenseSelection = useCallback((id: string) => {
+    setSelectedExpenseIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleExpenseMonthCollapse = useCallback((monthKey: string) => {
+    setCollapsedExpenseMonths((current) => {
+      const next = new Set(current);
+      if (next.has(monthKey)) next.delete(monthKey);
+      else next.add(monthKey);
+      return next;
+    });
+  }, []);
+
+  const requestBulkDeleteExpenses = useCallback(() => {
+    if (!canCaregive || selectedExpenseIds.size === 0) return;
+    setBulkDeleteExpensesOpen(true);
+  }, [canCaregive, selectedExpenseIds]);
+
+  const closeBulkDeleteExpenses = useCallback(() => {
+    setBulkDeleteExpensesOpen(false);
+  }, []);
+
+  const confirmBulkDeleteExpenses = useCallback(async () => {
+    if (!canCaregive || selectedExpenseIds.size === 0) return;
+    const targets = Array.from(selectedExpenseIds);
+    setBulkDeleteExpensesOpen(false);
+    setExpenses((current) => current.filter((item) => !selectedExpenseIds.has(item.id)));
+    setSelectedExpenseIds(new Set());
+    setExpenseBulkMode(false);
+    for (const id of targets) {
+      try {
+        await deleteAppRecord("expenses", id);
+      } catch {
+        setStorageStatus("offline");
+      }
+    }
+  }, [canCaregive, selectedExpenseIds]);
+
   const editAlbumItem = (item: AlbumItem) => {
     if (!canCaregive) return;
     const title = window.prompt("给这段回忆起个名字", item.title);
@@ -5673,6 +5770,36 @@ function App() {
           <button type="button" className="screen-action-button danger" onClick={() => void confirmDeleteExpense()}>
             <Trash2 size={16} />
             删除
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const bulkDeleteExpensesDialog = bulkDeleteExpensesOpen && selectedExpenseIds.size > 0 ? (
+    <div className="story-modal-backdrop" role="presentation" onMouseDown={closeBulkDeleteExpenses}>
+      <div
+        className="story-modal delete-confirm-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bulk-delete-expense-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="delete-confirm-badge" aria-hidden="true">
+          <ReceiptText size={22} />
+        </div>
+        <div className="delete-confirm-copy">
+          <p className="eyebrow">批量删除</p>
+          <h3 id="bulk-delete-expense-title">确定删除选中的 {selectedExpenseIds.size} 笔支出？</h3>
+          <p>选中的支出会从家庭账本里一并移除，无法撤销。</p>
+        </div>
+        <div className="story-modal-actions delete-confirm-actions">
+          <button type="button" className="screen-action-button quiet" onClick={closeBulkDeleteExpenses}>
+            先保留
+          </button>
+          <button type="button" className="screen-action-button danger" onClick={() => void confirmBulkDeleteExpenses()}>
+            <Trash2 size={16} />
+            删除 {selectedExpenseIds.size} 笔
           </button>
         </div>
       </div>
@@ -7330,69 +7457,117 @@ function App() {
 
           {ledgerView === "details" ? (
             <section className="ledger-card">
-              <div className="section-title">
-                <ReceiptText size={18} />
-                <h2>支出明细</h2>
+              <div className="section-title ledger-detail-head">
+                <div className="section-title-main">
+                  <ReceiptText size={18} />
+                  <h2>支出明细</h2>
+                </div>
+                {canCaregive && sortedExpenses.length ? (
+                  <button
+                    type="button"
+                    className={`ledger-detail-edit-btn ${expenseBulkMode ? "active" : ""}`}
+                    onClick={toggleExpenseBulkMode}
+                  >
+                    {expenseBulkMode ? "完成" : "编辑"}
+                  </button>
+                ) : null}
               </div>
               {sortedExpenses.length ? (
-                <div className="expense-list">
-                  {sortedExpenses.map((expense) => (
-                    <article className="expense-item detail" key={expense.id}>
-                      <span>{expenseCategoryLabel(expense.category).slice(0, 1)}</span>
-                      <div>
-                        <h3>{expense.title}</h3>
-                        <p>
-                          {formatFullDate(expense.date)} · {expenseCategoryLabel(expense.category)}
-                          {expense.merchant ? ` · ${expense.merchant}` : ""}
-                        </p>
-                        <small>
-                          {expense.brand ? `${expense.brand} ` : ""}
-                          {expense.spec ?? ""}
-                          {expenseSourceLabel(expense.source) ? ` · ${expenseSourceLabel(expense.source)}` : ""}
-                        </small>
-                        {expense.recordedBy ? <small className="expense-creator">{creatorMetaText(expense.recordedBy)}</small> : null}
-                        {expense.attachments?.length ? (
-                          <div className="expense-attachment-strip" aria-label={`${expense.title} 附件`}>
-                            {expense.attachments.map((attachment) => (
-                              <button
-                                type="button"
-                                className="expense-attachment-thumb"
-                                key={attachment.id}
-                                title={`查看${attachment.kind === "video" ? "视频" : attachment.kind === "audio" ? "语音" : "图片"}附件`}
-                                disabled={!attachment.url}
-                                onClick={() => {
-                                  if (!attachment.url) return;
-                                  openPreviewAttachment(attachment, null);
-                                }}
-                              >
-                                {attachment.kind === "image" ? (
-                                  <img src={attachment.thumbnailUrl || attachmentListSrc(attachment)} alt={attachment.name} loading="lazy" decoding="async" />
-                                ) : attachment.kind === "video" && attachment.thumbnailUrl ? (
-                                  <img src={attachment.thumbnailUrl} alt={attachment.name} loading="lazy" decoding="async" />
-                                ) : attachment.kind === "video" ? (
-                                  <Video size={18} />
-                                ) : (
-                                  <Mic size={18} />
-                                )}
-                                <span>{attachment.kind === "video" ? "视频" : attachment.kind === "audio" ? "语音" : "图片"}</span>
-                              </button>
-                            ))}
+                <div className="expense-month-list">
+                  {expenseMonthGroups.map((group) => {
+                    const defaultCollapsed = group.monthKey !== ledgerMonthKey;
+                    const userToggled = collapsedExpenseMonths.has(group.monthKey);
+                    const collapsed = userToggled ? !defaultCollapsed : defaultCollapsed;
+                    return (
+                      <section className="expense-month-group" key={group.monthKey}>
+                        <button
+                          type="button"
+                          className={`expense-month-head ${collapsed ? "collapsed" : ""}`}
+                          aria-expanded={!collapsed}
+                          onClick={() => toggleExpenseMonthCollapse(group.monthKey)}
+                        >
+                          <span className="expense-month-toggle" aria-hidden="true">
+                            <ChevronRight size={16} />
+                          </span>
+                          <span className="expense-month-title">{group.label}</span>
+                          <span className="expense-month-stats">
+                            {group.items.length} 笔 · {formatMoney(group.total)}
+                          </span>
+                        </button>
+                        {!collapsed ? (
+                          <div className="expense-row-list">
+                            {group.items.map((expense) => {
+                              const categoryLabel = expenseCategoryLabel(expense.category);
+                              const categoryColor = EXPENSE_CATEGORY_COLORS[expense.category] ?? EXPENSE_CATEGORY_COLORS.other;
+                              const sourceLabel = expenseSourceLabel(expense.source);
+                              const recordedByLabel = expense.recordedBy ? creatorMetaText(expense.recordedBy) : "";
+                              const monthDay = expense.date && expense.date.length >= 10 ? `${Number(expense.date.slice(5, 7))}/${Number(expense.date.slice(8, 10))}` : expense.date;
+                              const metaParts = [monthDay, sourceLabel, recordedByLabel].filter(Boolean);
+                              const hasAttachments = (expense.attachments?.length ?? 0) > 0;
+                              const firstAttachment = expense.attachments?.[0];
+                              const selected = selectedExpenseIds.has(expense.id);
+                              const handleRowClick = () => {
+                                if (expenseBulkMode) {
+                                  toggleExpenseSelection(expense.id);
+                                } else if (canCaregive) {
+                                  openEditExpenseEditor(expense);
+                                }
+                              };
+                              return (
+                                <article
+                                  className={`expense-row ${selected ? "selected" : ""} ${expenseBulkMode ? "bulk" : ""}`}
+                                  key={expense.id}
+                                  onClick={handleRowClick}
+                                  role={expenseBulkMode || canCaregive ? "button" : undefined}
+                                  tabIndex={expenseBulkMode || canCaregive ? 0 : undefined}
+                                  style={{ "--expense-color": categoryColor } as CSSProperties}
+                                >
+                                  <span className="expense-row__bar" aria-hidden="true" />
+                                  {expenseBulkMode ? (
+                                    <span className="expense-row__checkbox" aria-hidden="true">
+                                      {selected ? <CheckCircle2 size={20} /> : <span className="expense-row__checkbox-dot" />}
+                                    </span>
+                                  ) : null}
+                                  <div className="expense-row__main">
+                                    <div className="expense-row__category-line">
+                                      <span className="expense-row__category-label">{categoryLabel}</span>
+                                    </div>
+                                    <div className="expense-row__title-line">
+                                      <h3 className="expense-row__title">{expense.title}</h3>
+                                      <strong className="expense-row__amount">{formatMoney(expense.amount)}</strong>
+                                    </div>
+                                    <div className="expense-row__meta">
+                                      {metaParts.map((part, index) => (
+                                        <span key={`${expense.id}-meta-${index}`} className="expense-row__meta-part">
+                                          {part}
+                                        </span>
+                                      ))}
+                                      {hasAttachments && firstAttachment ? (
+                                        <button
+                                          type="button"
+                                          className="expense-row__attach"
+                                          title={`查看附件（${expense.attachments?.length ?? 0}）`}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            if (!firstAttachment.url) return;
+                                            openPreviewAttachment(firstAttachment, null);
+                                          }}
+                                          disabled={!firstAttachment.url}
+                                        >
+                                          <ImageIcon size={13} />
+                                          <span>{expense.attachments && expense.attachments.length > 1 ? expense.attachments.length : ""}</span>
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </article>
+                              );
+                            })}
                           </div>
                         ) : null}
-                      </div>
-                      <strong>{formatMoney(expense.amount)}</strong>
-                      {canCaregive ? (
-                        <div className="expense-actions">
-                          <button type="button" title="编辑支出" onClick={() => openEditExpenseEditor(expense)}>
-                            <PencilLine size={16} />
-                          </button>
-                          <button type="button" title="删除支出" onClick={() => requestDeleteExpense(expense)}>
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      ) : null}
-                    </article>
-                  ))}
+                      </section>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="empty-state ledger-empty">
@@ -7404,6 +7579,28 @@ function App() {
                 </div>
               )}
             </section>
+          ) : null}
+
+          {expenseBulkMode && selectedExpenseIds.size > 0 ? (
+            <div className="ledger-bulk-bar" role="region" aria-label="批量操作">
+              <span className="ledger-bulk-bar__count">{selectedExpenseIds.size} 笔已选</span>
+              <button
+                type="button"
+                className="ledger-bulk-bar__cancel"
+                onClick={exitExpenseBulkMode}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="ledger-bulk-bar__delete"
+                onClick={requestBulkDeleteExpenses}
+                disabled={selectedExpenseIds.size === 0}
+              >
+                <Trash2 size={16} />
+                删除选中
+              </button>
+            </div>
           ) : null}
 
         </section>
@@ -8275,6 +8472,7 @@ function App() {
       </nav>
       {expenseEditorDialog}
       {deleteExpenseDialog}
+      {bulkDeleteExpensesDialog}
       {ringingReminder ? (
         <div className="alarm-ringing-overlay" role="dialog" aria-modal="true" aria-labelledby="alarm-ringing-title">
           <div className="alarm-ringing-scene" aria-hidden="true">

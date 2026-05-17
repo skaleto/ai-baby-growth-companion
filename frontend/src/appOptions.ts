@@ -94,6 +94,19 @@ export const EXPENSE_CATEGORIES: Array<{ id: ExpenseCategory; label: string }> =
 ];
 
 export const EXPENSE_CATEGORY_IDS = EXPENSE_CATEGORIES.map((category) => category.id);
+
+export const EXPENSE_CATEGORY_COLORS: Record<ExpenseCategory, string> = {
+  formula: "#e8a45e",
+  diaper: "#7eafd8",
+  food: "#c89761",
+  clothing: "#b08868",
+  toy: "#b894d4",
+  health: "#d88276",
+  vaccine: "#e9a5a5",
+  daily: "#8ac4a8",
+  education: "#8d9ed6",
+  other: "#a3a8af",
+};
 export const ALBUM_CATEGORY_VALUES: readonly AlbumItemCategory[] = ["growth", "feeding", "sleep", "health", "reminder", "daily"];
 export const CARE_EVENT_TYPE_VALUES: readonly CareLogEventType[] = [
   "milk",
