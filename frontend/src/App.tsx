@@ -143,7 +143,7 @@ import {
   STAGE_SELECT_OPTIONS,
   UNIQUE_ROLE_OPTIONS,
   isVisualModel,
-  type LedgerView,
+  type LedgerView as LedgerViewId,
   type MobileTab,
   type RecordView,
 } from "./appOptions";
@@ -283,6 +283,18 @@ import {
   REMINDER_SOUND_FILES,
   REMINDER_WEB_SOUND_URLS,
 } from "./utils/reminderAssets";
+import {
+  expenseCategoryLabel,
+  expenseMonthKey,
+  expenseSourceLabel,
+  expenseYearKey,
+  formatMoney,
+  formatMoneyCompact,
+  groupExpensesByMonth,
+  sumExpenses,
+  type ExpenseMonthGroup,
+} from "./utils/expense";
+import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import {
   careAlbumCategory,
   careAlbumTitle,
@@ -1813,67 +1825,7 @@ const hostLabel = (url: string) => {
   }
 };
 
-const expenseCategoryLabel = (category: ExpenseCategory) =>
-  EXPENSE_CATEGORIES.find((item) => item.id === category)?.label ?? "其他";
-
-const formatMoney = (amount: number) =>
-  new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: amount % 1 === 0 ? 0 : 2 }).format(amount || 0);
-
-const formatMoneyCompact = (amount: number) => {
-  const value = Number.isFinite(amount) ? Math.abs(amount) : 0;
-  if (value === 0) return "0";
-  if (value >= 10000) return `${(value / 10000).toFixed(value >= 100000 ? 0 : 1)}万`;
-  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`;
-  if (value >= 100) return `${Math.round(value)}`;
-  return value.toFixed(value % 1 === 0 ? 0 : 1);
-};
-
-const expenseMonthKey = (date: string) => (date && date.length >= 7 ? date.slice(0, 7) : todayISO().slice(0, 7));
-
-const expenseYearKey = (date: string) => (date && date.length >= 4 ? date.slice(0, 4) : todayISO().slice(0, 4));
-
-const sumExpenses = (items: ExpenseItem[]) => items.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
-
-const expenseSourceLabel = (source: ExpenseItem["source"]) => {
-  if (source === "agent") return "AI";
-  return "手动";
-};
-
-const expenseMonthLabel = (monthKey: string) => {
-  const [year, month] = monthKey.split("-");
-  return year && month ? `${year} 年 ${Number(month)} 月` : monthKey;
-};
-
-type ExpenseMonthGroup = {
-  monthKey: string;
-  label: string;
-  total: number;
-  items: ExpenseItem[];
-};
-
-const groupExpensesByMonth = (items: ExpenseItem[]): ExpenseMonthGroup[] => {
-  const byMonth = new Map<string, ExpenseItem[]>();
-  for (const item of items) {
-    const key = expenseMonthKey(item.date);
-    const bucket = byMonth.get(key);
-    if (bucket) {
-      bucket.push(item);
-    } else {
-      byMonth.set(key, [item]);
-    }
-  }
-  const groups: ExpenseMonthGroup[] = [];
-  byMonth.forEach((monthItems, monthKey) => {
-    groups.push({
-      monthKey,
-      label: expenseMonthLabel(monthKey),
-      total: sumExpenses(monthItems),
-      items: monthItems,
-    });
-  });
-  groups.sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-  return groups;
-};
+// expense helpers moved to ./utils/expense
 
 const upsertToolActivity = (items: ToolActivity[] | undefined, activity: ToolActivity) => {
   const current = items ?? [];
@@ -2145,7 +2097,7 @@ function App() {
   const [onboardingAllergiesText, setOnboardingAllergiesText] = useState("暂未发现");
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("chat");
   const [recordView, setRecordView] = useState<RecordView>("today");
-  const [ledgerView, setLedgerView] = useState<LedgerView>("month");
+  const [ledgerView, setLedgerView] = useState<LedgerViewId>("month");
   const [expenseEditorOpen, setExpenseEditorOpen] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState("");
   const [expenseDraft, setExpenseDraft] = useState<ExpenseDraft>(() => createExpenseDraft());
@@ -7340,329 +7292,30 @@ function App() {
           ) : null}
         </section>
 
-        <section className="ledger-screen" aria-label="账本">
-          <div className="screen-head">
-            <div className="screen-heading-with-icon">
-              <WalletCards size={24} className="screen-head-lucide" />
-              <div>
-                <p className="eyebrow">账本</p>
-                <h2>{babyNickname}的家庭花费</h2>
-              </div>
-            </div>
-            <div className="screen-head-actions ledger-head-actions">
-              <span className="screen-pill">{monthExpenses.length} 笔本月支出</span>
-              {!canCaregive ? <span className="readonly-pill">仅查看</span> : null}
-            </div>
-          </div>
+        <LedgerView
+          babyNickname={babyNickname}
+          canCaregive={canCaregive}
+          ledgerView={ledgerView}
+          setLedgerView={setLedgerView}
+          ledgerMonthKey={ledgerMonthKey}
+          ledgerYearKey={ledgerYearKey}
+          monthExpenses={monthExpenses}
+          sortedExpenses={sortedExpenses}
+          expenseMonthGroups={expenseMonthGroups}
+          ledgerStats={ledgerStats}
+          expenseBulkMode={expenseBulkMode}
+          selectedExpenseIds={selectedExpenseIds}
+          collapsedExpenseMonths={collapsedExpenseMonths}
+          openNewExpenseEditor={openNewExpenseEditor}
+          openEditExpenseEditor={openEditExpenseEditor}
+          toggleExpenseBulkMode={toggleExpenseBulkMode}
+          toggleExpenseMonthCollapse={toggleExpenseMonthCollapse}
+          toggleExpenseSelection={toggleExpenseSelection}
+          exitExpenseBulkMode={exitExpenseBulkMode}
+          requestBulkDeleteExpenses={requestBulkDeleteExpenses}
+          openPreviewAttachment={openPreviewAttachment}
+        />
 
-          <div className="segmented-tabs ledger-tabs" role="tablist" aria-label="账本视图">
-            {LEDGER_VIEWS.map((view) => (
-              <button
-                type="button"
-                className={ledgerView === view.id ? "active" : ""}
-                aria-selected={ledgerView === view.id}
-                role="tab"
-                key={view.id}
-                onClick={() => setLedgerView(view.id)}
-              >
-                {view.label}
-              </button>
-            ))}
-          </div>
-
-          <section className="ledger-summary-card">
-            <div>
-              <span>本月支出</span>
-              <strong>{formatMoney(ledgerStats.monthTotal)}</strong>
-              <small>{ledgerMonthKey} · {monthExpenses.length} 笔</small>
-            </div>
-            <div>
-              <span>年度累计</span>
-              <strong>{formatMoney(ledgerStats.yearTotal)}</strong>
-              <small>{ledgerYearKey} 年</small>
-            </div>
-          </section>
-
-          {canCaregive ? (
-            <button type="button" className="ledger-manual-cta" onClick={openNewExpenseEditor}>
-              <span aria-hidden="true">
-                <ReceiptText size={20} />
-              </span>
-              <strong>记一笔支出</strong>
-              <small>手动补充宝宝相关花费</small>
-            </button>
-          ) : null}
-
-          {ledgerView === "month" ? (
-            <>
-              <section className="ledger-card">
-                <div className="section-title">
-                  <LineChart size={18} />
-                  <h2>本月分类占比</h2>
-                </div>
-                {ledgerStats.categoryTotals.length ? (
-                  <div className="expense-category-list">
-                    {ledgerStats.categoryTotals.map((category) => (
-                      <article className={`expense-category-row expense-${category.id}`} key={category.id}>
-                        <div>
-                          <span>{category.label}</span>
-                          <strong>{formatMoney(category.total)}</strong>
-                        </div>
-                        <i aria-hidden="true">
-                          <b style={{ width: `${Math.max(8, (category.total / ledgerStats.maxCategoryTotal) * 100)}%` }} />
-                        </i>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="ledger-empty-copy">本月还没有账本支出。</p>
-                )}
-              </section>
-
-              <section className="ledger-card">
-                <div className="section-title">
-                  <ReceiptText size={18} />
-                  <h2>本月较大支出</h2>
-                </div>
-                {ledgerStats.largest.length ? (
-                  <div className="expense-row-list">
-                    {ledgerStats.largest.map((expense) => {
-                      const categoryLabel = expenseCategoryLabel(expense.category);
-                      const categoryColor = EXPENSE_CATEGORY_COLORS[expense.category] ?? EXPENSE_CATEGORY_COLORS.other;
-                      const monthDay = expense.date && expense.date.length >= 10
-                        ? `${Number(expense.date.slice(5, 7))}/${Number(expense.date.slice(8, 10))}`
-                        : expense.date;
-                      return (
-                        <article
-                          className="expense-row"
-                          key={expense.id}
-                          onClick={() => canCaregive && openEditExpenseEditor(expense)}
-                          role={canCaregive ? "button" : undefined}
-                          tabIndex={canCaregive ? 0 : undefined}
-                          style={{ "--expense-color": categoryColor } as CSSProperties}
-                        >
-                          <span className="expense-row__bar" aria-hidden="true" />
-                          <div className="expense-row__main">
-                            <div className="expense-row__category-line">
-                              <span className="expense-row__category-label">{categoryLabel}</span>
-                            </div>
-                            <div className="expense-row__title-line">
-                              <h3 className="expense-row__title">{expense.title}</h3>
-                              <strong className="expense-row__amount">{formatMoney(expense.amount)}</strong>
-                            </div>
-                            <div className="expense-row__meta">
-                              <span className="expense-row__meta-part">{monthDay}</span>
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="ledger-empty-copy">记几笔之后，这里会自动列出本月最大支出。</p>
-                )}
-              </section>
-            </>
-          ) : null}
-
-          {ledgerView === "year" ? (
-            <section className="ledger-card">
-              <div className="section-title">
-                <LineChart size={18} />
-                <h2>年度月度对比</h2>
-              </div>
-              <div className="expense-year-chart" aria-label="年度支出柱状图">
-                {ledgerStats.monthlyTotals.map((month) => (
-                  <div
-                    className="expense-month-bar"
-                    key={month.month}
-                    title={month.total ? `${month.label}：${formatMoney(month.total)}` : `${month.label}：暂无支出`}
-                  >
-                    <span>{month.total ? formatMoneyCompact(month.total) : "0"}</span>
-                    <i aria-hidden="true">
-                      <b style={{ height: `${month.total ? Math.max(8, (month.total / ledgerStats.maxMonthlyTotal) * 100) : 0}%` }} />
-                    </i>
-                    <em>{month.label}</em>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          {ledgerView === "details" ? (
-            <section className="ledger-card">
-              <div className="section-title ledger-detail-head">
-                <div className="section-title-main">
-                  <ReceiptText size={18} />
-                  <h2>支出明细</h2>
-                </div>
-                {canCaregive && sortedExpenses.length ? (
-                  <button
-                    type="button"
-                    className={`ledger-detail-edit-btn ${expenseBulkMode ? "active" : ""}`}
-                    onClick={toggleExpenseBulkMode}
-                  >
-                    {expenseBulkMode ? "完成" : "编辑"}
-                  </button>
-                ) : null}
-              </div>
-              {sortedExpenses.length ? (
-                <div className="expense-month-list">
-                  {expenseMonthGroups.map((group) => {
-                    const defaultCollapsed = group.monthKey !== ledgerMonthKey;
-                    const userToggled = collapsedExpenseMonths.has(group.monthKey);
-                    const collapsed = userToggled ? !defaultCollapsed : defaultCollapsed;
-                    return (
-                      <section className="expense-month-group" key={group.monthKey}>
-                        <button
-                          type="button"
-                          className={`expense-month-head ${collapsed ? "collapsed" : ""}`}
-                          aria-expanded={!collapsed}
-                          onClick={() => toggleExpenseMonthCollapse(group.monthKey)}
-                        >
-                          <span className="expense-month-toggle" aria-hidden="true">
-                            <ChevronRight size={16} />
-                          </span>
-                          <span className="expense-month-title">{group.label}</span>
-                          <span className="expense-month-stats">
-                            {group.items.length} 笔 · {formatMoney(group.total)}
-                          </span>
-                        </button>
-                        {!collapsed ? (
-                          <div className="expense-row-list">
-                            {group.items.map((expense) => {
-                              const categoryLabel = expenseCategoryLabel(expense.category);
-                              const categoryColor = EXPENSE_CATEGORY_COLORS[expense.category] ?? EXPENSE_CATEGORY_COLORS.other;
-                              const sourceLabel = expenseSourceLabel(expense.source);
-                              const recordedByLabel = expense.recordedBy ? creatorMetaText(expense.recordedBy) : "";
-                              const monthDay = expense.date && expense.date.length >= 10 ? `${Number(expense.date.slice(5, 7))}/${Number(expense.date.slice(8, 10))}` : expense.date;
-                              const metaParts = [monthDay, sourceLabel, recordedByLabel].filter(Boolean);
-                              const hasAttachments = (expense.attachments?.length ?? 0) > 0;
-                              const firstAttachment = expense.attachments?.[0];
-                              const selected = selectedExpenseIds.has(expense.id);
-                              const handleRowClick = () => {
-                                if (expenseBulkMode) {
-                                  toggleExpenseSelection(expense.id);
-                                } else if (canCaregive) {
-                                  openEditExpenseEditor(expense);
-                                }
-                              };
-                              return (
-                                <article
-                                  className={`expense-row ${selected ? "selected" : ""} ${expenseBulkMode ? "bulk" : ""}`}
-                                  key={expense.id}
-                                  onClick={handleRowClick}
-                                  role={expenseBulkMode || canCaregive ? "button" : undefined}
-                                  tabIndex={expenseBulkMode || canCaregive ? 0 : undefined}
-                                  style={{ "--expense-color": categoryColor } as CSSProperties}
-                                >
-                                  <span className="expense-row__bar" aria-hidden="true" />
-                                  {expenseBulkMode ? (
-                                    <span className="expense-row__checkbox" aria-hidden="true">
-                                      {selected ? <CheckCircle2 size={20} /> : <span className="expense-row__checkbox-dot" />}
-                                    </span>
-                                  ) : null}
-                                  <div className="expense-row__main">
-                                    <div className="expense-row__category-line">
-                                      <span className="expense-row__category-label">{categoryLabel}</span>
-                                    </div>
-                                    <div className="expense-row__title-line">
-                                      <h3 className="expense-row__title">{expense.title}</h3>
-                                      <strong className="expense-row__amount">{formatMoney(expense.amount)}</strong>
-                                    </div>
-                                    <div className="expense-row__meta">
-                                      {metaParts.map((part, index) => (
-                                        <span key={`${expense.id}-meta-${index}`} className="expense-row__meta-part">
-                                          {part}
-                                        </span>
-                                      ))}
-                                      {hasAttachments && firstAttachment ? (
-                                        <button
-                                          type="button"
-                                          className="expense-row__attach"
-                                          title={`查看附件（${expense.attachments?.length ?? 0}）`}
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            if (!firstAttachment.url) return;
-                                            openPreviewAttachment(firstAttachment, null);
-                                          }}
-                                          disabled={!firstAttachment.url}
-                                        >
-                                          {firstAttachment.kind === "image" && firstAttachment.thumbnailUrl ? (
-                                            <img
-                                              src={firstAttachment.thumbnailUrl}
-                                              alt=""
-                                              className="expense-row__attach-thumb"
-                                              loading="lazy"
-                                              decoding="async"
-                                            />
-                                          ) : firstAttachment.kind === "video" && firstAttachment.thumbnailUrl ? (
-                                            <img
-                                              src={firstAttachment.thumbnailUrl}
-                                              alt=""
-                                              className="expense-row__attach-thumb"
-                                              loading="lazy"
-                                              decoding="async"
-                                            />
-                                          ) : firstAttachment.kind === "video" ? (
-                                            <Video size={14} />
-                                          ) : firstAttachment.kind === "audio" ? (
-                                            <Mic size={14} />
-                                          ) : (
-                                            <ImageIcon size={14} />
-                                          )}
-                                          <span>
-                                            {firstAttachment.kind === "video" ? "视频" : firstAttachment.kind === "audio" ? "语音" : "图片"}
-                                            {expense.attachments && expense.attachments.length > 1 ? ` ${expense.attachments.length}` : ""}
-                                          </span>
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </article>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </section>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="empty-state ledger-empty">
-                  <span className="empty-sticker" aria-hidden="true">
-                    <ReceiptText size={28} />
-                  </span>
-                  <p>还没有支出记录。</p>
-                  {canCaregive ? <button type="button" onClick={openNewExpenseEditor}>记第一笔</button> : null}
-                </div>
-              )}
-            </section>
-          ) : null}
-
-          {expenseBulkMode && selectedExpenseIds.size > 0 ? (
-            <div className="ledger-bulk-bar" role="region" aria-label="批量操作">
-              <span className="ledger-bulk-bar__count">{selectedExpenseIds.size} 笔已选</span>
-              <button
-                type="button"
-                className="ledger-bulk-bar__cancel"
-                onClick={exitExpenseBulkMode}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="ledger-bulk-bar__delete"
-                onClick={requestBulkDeleteExpenses}
-                disabled={selectedExpenseIds.size === 0}
-              >
-                <Trash2 size={16} />
-                删除选中
-              </button>
-            </div>
-          ) : null}
-
-        </section>
 
         <section className="album-screen" aria-label="相册">
           <div className="screen-head">
