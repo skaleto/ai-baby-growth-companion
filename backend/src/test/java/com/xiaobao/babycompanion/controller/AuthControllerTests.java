@@ -386,6 +386,48 @@ class AuthControllerTests {
                 .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
     }
 
+    @Test
+    void refreshIssuesNewTokenForValidSession() throws Exception {
+        JsonNode loginPayload = loginPayload("13800000301", "AUTH-CODE-1", "妈妈", true);
+        String originalToken = loginPayload.get("accessToken").asText();
+
+        String refreshBody = mockMvc.perform(post("/api/auth/refresh")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + originalToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").exists())
+                .andExpect(jsonPath("$.user.phone").value("13800000301"))
+                .andExpect(jsonPath("$.member.roleName").value("妈妈"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String refreshedToken = objectMapper.readTree(refreshBody).get("accessToken").asText();
+        assertThat(refreshedToken).isNotBlank();
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + refreshedToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void refreshRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/auth/refresh"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
+    }
+
+    @Test
+    void refreshFailsAfterLogout() throws Exception {
+        String token = login("13800000302", "AUTH-CODE-2");
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
     private String login(String phone, String inviteCode) throws Exception {
         return login(phone, inviteCode, "妈妈", true);
     }

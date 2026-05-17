@@ -68,17 +68,23 @@ The deploy script will:
 - Install and restart `ai-baby-growth-companion.service`.
 - Verify `http://<ECS_PUBLIC_IP>:8300/api/health`.
 
-By default the script syncs local `backend/data` only when the remote SQLite
-file does not already exist. This avoids accidentally overwriting cloud data.
+By default the script does **not** sync local `backend/data` to the remote
+host — `SYNC_DATA` defaults to `0`. Code-only deploys are the safe path; opt
+into data sync only on a fresh ECS where you intentionally seed the database.
+When `SYNC_DATA=1` is set in an interactive shell, the script also prompts
+for a `yes` confirmation before copying.
 
 Useful options:
 
 ```bash
-# Deploy code only, without uploading local backend/data.
-SYNC_DATA=0 ECS_HOST=<ECS_PUBLIC_IP> scripts/deploy-aliyun-ecs.sh
+# Default: code-only deploy, never touch backend/data on the remote.
+ECS_HOST=<ECS_PUBLIC_IP> scripts/deploy-aliyun-ecs.sh
 
-# Force local backend/data over the remote data directory.
-OVERWRITE_REMOTE_DATA=1 ECS_HOST=<ECS_PUBLIC_IP> scripts/deploy-aliyun-ecs.sh
+# First-time seed: upload local backend/data when the remote SQLite is missing.
+SYNC_DATA=1 ECS_HOST=<ECS_PUBLIC_IP> scripts/deploy-aliyun-ecs.sh
+
+# Force local backend/data over an existing remote data directory (DESTRUCTIVE).
+SYNC_DATA=1 OVERWRITE_REMOTE_DATA=1 ECS_HOST=<ECS_PUBLIC_IP> scripts/deploy-aliyun-ecs.sh
 
 # Deploy and build the Android debug APK in one run.
 BUILD_ANDROID=1 ECS_HOST=<ECS_PUBLIC_IP> scripts/deploy-aliyun-ecs.sh

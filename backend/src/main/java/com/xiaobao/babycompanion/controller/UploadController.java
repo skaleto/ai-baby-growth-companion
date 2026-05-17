@@ -1,5 +1,6 @@
 package com.xiaobao.babycompanion.controller;
 
+import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.app.AttachmentDto;
 import com.xiaobao.babycompanion.dto.app.UploadCompleteRequest;
 import com.xiaobao.babycompanion.dto.app.UploadPresignRequest;
@@ -25,28 +26,34 @@ import org.springframework.web.bind.annotation.RestController;
 public class UploadController {
 
     private final AttachmentStorageService attachmentStorageService;
+    private final CurrentUser currentUser;
 
-    public UploadController(AttachmentStorageService attachmentStorageService) {
+    public UploadController(AttachmentStorageService attachmentStorageService, CurrentUser currentUser) {
         this.attachmentStorageService = attachmentStorageService;
+        this.currentUser = currentUser;
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public AttachmentDto uploadDataUrl(@Valid @RequestBody UploadRequest request) {
+        currentUser.requireCaregiver();
         return attachmentStorageService.saveDataUrl(request);
     }
 
     @PostMapping(path = "/presign", consumes = MediaType.APPLICATION_JSON_VALUE)
     public UploadPresignResponse presignUpload(@RequestBody UploadPresignRequest request) {
+        currentUser.requireCaregiver();
         return attachmentStorageService.createDirectUpload(request);
     }
 
     @PostMapping(path = "/complete", consumes = MediaType.APPLICATION_JSON_VALUE)
     public AttachmentDto completeUpload(@RequestBody UploadCompleteRequest request) {
+        currentUser.requireCaregiver();
         return attachmentStorageService.completeDirectUpload(request);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<Resource> read(@PathVariable String id) {
+        currentUser.requirePrincipal();
         AttachmentStorageService.StoredAttachment attachment = attachmentStorageService.load(id);
         if (attachment.redirectUri() != null) {
             return ResponseEntity.status(HttpStatus.FOUND)
@@ -64,6 +71,7 @@ public class UploadController {
 
     @GetMapping("/{id}/thumbnail")
     public ResponseEntity<Resource> readThumbnail(@PathVariable String id) {
+        currentUser.requirePrincipal();
         AttachmentStorageService.StoredAttachment attachment = attachmentStorageService.loadThumbnail(id);
         if (attachment.redirectUri() != null) {
             return ResponseEntity.status(HttpStatus.FOUND)

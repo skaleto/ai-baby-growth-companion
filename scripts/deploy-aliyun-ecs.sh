@@ -12,7 +12,7 @@ REMOTE_APP_DIR="${REMOTE_APP_DIR:-/opt/ai-baby-growth-companion}"
 REMOTE_DATA_DIR="${REMOTE_DATA_DIR:-/var/lib/ai-baby-growth-companion}"
 REMOTE_CONFIG_DIR="${REMOTE_CONFIG_DIR:-/etc/ai-baby-growth-companion}"
 REMOTE_USER="${REMOTE_USER:-babyapp}"
-SYNC_DATA="${SYNC_DATA:-1}"
+SYNC_DATA="${SYNC_DATA:-0}"
 SYNC_MOBILE_UPDATES="${SYNC_MOBILE_UPDATES:-0}"
 SYNC_MOBILE_UPDATE_MANIFEST_ONLY="${SYNC_MOBILE_UPDATE_MANIFEST_ONLY:-0}"
 OVERWRITE_REMOTE_DATA="${OVERWRITE_REMOTE_DATA:-0}"
@@ -46,7 +46,7 @@ Options:
   SSH_KEY=~/.ssh/aliyun.pem          Optional private key.
   ECS_PORT=22                        SSH port.
   DEPLOY_PORT=8300                   Backend HTTP port.
-  SYNC_DATA=1                        Upload backend/data on first deploy.
+  SYNC_DATA=0                        Upload backend/data on first deploy. Default 0 — set 1 explicitly only on a fresh ECS where local data should seed the remote SQLite.
   SYNC_MOBILE_UPDATES=0              Upload backend/data/mobile-updates without syncing SQLite data.
   SYNC_MOBILE_UPDATE_MANIFEST_ONLY=0 Upload only the OTA manifest when bundles are hosted externally.
   OVERWRITE_REMOTE_DATA=0            Refuse to overwrite an existing remote SQLite file.
@@ -262,6 +262,18 @@ if [[ "$SYNC_DATA" == "1" && -d "$LOCAL_DATA_DIR" ]]; then
     echo "Remote SQLite already exists; skipping data sync."
     echo "Set OVERWRITE_REMOTE_DATA=1 only if you intentionally want to copy local data over it."
   else
+    if [[ -t 0 && -t 1 ]]; then
+      echo
+      echo "About to copy local backend/data to remote $ECS_USER@$ECS_HOST:$REMOTE_DATA_DIR."
+      if [[ "$remote_has_db" == "yes" ]]; then
+        echo "Remote SQLite at $REMOTE_DATA_DIR/baby-companion.sqlite WILL BE OVERWRITTEN."
+      fi
+      read -rp "Type 'yes' to continue: " confirm
+      if [[ "$confirm" != "yes" ]]; then
+        echo "Aborted by user." >&2
+        exit 1
+      fi
+    fi
     echo "Uploading local backend/data to remote persistent directory..."
     rsync -az -e "ssh ${ssh_args[*]}" "$LOCAL_DATA_DIR"/ "$ECS_USER@$ECS_HOST:/tmp/${SERVICE_NAME}-data/"
     remote "SERVICE_NAME='$SERVICE_NAME' REMOTE_USER='$REMOTE_USER' REMOTE_DATA_DIR='$REMOTE_DATA_DIR' bash -s" <<'REMOTE_DATA'

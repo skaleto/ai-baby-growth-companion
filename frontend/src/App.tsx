@@ -282,6 +282,31 @@ import {
   REMINDER_SOUND_FILES,
   REMINDER_WEB_SOUND_URLS,
 } from "./utils/reminderAssets";
+import {
+  careAlbumCategory,
+  careAlbumTitle,
+  careEventBody,
+  careEventTitleMap,
+  careEventsForLog,
+  dedupeCareEventsForMerge,
+  inferCareEventType,
+  mergeCareLog,
+  parseTimeSort,
+  recordTimeLabel,
+  soothingText,
+} from "./utils/careLogHelpers";
+import {
+  formatIntervalText,
+  reminderAlertLabel,
+  reminderCategoryLabel,
+  reminderDate,
+  reminderNotificationLabel,
+  reminderRepeatLabel,
+  reminderScheduleLabel,
+  reminderSoundLabel,
+  reminderStatusLabel,
+  reminderTimeText,
+} from "./utils/reminderLabels";
 
 const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
 
@@ -580,192 +605,7 @@ const suppressImageOnlyCareEffects = (
   };
 };
 
-const careEventSignature = (event: CareLogEvent, fallbackDate: string) =>
-  [
-    event.type,
-    event.date || fallbackDate,
-    event.time ?? "",
-    event.amountMl ?? "",
-    event.durationHours ?? "",
-    event.temperature ?? "",
-  ].join("|");
-
-const mergeCareEvent = (existing: CareLogEvent, next: CareLogEvent): CareLogEvent => ({
-  ...existing,
-  ...next,
-  id: existing.id || next.id,
-  date: existing.date || next.date,
-  time: existing.time ?? next.time,
-  title: existing.title ?? next.title,
-  amountMl: next.amountMl ?? existing.amountMl,
-  durationHours: next.durationHours ?? existing.durationHours,
-  temperature: next.temperature ?? existing.temperature,
-  note: existing.note ?? next.note,
-  tags: [...new Set([...(existing.tags ?? []), ...(next.tags ?? [])])],
-});
-
-const dedupeCareEventsForMerge = (events: CareLogEvent[], fallbackDate: string) => {
-  const bySignature = new Map<string, CareLogEvent>();
-  events.forEach((event) => {
-    const normalized = { ...event, date: event.date || fallbackDate };
-    const signature = careEventSignature(normalized, fallbackDate);
-    const existing = bySignature.get(signature);
-    bySignature.set(signature, existing ? mergeCareEvent(existing, normalized) : normalized);
-  });
-  return Array.from(bySignature.values()).slice(-24);
-};
-
-const mergeUniqueText = (left: string[], right: string[]) => {
-  const seen = new Set<string>();
-  return [...left, ...right]
-    .filter((item) => {
-      const signature = item.trim();
-      if (!signature || seen.has(signature)) return false;
-      seen.add(signature);
-      return true;
-    })
-    .slice(-6);
-};
-
-const mergeCareLog = (logs: CareLog[], patch: Partial<CareLog>) => {
-  const date = patch.date ?? todayISO();
-  const existing = logs.find((item) => item.date === date);
-  if (!existing) {
-    return [
-      ...logs,
-      {
-        id: patch.id ?? makeId("care"),
-        date,
-        milkMl: patch.milkMl,
-        milkTimes: patch.milkTimes,
-        sleepHours: patch.sleepHours,
-        wakes: patch.wakes,
-        soothing: patch.soothing,
-        solids: patch.solids ?? [],
-        poop: patch.poop,
-        temperature: patch.temperature,
-        notes: patch.notes ?? [],
-        events: dedupeCareEventsForMerge(patch.events ?? [], date),
-      },
-    ];
-  }
-
-  return logs.map((item) =>
-    item.date === date
-      ? {
-          ...item,
-          milkMl: patch.milkMl ?? item.milkMl,
-          milkTimes: patch.milkTimes ?? item.milkTimes,
-          sleepHours: patch.sleepHours ?? item.sleepHours,
-          wakes: patch.wakes ?? item.wakes,
-          soothing: patch.soothing ?? item.soothing,
-          solids: [...new Set([...(item.solids ?? []), ...(patch.solids ?? [])])],
-          poop: patch.poop ?? item.poop,
-          temperature: patch.temperature ?? item.temperature,
-          notes: mergeUniqueText(item.notes, patch.notes ?? []),
-          events: dedupeCareEventsForMerge([...(item.events ?? []), ...(patch.events ?? [])], date),
-        }
-      : item,
-  );
-};
-
-const soothingText = {
-  easy: "好哄睡",
-  normal: "正常",
-  hard: "偏难",
-};
-
-const parseTimeSort = (value: string | undefined, fallback: number) => {
-  if (!value) return fallback;
-  const normalized = normalizeClockText(value);
-  const match = normalized?.match(/(\d{2}):(\d{2})/);
-  if (!match) return fallback;
-  return Number(match[1]) * 60 + Number(match[2]);
-};
-
-const careEventTitleMap: Record<CareLogEventType, string> = {
-  milk: "喝奶",
-  sleep: "睡觉",
-  wake: "醒来",
-  poop: "便便",
-  solid: "辅食",
-  temperature: "体温",
-  soothing: "哄睡",
-  note: "照护记录",
-};
-
-const inferCareEventType = (text: string): CareLogEventType => {
-  if (/奶|喂/.test(text)) return "milk";
-  if (/睡|小睡|入睡/.test(text)) return "sleep";
-  if (/醒|夜醒/.test(text)) return "wake";
-  if (/便便|大便|拉了/.test(text)) return "poop";
-  if (/辅食|米粉|蛋黄|菜泥|果泥|肉泥|粥/.test(text)) return "solid";
-  if (/体温|发烧|发热/.test(text)) return "temperature";
-  if (/哄|闹觉|抱睡/.test(text)) return "soothing";
-  return "note";
-};
-
-const noteToCareEvent = (log: CareLog, note: string, index: number): CareLogEvent | null => {
-  const time = normalizeClockText(note);
-  const type = inferCareEventType(note);
-  if (!time) return null;
-  return {
-    id: `${log.id}-note-${index}`,
-    type,
-    date: log.date,
-    time,
-    title: careEventTitleMap[type],
-    note,
-    tags: [careEventTitleMap[type]],
-  };
-};
-
-const careEventsForLog = (log: CareLog) => {
-  const source = log.events.length
-    ? log.events
-    : log.notes.map((note, index) => noteToCareEvent(log, note, index)).filter((event): event is CareLogEvent => Boolean(event));
-  return source.filter((event) => Boolean(event.time) || event.type !== "note");
-};
-
-const recordTimeLabel = (date: string, time?: string) => `${formatDate(date)}\n${time || "全天"}`;
-
-const careEventBody = (event: CareLogEvent) =>
-  [
-    event.amountMl ? `${event.amountMl} ml` : "",
-    event.durationHours ? `${event.durationHours} 小时` : "",
-    event.temperature ? `${event.temperature}°C` : "",
-    event.note ?? "",
-  ]
-    .filter(Boolean)
-    .join("，") || "已记录";
-
-const reminderDate = (reminder: Reminder) => {
-  const dueAt = parseReminderDueAt(reminder);
-  if (dueAt) return localDateKey(dueAt);
-
-  const isoMatch = reminder.dueText.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (isoMatch) {
-    return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
-  }
-
-  const monthDay = reminder.dueText.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
-  if (monthDay) {
-    const year = new Date(reminder.createdAt).getFullYear();
-    return `${year}-${monthDay[1].padStart(2, "0")}-${monthDay[2].padStart(2, "0")}`;
-  }
-
-  return reminder.createdAt.slice(0, 10);
-};
-
-const reminderTimeText = (reminder: Reminder) => {
-  const dueAt = parseReminderDueAt(reminder);
-  if (dueAt) return localTimeKey(dueAt);
-  return normalizeClockText(reminder.dueText) ??
-    (reminder.dueText
-      .replace(/\d{4}-\d{1,2}-\d{1,2}/, "")
-      .trim()
-      .slice(0, 12) || undefined);
-};
+// careLog + reminder helpers moved to ./utils/careLogHelpers and ./utils/reminderLabels
 
 const buildRecordEvents = (
   careLogs: CareLog[],
@@ -832,40 +672,7 @@ const recordEventIconSrc = (event: RecordEvent) => {
   return recordsIcon;
 };
 
-const reminderCategoryLabel = (category: Reminder["category"]) => {
-  if (category === "vaccine") return "疫苗";
-  if (category === "routine") return "日常";
-  if (category === "care") return "照护";
-  return "自定义";
-};
-
-const reminderStatusLabel = (status: Reminder["status"]) => {
-  if (status === "done") return "已完成";
-  if (status === "missed") return "已逾期";
-  return "待完成";
-};
-
-const reminderScheduleLabel = (reminder: Reminder) => (reminder.scheduleMode === "interval" ? "循环" : "一次");
-
-const reminderAlertLabel = (reminder: Reminder) => (reminder.alertMode === "ringing" ? "闹铃" : "通知");
-
-const reminderRepeatLabel = (reminder: Reminder) =>
-  reminder.repeatRule ? `每 ${formatIntervalText(reminder.repeatRule.intervalMinutes)}` : undefined;
-
-const reminderSoundLabel = (reminder: Reminder) =>
-  reminder.alertMode === "ringing"
-    ? REMINDER_SOUND_OPTIONS.find((option) => option.value === normalizeReminderSoundId(reminder.soundId))?.label
-    : undefined;
-
-const reminderNotificationLabel = (reminder: Reminder) => {
-  if (reminder.status === "done") return undefined;
-  if (reminder.notificationStatus === "scheduled") return "系统提醒已开启";
-  if (reminder.notificationStatus === "scheduled_inexact") return "已降级为普通定时提醒";
-  if (reminder.notificationStatus === "permission_denied") return "通知权限未开启";
-  if (reminder.notificationStatus === "failed") return "系统提醒失败";
-  if (reminder.notificationStatus === "in_app_only") return "仅 App 内提醒";
-  return reminder.dueAt ? "待调度系统提醒" : "时间待确认";
-};
+// reminder labels moved to ./utils/reminderLabels
 
 const albumCategoryIconSrc = (category: AlbumItemCategory) => {
   if (category === "growth") return growthIcon;
@@ -876,19 +683,7 @@ const albumCategoryIconSrc = (category: AlbumItemCategory) => {
   return recordsIcon;
 };
 
-const careAlbumCategory = (event: CareLogEvent): AlbumItemCategory => {
-  if (event.type === "milk" || event.type === "solid") return "feeding";
-  if (event.type === "sleep" || event.type === "wake" || event.type === "soothing") return "sleep";
-  if (event.type === "temperature" || event.type === "poop") return "health";
-  return albumCategoryFromTags(event.tags ?? [], event.note ?? event.title ?? "");
-};
-
-const careAlbumTitle = (event: CareLogEvent) => {
-  if (event.type === "milk" && event.amountMl) return `喝奶 ${event.amountMl}ml`;
-  if (event.type === "sleep" && event.durationHours) return `睡了 ${event.durationHours} 小时`;
-  if (event.type === "temperature" && event.temperature) return `体温 ${event.temperature}°C`;
-  return event.title || canonicalCareEventTitle(event.type);
-};
+// careAlbumCategory + careAlbumTitle moved to ./utils/careLogHelpers
 
 const formatTrendValue = (value: number | undefined, unit: string, decimals = 0) => {
   if (value === undefined || !Number.isFinite(value)) return "未记录";
@@ -1212,13 +1007,7 @@ const addReminderHistory = (reminder: Reminder, entry: string) => ({
   history: [entry, ...reminder.history.filter((item) => item !== entry)].slice(0, 8),
 });
 
-const formatIntervalText = (minutes: number) => {
-  if (minutes % 60 === 0) return `${minutes / 60} 小时`;
-  if (minutes < 60) return `${minutes} 分钟`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return `${hours} 小时 ${rest} 分钟`;
-};
+// formatIntervalText moved to ./utils/reminderLabels
 
 const nextIntervalDueAt = (anchorAt: Date, intervalMinutes: number, now = new Date()) => {
   const intervalMs = intervalMinutes * 60 * 1000;

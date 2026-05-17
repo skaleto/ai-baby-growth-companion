@@ -38,6 +38,9 @@ final class AttachmentUploadRules {
         if (bytes.length > maxUploadBytesFor(mimeType)) {
             throw new IllegalArgumentException("Attachment exceeds size limit");
         }
+        if (!matchesMagicBytes(mimeType, bytes)) {
+            throw new IllegalArgumentException("Attachment content does not match declared type: " + mimeType);
+        }
     }
 
     void validateMetadata(String mimeType, Long sizeBytes) {
@@ -104,6 +107,43 @@ final class AttachmentUploadRules {
         return StringUtils.hasText(mimeType)
                 && (mimeType.startsWith("image/") || mimeType.startsWith("video/") || mimeType.startsWith("audio/"))
                 && EXTENSIONS.containsKey(mimeType);
+    }
+
+    private boolean matchesMagicBytes(String mimeType, byte[] bytes) {
+        return switch (mimeType) {
+            case "image/jpeg" -> startsWith(bytes, 0xFF, 0xD8, 0xFF);
+            case "image/png" -> startsWith(bytes, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A);
+            case "image/gif" -> startsWith(bytes, 0x47, 0x49, 0x46, 0x38);
+            case "image/webp" -> hasRiffContainer(bytes, "WEBP");
+            case "video/mp4", "video/quicktime", "audio/mp4" -> hasFtypBox(bytes);
+            case "video/webm" -> startsWith(bytes, 0x1A, 0x45, 0xDF, 0xA3);
+            case "audio/mpeg" -> startsWith(bytes, 0x49, 0x44, 0x33)
+                    || (bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFF && ((bytes[1] & 0xE0) == 0xE0));
+            case "audio/wav" -> hasRiffContainer(bytes, "WAVE");
+            default -> false;
+        };
+    }
+
+    private boolean startsWith(byte[] bytes, int... signature) {
+        if (bytes.length < signature.length) return false;
+        for (int index = 0; index < signature.length; index += 1) {
+            if ((bytes[index] & 0xFF) != (signature[index] & 0xFF)) return false;
+        }
+        return true;
+    }
+
+    private boolean hasRiffContainer(byte[] bytes, String fourCc) {
+        if (bytes.length < 12) return false;
+        if (!startsWith(bytes, 0x52, 0x49, 0x46, 0x46)) return false;
+        return bytes[8] == (byte) fourCc.charAt(0)
+                && bytes[9] == (byte) fourCc.charAt(1)
+                && bytes[10] == (byte) fourCc.charAt(2)
+                && bytes[11] == (byte) fourCc.charAt(3);
+    }
+
+    private boolean hasFtypBox(byte[] bytes) {
+        return bytes.length >= 8
+                && bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p';
     }
 
     record DataUrlPayload(String mimeType, byte[] bytes) {

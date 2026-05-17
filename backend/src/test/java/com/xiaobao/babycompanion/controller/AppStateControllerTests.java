@@ -81,7 +81,7 @@ class AppStateControllerTests {
                                           "id": "att-test",
                                           "name": "photo.png",
                                           "kind": "image",
-                                          "dataUrl": "data:image/png;base64,YWJj"
+                                          "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
                                         }
                                       ]
                                     }
@@ -174,7 +174,7 @@ class AppStateControllerTests {
                                   "id": "video-with-thumb",
                                   "name": "moment.mp4",
                                   "kind": "video",
-                                  "dataUrl": "data:video/mp4;base64,AQIDBA==",
+                                  "dataUrl": "data:video/mp4;base64,AAAAGGZ0eXBpc29tAAAAAGlzb21pc28y",
                                   "thumbnailDataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
                                 }
                                 """))
@@ -278,7 +278,7 @@ class AppStateControllerTests {
                                   "id": "legacy-prefixed-path",
                                   "name": "photo.png",
                                   "kind": "image",
-                                  "dataUrl": "data:image/png;base64,YWJj"
+                                  "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
                                 }
                                 """))
                 .andExpect(status().isOk());
@@ -357,7 +357,7 @@ class AppStateControllerTests {
                                   "id": "stale-album-url",
                                   "name": "photo.png",
                                   "kind": "image",
-                                  "dataUrl": "data:image/png;base64,YWJj"
+                                  "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
                                 }
                                 """))
                 .andExpect(status().isOk());
@@ -398,7 +398,7 @@ class AppStateControllerTests {
                                   "id": "standalone-album-upload",
                                   "name": "album-photo.png",
                                   "kind": "image",
-                                  "dataUrl": "data:image/png;base64,YWJj"
+                                  "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
                                 }
                                 """))
                 .andExpect(status().isOk());
@@ -489,7 +489,7 @@ class AppStateControllerTests {
                                   "id": "viewer-upload",
                                   "name": "photo.png",
                                   "kind": "image",
-                                  "dataUrl": "data:image/png;base64,YWJj"
+                                  "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
                                 }
                         """))
                 .andExpect(status().isForbidden())
@@ -910,6 +910,36 @@ class AppStateControllerTests {
                 .andExpect(jsonPath("$.state.careLogs[0].notes[0]").value("原始记录"))
                 .andExpect(jsonPath("$.state.careLogs[0].events.length()").value(1))
                 .andExpect(jsonPath("$.state.careLogs[0].events[0].id").value("event-milk"));
+    }
+
+    @Test
+    void rejectsUnsupportedCollectionOnUpsert() throws Exception {
+        mockMvc.perform(put("/api/app/state/secrets/anything")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void rejectsUnsupportedCollectionOnDelete() throws Exception {
+        mockMvc.perform(delete("/api/app/state/secrets/anything")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void rejectsInvalidUpsertMode() throws Exception {
+        mockMvc.perform(put("/api/app/state/careLogs/care-test?mode=drop-all")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"care-test","date":"2026-05-01"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     private String login(String phone) throws Exception {
