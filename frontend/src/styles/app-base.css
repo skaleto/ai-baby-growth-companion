@@ -29,6 +29,47 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+label,
+summary,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="option"],
+nav,
+.mobile-tabbar,
+.mobile-tabbar *,
+.segmented-tabs,
+.segmented-tabs *,
+.screen-action-button,
+.screen-pill,
+.expense-month-head,
+.expense-month-head *,
+.expense-row,
+.expense-row *,
+.expense-row__category-label,
+.expense-row__bar,
+.expense-row__checkbox,
+.expense-row__attach,
+.ledger-bulk-bar,
+.ledger-bulk-bar *,
+.ledger-detail-edit-btn {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+[contenteditable=""] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 button,
