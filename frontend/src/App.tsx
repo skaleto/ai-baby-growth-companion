@@ -1819,6 +1819,15 @@ const expenseCategoryLabel = (category: ExpenseCategory) =>
 const formatMoney = (amount: number) =>
   new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: amount % 1 === 0 ? 0 : 2 }).format(amount || 0);
 
+const formatMoneyCompact = (amount: number) => {
+  const value = Number.isFinite(amount) ? Math.abs(amount) : 0;
+  if (value === 0) return "0";
+  if (value >= 10000) return `${(value / 10000).toFixed(value >= 100000 ? 0 : 1)}万`;
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`;
+  if (value >= 100) return `${Math.round(value)}`;
+  return value.toFixed(value % 1 === 0 ? 0 : 1);
+};
+
 const expenseMonthKey = (date: string) => (date && date.length >= 7 ? date.slice(0, 7) : todayISO().slice(0, 7));
 
 const expenseYearKey = (date: string) => (date && date.length >= 4 ? date.slice(0, 4) : todayISO().slice(0, 4));
@@ -7416,17 +7425,38 @@ function App() {
                   <h2>本月较大支出</h2>
                 </div>
                 {ledgerStats.largest.length ? (
-                  <div className="expense-list compact">
-                    {ledgerStats.largest.map((expense) => (
-                      <article className="expense-item" key={expense.id}>
-                        <span>{expenseCategoryLabel(expense.category).slice(0, 1)}</span>
-                        <div>
-                          <h3>{expense.title}</h3>
-                          <p>{formatFullDate(expense.date)} · {expenseCategoryLabel(expense.category)}</p>
-                        </div>
-                        <strong>{formatMoney(expense.amount)}</strong>
-                      </article>
-                    ))}
+                  <div className="expense-row-list">
+                    {ledgerStats.largest.map((expense) => {
+                      const categoryLabel = expenseCategoryLabel(expense.category);
+                      const categoryColor = EXPENSE_CATEGORY_COLORS[expense.category] ?? EXPENSE_CATEGORY_COLORS.other;
+                      const monthDay = expense.date && expense.date.length >= 10
+                        ? `${Number(expense.date.slice(5, 7))}/${Number(expense.date.slice(8, 10))}`
+                        : expense.date;
+                      return (
+                        <article
+                          className="expense-row"
+                          key={expense.id}
+                          onClick={() => canCaregive && openEditExpenseEditor(expense)}
+                          role={canCaregive ? "button" : undefined}
+                          tabIndex={canCaregive ? 0 : undefined}
+                          style={{ "--expense-color": categoryColor } as CSSProperties}
+                        >
+                          <span className="expense-row__bar" aria-hidden="true" />
+                          <div className="expense-row__main">
+                            <div className="expense-row__category-line">
+                              <span className="expense-row__category-label">{categoryLabel}</span>
+                            </div>
+                            <div className="expense-row__title-line">
+                              <h3 className="expense-row__title">{expense.title}</h3>
+                              <strong className="expense-row__amount">{formatMoney(expense.amount)}</strong>
+                            </div>
+                            <div className="expense-row__meta">
+                              <span className="expense-row__meta-part">{monthDay}</span>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="ledger-empty-copy">记几笔之后，这里会自动列出本月最大支出。</p>
@@ -7443,8 +7473,12 @@ function App() {
               </div>
               <div className="expense-year-chart" aria-label="年度支出柱状图">
                 {ledgerStats.monthlyTotals.map((month) => (
-                  <div className="expense-month-bar" key={month.month}>
-                    <span>{month.total ? formatMoney(month.total).replace("¥", "") : "0"}</span>
+                  <div
+                    className="expense-month-bar"
+                    key={month.month}
+                    title={month.total ? `${month.label}：${formatMoney(month.total)}` : `${month.label}：暂无支出`}
+                  >
+                    <span>{month.total ? formatMoneyCompact(month.total) : "0"}</span>
                     <i aria-hidden="true">
                       <b style={{ height: `${month.total ? Math.max(8, (month.total / ledgerStats.maxMonthlyTotal) * 100) : 0}%` }} />
                     </i>
@@ -7554,8 +7588,33 @@ function App() {
                                           }}
                                           disabled={!firstAttachment.url}
                                         >
-                                          <ImageIcon size={13} />
-                                          <span>{expense.attachments && expense.attachments.length > 1 ? expense.attachments.length : ""}</span>
+                                          {firstAttachment.kind === "image" && firstAttachment.thumbnailUrl ? (
+                                            <img
+                                              src={firstAttachment.thumbnailUrl}
+                                              alt=""
+                                              className="expense-row__attach-thumb"
+                                              loading="lazy"
+                                              decoding="async"
+                                            />
+                                          ) : firstAttachment.kind === "video" && firstAttachment.thumbnailUrl ? (
+                                            <img
+                                              src={firstAttachment.thumbnailUrl}
+                                              alt=""
+                                              className="expense-row__attach-thumb"
+                                              loading="lazy"
+                                              decoding="async"
+                                            />
+                                          ) : firstAttachment.kind === "video" ? (
+                                            <Video size={14} />
+                                          ) : firstAttachment.kind === "audio" ? (
+                                            <Mic size={14} />
+                                          ) : (
+                                            <ImageIcon size={14} />
+                                          )}
+                                          <span>
+                                            {firstAttachment.kind === "video" ? "视频" : firstAttachment.kind === "audio" ? "语音" : "图片"}
+                                            {expense.attachments && expense.attachments.length > 1 ? ` ${expense.attachments.length}` : ""}
+                                          </span>
                                         </button>
                                       ) : null}
                                     </div>

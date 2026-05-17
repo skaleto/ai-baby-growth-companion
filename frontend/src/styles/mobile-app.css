@@ -1096,7 +1096,14 @@ canvas {
   font-size: 10px;
   font-style: normal;
   line-height: 1.1;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expense-month-bar span {
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .expense-month-bar i {
@@ -3603,15 +3610,40 @@ body.keyboard-open .expense-optional-fields {
 .expense-row__attach {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 1px 6px;
-  border: 1px solid rgba(118, 137, 124, 0.25);
-  border-radius: 10px;
-  background: #fffdf8;
+  gap: 4px;
+  padding: 2px 8px 2px 2px;
+  border: 1px solid rgba(75, 111, 93, 0.45);
+  border-radius: 12px;
+  background: rgba(167, 199, 178, 0.18);
   color: var(--sage-dark, #4a6f5d);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.expense-row__attach:hover:not(:disabled) {
+  background: rgba(167, 199, 178, 0.32);
+}
+
+.expense-row__attach:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.expense-row__attach-thumb {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.expense-row__attach > svg {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+  border-radius: 6px;
+  background: rgba(75, 111, 93, 0.18);
 }
 
 .expense-row__attach span:empty {
