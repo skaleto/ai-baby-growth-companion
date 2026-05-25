@@ -67,13 +67,31 @@ public class ProTrialService {
         );
     }
 
+    /**
+     * Validation phase: all families have Pro access by default.
+     * To re-enable Pro gating, change the body to: {@code return isProEnabledByEntitlement(familyId);}
+     * See docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md §4.2
+     */
     public boolean isProEnabled(String familyId) {
+        return true;
+    }
+
+    @SuppressWarnings("unused")
+    private boolean isProEnabledByEntitlement(String familyId) {
         return entitlementEnabled(entitlement(familyId));
     }
 
+    /**
+     * Validation phase: no-op. See isProEnabled() Javadoc.
+     */
     public void requireProCaregiver(String familyId) {
         currentUser.requireCaregiver();
-        if (!isProEnabled(familyId)) {
+        // Pro gating bypassed during validation phase.
+    }
+
+    @SuppressWarnings("unused")
+    private void requireProCaregiverByEntitlement(String familyId) {
+        if (!isProEnabledByEntitlement(familyId)) {
             throw new ForbiddenException("当前家庭还没有开通 Pro 内测，先申请后再使用今日小结。");
         }
     }

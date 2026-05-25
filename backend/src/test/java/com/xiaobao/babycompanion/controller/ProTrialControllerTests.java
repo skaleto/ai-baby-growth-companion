@@ -188,6 +188,7 @@ class ProTrialControllerTests {
     }
 
     @Test
+    @org.junit.jupiter.api.Disabled("Pro gating bypassed during validation phase, see ProTrialService.isProEnabled Javadoc")
     void nonProFamilyCannotGenerateDailySummary() throws Exception {
         LoginResult login = login(phone(), inviteCode(), "妈妈", true);
 
