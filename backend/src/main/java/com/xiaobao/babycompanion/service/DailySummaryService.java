@@ -10,6 +10,8 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 
+import com.xiaobao.babycompanion.dto.pro.FindingDto;
+
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -54,6 +56,8 @@ public class DailySummaryService {
     private final CurrentUser currentUser;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final DailySummaryAiClient aiClient;
+    private final DailySummaryFindingValidator findingValidator;
 
     public DailySummaryService(
             DailySummaryRecordService summaryService,
@@ -68,7 +72,9 @@ public class DailySummaryService {
             AiUsageLogService aiUsageLogService,
             CurrentUser currentUser,
             ObjectMapper objectMapper,
-            Clock clock
+            Clock clock,
+            DailySummaryAiClient aiClient,
+            DailySummaryFindingValidator findingValidator
     ) {
         this.summaryService = summaryService;
         this.profileService = profileService;
@@ -83,6 +89,8 @@ public class DailySummaryService {
         this.currentUser = currentUser;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.aiClient = aiClient;
+        this.findingValidator = findingValidator;
     }
 
     public DailySummaryDto readCurrent(String date) {
@@ -93,7 +101,12 @@ public class DailySummaryService {
     public DailySummaryDto read(String familyId, String userId, String date) {
         String summaryDate = normalizeDate(date);
         DailySummaryRecord record = summaryRecord(familyId, summaryDate);
-        if (record == null) return null;
+        if (record == null) {
+            // No stored summary — build a fresh one (including AI findings) without persisting
+            String now = Instant.now(clock).toString();
+            String fingerprint = sourceFingerprint(familyId, summaryDate);
+            return buildSummary(familyId, userId, summaryDate, now, fingerprint);
+        }
         DailySummaryDto stored = parseSummary(record.getPayloadJson());
         String currentFingerprint = sourceFingerprint(familyId, summaryDate);
         return new DailySummaryDto(
@@ -104,7 +117,7 @@ public class DailySummaryService {
                 safeList(stored.observations()),
                 safeList(stored.missingItems()),
                 accountMissingItems(familyId, userId, summaryDate),
-                List.of(),
+                safeList(stored.findings()),
                 stored.generatedAt(),
                 stored.generatedByUserId(),
                 record.getSourceFingerprint(),
@@ -213,6 +226,9 @@ public class DailySummaryService {
             text = text + " " + String.join(" ", observations);
         }
 
+        List<FindingDto> findings = generateFindings(
+                familyId, userId, date, profile, careLog, growthEvents, albumItems, expenses);
+
         return new DailySummaryDto(
                 "daily-summary-" + familyId + "-" + date,
                 date,
@@ -221,11 +237,98 @@ public class DailySummaryService {
                 observations,
                 missingItems,
                 accountMissingItems(familyId, userId, date),
-                List.of(),
+                findings,
                 generatedAt,
                 userId,
                 fingerprint,
                 false
+        );
+    }
+
+    private List<FindingDto> generateFindings(
+            String familyId,
+            String userId,
+            String date,
+            JsonNode profile,
+            JsonNode careLog,
+            List<JsonNode> growthEvents,
+            List<JsonNode> albumItems,
+            List<JsonNode> expenses
+    ) {
+        // Sparse-data guard: skip AI when total records < 3
+        int totalRecords = (careLog == null || careLog.isNull() ? 0 : 1)
+                + growthEvents.size() + albumItems.size() + expenses.size();
+        if (totalRecords < 3) return List.of();
+
+        try {
+            String contextJson = buildAiContext(familyId, userId, date, profile, careLog,
+                    growthEvents, albumItems, expenses);
+            List<FindingDto> raw = aiClient.call(contextJson);
+            DailySummaryFindingValidator.KnownIds known = collectKnownIds(
+                    careLog, growthEvents, albumItems, expenses);
+            List<FindingDto> validated = findingValidator.validate(raw, known);
+            return validated;
+        } catch (Exception e) {
+            // ANY failure -> empty findings, deterministic summary unaffected
+            return List.of();
+        }
+    }
+
+    private String buildAiContext(
+            String familyId,
+            String userId,
+            String date,
+            JsonNode profile,
+            JsonNode careLog,
+            List<JsonNode> growthEvents,
+            List<JsonNode> albumItems,
+            List<JsonNode> expenses
+    ) throws com.fasterxml.jackson.core.JsonProcessingException {
+        var weekAgg = careLogService.getRecentDaysAggregate(familyId, 7);
+        var similarExpenses = new java.util.ArrayList<java.util.Map<String, Object>>();
+        for (JsonNode expense : expenses) {
+            String title = expense.path("title").asText("");
+            if (title.isBlank()) continue;
+            var matches = expenseItemService.getRecentSimilarExpenses(familyId, title, 3);
+            for (var m : matches) {
+                similarExpenses.add(java.util.Map.of(
+                        "id", m.id(), "title", m.title(),
+                        "amount", m.amount(), "date", m.date()));
+            }
+        }
+
+        java.util.Map<String, Object> ctx = new java.util.LinkedHashMap<>();
+        ctx.put("date", date);
+        ctx.put("profile", profile);
+        ctx.put("today", java.util.Map.of(
+                "careLog", careLog == null ? objectMapper.createObjectNode() : careLog,
+                "growthEvents", growthEvents,
+                "albumItems", albumItems,
+                "expenses", expenses
+        ));
+        ctx.put("weekAggregate", weekAgg);
+        ctx.put("similarExpenses", similarExpenses);
+        return objectMapper.writeValueAsString(ctx);
+    }
+
+    private DailySummaryFindingValidator.KnownIds collectKnownIds(
+            JsonNode careLog,
+            List<JsonNode> growthEvents,
+            List<JsonNode> albumItems,
+            List<JsonNode> expenses
+    ) {
+        java.util.Set<String> careIds = new java.util.HashSet<>();
+        if (careLog != null && careLog.has("events")) {
+            careLog.path("events").forEach(e -> careIds.add(e.path("id").asText("")));
+        }
+        return new DailySummaryFindingValidator.KnownIds(
+                careIds,
+                growthEvents.stream().map(n -> n.path("id").asText("")).collect(java.util.stream.Collectors.toSet()),
+                albumItems.stream().map(n -> n.path("id").asText("")).collect(java.util.stream.Collectors.toSet()),
+                expenses.stream().map(n -> n.path("id").asText("")).collect(java.util.stream.Collectors.toSet()),
+                java.util.Set.of(),  // reminders: not yet collected
+                java.util.Set.of(),  // members: not yet collected
+                java.util.Set.of()   // memory: not yet collected
         );
     }
 
