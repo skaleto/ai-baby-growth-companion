@@ -10,9 +10,13 @@ public record DailySummaryDto(
         List<String> observations,
         List<MissingItemDto> missingItems,
         List<MissingItemDto> accountMissingItems,
+        List<FindingDto> findings,
         String generatedAt,
         String generatedByUserId,
         String sourceFingerprint,
         boolean stale
 ) {
+    public DailySummaryDto {
+        if (findings == null) findings = List.of();
+    }
 }
