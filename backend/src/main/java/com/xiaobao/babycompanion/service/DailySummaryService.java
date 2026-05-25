@@ -161,12 +161,12 @@ public class DailySummaryService {
                 true
         ));
 
-        // Return the in-memory summary (which includes personal findings).
-        // The stored record intentionally omits findings (sharedSummary strips them).
-        return summary;
+        return read(familyId, userId, summaryDate);
     }
 
     private DailySummaryDto sharedSummary(DailySummaryDto summary) {
+        // accountMissingItems is account-private — stripped before persistence and recomputed at read time
+        // findings are derived from family-shared inputs (careLog/expense/album) — safe to persist + share within family
         return new DailySummaryDto(
                 summary.id(),
                 summary.date(),
@@ -175,7 +175,7 @@ public class DailySummaryService {
                 safeList(summary.observations()),
                 safeList(summary.missingItems()),
                 List.of(),
-                List.of(),
+                safeList(summary.findings()),
                 summary.generatedAt(),
                 summary.generatedByUserId(),
                 summary.sourceFingerprint(),
