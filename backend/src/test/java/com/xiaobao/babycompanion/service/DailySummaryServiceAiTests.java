@@ -1,32 +1,47 @@
 package com.xiaobao.babycompanion.service;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 
+import com.xiaobao.babycompanion.auth.AuthPrincipal;
+import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.pro.DailySummaryDto;
 import com.xiaobao.babycompanion.dto.pro.FindingDto;
 import com.xiaobao.babycompanion.dto.pro.FindingRelated;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
 
 @SpringBootTest
 class DailySummaryServiceAiTests {
 
     @Autowired DailySummaryService service;
     @MockBean DailySummaryAiClient aiClient;
+    @MockBean ProTrialService proTrialService;
+    @MockBean CurrentUser currentUser;
     @Autowired com.xiaobao.babycompanion.persistence.service.CareLogRecordService careLogService;
     @Autowired com.xiaobao.babycompanion.persistence.service.ExpenseItemRecordService expenseService;
     @Autowired com.xiaobao.babycompanion.persistence.service.AlbumItemRecordService albumService;
 
+    private String familyId;
+    private static final String USER_ID = "user-1";
+
+    @BeforeEach
+    void setup() {
+        familyId = "family-ai-" + System.nanoTime();
+        AuthPrincipal principal = new AuthPrincipal(USER_ID, "13800000001", "session-1", familyId, "测试家庭", "妈妈", true);
+        when(currentUser.requirePrincipal()).thenReturn(principal);
+        doNothing().when(proTrialService).requireProCaregiver(anyString());
+    }
+
     @Test
     void appendsAiFindingsToSummary() throws Exception {
-        String familyId = "family-ai-happy-" + System.currentTimeMillis();
         seedFixture(familyId);
 
         FindingDto fake = new FindingDto(
@@ -37,7 +52,7 @@ class DailySummaryServiceAiTests {
         );
         when(aiClient.call(anyString())).thenReturn(List.of(fake));
 
-        DailySummaryDto result = service.read(familyId, "user-1", today());
+        DailySummaryDto result = service.generate(today());
 
         assertNotNull(result);
         assertEquals(1, result.findings().size());
@@ -47,13 +62,12 @@ class DailySummaryServiceAiTests {
 
     @Test
     void emptyFindingsWhenAiThrows() throws Exception {
-        String familyId = "family-ai-fail-" + System.currentTimeMillis();
         seedFixture(familyId);
 
         when(aiClient.call(anyString())).thenThrow(
                 new DailySummaryAiClient.DailySummaryAiException("simulated timeout"));
 
-        DailySummaryDto result = service.read(familyId, "user-1", today());
+        DailySummaryDto result = service.generate(today());
 
         assertNotNull(result);
         assertTrue(result.findings().isEmpty(), "fallback should produce empty findings list");
@@ -62,10 +76,8 @@ class DailySummaryServiceAiTests {
 
     @Test
     void skipsAiWhenDataTooSparse() throws Exception {
-        String familyId = "family-ai-sparse-" + System.currentTimeMillis();
         // Do NOT seed any data; data count < 3 threshold
-
-        DailySummaryDto result = service.read(familyId, "user-1", today());
+        DailySummaryDto result = service.generate(today());
 
         assertNotNull(result);
         assertTrue(result.findings().isEmpty(), "sparse data should skip AI call entirely");

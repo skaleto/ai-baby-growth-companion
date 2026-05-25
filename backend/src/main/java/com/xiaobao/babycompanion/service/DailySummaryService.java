@@ -101,12 +101,7 @@ public class DailySummaryService {
     public DailySummaryDto read(String familyId, String userId, String date) {
         String summaryDate = normalizeDate(date);
         DailySummaryRecord record = summaryRecord(familyId, summaryDate);
-        if (record == null) {
-            // No stored summary — build a fresh one (including AI findings) without persisting
-            String now = Instant.now(clock).toString();
-            String fingerprint = sourceFingerprint(familyId, summaryDate);
-            return buildSummary(familyId, userId, summaryDate, now, fingerprint);
-        }
+        if (record == null) return null;
         DailySummaryDto stored = parseSummary(record.getPayloadJson());
         String currentFingerprint = sourceFingerprint(familyId, summaryDate);
         return new DailySummaryDto(
@@ -166,7 +161,9 @@ public class DailySummaryService {
                 true
         ));
 
-        return read(familyId, userId, summaryDate);
+        // Return the in-memory summary (which includes personal findings).
+        // The stored record intentionally omits findings (sharedSummary strips them).
+        return summary;
     }
 
     private DailySummaryDto sharedSummary(DailySummaryDto summary) {
