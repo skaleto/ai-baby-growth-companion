@@ -13,6 +13,40 @@
 
 ## Session Log
 
+### Session 2026-05-26 Cross-Domain Daily Summary AI
+
+- Goal: 把现有 deterministic 每日小结升级为跨域 AI 信息发现型「今日发现」。仅本地落地代码与文档，不部署，云端部署留待手动决定。
+- Completed:
+  - 新增 `FindingDto` / `FindingRelated` / `FindingAction` 三个 DTO record，扩展 `DailySummaryDto` 加 `findings` 字段 + 向后兼容 compact constructor。
+  - 新增 `DailySummaryPrompts`（system prompt + 6 类 finding type + JSON schema）、`DailySummaryAiClient` functional interface + `DefaultDailySummaryAiClient`（DeepSeek V4 Pro，30s timeout，markdown fence 剥离）。
+  - 新增 `DailySummaryFindingValidator`：6 类 type 白名单、10 个禁词（应该/建议/异常 等）、id 存在性校验、action target 格式校验、文本 ≤60 字。7 个单测全部 TDD 覆盖。
+  - `CareLogRecordService.getRecentDaysAggregate(familyId, days)` 滑动均值 + `ExpenseItemRecordService.getRecentSimilarExpenses(familyId, productName, months)` fuzzy match，均含 3 个 SpringBootTest 单测。
+  - `DailySummaryService.buildSummary()` 串入 AI：稀疏数据 (<3 records) 跳过 AI 调用、JSON 解析失败兜底 deterministic、`sharedSummary()` 持久化 findings 到 family-shared payload。3 个 service-level 集成单测 (mock AI client + mock CurrentUser + mock ProTrialService)。
+  - 验证阶段 Pro 围墙暂全员开放：`ProTrialService.isProEnabled` 永远返回 true、`requireProCaregiver` 改为 caregiver-only check；原逻辑保留为 `@SuppressWarnings("unused")` 私有方法。
+  - Agent benchmark 加 2 case：信息发现型 6 类 finding 全通过验证器 + 模型异常时 fallback 到空 findings。
+  - 前端 `types.ts` 加 `Finding/FindingRelated/FindingAction/FindingType`，`appStateDomain.ts` normalizer 补 findings 默认空数组。
+  - 新建 `frontend/src/views/DailySummaryView.tsx`（4 模块 + 6 类 finding 渲染 + action 跳转）+ `frontend/src/utils/dailySummary.ts`（`parseActionTarget`, `FINDING_TYPE_LABEL/COLOR`）+ `frontend/src/styles/daily-summary.css`。
+  - `App.tsx` 挂载 `<DailySummaryView />` 在「记录」Tab today 页顶部，`handleFindingActionClick` 处理 ledger/album/milestone/reminder 跳转（milestone 同时切到「我的」Tab，否则 view 不渲染）。「申请 Pro 内测」按钮以 `{false && (...)}` 隐藏。
+  - smoke fixture 注入 3 类 sample findings；新建 `scripts/probe-daily-summary-view.mjs` 跨 3 viewport 拍 DailySummaryView + Pro 按钮隐藏 + action 跳转截图。
+  - 落地 spec `docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md` + plan `docs/superpowers/plans/2026-05-26-cross-domain-daily-summary.md`。
+  - 共 20 个 session commits（含 2 个 Task 8 中途修复 + 1 个 milestone tab 跳转 bug 修复，由 probe 视觉验证抓到）。
+- Verification run:
+  - `bash harness/init.sh`
+  - `mvn test`（IDEA bundled mvn + Android Studio JDK）
+  - `npm run test:agent-benchmark`
+  - `npm run verify:frontend`
+  - `node scripts/probe-daily-summary-view.mjs`（DailySummaryView 跨视口截图 + action 点击流程）
+- Evidence:
+  - Backend `mvn test`: 222 tests，0 新失败（1 pre-existing `AppStateControllerTests.sharedRecordsReturnContributorAndHydrateExpenseAttachments` 不相关，1 skipped 是本次 Task 9 主动 `@Disabled` 的 Pro gating 测试）。
+  - `npm run test:agent-benchmark`: PASS，25 tests（23 原有 + 2 新增）。
+  - `npm run verify:frontend`: PASS，desktop + 6 mobile viewports。
+  - Probe 截图 12 张（3 viewports × 4 场景），DailySummaryView 4 模块正确渲染、6 类 finding tag 颜色区分、`去账本` action 切到账本 Tab、`标记里程碑` action 切到「我的」Tab 并打开 MilestonesView、「我的」Tab 无 Pro 申请按钮。
+- Known risks:
+  - 未跑真模型 E2E：所有 backend AI 测试用 mock client；真 DeepSeek 输出质量需上线后用真家庭数据验证。
+  - 未部署：本次只 commit 不 push 不部署，用户手动决定上线时机。
+  - `familyMemberIds` / `familyMemoryIds` / `listFamilyMemory` 当前返回空集合，所以 `memory_recall` / 跨成员关联类 finding 会被 validator 拦截。后续可增强 finding 召回。
+  - 缓存语义：`DailySummaryService.read()` 保持 read-only（cache miss 返回 null），只有显式 `generate()` 才调 AI 模型，避免每次刷新页面烧 token。
+
 ### Session 2026-05-16 Voice Hold Pointer Drift Fix
 
 - Goal: 修复语音按钮按住后手指稍微移动就断开的问题，让移动端按住说话只在松手、取消或页面失焦时结束。
