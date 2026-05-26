@@ -43,9 +43,12 @@
   - Probe 截图 12 张（3 viewports × 4 场景），DailySummaryView 4 模块正确渲染、6 类 finding tag 颜色区分、`去账本` action 切到账本 Tab、`标记里程碑` action 切到「我的」Tab 并打开 MilestonesView、「我的」Tab 无 Pro 申请按钮。
 - Known risks:
   - 未跑真模型 E2E：所有 backend AI 测试用 mock client；真 DeepSeek 输出质量需上线后用真家庭数据验证。
-  - 未部署：本次只 commit 不 push 不部署，用户手动决定上线时机。
   - `familyMemberIds` / `familyMemoryIds` / `listFamilyMemory` 当前返回空集合，所以 `memory_recall` / 跨成员关联类 finding 会被 validator 拦截。后续可增强 finding 召回。
   - 缓存语义：`DailySummaryService.read()` 保持 read-only（cache miss 返回 null），只有显式 `generate()` 才调 AI 模型，避免每次刷新页面烧 token。
+- Deploy:
+  - OTA `0.1.0-20260526122526` 已上传 OSS（checksum `0d7a1c5778448445e6e29d1c2d5b6090aaf501867d98e60435a83db2ef3c0682`），manifest 已同步到 ECS，云端 `/api/health` 返回 `ok`。
+  - 部署命令：`SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun npm run deploy:aliyun`，本地 mvn 需 `JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home` + IDEA bundled mvn。
+  - 真实家庭数据 + DeepSeek 模型质量需用户手动触发"生成今日小结"后观察。
 
 ### Session 2026-05-16 Voice Hold Pointer Drift Fix
 
