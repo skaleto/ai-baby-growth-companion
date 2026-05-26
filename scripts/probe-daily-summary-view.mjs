@@ -188,7 +188,22 @@ async function main() {
         await page.waitForTimeout(400);
         await page.screenshot({ path: path.join(artifactDir, `${vp.name}-4-action-milestones.png`), fullPage: true });
 
-        console.log(`saved ${vp.name} (4 screenshots)`);
+        // 5. 聊天 Tab
+        await clickTab("聊天");
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(artifactDir, `${vp.name}-5-chat.png`), fullPage: true });
+
+        // 6. 相册 Tab
+        await clickTab("相册");
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(artifactDir, `${vp.name}-6-album.png`), fullPage: true });
+
+        // 7. 提醒 Tab
+        await clickTab("提醒");
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(artifactDir, `${vp.name}-7-reminders.png`), fullPage: true });
+
+        console.log(`saved ${vp.name} (7 screenshots)`);
 
         await ctx.close();
       }
