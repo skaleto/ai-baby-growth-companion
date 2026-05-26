@@ -1,5 +1,6 @@
 import type { DailySummary, Finding } from "../types";
 import { Placeholder } from "../components/Placeholder";
+import { Skeleton } from "../components/Skeleton";
 import {
   FINDING_TYPE_COLOR,
   FINDING_TYPE_LABEL,
@@ -9,9 +10,11 @@ import {
 export type DailySummaryViewProps = {
   summary: DailySummary | null;
   onActionClick: (domain: string, id: string) => void;
+  loading?: boolean;
 };
 
-export function DailySummaryView({ summary, onActionClick }: DailySummaryViewProps) {
+export function DailySummaryView({ summary, onActionClick, loading = false }: DailySummaryViewProps) {
+  if (!summary && loading) return <DailySummarySkeleton />;
   if (!summary) return null;
 
   const hasFindings = summary.findings && summary.findings.length > 0;
@@ -70,6 +73,36 @@ export function DailySummaryView({ summary, onActionClick }: DailySummaryViewPro
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+function DailySummarySkeleton() {
+  return (
+    <section className="daily-summary daily-summary--loading stagger" aria-label="今日发现加载中" aria-busy="true">
+      <div className="daily-summary__section fade-in-up">
+        <Skeleton width={120} height={14} />
+        <div style={{ height: 10 }} />
+        <Skeleton width="92%" height={16} />
+        <div style={{ height: 6 }} />
+        <Skeleton width="74%" height={16} />
+      </div>
+      <div className="daily-summary__section fade-in-up">
+        <Skeleton width={140} height={14} />
+        <div style={{ height: 12 }} />
+        <Skeleton width="100%" height={48} radius={10} />
+        <div style={{ height: 8 }} />
+        <Skeleton width="100%" height={48} radius={10} />
+        <div style={{ height: 8 }} />
+        <Skeleton width="100%" height={48} radius={10} />
+      </div>
+      <div className="daily-summary__section fade-in-up">
+        <Skeleton width={100} height={14} />
+        <div style={{ height: 10 }} />
+        <Skeleton width="85%" height={14} />
+        <div style={{ height: 6 }} />
+        <Skeleton width="60%" height={14} />
+      </div>
     </section>
   );
 }

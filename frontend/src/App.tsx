@@ -6967,6 +6967,7 @@ function App() {
             <DailySummaryView
               summary={selectedDailySummary}
               onActionClick={handleFindingActionClick}
+              loading={isGeneratingDailySummary}
             />
           ) : null}
 

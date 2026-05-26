@@ -88,3 +88,8 @@
 .daily-summary__hero {
   margin-bottom: 4px;
 }
+
+.daily-summary--loading .daily-summary__section {
+  /* slight pulsing border to reinforce "in progress" */
+  border: 1px solid rgba(180, 140, 90, 0.08);
+}
