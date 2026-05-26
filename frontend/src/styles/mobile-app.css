@@ -662,8 +662,19 @@ canvas {
 .quick-row button,
 .assistant-actions button {
   min-height: 40px;
-  padding: 0 12px;
+  padding: 0 10px;
   white-space: nowrap;
+}
+
+/* Compact quick-row on the narrowest phones so emoji pills fit without overflow */
+@media (max-width: 380px) {
+  .quick-row {
+    gap: 6px;
+  }
+  .quick-row button {
+    padding: 0 8px;
+    font-size: 13px;
+  }
 }
 
 .message-list {
