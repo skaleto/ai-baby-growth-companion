@@ -21,12 +21,12 @@ export function parseActionTarget(target: string): ParsedActionTarget {
 }
 
 export const FINDING_TYPE_LABEL: Record<FindingType, string> = {
-  family_action_continuity: "家庭接力",
-  cross_domain_link: "跨域关联",
-  expense_price_compare: "价格对比",
-  trend_anomaly: "趋势观察",
-  media_milestone_candidate: "里程碑候选",
-  memory_recall: "记忆触发",
+  family_action_continuity: "🤝 家庭接力",
+  cross_domain_link: "🔗 跨域关联",
+  expense_price_compare: "💰 价格对比",
+  trend_anomaly: "📈 趋势观察",
+  media_milestone_candidate: "📷 里程碑候选",
+  memory_recall: "🧠 记忆触发",
 };
 
 export const FINDING_TYPE_COLOR: Record<FindingType, string> = {
