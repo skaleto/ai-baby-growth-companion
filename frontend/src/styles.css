@@ -4,6 +4,7 @@
 @import "./styles/legacy-responsive.css";
 @import "./styles/mobile-app.css";
 @import "./styles/motion.css";
+@import "./styles/placeholder.css";
 @import "./styles/warm-theme.css";
 @import "./styles/pro-summary.css";
 @import "./styles/story-select.css";
