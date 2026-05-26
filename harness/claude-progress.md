@@ -13,6 +13,37 @@
 
 ## Session Log
 
+### Session 2026-05-26 Visual Refresh Phase 1
+
+- Goal: 把全局视觉从"信息密集"快速变得"轻松活泼"，CSS-only + emoji + 全局动效，零业务改动，立即上线。详见 `docs/superpowers/specs/2026-05-26-visual-refresh-plan.md` §3。
+- Completed:
+  - DailySummaryView 6 类 finding label 加 emoji 前缀（🤝/🔗/💰/📈/📷/🧠）；4 个 section h3 加装饰 emoji（👶/✨/👀/📝）；facts 从「；」拼接改为 `<ul>` 每条一行。
+  - 新建 `frontend/src/styles/motion.css`：`.fade-in` / `.fade-in-up` / `.stagger`（前 6 个子元素逐 40ms 延迟入场）/ `.tab-content-enter`；带 `prefers-reduced-motion` 兜底。
+  - 新建 `frontend/src/styles/buttons-tap.css`：全局 `button:active` scale(0.97)；hover 暖色阴影；finding action 增强；带 reduced motion 兜底。
+  - DailySummaryView 根 section 加 `stagger`，4 个 inner sections 加 `fade-in-up` —— 首次进入页面 6 个块依次入场。
+  - LedgerView root section、App.tsx 6 个 tab section 加 `tab-content-enter`（首次进入动画，tab 切换不重触发因为 sections 始终挂载——已记 known limitation）。
+  - 聊天 Tab 5 个 quick pill 加 emoji（🍼/🔔/⭐/💰/🤖），移除冗余 `<img className="quick-icon-img">`，避免 icon + emoji 双图标拥挤。
+  - iPhone SE (375px) padding 修复：`@media (max-width: 380px)` 缩 quick-row gap 与 button padding，emoji pill 适配最窄机型。
+  - OTA `0.1.0-20260526125222` 已上传 OSS（checksum `b20e600d5c56039ed3d31b6708f135e8ad60c82c160bb8f3d211d88abed0ac7f`），manifest 同步到 ECS，云端 health=ok。
+- Verification run:
+  - `npm run build`（多次，最终 711ms）
+  - `npm run verify:frontend` → 7 viewport PASS（中间一次 iPhone SE pill 溢出被 padding 修复后再次 PASS）
+  - `node scripts/probe-daily-summary-view.mjs` → 12 截图（3 viewport × 4 场景）确认 emoji + 入场动画 + tap 反馈视觉无回退
+  - OTA build → OSS 上传（需 `JAVA_HOME=Android Studio JDK` + PATH 前置）→ ECS manifest 同步 → cloud health 与 OTA check 验证
+- Evidence:
+  - DailySummaryView 截图：4 模块均带 emoji 装饰、6 类 finding tag 前缀 emoji 可见、facts 分行渲染
+  - 聊天 Tab 截图：5 个 pill 全部 emoji 化、风格统一
+  - Smoke 7 viewport 无 overflow 报警；probe 12 截图无视觉异常
+  - 云端 OTA check 返回 `version=0.1.0-20260526125222 message=视觉刷新 Phase 1`，签名 OSS URL 下发
+- Known risks / limitations:
+  - **Tab 切换动画失效**：6 个 tab section 是 always-mounted（CSS display 切换），`tab-content-enter` 只在首次进入页面时跑一次，tab 切换不重新触发。要修需 `key={activeMobileTab}` 强制 remount（会丢内部状态）或 useEffect+class toggle。本期接受 limitation。
+  - 真机 reduced-motion 行为未验证（macOS 浏览器测试 prefers-reduced-motion 通常默认 no-preference）。
+  - Phase 1 完全没动业务逻辑、后端、数据模型，回滚仅需 revert 几个 commit。
+- Phase 2/3/4 留待：
+  - Phase 2：5 个关键插画占位 + skeleton loading（codex 生成图片填充）
+  - Phase 3：DailySummaryView「宝宝今天」升级为 stat cards + mini sparklines
+  - Phase 4：月龄主题 / 节日彩蛋 / 暗色模式
+
 ### Session 2026-05-26 Cross-Domain Daily Summary AI
 
 - Goal: 把现有 deterministic 每日小结升级为跨域 AI 信息发现型「今日发现」。仅本地落地代码与文档，不部署，云端部署留待手动决定。
