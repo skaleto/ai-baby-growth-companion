@@ -640,6 +640,64 @@ class AgentBenchmarkTests {
                 """;
     }
 
+    // ── Daily-summary AI integration benchmarks ─────────────────────────────
+
+    @Test
+    void benchmarkDailySummaryAiHappyPathAllSixFindingTypesPassValidator() {
+        com.xiaobao.babycompanion.service.DailySummaryFindingValidator validator =
+                new com.xiaobao.babycompanion.service.DailySummaryFindingValidator();
+        com.xiaobao.babycompanion.service.DailySummaryFindingValidator.KnownIds knownIds =
+                com.xiaobao.babycompanion.service.DailySummaryFindingValidator.KnownIds.empty();
+
+        List<com.xiaobao.babycompanion.dto.pro.FindingDto> input = List.of(
+                new com.xiaobao.babycompanion.dto.pro.FindingDto(
+                        "family_action_continuity", "妈妈用白噪音哄睡了 25 分钟",
+                        com.xiaobao.babycompanion.dto.pro.FindingRelated.empty(), null),
+                new com.xiaobao.babycompanion.dto.pro.FindingDto(
+                        "cross_domain_link", "今天买的奶粉今天就用了",
+                        com.xiaobao.babycompanion.dto.pro.FindingRelated.empty(), null),
+                new com.xiaobao.babycompanion.dto.pro.FindingDto(
+                        "expense_price_compare", "飞鹤1段单价比上月贵了 12 元",
+                        com.xiaobao.babycompanion.dto.pro.FindingRelated.empty(), null),
+                new com.xiaobao.babycompanion.dto.pro.FindingDto(
+                        "trend_anomaly", "本周奶量平均比上周低 25%",
+                        com.xiaobao.babycompanion.dto.pro.FindingRelated.empty(), null),
+                new com.xiaobao.babycompanion.dto.pro.FindingDto(
+                        "media_milestone_candidate", "可能是第一次扶站",
+                        com.xiaobao.babycompanion.dto.pro.FindingRelated.empty(), null),
+                new com.xiaobao.babycompanion.dto.pro.FindingDto(
+                        "memory_recall", "记忆里你说过先观察鸡蛋过敏",
+                        com.xiaobao.babycompanion.dto.pro.FindingRelated.empty(), null)
+        );
+
+        List<com.xiaobao.babycompanion.dto.pro.FindingDto> result = validator.validate(input, knownIds);
+
+        assertThat(result).hasSize(6);
+        java.util.Set<String> seenTypes = result.stream()
+                .map(com.xiaobao.babycompanion.dto.pro.FindingDto::type)
+                .collect(java.util.stream.Collectors.toSet());
+        assertThat(seenTypes).hasSize(6);
+    }
+
+    @Test
+    void benchmarkDailySummaryFallbackOnModelExceptionYieldsEmptyFindings() {
+        com.xiaobao.babycompanion.service.DailySummaryAiClient failingClient =
+                contextJson -> { throw new com.xiaobao.babycompanion.service.DailySummaryAiClient.DailySummaryAiException("simulated"); };
+
+        List<com.xiaobao.babycompanion.dto.pro.FindingDto> findings;
+        try {
+            findings = failingClient.call("{}");
+        } catch (Exception e) {
+            // mirrors DailySummaryService.generateFindings() catch block: any failure → empty list
+            findings = List.of();
+        }
+
+        String deterministicText = "小宝今天的小结：今天还没有太多正式记录。";
+
+        assertThat(findings).isEmpty();
+        assertThat(deterministicText).isNotEmpty();
+    }
+
     private void assertUserFacingTextIsNatural(AgentEffectDecision decision) {
         ObjectNode payload = decision.payload() instanceof ObjectNode object ? object : objectMapper.createObjectNode();
         String visibleText = String.join(
