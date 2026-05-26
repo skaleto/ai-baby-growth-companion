@@ -157,6 +157,77 @@ const smokeState = {
   conversationSummary: null,
   thinkingEnabled: true,
   selectedModel: "deepseek-v4-pro",
+  dailySummary: {
+    id: "smoke-daily-summary-today",
+    date: "2026-05-26",
+    text: "小宝今天总体发展良好，全天进食和睡眠正常。",
+    facts: [
+      "今天共喝奶 6 次，每次约 110ml。",
+      "午间睡眠 1.5 小时，夜间睡眠 11 小时。",
+    ],
+    observations: [
+      "白天精神状态很好，与家人互动频繁。",
+      "今天添加了新的固体辅食品尝，状态正常。",
+    ],
+    findings: [
+      {
+        type: "family_action_continuity",
+        text: "下午 3 点你出门后，妈妈用白噪音哄睡了 25 分钟",
+        related: {
+          careLogEventIds: [],
+          growthEventIds: [],
+          albumItemIds: [],
+          expenseIds: [],
+          reminderIds: [],
+          memberIds: [],
+          memoryIds: [],
+          comparedTo: [],
+        },
+        action: null,
+      },
+      {
+        type: "expense_price_compare",
+        text: "今天买的飞鹤 1 段，比上月单价贵了 ¥12",
+        related: {
+          careLogEventIds: [],
+          growthEventIds: [],
+          albumItemIds: [],
+          expenseIds: ["exp-sample-1"],
+          reminderIds: [],
+          memberIds: [],
+          memoryIds: [],
+          comparedTo: ["exp-sample-2"],
+        },
+        action: {
+          label: "去账本",
+          target: "ledger:exp-sample-1",
+        },
+      },
+      {
+        type: "media_milestone_candidate",
+        text: "妈妈发的这张照片里，他可能第一次扶站",
+        related: {
+          careLogEventIds: [],
+          growthEventIds: [],
+          albumItemIds: ["alb-sample-1"],
+          expenseIds: [],
+          reminderIds: [],
+          memberIds: [],
+          memoryIds: [],
+          comparedTo: [],
+        },
+        action: {
+          label: "标记里程碑",
+          target: "milestone:first_stand",
+        },
+      },
+    ],
+    missingItems: [],
+    accountMissingItems: [],
+    generatedAt: new Date().toISOString(),
+    sourceFingerprint: "smoke-fingerprint",
+    stale: false,
+  },
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
