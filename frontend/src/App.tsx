@@ -203,7 +203,6 @@ import {
   suggestedFamilyName,
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
-import { Placeholder } from "./components/Placeholder";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { StorybookScene } from "./components/StorybookScene";
 import {
@@ -255,6 +254,7 @@ import sleepIcon from "./assets/storybook-icons/sleep.png";
 import solidIcon from "./assets/storybook-icons/solid.png";
 import temperatureIcon from "./assets/storybook-icons/temperature.png";
 import alarmSceneImage from "./assets/alarm/alarm-scene.png";
+import emptyRemindersImg from "./assets/illustrations/empty-reminders.png";
 import {
   aiUsageFeatureLabel,
   aiUsageModelLabel,
@@ -7545,12 +7545,12 @@ function App() {
             reminderBuckets.overdue.length === 0 &&
             reminderBuckets.done.length === 0 ? (
               <div className="reminders-empty-hero">
-                <Placeholder
-                  kind="empty-reminders"
+                <img
+                  src={emptyRemindersImg}
+                  alt="还没有任何提醒"
                   width={200}
                   height={150}
-                  caption="铃铛 / 月历插画"
-                  spec="A cheerful illustration of a soft bell or warm calendar to convey reminders. Match warm earth palette."
+                  className="reminders-empty-illustration"
                 />
                 <p className="reminders-empty-copy">还没有任何提醒。从上面点一个常用模板开始吧。</p>
               </div>

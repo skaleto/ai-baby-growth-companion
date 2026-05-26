@@ -13,6 +13,27 @@
 
 ## Session Log
 
+### Session 2026-05-26 Codex Placeholder Illustration Integration
+
+- Goal: 接手 `docs/codex-todo-2026-05-26-placeholder-images.md`，为 Visual Refresh Phase 2 的 3 个占位点生成真实插画并替换前端 `Placeholder`。
+- Completed:
+  - 生成并落地 3 张暖色绘本风透明 PNG 插画：
+    - `frontend/src/assets/illustrations/hero-records-today.png`（1024x576，记录页今日发现顶部 hero）
+    - `frontend/src/assets/illustrations/empty-ledger.png`（320x240，账本明细空态）
+    - `frontend/src/assets/illustrations/empty-reminders.png`（400x300，提醒全空态）
+  - `DailySummaryView.tsx`、`LedgerView.tsx`、`App.tsx` 均由 `<Placeholder>` 替换为真实 `<img>` 资产引用；`Placeholder.tsx` 保留备用。
+  - 补充图片样式：`daily-summary__hero` 固定 16:9、宽度 100%、object-fit contain；空态插画统一 block + contain；提醒空态插画保留最大宽度。
+- Verification run:
+  - `bash harness/init.sh`（开始前 baseline：`git diff --check`、`npm run build`、`npm run test:agent-benchmark` 通过）
+  - `npm run build`
+  - `npm run verify:frontend`
+  - `node scripts/probe-daily-summary-view.mjs`
+- Evidence:
+  - `npm run verify:frontend` 通过 desktop + 6 mobile viewport。
+  - `node scripts/probe-daily-summary-view.mjs` 生成 21 张截图；`iphone-13-390x844-1-records-today.png` 顶部显示真实 hero 插画，`iphone-13-390x844-7-reminders.png` 显示真实提醒空态插画。
+- Known risks:
+  - 账本明细空态插画已接入并通过 build/smoke，但现有专项 probe 没有自动切到账本明细空态截图；后续若改账本空态，可补一条专用视觉 probe。
+
 ### Session 2026-05-26 Visual Refresh Phase 2
 
 - Goal: 给 4 个关键插画位置和 1 个加载状态加占位，让 codex 之后可以生成实际图片填充；DailySummaryView 生成 AI 时显示 shimmer skeleton 避免空白。详见 `docs/superpowers/specs/2026-05-26-visual-refresh-plan.md` §Phase 2。

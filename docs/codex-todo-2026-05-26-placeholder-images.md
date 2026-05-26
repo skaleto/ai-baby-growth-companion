@@ -1,6 +1,8 @@
 # Codex 待办：3 张插画 + 替换占位
 
 - 创建日期：2026-05-26
+- 完成日期：2026-05-26
+- 状态：已完成，真实插画已接入前端；验证记录见 `harness/claude-progress.md` 的 `Session 2026-05-26 Codex Placeholder Illustration Integration`
 - 目的：替换 `Placeholder` 组件为真实插画图片
 - 上下文：小宝记 App 视觉刷新 Phase 2 已在前端预留 3 个占位，每个占位带 `data-placeholder` 属性，等你生成插画并完成替换
 

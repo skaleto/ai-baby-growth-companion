@@ -3960,7 +3960,8 @@ body.keyboard-open .expense-optional-fields {
   margin: 0 auto;
 }
 
-.reminders-empty-hero .placeholder {
+.reminders-empty-hero .placeholder,
+.reminders-empty-illustration {
   max-width: 240px;
 }
 
@@ -3972,5 +3973,7 @@ body.keyboard-open .expense-optional-fields {
 }
 
 .empty-state-illustration {
+  display: block;
+  object-fit: contain;
   margin: 0 auto;
 }

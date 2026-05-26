@@ -86,6 +86,10 @@
 }
 
 .daily-summary__hero {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
   margin-bottom: 4px;
 }
 

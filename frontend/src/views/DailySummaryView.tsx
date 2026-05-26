@@ -1,6 +1,6 @@
 import type { DailySummary, Finding } from "../types";
-import { Placeholder } from "../components/Placeholder";
 import { Skeleton } from "../components/Skeleton";
+import heroRecordsToday from "../assets/illustrations/hero-records-today.png";
 import {
   FINDING_TYPE_COLOR,
   FINDING_TYPE_LABEL,
@@ -23,11 +23,9 @@ export function DailySummaryView({ summary, onActionClick, loading = false }: Da
 
   return (
     <section className="daily-summary stagger" aria-label="今日发现">
-      <Placeholder
-        kind="hero-records-today"
-        aspect="16/9"
-        caption="月龄相关温馨场景"
-        spec="A warm gentle illustration of a baby/family scene matching the baby's current month-age. Soft pastel palette consistent with app's warm theme."
+      <img
+        src={heroRecordsToday}
+        alt="今日发现"
         className="daily-summary__hero fade-in-up"
       />
       {summary.facts && summary.facts.length > 0 && (
