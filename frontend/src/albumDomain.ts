@@ -10,12 +10,12 @@ import type {
 
 // Keep album rules pure: UI components, agent effects, and persistence can share them without React coupling.
 export const ALBUM_CATEGORIES: Array<{ id: AlbumItemCategory | "all"; label: string }> = [
-  { id: "all", label: "全部" },
-  { id: "growth", label: "成长" },
-  { id: "feeding", label: "喂养" },
-  { id: "sleep", label: "睡眠" },
-  { id: "health", label: "健康" },
-  { id: "reminder", label: "提醒/疫苗" },
+  { id: "all", label: "🗂 全部" },
+  { id: "growth", label: "🌱 成长" },
+  { id: "feeding", label: "🍼 喂养" },
+  { id: "sleep", label: "😴 睡眠" },
+  { id: "health", label: "🌡 健康" },
+  { id: "reminder", label: "💉 提醒/疫苗" },
 ];
 
 export type AlbumMediaDecision = {

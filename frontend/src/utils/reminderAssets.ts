@@ -3,13 +3,13 @@ import softChimeSoundUrl from "../assets/sounds/xiaobao_chime.wav";
 import type { ReminderSoundId } from "../types";
 
 export const REMINDER_QUICK_ACTIONS = [
-  { label: "疫苗", prompt: "提醒我带小宝去社区医院打疫苗" },
-  { label: "体检", prompt: "提醒我带小宝去做体检" },
-  { label: "洗澡", prompt: "晚上 8 点提醒我给小宝洗澡" },
-  { label: "喂奶闹钟", prompt: "每 3 小时提醒我喂奶" },
-  { label: "喂药", prompt: "提醒我给小宝喂药，具体用药以医生医嘱为准" },
-  { label: "复诊", prompt: "提醒我带小宝去复诊" },
-  { label: "自定义", prompt: "帮我设置一个照护提醒：" },
+  { label: "💉 疫苗", prompt: "提醒我带小宝去社区医院打疫苗" },
+  { label: "🩺 体检", prompt: "提醒我带小宝去做体检" },
+  { label: "🛁 洗澡", prompt: "晚上 8 点提醒我给小宝洗澡" },
+  { label: "🍼 喂奶闹钟", prompt: "每 3 小时提醒我喂奶" },
+  { label: "💊 喂药", prompt: "提醒我给小宝喂药，具体用药以医生医嘱为准" },
+  { label: "🏥 复诊", prompt: "提醒我带小宝去复诊" },
+  { label: "✏️ 自定义", prompt: "帮我设置一个照护提醒：" },
 ];
 
 export const REMINDER_CHANNELS = {

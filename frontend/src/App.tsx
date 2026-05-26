@@ -7531,7 +7531,6 @@ function App() {
             <div className="assistant-actions reminder-actions">
               {REMINDER_QUICK_ACTIONS.map((action) => (
                 <button type="button" key={action.label} onClick={() => quickFill(withBabyNickname(action.prompt))}>
-                  {action.label === "疫苗" || action.label === "喂药" ? <Syringe size={16} /> : <Bell size={16} />}
                   {action.label}
                 </button>
               ))}
