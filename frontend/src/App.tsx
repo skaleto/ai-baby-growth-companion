@@ -5102,6 +5102,7 @@ function App() {
         switchMobileTab("album");
         break;
       case "milestone":
+        switchMobileTab("profile");
         setMilestonesViewOpen(true);
         break;
       case "reminder":
