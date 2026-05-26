@@ -1,0 +1,73 @@
+.daily-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.daily-summary__section {
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.daily-summary__section h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #888;
+  font-weight: 500;
+}
+
+.daily-summary__facts {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.daily-summary__finding {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.daily-summary__finding:last-child {
+  border-bottom: none;
+}
+
+.daily-summary__finding-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-top: 2px;
+}
+
+.daily-summary__finding-body {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.daily-summary__finding-action {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #f5f5f5;
+  border-radius: 12px;
+  color: #333;
+  cursor: pointer;
+  border: none;
+}
+
+.daily-summary__missing {
+  font-size: 13px;
+  color: #888;
+}
+
+.daily-summary__missing-item {
+  padding: 4px 0;
+}
