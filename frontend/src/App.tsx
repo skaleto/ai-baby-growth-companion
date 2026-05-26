@@ -6167,7 +6167,7 @@ function App() {
           </section>
         </aside>
 
-        <section className="chat-panel" aria-label="每日聊天记录">
+        <section className="chat-panel tab-content-enter" aria-label="每日聊天记录">
           <div className="chat-head">
             <div className="chat-companion-head">
               <div className="companion-badge" aria-hidden="true">
@@ -6935,7 +6935,7 @@ function App() {
           </form>
         </section>
 
-        <section className="records-screen" aria-label="记录">
+        <section className="records-screen tab-content-enter" aria-label="记录">
           <div className="screen-head">
             <div>
               <p className="eyebrow">记录</p>
@@ -7370,7 +7370,7 @@ function App() {
         />
 
 
-        <section className="album-screen" aria-label="相册">
+        <section className="album-screen tab-content-enter" aria-label="相册">
           <div className="screen-head">
             <div>
               <p className="eyebrow">相册</p>
@@ -7513,7 +7513,7 @@ function App() {
           )}
         </section>
 
-        <section className="reminders-screen" aria-label="提醒">
+        <section className="reminders-screen tab-content-enter" aria-label="提醒">
           <div className="screen-head">
             <div>
               <p className="eyebrow">提醒</p>
@@ -7829,7 +7829,7 @@ function App() {
           ) : null}
         </section>
 
-        <section className="profile-screen" aria-label="我的">
+        <section className="profile-screen tab-content-enter" aria-label="我的">
           {milestonesViewOpen ? (
             <MilestonesView
               profile={profile}

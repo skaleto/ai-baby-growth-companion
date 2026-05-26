@@ -18,9 +18,9 @@ export function DailySummaryView({ summary, onActionClick }: DailySummaryViewPro
   const hasObservations = summary.observations && summary.observations.length > 0;
 
   return (
-    <section className="daily-summary" aria-label="今日发现">
+    <section className="daily-summary stagger" aria-label="今日发现">
       {summary.facts && summary.facts.length > 0 && (
-        <div className="daily-summary__section">
+        <div className="daily-summary__section fade-in-up">
           <h3>👶 宝宝今天</h3>
           <ul className="daily-summary__facts-list">
             {summary.facts.map((fact, idx) => (
@@ -31,7 +31,7 @@ export function DailySummaryView({ summary, onActionClick }: DailySummaryViewPro
       )}
 
       {hasFindings && (
-        <div className="daily-summary__section">
+        <div className="daily-summary__section fade-in-up">
           <h3>✨ 你可能没注意到</h3>
           {summary.findings.map((finding, idx) => (
             <FindingRow
@@ -44,7 +44,7 @@ export function DailySummaryView({ summary, onActionClick }: DailySummaryViewPro
       )}
 
       {hasObservations && (
-        <div className="daily-summary__section">
+        <div className="daily-summary__section fade-in-up">
           <h3>👀 需要你看一眼</h3>
           {summary.observations.map((text, idx) => (
             <div key={idx} className="daily-summary__missing-item">{text}</div>
@@ -53,7 +53,7 @@ export function DailySummaryView({ summary, onActionClick }: DailySummaryViewPro
       )}
 
       {hasMissing && (
-        <div className="daily-summary__section">
+        <div className="daily-summary__section fade-in-up">
           <h3>📝 漏掉了吗</h3>
           {summary.missingItems.map((item) => (
             <div key={item.id} className="daily-summary__missing-item">

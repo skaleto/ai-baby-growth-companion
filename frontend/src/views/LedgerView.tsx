@@ -84,7 +84,7 @@ export function LedgerView(props: LedgerViewProps) {
   } = props;
 
   return (
-    <section className="ledger-screen" aria-label="账本">
+    <section className="ledger-screen tab-content-enter" aria-label="账本">
       <div className="screen-head">
         <div className="screen-heading-with-icon">
           <WalletCards size={24} className="screen-head-lucide" />

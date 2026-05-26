@@ -1,0 +1,40 @@
+/* Global motion system — Phase 1 visual refresh */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fade-in 180ms ease-out both;
+}
+
+.fade-in-up {
+  animation: fade-in-up 220ms ease-out both;
+}
+
+/* Stagger: first 6 children get incremental delay; the rest animate together */
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+
+/* Tab content cross-fade: opacity-only, no layout shift */
+.tab-content-enter {
+  animation: fade-in 220ms ease-out both;
+}
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in, .fade-in-up, .tab-content-enter,
+  .stagger > * {
+    animation: none !important;
+  }
+}
