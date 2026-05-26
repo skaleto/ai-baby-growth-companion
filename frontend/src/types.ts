@@ -309,12 +309,44 @@ export interface MissingItemPrompt {
   action?: string | null;
 }
 
+export type FindingType =
+  | "family_action_continuity"
+  | "cross_domain_link"
+  | "expense_price_compare"
+  | "trend_anomaly"
+  | "media_milestone_candidate"
+  | "memory_recall";
+
+export type FindingRelated = {
+  careLogEventIds: string[];
+  growthEventIds: string[];
+  albumItemIds: string[];
+  expenseIds: string[];
+  reminderIds: string[];
+  memberIds: string[];
+  memoryIds: string[];
+  comparedTo: string[];
+};
+
+export type FindingAction = {
+  label: string;
+  target: string;  // format: "ledger:<id>" | "album:<id>" | "milestone:<id>" | "reminder:<id>"
+};
+
+export type Finding = {
+  type: FindingType;
+  text: string;
+  related: FindingRelated;
+  action: FindingAction | null;
+};
+
 export interface DailySummary {
   id: string;
   date: string;
   text: string;
   facts: string[];
   observations: string[];
+  findings: Finding[];
   missingItems: MissingItemPrompt[];
   accountMissingItems: MissingItemPrompt[];
   generatedAt: string;

@@ -798,6 +798,7 @@ export const normalizeDailySummary = (value: Partial<DailySummary> | null | unde
     text: textValue(value.text),
     facts: stringList(value.facts),
     observations: stringList(value.observations),
+    findings: Array.isArray(value.findings) ? value.findings : [],
     missingItems: Array.isArray(value.missingItems) ? value.missingItems.map(normalizeMissingPrompt) : [],
     accountMissingItems: Array.isArray(value.accountMissingItems) ? value.accountMissingItems.map(normalizeMissingPrompt) : [],
     generatedAt: textValue(value.generatedAt, new Date().toISOString()),
