@@ -10,6 +10,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { CSSProperties } from "react";
+import { Placeholder } from "../components/Placeholder";
 import { EXPENSE_CATEGORY_COLORS, LEDGER_VIEWS, type LedgerView as LedgerViewId } from "../appOptions";
 import { creatorMetaText } from "../appStateDomain";
 import type { Attachment, ExpenseItem } from "../types";
@@ -370,9 +371,14 @@ export function LedgerView(props: LedgerViewProps) {
             </div>
           ) : (
             <div className="empty-state ledger-empty">
-              <span className="empty-sticker" aria-hidden="true">
-                <ReceiptText size={28} />
-              </span>
+              <Placeholder
+                kind="empty-ledger"
+                width={160}
+                height={120}
+                caption="钱包/购物袋"
+                spec="A friendly illustration of a wallet or shopping bag to represent expense tracking. Match warm earth palette."
+                className="empty-state-illustration"
+              />
               <p>还没有支出记录。</p>
               {canCaregive ? <button type="button" onClick={openNewExpenseEditor}>记第一笔</button> : null}
             </div>

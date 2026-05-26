@@ -84,3 +84,7 @@
 .daily-summary__facts-list li {
   padding: 2px 0;
 }
+
+.daily-summary__hero {
+  margin-bottom: 4px;
+}

@@ -203,6 +203,7 @@ import {
   suggestedFamilyName,
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
+import { Placeholder } from "./components/Placeholder";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { StorybookScene } from "./components/StorybookScene";
 import {
@@ -7537,6 +7538,22 @@ function App() {
           ) : (
             <p className="readonly-copy">当前身份仅可查看提醒，请让照护人新增或完成提醒。</p>
           )}
+
+          {reminderBuckets.today.length === 0 &&
+            reminderBuckets.upcoming.length === 0 &&
+            reminderBuckets.overdue.length === 0 &&
+            reminderBuckets.done.length === 0 ? (
+              <div className="reminders-empty-hero">
+                <Placeholder
+                  kind="empty-reminders"
+                  width={200}
+                  height={150}
+                  caption="铃铛 / 月历插画"
+                  spec="A cheerful illustration of a soft bell or warm calendar to convey reminders. Match warm earth palette."
+                />
+                <p className="reminders-empty-copy">还没有任何提醒。从上面点一个常用模板开始吧。</p>
+              </div>
+          ) : null}
 
           {[
             { key: "today", title: "今天要做", items: reminderBuckets.today, empty: "今天暂时没有待办。" },

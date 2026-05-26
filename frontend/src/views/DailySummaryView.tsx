@@ -1,4 +1,5 @@
 import type { DailySummary, Finding } from "../types";
+import { Placeholder } from "../components/Placeholder";
 import {
   FINDING_TYPE_COLOR,
   FINDING_TYPE_LABEL,
@@ -19,6 +20,13 @@ export function DailySummaryView({ summary, onActionClick }: DailySummaryViewPro
 
   return (
     <section className="daily-summary stagger" aria-label="今日发现">
+      <Placeholder
+        kind="hero-records-today"
+        aspect="16/9"
+        caption="月龄相关温馨场景"
+        spec="A warm gentle illustration of a baby/family scene matching the baby's current month-age. Soft pastel palette consistent with app's warm theme."
+        className="daily-summary__hero fade-in-up"
+      />
       {summary.facts && summary.facts.length > 0 && (
         <div className="daily-summary__section fade-in-up">
           <h3>👶 宝宝今天</h3>
