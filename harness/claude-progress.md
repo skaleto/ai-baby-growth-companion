@@ -13,6 +13,38 @@
 
 ## Session Log
 
+### Session 2026-05-26 Visual Refresh Phase 2
+
+- Goal: 给 4 个关键插画位置和 1 个加载状态加占位，让 codex 之后可以生成实际图片填充；DailySummaryView 生成 AI 时显示 shimmer skeleton 避免空白。详见 `docs/superpowers/specs/2026-05-26-visual-refresh-plan.md` §Phase 2。
+- Completed:
+  - 新增 `frontend/src/components/Placeholder.tsx`：友好暖色调占位框，data-placeholder + data-placeholder-spec 属性供 codex 检索，role=img + aria-label="..（占位图）"，支持 kind / aspect / width / height / caption / spec props。
+  - 新增 `frontend/src/components/Skeleton.tsx`：宽高/圆角/inline 可配，shimmer 动画 1400ms 循环，prefers-reduced-motion 兜底。
+  - 新增 `frontend/src/styles/placeholder.css`：占位虚线边 + 斜纹背景 + lucide ImageIcon 中心 hint + 暖色 caption；shimmer keyframe 用渐变 background-position 移动。
+  - 插入 3 个占位（原 spec 4-5 个，但 records/album 空态已有 PNG storybook icon，跳过避免重复）：
+    - `hero-records-today`（16:9 banner，DailySummaryView 顶部）
+    - `empty-ledger`（160x120，LedgerView 明细空态替换 lucide ReceiptText 通用 icon）
+    - `empty-reminders`（200x150，提醒 Tab 4 group 全空时新增显示）
+  - DailySummaryView 加 `loading?: boolean` prop。loading=true && !summary → 显示 3 块 Skeleton 模拟 4 模块布局；loading=true && summary → 仍正常渲染不打断；loading=false && !summary → 维持原 null 行为。
+  - App.tsx 把 `isGeneratingDailySummary` 传给 DailySummaryView 作为 loading；用户点"生成今日小结"时 shimmer 接替空白。
+  - OTA `0.1.0-20260526131339` 上传 OSS（checksum `007a0a1b67dfb0f855e41227c3efcad90898c905a0579074180c795d93776c6e`），manifest 同步 ECS，云端 health=ok。
+- Verification run:
+  - `npm run build` 多次
+  - `npm run verify:frontend` → 7 viewport PASS（hero placeholder + reminders empty placeholder + ledger empty placeholder 均不破坏 layout）
+  - `node scripts/probe-daily-summary-view.mjs` → 12 截图确认 hero 出现在 DailySummaryView 顶部、reminders 空态 placeholder + 引导文案显示
+  - OTA build → OSS 上传 → ECS manifest 同步 → cloud health 与 OTA check 验证
+- Evidence:
+  - Records-today 截图：顶部 16:9 暖色虚线框 + ImageIcon + "月龄相关温馨场景" caption，与下方 4 模块自然融合
+  - Reminders 截图：4 group 全空时显示 200x150 placeholder + "还没有任何提醒。从上面点一个常用模板开始吧。"
+  - Smoke 7 viewport 无 overflow；probe 12 截图无视觉异常
+  - 云端 OTA check 返回 `version=0.1.0-20260526131339 message=视觉刷新 Phase 2 占位图+骨架屏`
+- Known limitations:
+  - **Shimmer skeleton 实际效果未截图验证**：probe fixture 始终有 dailySummary，触发不了 loading=true 路径。需真机点"生成今日小结"按钮观察 shimmer。
+  - **Ledger empty placeholder 在明细 tab**：probe 拍的是默认本月 tab，明细 tab 空态 placeholder 未截图。结构正确（build pass）但未视觉验证。
+- 待 codex 生成图片（按 data-placeholder kind 检索）：
+  - `hero-records-today`：月龄相关温馨场景（如喂奶/哄睡/抓拍），16:9，暖色 pastel
+  - `empty-ledger`：钱包或购物袋插画，160x120，暖色
+  - `empty-reminders`：铃铛或月历插画，200x150，暖色
+
 ### Session 2026-05-26 Visual Refresh Phase 1
 
 - Goal: 把全局视觉从"信息密集"快速变得"轻松活泼"，CSS-only + emoji + 全局动效，零业务改动，立即上线。详见 `docs/superpowers/specs/2026-05-26-visual-refresh-plan.md` §3。
