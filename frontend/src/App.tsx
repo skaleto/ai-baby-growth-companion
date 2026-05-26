@@ -296,6 +296,7 @@ import {
 } from "./utils/expense";
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import { MilestonesView } from "./views/MilestonesView";
+import { DailySummaryView } from "./views/DailySummaryView";
 import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
 import {
   careAlbumCategory,
@@ -5092,6 +5093,25 @@ function App() {
   const openMilestones = useCallback(() => setMilestonesViewOpen(true), []);
   const closeMilestones = useCallback(() => setMilestonesViewOpen(false), []);
 
+  const handleFindingActionClick = useCallback((domain: string, _id: string) => {
+    switch (domain) {
+      case "ledger":
+        switchMobileTab("ledger");
+        break;
+      case "album":
+        switchMobileTab("album");
+        break;
+      case "milestone":
+        setMilestonesViewOpen(true);
+        break;
+      case "reminder":
+        switchMobileTab("reminders");
+        break;
+      default:
+        break;
+    }
+  }, []);
+
   const achieveMilestone = useCallback((milestone: GrowthMilestone) => {
     if (!canCaregive) return;
     const growth = normalizeGrowthEvent({
@@ -6947,6 +6967,13 @@ function App() {
           </div>
 
           {recordView === "today" ? (
+            <DailySummaryView
+              summary={selectedDailySummary}
+              onActionClick={handleFindingActionClick}
+            />
+          ) : null}
+
+          {recordView === "today" ? (
           <section className="summary-card">
             <div className="summary-title">
               <CalendarDays size={18} />
@@ -7074,15 +7101,18 @@ function App() {
               ) : (
                 <div className="pro-intro-copy">
                   <p>Pro 内测会优先开放今日小结、漏项轻提醒，以及语音/图片/视频辅助整理，适合想少记一点、少漏一点的家庭。</p>
-                  <button
-                    type="button"
-                    className="screen-action-button"
-                    onClick={() => void applyForProTrial("record-daily-summary")}
-                    disabled={isApplyingProTrial || proApplicationPending}
-                  >
-                    <Sparkles size={16} />
-                    {proApplicationPending ? "已提交申请" : "申请 Pro 内测"}
-                  </button>
+                  {/* Pro trial entry hidden during validation phase — see docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md §4.2 */}
+                  {false && (
+                    <button
+                      type="button"
+                      className="screen-action-button"
+                      onClick={() => void applyForProTrial("record-daily-summary")}
+                      disabled={isApplyingProTrial || proApplicationPending}
+                    >
+                      <Sparkles size={16} />
+                      {proApplicationPending ? "已提交申请" : "申请 Pro 内测"}
+                    </button>
+                  )}
                 </div>
               )}
             </section>
@@ -8002,7 +8032,8 @@ function App() {
                     aria-label="每日小结提醒时间"
                   />
                 </div>
-                {!proTrial.enabled ? (
+                {/* Pro trial entry hidden during validation phase — see docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md §4.2 */}
+                {false && !proTrial.enabled ? (
                   <button
                     className="screen-action-button"
                     type="button"
