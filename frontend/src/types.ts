@@ -102,13 +102,20 @@ export interface AgentModelOption {
   supportsLowLatency: boolean;
 }
 
+export type BabyGender = "boy" | "girl" | "unknown";
+
 export interface BabyProfile {
   nickname: string;
   stage: "pregnancy" | "born";
+  gender: BabyGender;
   expectedDate: string;
   birthDate: string;
   region: string;
   feeding: string;
+  /** 出生体重（kg），用于生长曲线起点对照，可选 */
+  birthWeight?: number;
+  /** 出生身长（cm），用于生长曲线起点对照，可选 */
+  birthHeight?: number;
   allergies: string[];
   caregivers: string[];
 }

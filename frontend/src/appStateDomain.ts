@@ -107,6 +107,7 @@ export const clearLocalAppState = () => {
 export const blankProfile: BabyProfile = {
   nickname: "",
   stage: "born",
+  gender: "unknown",
   expectedDate: "",
   birthDate: "",
   region: "",
@@ -129,13 +130,19 @@ export const stringList = (value: unknown) => (Array.isArray(value) ? value.filt
 export const stringMember = <T extends string>(values: readonly T[], value: unknown): value is T =>
   typeof value === "string" && values.includes(value as T);
 
+const numericOrUndefined = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+
 export const normalizeBabyProfile = (value: Partial<BabyProfile> | null | undefined): BabyProfile => ({
   nickname: textValue(value?.nickname),
   stage: value?.stage === "pregnancy" ? "pregnancy" : "born",
+  gender: value?.gender === "boy" || value?.gender === "girl" ? value.gender : "unknown",
   expectedDate: textValue(value?.expectedDate),
   birthDate: textValue(value?.birthDate),
   region: textValue(value?.region),
   feeding: textValue(value?.feeding),
+  birthWeight: numericOrUndefined(value?.birthWeight),
+  birthHeight: numericOrUndefined(value?.birthHeight),
   allergies: stringList(value?.allergies),
   caregivers: stringList(value?.caregivers),
 });

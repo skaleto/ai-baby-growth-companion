@@ -139,6 +139,12 @@ export const STAGE_SELECT_OPTIONS: Array<SelectOption<BabyProfile["stage"]>> = [
   { value: "pregnancy", label: "孕期", hint: "按预产期记录准备事项" },
 ];
 
+export const GENDER_SELECT_OPTIONS: Array<SelectOption<BabyProfile["gender"]>> = [
+  { value: "unknown", label: "暂不填写", hint: "生长曲线需要性别才能更准确" },
+  { value: "boy", label: "男孩" },
+  { value: "girl", label: "女孩" },
+];
+
 export const REGION_SELECT_OPTIONS: Array<SelectOption<string>> = [
   { value: "", label: "暂不填写", hint: "之后可以在“我的”里补充" },
   { value: "北京", label: "北京" },

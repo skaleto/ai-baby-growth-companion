@@ -138,6 +138,7 @@ import {
   REMINDER_CATEGORY_OPTIONS,
   REMINDER_SCHEDULE_MODE_OPTIONS,
   REMINDER_SOUND_OPTIONS,
+  GENDER_SELECT_OPTIONS,
   ROLE_OPTIONS,
   ROLE_SELECT_OPTIONS,
   STAGE_SELECT_OPTIONS,
@@ -5988,6 +5989,15 @@ function App() {
                   />
                 </label>
                 <label>
+                  <span>性别</span>
+                  <StorySelect
+                    ariaLabel="小宝性别"
+                    value={onboardingDraft.gender}
+                    options={GENDER_SELECT_OPTIONS}
+                    onChange={(gender) => setOnboardingDraft((current) => ({ ...current, gender }))}
+                  />
+                </label>
+                <label>
                   <span>{onboardingDraft.stage === "born" ? "出生日期" : "预产期"}</span>
                   <input
                     type="date"
@@ -8047,6 +8057,15 @@ function App() {
                 />
               </label>
               <label>
+                <span>性别</span>
+                <StorySelect
+                  ariaLabel="小宝性别"
+                  value={profileDraft.gender}
+                  options={GENDER_SELECT_OPTIONS}
+                  onChange={(gender) => setProfileDraft((current) => ({ ...current, gender }))}
+                />
+              </label>
+              <label>
                 <span>出生日期</span>
                 <input
                   type="date"
@@ -8061,6 +8080,40 @@ function App() {
                   value={profileDraft.expectedDate}
                   onChange={(event) =>
                     setProfileDraft((current) => ({ ...current, expectedDate: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                <span>出生体重（kg）</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  placeholder="选填，用于生长曲线起点"
+                  value={profileDraft.birthWeight ?? ""}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      birthWeight: event.target.value ? Number(event.target.value) : undefined,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                <span>出生身长（cm）</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  min="0"
+                  placeholder="选填，用于生长曲线起点"
+                  value={profileDraft.birthHeight ?? ""}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      birthHeight: event.target.value ? Number(event.target.value) : undefined,
+                    }))
                   }
                 />
               </label>

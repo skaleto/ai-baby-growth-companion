@@ -8,6 +8,7 @@ export const makeId = (prefix: string) =>
 export const initialProfile: BabyProfile = {
   nickname: "小宝",
   stage: "born",
+  gender: "unknown",
   expectedDate: "2026-01-26",
   birthDate: "2026-01-18",
   region: "上海",
