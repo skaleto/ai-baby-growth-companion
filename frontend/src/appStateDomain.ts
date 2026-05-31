@@ -41,6 +41,7 @@ export const LEGACY_STORAGE_KEYS = [
   "baby-companion-profile",
   "baby-companion-messages",
   "baby-companion-growth",
+  "baby-companion-growth-measurements",
   "baby-companion-care",
   "baby-companion-reminders",
   "baby-companion-memories",
@@ -75,6 +76,7 @@ export const hasLegacyLocalState = () => {
       hasProfile ||
       hasLocalArrayItems("baby-companion-messages") ||
       hasLocalArrayItems("baby-companion-growth") ||
+      hasLocalArrayItems("baby-companion-growth-measurements") ||
       hasLocalArrayItems("baby-companion-care") ||
       hasLocalArrayItems("baby-companion-reminders") ||
       hasLocalArrayItems("baby-companion-memories") ||

@@ -13,6 +13,33 @@
 
 ## Session Log
 
+### Session 2026-05-31 Growth Measurement MVP Simplification
+
+- Goal: 按 review 建议把成长指标功能收敛成简单可交付的 MVP，并补齐性别、出生体重、出生身长的全链路 UI/状态/持久化验证。
+- Completed:
+  - 移除 premature 的成长曲线组件、内置 WS/T 423 参考表和未验证的数据抽取说明，避免用复杂参考曲线掩盖当前简单记录需求。
+  - 保留并验证资料页中的性别、出生体重、出生身长字段，以及成长页中的身高/体重/头围手动记录、备注和历史列表。
+  - 给成长记录输入增加上下限校验，并让后端共享状态按 `growthMeasurement.date` 排序。
+  - 扩展前端 smoke：进入成长页、确认历史数据、拒绝 `999cm` 异常身高、记录 `68.2cm` 和备注，并断言页面不再渲染成长曲线。
+  - 重新同步 Capacitor 资源，并确认 iOS/Android debug 客户端包都能构建。
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run build && npm run smoke:frontend`
+  - `npm run verify:frontend`
+  - `mvn -f backend/pom.xml test`
+  - `git diff --check`
+  - `npm run mobile:sync`
+  - `npm run build:ios:debug`
+  - `npm run build:android:debug`
+- Evidence:
+  - Frontend verification passed across desktop and six mobile viewports.
+  - Backend Maven suite passed with 204 tests, 0 failures.
+  - Harness init passed with whitespace check, production frontend build, and Agent benchmark with 23 tests.
+  - iOS debug build succeeded for iPhone 17 simulator.
+  - Android debug APK built at `android/app/build/outputs/apk/debug/app-debug.apk`.
+- Known risks:
+  - 百分位、WHO/WS 参考曲线、早产校正、AI 解读和提醒仍是 future scope；本轮有意不把这些复杂逻辑塞进 MVP。
+
 ### Session 2026-05-16 Voice Hold Pointer Drift Fix
 
 - Goal: 修复语音按钮按住后手指稍微移动就断开的问题，让移动端按住说话只在松手、取消或页面失焦时结束。

@@ -29,8 +29,11 @@ const smokeState = {
   profile: {
     nickname: "小宝",
     stage: "born",
+    gender: "girl",
     expectedDate: "2026-01-26",
     birthDate: "2026-01-18",
+    birthWeight: 3.2,
+    birthHeight: 50,
     region: "上海",
     feeding: "混合喂养",
     allergies: ["暂未发现"],
@@ -54,6 +57,16 @@ const smokeState = {
       summary: "用于本地 smoke 的成长记录。",
       firstTime: true,
       tags: ["里程碑"],
+    },
+  ],
+  growthMeasurements: [
+    {
+      id: "smoke-growth-measurement-1",
+      type: "height",
+      value: 66.5,
+      date: "2026-05-12",
+      note: "体检测量",
+      recordedBy: { label: "妈妈", roleName: "妈妈" },
     },
   ],
   careLogs: [
@@ -784,6 +797,41 @@ async function exerciseChatExpenseShortcut(page, viewport) {
   return { chatExpenseShortcutChecked: true };
 }
 
+async function exerciseGrowthMeasurementFlow(page, viewport) {
+  if (authMode !== "mock") return null;
+
+  await page.getByRole("button", { name: "记录" }).last().click();
+  await page.waitForTimeout(120);
+  await page.getByRole("tab", { name: "成长" }).click();
+  await page.getByRole("heading", { name: "成长记录" }).waitFor({ timeout: 5000 });
+  await page.locator(".growth-history-value", { hasText: "66.5cm" }).first().waitFor({ timeout: 5000 });
+
+  const chartCount = await page.locator(".growth-chart").count();
+  if (chartCount > 0) {
+    throw new Error(`growth MVP should render a simple list, not reference charts; found ${chartCount} chart(s)`);
+  }
+
+  const valueInput = page.locator(".growth-value-input input").first();
+  await valueInput.fill("999");
+  await page.getByRole("button", { name: "记录一笔" }).click();
+  await page.waitForTimeout(120);
+  if (await page.getByText("999cm").count()) {
+    throw new Error("growth measurement accepted an out-of-range height value");
+  }
+
+  await valueInput.fill("68.2");
+  await page.locator('.growth-entry-form input[type="text"]').fill("家里复测");
+  await page.getByRole("button", { name: "记录一笔" }).click();
+  await page.locator(".growth-history-value", { hasText: "68.2cm" }).first().waitFor({ timeout: 5000 });
+  await page.getByText("家里复测").waitFor({ timeout: 5000 });
+
+  if (viewport.mobile) {
+    await checkAppShellAligned(page, `${viewport.name} growth measurement flow`);
+  }
+
+  return { growthMeasurementFlowChecked: true };
+}
+
 async function simulateKeyboardCycle(page, viewport, field) {
   await field.scrollIntoViewIfNeeded();
   await page.waitForTimeout(80);
@@ -927,6 +975,7 @@ async function exerciseAppShell(page, viewport) {
 
   const albumVideoFallback = await exerciseAlbumVideoFallback(page);
   const chatExpenseShortcut = await exerciseChatExpenseShortcut(page, viewport);
+  const growthMeasurementFlow = await exerciseGrowthMeasurementFlow(page, viewport);
   const ledgerKeyboard = await exerciseLedgerKeyboardFlow(page, viewport);
   const reminderFlow = await exerciseReminderFlow(page, viewport);
 
@@ -935,7 +984,7 @@ async function exerciseAppShell(page, viewport) {
     await page.waitForTimeout(120);
   }
 
-  return { mode: "authenticated", tabsChecked: checkedTabs, mobileUpdateNotice, albumVideoFallback, chatExpenseShortcut, ledgerKeyboard, reminderFlow };
+  return { mode: "authenticated", tabsChecked: checkedTabs, mobileUpdateNotice, albumVideoFallback, chatExpenseShortcut, growthMeasurementFlow, ledgerKeyboard, reminderFlow };
 }
 
 async function runViewport(browser, viewport) {

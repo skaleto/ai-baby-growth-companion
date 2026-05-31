@@ -1327,7 +1327,7 @@ public class AppStateService {
     private String sortKey(JsonNode node, String ownerType, int index) {
         return switch (ownerType) {
             case "message" -> text(node, "createdAt", "%08d".formatted(index));
-            case "growth", "care" -> text(node, "date", "%08d".formatted(index));
+            case "growth", "growthMeasurement", "care" -> text(node, "date", "%08d".formatted(index));
             case "reminder" -> text(node, "createdAt", "%08d".formatted(index));
             case "memory" -> text(node, "updatedAt", "%08d".formatted(index));
             case "pending" -> text(node, "createdAt", "%08d".formatted(index));

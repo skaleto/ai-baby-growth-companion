@@ -207,7 +207,6 @@ import {
   suggestedFamilyName,
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
-import { GrowthChart, type GrowthChartPoint } from "./components/GrowthChart";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { StorybookScene } from "./components/StorybookScene";
 import {
@@ -304,7 +303,6 @@ import {
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import { MilestonesView } from "./views/MilestonesView";
 import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
-import { GROWTH_REFERENCE } from "./data/growthReference";
 import {
   careAlbumCategory,
   careAlbumTitle,
@@ -5137,9 +5135,10 @@ function App() {
   const handleAddGrowthMeasurement = (event: FormEvent) => {
     event.preventDefault();
     if (!canCaregive) return;
+    const meta = GROWTH_MEASUREMENT_META[growthMeasurementDraft.type];
     const numericValue = Number(growthMeasurementDraft.value);
-    if (!Number.isFinite(numericValue) || numericValue <= 0) {
-      showSystemWeakNotice("请输入有效的数值。", "warning");
+    if (!Number.isFinite(numericValue) || numericValue < meta.min || numericValue > meta.max) {
+      showSystemWeakNotice(`请输入 ${meta.min}-${meta.max}${meta.unit} 之间的${meta.label}。`, "warning");
       return;
     }
     const measurement = normalizeGrowthMeasurement(
@@ -7178,7 +7177,8 @@ function App() {
                       type="number"
                       inputMode="decimal"
                       step={GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].step}
-                      min="0"
+                      min={GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].min}
+                      max={GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].max}
                       placeholder="数值"
                       value={growthMeasurementDraft.value}
                       onChange={(event) =>
@@ -7226,20 +7226,6 @@ function App() {
                   item,
                   delta: index > 0 ? item.value - items[index - 1].value : null,
                 }));
-                const birthMs = profile.birthDate ? new Date(profile.birthDate).getTime() : NaN;
-                const hasBirth = Number.isFinite(birthMs);
-                const chartPoints: GrowthChartPoint[] = hasBirth
-                  ? items
-                      .map((item) => ({
-                        ageMonths:
-                          (new Date(item.date).getTime() - birthMs) / (1000 * 60 * 60 * 24 * 30.4375),
-                        value: item.value,
-                      }))
-                      .filter((p) => p.ageMonths >= 0 && p.ageMonths <= 36)
-                  : [];
-                const refGender =
-                  profile.gender === "boy" || profile.gender === "girl" ? profile.gender : null;
-                const reference = refGender ? GROWTH_REFERENCE[type][refGender] : null;
                 return (
                   <article className="growth-history-group" key={type}>
                     <header>
@@ -7249,16 +7235,6 @@ function App() {
                         {meta.unit}
                       </span>
                     </header>
-                    {hasBirth ? (
-                      <>
-                        <GrowthChart points={chartPoints} reference={reference} unit={meta.unit} />
-                        {!reference ? (
-                          <p className="growth-chart-hint">在「我的」里设置宝宝性别后，可显示同龄正常范围带（P3~P97）。</p>
-                        ) : null}
-                      </>
-                    ) : (
-                      <p className="growth-chart-hint">填写宝宝出生日期后，可显示成长曲线与同龄正常范围带。</p>
-                    )}
                     <ul>
                       {rows
                         .slice()
