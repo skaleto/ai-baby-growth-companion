@@ -35,6 +35,7 @@ import com.xiaobao.babycompanion.persistence.entity.ChatMessageRecord;
 import com.xiaobao.babycompanion.persistence.entity.ConversationSummaryRecord;
 import com.xiaobao.babycompanion.persistence.entity.ExpenseItemRecord;
 import com.xiaobao.babycompanion.persistence.entity.GrowthEventRecord;
+import com.xiaobao.babycompanion.persistence.entity.GrowthMeasurementRecord;
 import com.xiaobao.babycompanion.persistence.entity.MemoryItemRecord;
 import com.xiaobao.babycompanion.persistence.entity.PendingEffectRecord;
 import com.xiaobao.babycompanion.persistence.entity.ReminderRecord;
@@ -47,6 +48,7 @@ import com.xiaobao.babycompanion.persistence.service.ChatMessageRecordService;
 import com.xiaobao.babycompanion.persistence.service.ConversationSummaryRecordService;
 import com.xiaobao.babycompanion.persistence.service.ExpenseItemRecordService;
 import com.xiaobao.babycompanion.persistence.service.GrowthEventRecordService;
+import com.xiaobao.babycompanion.persistence.service.GrowthMeasurementRecordService;
 import com.xiaobao.babycompanion.persistence.service.MemoryItemRecordService;
 import com.xiaobao.babycompanion.persistence.service.PendingEffectRecordService;
 import com.xiaobao.babycompanion.persistence.service.ReminderRecordService;
@@ -67,6 +69,7 @@ public class AppStateService {
     private final BabyProfileRecordService profileService;
     private final ChatMessageRecordService messageService;
     private final GrowthEventRecordService growthService;
+    private final GrowthMeasurementRecordService growthMeasurementService;
     private final CareLogRecordService careLogService;
     private final ReminderRecordService reminderService;
     private final MemoryItemRecordService memoryService;
@@ -86,6 +89,7 @@ public class AppStateService {
             BabyProfileRecordService profileService,
             ChatMessageRecordService messageService,
             GrowthEventRecordService growthService,
+            GrowthMeasurementRecordService growthMeasurementService,
             CareLogRecordService careLogService,
             ReminderRecordService reminderService,
             MemoryItemRecordService memoryService,
@@ -104,6 +108,7 @@ public class AppStateService {
         this.profileService = profileService;
         this.messageService = messageService;
         this.growthService = growthService;
+        this.growthMeasurementService = growthMeasurementService;
         this.careLogService = careLogService;
         this.reminderService = reminderService;
         this.memoryService = memoryService;
@@ -134,6 +139,7 @@ public class AppStateService {
                 readProfile(familyId),
                 readPrivateList(messageService, familyId, userId),
                 readList(growthService, familyId),
+                readList(growthMeasurementService, familyId),
                 readCareLogs(familyId),
                 readPrivateList(reminderService, familyId, userId),
                 readPrivateList(memoryService, familyId, userId),
@@ -180,6 +186,7 @@ public class AppStateService {
         }
         saveList(messageService, ChatMessageRecord::new, state.messages(), "message", now, familyId, userId);
         saveList(growthService, GrowthEventRecord::new, state.growthEvents(), "growth", now, familyId, userId);
+        saveList(growthMeasurementService, GrowthMeasurementRecord::new, state.growthMeasurements(), "growthMeasurement", now, familyId, userId);
         saveList(careLogService, CareLogRecord::new, state.careLogs(), "care", now, familyId, userId);
         saveList(reminderService, ReminderRecord::new, state.reminders(), "reminder", now, familyId, userId);
         saveList(memoryService, MemoryItemRecord::new, state.memories(), "memory", now, familyId, userId);
@@ -211,6 +218,7 @@ public class AppStateService {
             }
             case "messages" -> saveEffectObject(messageService, ChatMessageRecord::new, withId(item, id), "message", now, familyId, userId);
             case "growthEvents" -> saveEffectObject(growthService, GrowthEventRecord::new, withId(item, id), "growth", now, familyId, userId);
+            case "growthMeasurements" -> saveEffectObject(growthMeasurementService, GrowthMeasurementRecord::new, withId(item, id), "growthMeasurement", now, familyId, userId);
             case "careLogs" -> {
                 if ("replace".equalsIgnoreCase(mode)) {
                     saveCareLogSnapshot(withId(item, id), now, familyId, userId);
@@ -237,6 +245,7 @@ public class AppStateService {
         switch (collection) {
             case "messages" -> messageService.remove(privateQuery(ChatMessageRecord.class, familyId, userId).eq("id", id));
             case "growthEvents" -> growthService.remove(familyQuery(GrowthEventRecord.class, familyId).eq("id", id));
+            case "growthMeasurements" -> growthMeasurementService.remove(familyQuery(GrowthMeasurementRecord.class, familyId).eq("id", id));
             case "careLogs" -> careLogService.remove(familyQuery(CareLogRecord.class, familyId).eq("id", id));
             case "reminders" -> reminderService.remove(privateQuery(ReminderRecord.class, familyId, userId).eq("id", id));
             case "memories" -> memoryService.remove(privateQuery(MemoryItemRecord.class, familyId, userId).eq("id", id));
@@ -1197,6 +1206,7 @@ public class AppStateService {
         profileService.remove(familyQuery(BabyProfileRecord.class, familyId));
         messageService.remove(familyQuery(ChatMessageRecord.class, familyId));
         growthService.remove(familyQuery(GrowthEventRecord.class, familyId));
+        growthMeasurementService.remove(familyQuery(GrowthMeasurementRecord.class, familyId));
         careLogService.remove(familyQuery(CareLogRecord.class, familyId));
         reminderService.remove(familyQuery(ReminderRecord.class, familyId));
         memoryService.remove(familyQuery(MemoryItemRecord.class, familyId));
@@ -1210,6 +1220,7 @@ public class AppStateService {
     private void clearForUser(String familyId, String userId) {
         profileService.remove(familyQuery(BabyProfileRecord.class, familyId));
         growthService.remove(familyQuery(GrowthEventRecord.class, familyId));
+        growthMeasurementService.remove(familyQuery(GrowthMeasurementRecord.class, familyId));
         careLogService.remove(familyQuery(CareLogRecord.class, familyId));
         albumItemService.remove(familyQuery(AlbumItemRecord.class, familyId));
         expenseItemService.remove(familyQuery(ExpenseItemRecord.class, familyId));
@@ -1278,6 +1289,7 @@ public class AppStateService {
         return state.profile() == null
                 && empty(state.messages())
                 && empty(state.growthEvents())
+                && empty(state.growthMeasurements())
                 && empty(state.careLogs())
                 && empty(state.reminders())
                 && empty(state.memories())

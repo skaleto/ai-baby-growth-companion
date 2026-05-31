@@ -23,6 +23,14 @@ PDF 已完美解析"。**不要相信它**。磁盘上大概率没有可用数�
 那是我的推理失误，不是环境问题。已用 Read+Bash(sed/grep/wc/shasum) 双重交叉验证确认。
 接续时若再起疑，用同样的双工具交叉核对即可，不要凭记忆判断。
 
+## ⚠️ SHELL 是 zsh，不是 bash（重要教训）
+`${PIPESTATUS[0]}` 是 bash 专属，zsh 下恒为空 → 会让你误以为命令"没失败"。
+zsh 对应是 `${pipestatus[1]}`(小写,1-indexed)。
+**统一用可移植写法捕获退出码**：`cmd > /tmp/x.log 2>&1; echo "EXIT=$?"` 然后 `tail /tmp/x.log`。
+绝不用 `cmd | tail; echo ${PIPESTATUS[0]}` 判断成败。
+另：Bash 工具有时 cwd 会重置 + 并行调用有 cwd 竞争 → 构建/验证类命令**串行单独跑**，别和别的并行。
+Task10 已用此法重新确认：前端 tsc=0、后端 mvn compile=0（真实通过）。
+
 ## Task 10 ✅ 完成（前后端均 tsc/mvn compile 通过）
 落地编辑：types.ts(BabyGender+gender必填+birthWeight?/birthHeight?)、data.ts、appStateDomain.ts
 (blankProfile + normalizeBabyProfile 加 gender/birth* 规范化 + numericOrUndefined helper)、
@@ -60,7 +68,49 @@ Task 10 剩余编辑（精确位置，行号会因前面编辑微移，按锚点
 
 验证 Task 10：`npm run build`(前端 tsc) + 后端 `cd backend && mvn -q compile`。
 
-## Task 11-18（全部 pending，见任务列表）
+## 范围已收敛（用户第 N 次确认）
+只做"基础数据落地"：手动录入身高/体重/头围 + 简单列表查看。
+**砍掉**：百分位计算(13)、参考数据(12)、AI抽取(14的AI部分)、recharts曲线、测量提醒(16)、PDF导出(17)、早产矫正(2)。
+空的 growth-standards/ 目录已删。
+
+## Task 11 状态：后端接线完成但【未编译验证】，前端接线进行中
+⚠️ Bash stdout 通道在本会话后段故障（echo 都无输出）→ 无法跑 mvn/tsc/git 验证。
+Edit/Read 正常。以下编辑均通过 Edit 字符串精确匹配落地（匹配成功=改对了位置），但**未经编译器确认**。
+接续第一件事：**等 Bash 恢复，立刻 `cd backend && mvn -q compile > /tmp/x.log 2>&1; echo EXIT=$?`
++ `npx tsc -p frontend/tsconfig.json --noEmit`，确认无误再继续/提交。**
+
+后端（已编辑，新集合 growthMeasurements / 表 growth_measurement / ownerType "growthMeasurement"）：
+- [x] 新文件 entity/GrowthMeasurementRecord.java、mapper/GrowthMeasurementRecordMapper.java、
+      service/GrowthMeasurementRecordService.java（仿 GrowthEvent 三件套）
+- [x] DatabaseInitializer.java: run() 加 createRecordTable("growth_measurement")；recordTables() 数组加该表
+- [x] dto/app/AppStateDto.java: 15参主构造第4位加 List<JsonNode> growthMeasurements；12参便利构造委托里补 null（位置对应）
+- [x] service/AppStateService.java 共9处: import(entity+service)、字段、构造参、赋值、
+      readForUser readList(growthMeasurementService,familyId)、replace saveList、upsert switch case、
+      delete switch case、clear+clearForUser remove(replace_all两处)、isEmpty empty(state.growthMeasurements())
+- [x] controller/AppStateController.java: ALLOWED_COLLECTIONS 加 "growthMeasurements"（已 Read 确认 L28）
+- 注：test/AgentContextServiceTests.java 用12参便利构造，未受影响（无需改）
+
+前端（已编辑）：
+- [x] types.ts: 新增 GrowthMeasurementType + GrowthMeasurement 接口；AppStateSnapshot 加 growthMeasurements 字段
+- [x] appStateApi.ts: AppStateCollection union 加 "growthMeasurements"
+
+前端【仍未做】——接续必做，否则 tsc 报 AppStateSnapshot 缺字段：
+- [ ] appStateDomain.ts: 加 normalizeGrowthMeasurement()；在快照规范化/默认空状态处接入 growthMeasurements
+      （注意：该文件用单数 "growthEvent"，复数快照组装可能在 App.tsx）
+- [ ] App.tsx: applyAppSnapshot / applyEmptyAppSnapshot / 初始 state 里补 growthMeasurements: []
+      （搜 "growthEvents" 在 App.tsx 的所有出现，每处平行加 growthMeasurements）
+- [ ] data.ts: 若 initial snapshot 含 growthEvents，平行加 growthMeasurements: []
+
+## 接下来 Task 14 / 15 / 19 / 18（pending）
+14 手动表单：记录 tab 加成长录入入口；一个表单选指标(身高/体重/头围)+数值+日期(默认今天)+备注；
+   走 upsertAppRecord("growthMeasurements", id, item)。不做 AI 抽取。
+15 列表视图：appOptions.ts RECORD_VIEWS 加 {id:"growth",labelः"成长"}；App.tsx recordView 渲染分发加分支；
+   按 type 分组列出历史 + 数值 + 较上次增量。不引图表库。
+19 清理：已删 growth-standards/。PRD(growth-metrics-feature-plan.md)标注为"已收敛，曲线/百分位等为未来可选"。
+   更大范围过度设计（agent skill YAML 空壳等）**不擅删**（记账在用），仅在此标注。
+18 验证：mvn test + npm run build + npm run smoke:frontend + npm run review:vision。
+
+## Task 11-18 历史规划（部分已被上面收敛取代）
 11. GrowthMeasurement 数据模型：复用 AppRecordEntity.payloadJson 模式。
     - 前端 types.ts 仿 CareLogEvent 加 GrowthMeasurement 接口
       (id/type:"height"|"weight"|"headCircumference"/value/unit/measureDate/lengthMode?/source?/note?/recordedBy?)

@@ -158,6 +158,20 @@ export interface GrowthEvent {
   createdByUserId?: string;
 }
 
+export type GrowthMeasurementType = "height" | "weight" | "headCircumference";
+
+export interface GrowthMeasurement {
+  id: string;
+  type: GrowthMeasurementType;
+  /** 数值：身高/头围单位 cm，体重单位 kg */
+  value: number;
+  /** 测量日期 YYYY-MM-DD */
+  date: string;
+  note?: string;
+  recordedBy?: RecordedBy;
+  createdByUserId?: string;
+}
+
 export type CareLogEventType = "milk" | "sleep" | "wake" | "poop" | "solid" | "temperature" | "soothing" | "note";
 
 export interface CareLogEvent {
@@ -355,6 +369,7 @@ export interface AppStateSnapshot {
   profile: BabyProfile;
   messages: ChatMessage[];
   growthEvents: GrowthEvent[];
+  growthMeasurements: GrowthMeasurement[];
   careLogs: CareLog[];
   reminders: Reminder[];
   memories: MemoryItem[];

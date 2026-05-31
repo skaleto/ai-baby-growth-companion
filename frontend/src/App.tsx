@@ -185,6 +185,7 @@ import {
   normalizeDailySummarySettings,
   normalizeExpenseItem,
   normalizeGrowthEvent,
+  normalizeGrowthMeasurement,
   normalizeMemoryCategory,
   normalizeMemoryItem,
   normalizePendingEffect,
@@ -229,6 +230,7 @@ import {
   ExpenseCategory,
   ExpenseItem,
   GrowthEvent,
+  GrowthMeasurement,
   MemoryItem,
   MissingItemPrompt,
   PendingEffect,
@@ -2015,6 +2017,7 @@ function App() {
   const [storedProfile, setStoredProfile] = useStoredState("baby-companion-profile", blankProfile);
   const [storedMessages, setStoredMessages] = useStoredState<ChatMessage[]>("baby-companion-messages", []);
   const [storedGrowthEvents, setStoredGrowthEvents] = useStoredState<GrowthEvent[]>("baby-companion-growth", []);
+  const [storedGrowthMeasurements, setStoredGrowthMeasurements] = useStoredState<GrowthMeasurement[]>("baby-companion-growth-measurements", []);
   const [storedCareLogs, setStoredCareLogs] = useStoredState<CareLog[]>("baby-companion-care", []);
   const [storedReminders, setStoredReminders] = useStoredState<Reminder[]>("baby-companion-reminders", []);
   const [storedMemories, setStoredMemories] = useStoredState<MemoryItem[]>("baby-companion-memories", []);
@@ -2031,6 +2034,7 @@ function App() {
   const profile = useMemo(() => normalizeBabyProfile(storedProfile), [storedProfile]);
   const messages = useMemo(() => storedMessages.map(normalizeChatMessage), [storedMessages]);
   const growthEvents = useMemo(() => storedGrowthEvents.map(normalizeGrowthEvent), [storedGrowthEvents]);
+  const growthMeasurements = useMemo(() => storedGrowthMeasurements.map(normalizeGrowthMeasurement), [storedGrowthMeasurements]);
   const careLogs = useMemo(() => dedupeCareLogs(storedCareLogs.map(normalizeCareLog)), [storedCareLogs]);
   const reminders = useMemo(() => storedReminders.map(normalizeReminder), [storedReminders]);
   const memories = useMemo(() => storedMemories.map(normalizeMemoryItem), [storedMemories]);
@@ -2047,6 +2051,8 @@ function App() {
     setStoredMessages((current) => resolveStateAction(action, current.map(normalizeChatMessage)).map(normalizeChatMessage));
   const setGrowthEvents = (action: SetStateAction<GrowthEvent[]>) =>
     setStoredGrowthEvents((current) => resolveStateAction(action, current.map(normalizeGrowthEvent)).map(normalizeGrowthEvent));
+  const setGrowthMeasurements = (action: SetStateAction<GrowthMeasurement[]>) =>
+    setStoredGrowthMeasurements((current) => resolveStateAction(action, current.map(normalizeGrowthMeasurement)).map(normalizeGrowthMeasurement));
   const setCareLogs = (action: SetStateAction<CareLog[]>) =>
     setStoredCareLogs((current) => resolveStateAction(action, current.map(normalizeCareLog)).map(normalizeCareLog));
   const setReminders = (action: SetStateAction<Reminder[]>) =>
@@ -3135,6 +3141,7 @@ function App() {
     profile,
     messages,
     growthEvents,
+    growthMeasurements,
     careLogs,
     reminders,
     memories,
@@ -3160,6 +3167,7 @@ function App() {
     if ("profile" in state) setProfile((state.profile ?? blankProfile) as BabyProfile);
     if (state.messages) setMessages(state.messages);
     if (state.growthEvents) setGrowthEvents(state.growthEvents);
+    if (state.growthMeasurements) setGrowthMeasurements(state.growthMeasurements);
     if (state.careLogs) setCareLogs(state.careLogs);
     if (state.reminders) setReminders(state.reminders.map(normalizeReminder));
     if (state.memories) setMemories(state.memories);
@@ -3183,6 +3191,7 @@ function App() {
       profile: blankProfile,
       messages: [],
       growthEvents: [],
+      growthMeasurements: [],
       careLogs: [],
       reminders: [],
       memories: [],

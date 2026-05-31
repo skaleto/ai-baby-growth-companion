@@ -24,6 +24,7 @@ import type {
   ExpenseCategory,
   ExpenseItem,
   GrowthEvent,
+  GrowthMeasurement,
   MemoryItem,
   PendingEffect,
   ProTrialStatus,
@@ -691,6 +692,20 @@ export const normalizeGrowthEvent = (value: Partial<GrowthEvent> | null | undefi
   firstTime: Boolean(value?.firstTime),
   mediaKind: value?.mediaKind,
   tags: stringList(value?.tags),
+  recordedBy: normalizeRecordedBy(value?.recordedBy),
+  createdByUserId: textValue(value?.createdByUserId) || undefined,
+});
+
+export const normalizeGrowthMeasurement = (
+  value: Partial<GrowthMeasurement> | null | undefined,
+  index: number,
+): GrowthMeasurement => ({
+  id: textValue(value?.id, `growth-measurement-${index}`),
+  type:
+    value?.type === "weight" || value?.type === "headCircumference" ? value.type : "height",
+  value: typeof value?.value === "number" && Number.isFinite(value.value) ? value.value : 0,
+  date: textValue(value?.date, todayISO()),
+  note: textValue(value?.note) || undefined,
   recordedBy: normalizeRecordedBy(value?.recordedBy),
   createdByUserId: textValue(value?.createdByUserId) || undefined,
 });
