@@ -207,6 +207,7 @@ import {
   suggestedFamilyName,
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
+import { GrowthChart, type GrowthChartPoint } from "./components/GrowthChart";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { StorybookScene } from "./components/StorybookScene";
 import {
@@ -303,6 +304,7 @@ import {
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import { MilestonesView } from "./views/MilestonesView";
 import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
+import { GROWTH_REFERENCE } from "./data/growthReference";
 import {
   careAlbumCategory,
   careAlbumTitle,
@@ -7224,6 +7226,20 @@ function App() {
                   item,
                   delta: index > 0 ? item.value - items[index - 1].value : null,
                 }));
+                const birthMs = profile.birthDate ? new Date(profile.birthDate).getTime() : NaN;
+                const hasBirth = Number.isFinite(birthMs);
+                const chartPoints: GrowthChartPoint[] = hasBirth
+                  ? items
+                      .map((item) => ({
+                        ageMonths:
+                          (new Date(item.date).getTime() - birthMs) / (1000 * 60 * 60 * 24 * 30.4375),
+                        value: item.value,
+                      }))
+                      .filter((p) => p.ageMonths >= 0 && p.ageMonths <= 36)
+                  : [];
+                const refGender =
+                  profile.gender === "boy" || profile.gender === "girl" ? profile.gender : null;
+                const reference = refGender ? GROWTH_REFERENCE[type][refGender] : null;
                 return (
                   <article className="growth-history-group" key={type}>
                     <header>
@@ -7233,6 +7249,16 @@ function App() {
                         {meta.unit}
                       </span>
                     </header>
+                    {hasBirth ? (
+                      <>
+                        <GrowthChart points={chartPoints} reference={reference} unit={meta.unit} />
+                        {!reference ? (
+                          <p className="growth-chart-hint">在「我的」里设置宝宝性别后，可显示同龄正常范围带（P3~P97）。</p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="growth-chart-hint">填写宝宝出生日期后，可显示成长曲线与同龄正常范围带。</p>
+                    )}
                     <ul>
                       {rows
                         .slice()
