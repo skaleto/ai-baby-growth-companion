@@ -126,6 +126,8 @@ import {
   EXPENSE_CATEGORY_COLORS,
   EXPENSE_CATEGORY_OPTIONS,
   FEEDING_SELECT_OPTIONS,
+  GROWTH_MEASUREMENT_META,
+  GROWTH_MEASUREMENT_TYPES,
   LEDGER_VIEWS,
   MAX_INTERVAL_MINUTES,
   MOBILE_TABS,
@@ -231,6 +233,7 @@ import {
   ExpenseItem,
   GrowthEvent,
   GrowthMeasurement,
+  GrowthMeasurementType,
   MemoryItem,
   MissingItemPrompt,
   PendingEffect,
@@ -2171,6 +2174,17 @@ function App() {
     amountMl: "",
     durationHours: "",
     temperature: "",
+    note: "",
+  });
+  const [growthMeasurementDraft, setGrowthMeasurementDraft] = useState<{
+    type: GrowthMeasurementType;
+    value: string;
+    date: string;
+    note: string;
+  }>({
+    type: "height",
+    value: "",
+    date: todayISO(),
     note: "",
   });
   const [reminderEditorOpen, setReminderEditorOpen] = useState(false);
@@ -5118,6 +5132,36 @@ function App() {
     hapticSuccess();
   }, [canCaregive]);
 
+  const handleAddGrowthMeasurement = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canCaregive) return;
+    const numericValue = Number(growthMeasurementDraft.value);
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      showSystemWeakNotice("请输入有效的数值。", "warning");
+      return;
+    }
+    const measurement = normalizeGrowthMeasurement(
+      {
+        id: makeId("growth-measurement"),
+        type: growthMeasurementDraft.type,
+        value: numericValue,
+        date: growthMeasurementDraft.date || todayISO(),
+        note: growthMeasurementDraft.note.trim() || undefined,
+      },
+      0,
+    );
+    setGrowthMeasurements((current) => [...current, measurement]);
+    void persistRecord("growthMeasurements", measurement.id, measurement).catch(() => setStorageStatus("offline"));
+    setGrowthMeasurementDraft((current) => ({ ...current, value: "", note: "" }));
+    hapticSuccess();
+  };
+
+  const handleDeleteGrowthMeasurement = (id: string) => {
+    if (!canCaregive) return;
+    setGrowthMeasurements((current) => current.filter((item) => item.id !== id));
+    void deleteAppRecord("growthMeasurements", id).catch(() => setStorageStatus("offline"));
+  };
+
   const editAlbumItem = (item: AlbumItem) => {
     if (!canCaregive) return;
     const title = window.prompt("给这段回忆起个名字", item.title);
@@ -7105,6 +7149,133 @@ function App() {
                 </div>
               )}
             </section>
+          ) : null}
+
+          {recordView === "growth" ? (
+          <section className="growth-card">
+            <div className="section-title">
+              <LineChart size={18} />
+              <h2>成长记录</h2>
+            </div>
+            {canCaregive ? (
+              <form className="growth-entry-form" onSubmit={handleAddGrowthMeasurement}>
+                <div className="growth-entry-row">
+                  <StorySelect
+                    ariaLabel="测量项"
+                    value={growthMeasurementDraft.type}
+                    options={GROWTH_MEASUREMENT_TYPES.map((type) => ({
+                      value: type,
+                      label: GROWTH_MEASUREMENT_META[type].label,
+                    }))}
+                    onChange={(type) =>
+                      setGrowthMeasurementDraft((current) => ({ ...current, type: type as GrowthMeasurementType }))
+                    }
+                  />
+                  <div className="growth-value-input">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step={GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].step}
+                      min="0"
+                      placeholder="数值"
+                      value={growthMeasurementDraft.value}
+                      onChange={(event) =>
+                        setGrowthMeasurementDraft((current) => ({ ...current, value: event.target.value }))
+                      }
+                    />
+                    <span className="growth-unit">{GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].unit}</span>
+                  </div>
+                </div>
+                <div className="growth-entry-row">
+                  <input
+                    type="date"
+                    value={growthMeasurementDraft.date}
+                    max={todayISO()}
+                    onChange={(event) =>
+                      setGrowthMeasurementDraft((current) => ({ ...current, date: event.target.value }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="备注（可选）"
+                    value={growthMeasurementDraft.note}
+                    onChange={(event) =>
+                      setGrowthMeasurementDraft((current) => ({ ...current, note: event.target.value }))
+                    }
+                  />
+                </div>
+                <button type="submit" className="screen-action-button">
+                  <Save size={16} />
+                  记录一笔
+                </button>
+              </form>
+            ) : (
+              <p className="readonly-copy">当前身份仅可查看，记录成长数据需要照护人操作。</p>
+            )}
+
+            <div className="growth-history">
+              {GROWTH_MEASUREMENT_TYPES.map((type) => {
+                const meta = GROWTH_MEASUREMENT_META[type];
+                const items = growthMeasurements
+                  .filter((measurement) => measurement.type === type)
+                  .sort((a, b) => a.date.localeCompare(b.date));
+                if (!items.length) return null;
+                const rows = items.map((item, index) => ({
+                  item,
+                  delta: index > 0 ? item.value - items[index - 1].value : null,
+                }));
+                return (
+                  <article className="growth-history-group" key={type}>
+                    <header>
+                      <strong>{meta.label}</strong>
+                      <span>
+                        最新 {items[items.length - 1].value}
+                        {meta.unit}
+                      </span>
+                    </header>
+                    <ul>
+                      {rows
+                        .slice()
+                        .reverse()
+                        .map(({ item, delta }) => (
+                          <li key={item.id}>
+                            <div className="growth-history-main">
+                              <span className="growth-history-value">
+                                {item.value}
+                                {meta.unit}
+                              </span>
+                              {delta !== null ? (
+                                <span className={`growth-history-delta ${delta >= 0 ? "up" : "down"}`}>
+                                  {delta >= 0 ? "+" : ""}
+                                  {Number(delta.toFixed(2))}
+                                  {meta.unit}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="growth-history-meta">
+                              <span>{item.date}</span>
+                              {item.note ? <span className="growth-history-note">{item.note}</span> : null}
+                              {canCaregive ? (
+                                <button
+                                  type="button"
+                                  className="growth-history-delete"
+                                  onClick={() => handleDeleteGrowthMeasurement(item.id)}
+                                >
+                                  删除
+                                </button>
+                              ) : null}
+                            </div>
+                          </li>
+                        ))}
+                    </ul>
+                  </article>
+                );
+              })}
+              {growthMeasurements.length === 0 ? (
+                <p className="growth-empty">还没有成长记录。在上面记录第一笔身高、体重或头围吧。</p>
+              ) : null}
+            </div>
+          </section>
           ) : null}
 
           {recordView === "trend" ? (
