@@ -303,6 +303,7 @@ import {
 } from "./utils/expense";
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import { MilestonesView } from "./views/MilestonesView";
+import { GrowthEntryView } from "./views/GrowthEntryView";
 import { DailySummaryView } from "./views/DailySummaryView";
 import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
 import {
@@ -2121,6 +2122,7 @@ function App() {
   const [collapsedExpenseMonths, setCollapsedExpenseMonths] = useState<Set<string>>(() => new Set());
   const [bulkDeleteExpensesOpen, setBulkDeleteExpensesOpen] = useState(false);
   const [milestonesViewOpen, setMilestonesViewOpen] = useState(false);
+  const [growthEntryOpen, setGrowthEntryOpen] = useState(false);
   const [albumCategory, setAlbumCategory] = useState<AlbumItemCategory | "all">("all");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
@@ -3004,6 +3006,21 @@ function App() {
   const selectedKeyPointCount = selectedEvents.length;
   const selectedGrowthCount = selectedEvents.filter((event) => event.type === "growth").length;
   const selectedDateIsToday = selectedDate === todayDate;
+  const recordHeading = (() => {
+    if (recordView === "trend") return "近 7 天对比";
+    if (recordView === "calendar") {
+      const month = (selectedDate || todayDate).slice(0, 7);
+      const [year, m] = month.split("-");
+      return `${year} 年 ${Number(m)} 月日历`;
+    }
+    // today
+    if (selectedDateIsToday) {
+      const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+      const d = new Date(`${todayDate}T00:00:00`);
+      return `今天 · ${d.getMonth() + 1}月${d.getDate()}日 周${weekdays[d.getDay()]}`;
+    }
+    return formatFullDate(selectedDate);
+  })();
   const selectedDailySummary = dailySummary?.date === selectedDate ? dailySummary : null;
   const mutedMissingTypes = new Set(dailySummarySettings.mutedMissingTypes);
   const dismissedMissingIds = new Set(dismissedDailySummaryMissingItemIds);
@@ -5117,6 +5134,8 @@ function App() {
 
   const openMilestones = useCallback(() => setMilestonesViewOpen(true), []);
   const closeMilestones = useCallback(() => setMilestonesViewOpen(false), []);
+  const openGrowthEntry = useCallback(() => setGrowthEntryOpen(true), []);
+  const closeGrowthEntry = useCallback(() => setGrowthEntryOpen(false), []);
 
   const handleFindingActionClick = useCallback((domain: string, _id: string) => {
     switch (domain) {
@@ -7001,10 +7020,23 @@ function App() {
         </section>
 
         <section className="records-screen tab-content-enter" aria-label="记录">
+          {growthEntryOpen ? (
+            <GrowthEntryView
+              profile={profile}
+              growthMeasurements={growthMeasurements}
+              canCaregive={canCaregive}
+              draft={growthMeasurementDraft}
+              onDraftChange={setGrowthMeasurementDraft}
+              onSubmit={handleAddGrowthMeasurement}
+              onDelete={handleDeleteGrowthMeasurement}
+              onClose={closeGrowthEntry}
+            />
+          ) : (
+          <>
           <div className="screen-head">
             <div>
               <p className="eyebrow">记录</p>
-              <h2>{selectedDateIsToday ? "今天的总览" : formatFullDate(selectedDate)}</h2>
+              <h2>{recordHeading}</h2>
             </div>
             <button type="button" className="small-action" onClick={() => {
               selectRecordDate(todayDate);
@@ -7185,132 +7217,36 @@ function App() {
             </section>
           ) : null}
 
-          {recordView === "growth" ? (
-          <section className="growth-card">
-            <div className="section-title">
-              <LineChart size={18} />
-              <h2>成长记录</h2>
-            </div>
-            {canCaregive ? (
-              <form className="growth-entry-form" onSubmit={handleAddGrowthMeasurement}>
-                <div className="growth-entry-row">
-                  <StorySelect
-                    ariaLabel="测量项"
-                    value={growthMeasurementDraft.type}
-                    options={GROWTH_MEASUREMENT_TYPES.map((type) => ({
-                      value: type,
-                      label: GROWTH_MEASUREMENT_META[type].label,
-                    }))}
-                    onChange={(type) =>
-                      setGrowthMeasurementDraft((current) => ({ ...current, type: type as GrowthMeasurementType }))
-                    }
-                  />
-                  <div className="growth-value-input">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      step={GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].step}
-                      min={GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].min}
-                      max={GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].max}
-                      placeholder="数值"
-                      value={growthMeasurementDraft.value}
-                      onChange={(event) =>
-                        setGrowthMeasurementDraft((current) => ({ ...current, value: event.target.value }))
-                      }
-                    />
-                    <span className="growth-unit">{GROWTH_MEASUREMENT_META[growthMeasurementDraft.type].unit}</span>
-                  </div>
-                </div>
-                <div className="growth-entry-row">
-                  <input
-                    type="date"
-                    value={growthMeasurementDraft.date}
-                    max={todayISO()}
-                    onChange={(event) =>
-                      setGrowthMeasurementDraft((current) => ({ ...current, date: event.target.value }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    placeholder="备注（可选）"
-                    value={growthMeasurementDraft.note}
-                    onChange={(event) =>
-                      setGrowthMeasurementDraft((current) => ({ ...current, note: event.target.value }))
-                    }
-                  />
-                </div>
-                <button type="submit" className="screen-action-button">
-                  <Save size={16} />
-                  记录一笔
+          {recordView === "today" ? (
+            <section className="growth-entry-card" aria-label="宝宝成长">
+              <div className="growth-entry-card-head">
+                <h3>宝宝成长</h3>
+                <button type="button" className="growth-entry-card-open" onClick={openGrowthEntry}>
+                  {growthMeasurements.length ? "记录 / 查看" : "记一笔"}
                 </button>
-              </form>
-            ) : (
-              <p className="readonly-copy">当前身份仅可查看，记录成长数据需要照护人操作。</p>
-            )}
-
-            <div className="growth-history">
-              {GROWTH_MEASUREMENT_TYPES.map((type) => {
-                const meta = GROWTH_MEASUREMENT_META[type];
-                const items = growthMeasurements
-                  .filter((measurement) => measurement.type === type)
-                  .sort((a, b) => a.date.localeCompare(b.date));
-                if (!items.length) return null;
-                const rows = items.map((item, index) => ({
-                  item,
-                  delta: index > 0 ? item.value - items[index - 1].value : null,
-                }));
-                return (
-                  <article className="growth-history-group" key={type}>
-                    <header>
-                      <strong>{meta.label}</strong>
-                      <span>
-                        最新 {items[items.length - 1].value}
-                        {meta.unit}
-                      </span>
-                    </header>
-                    <ul>
-                      {rows
-                        .slice()
-                        .reverse()
-                        .map(({ item, delta }) => (
-                          <li key={item.id}>
-                            <div className="growth-history-main">
-                              <span className="growth-history-value">
-                                {item.value}
-                                {meta.unit}
-                              </span>
-                              {delta !== null ? (
-                                <span className={`growth-history-delta ${delta >= 0 ? "up" : "down"}`}>
-                                  {delta >= 0 ? "+" : ""}
-                                  {Number(delta.toFixed(2))}
-                                  {meta.unit}
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="growth-history-meta">
-                              <span>{item.date}</span>
-                              {item.note ? <span className="growth-history-note">{item.note}</span> : null}
-                              {canCaregive ? (
-                                <button
-                                  type="button"
-                                  className="growth-history-delete"
-                                  onClick={() => handleDeleteGrowthMeasurement(item.id)}
-                                >
-                                  删除
-                                </button>
-                              ) : null}
-                            </div>
-                          </li>
-                        ))}
-                    </ul>
-                  </article>
-                );
-              })}
-              {growthMeasurements.length === 0 ? (
-                <p className="growth-empty">还没有成长记录。在上面记录第一笔身高、体重或头围吧。</p>
-              ) : null}
-            </div>
-          </section>
+              </div>
+              {growthMeasurements.length > 0 ? (
+                <div className="growth-entry-card-stats">
+                  {GROWTH_MEASUREMENT_TYPES.map((type) => {
+                    const items = growthMeasurements
+                      .filter((m) => m.type === type)
+                      .sort((a, b) => a.date.localeCompare(b.date));
+                    const latest = items[items.length - 1];
+                    const meta = GROWTH_MEASUREMENT_META[type];
+                    return (
+                      <div className="growth-entry-card-stat" key={type}>
+                        <span className="growth-entry-card-stat-label">{meta.label}</span>
+                        <span className="growth-entry-card-stat-value">
+                          {latest ? `${latest.value}${meta.unit}` : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="growth-entry-card-empty">还没有记录身高/体重/头围。点上方添加第一笔。</p>
+              )}
+            </section>
           ) : null}
 
           {recordView === "trend" ? (
@@ -7537,6 +7473,8 @@ function App() {
             )}
           </section>
           ) : null}
+          </>
+          )}
         </section>
 
         <LedgerView

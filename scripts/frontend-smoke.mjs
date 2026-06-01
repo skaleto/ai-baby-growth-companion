@@ -873,7 +873,12 @@ async function exerciseGrowthMeasurementFlow(page, viewport) {
 
   await page.getByRole("button", { name: "记录" }).last().click();
   await page.waitForTimeout(120);
-  await page.getByRole("tab", { name: "成长" }).click();
+  // 成长 is now an independent overlay accessed from the 今日 card
+  await page.getByRole("tab", { name: "今日" }).click();
+  await page.waitForTimeout(80);
+  const growthCardBtn = page.locator(".growth-entry-card-open");
+  await growthCardBtn.waitFor({ timeout: 5000 });
+  await growthCardBtn.click();
   await page.getByRole("heading", { name: "成长记录" }).waitFor({ timeout: 5000 });
   await page.locator(".growth-history-value", { hasText: "66.5cm" }).first().waitFor({ timeout: 5000 });
 
@@ -899,6 +904,10 @@ async function exerciseGrowthMeasurementFlow(page, viewport) {
   if (viewport.mobile) {
     await checkAppShellAligned(page, `${viewport.name} growth measurement flow`);
   }
+
+  // close the growth overlay before continuing
+  await page.getByRole("button", { name: "返回" }).click();
+  await page.waitForTimeout(120);
 
   return { growthMeasurementFlowChecked: true };
 }

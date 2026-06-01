@@ -4120,3 +4120,71 @@ body.keyboard-open .expense-optional-fields {
   object-fit: contain;
   margin: 0 auto;
 }
+
+/* === growth entry card (今日 sub-view) === */
+.growth-entry-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  margin-bottom: 12px;
+}
+
+.growth-entry-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.growth-entry-card-head h3 {
+  font-size: 15px;
+  color: #333;
+  margin: 0;
+}
+
+.growth-entry-card-open {
+  font-size: 13px;
+  color: #527064;
+  background: rgba(138, 196, 168, 0.16);
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+}
+
+.growth-entry-card-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.growth-entry-card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  background: rgba(255, 248, 230, 0.55);
+  border-radius: 10px;
+}
+
+.growth-entry-card-stat-label {
+  font-size: 11px;
+  color: #888;
+}
+
+.growth-entry-card-stat-value {
+  font-size: 15px;
+  color: #333;
+  font-weight: 500;
+}
+
+.growth-entry-card-empty {
+  font-size: 13px;
+  color: #888;
+  margin: 0;
+  text-align: center;
+  padding: 8px 0;
+}
