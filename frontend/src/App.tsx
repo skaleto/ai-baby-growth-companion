@@ -6275,19 +6275,24 @@ function App() {
 
             <div className="quick-row">
               <button type="button" onClick={() => quickFill("今天喝奶 5 次，每次大概 120ml，晚上醒了 3 次")}>
-                🍼 喂奶
+                <img className="quick-icon-img" src={milkIcon} alt="" />
+                喂奶
               </button>
               <button type="button" onClick={() => quickFill(`晚上 8 点提醒我给${babyNickname}洗澡`)}>
-                🔔 提醒
+                <img className="quick-icon-img" src={reminderIcon} alt="" />
+                提醒
               </button>
               <button type="button" onClick={() => quickFill(`今天${babyNickname}第一次自己扶着沙发站起来了`)}>
-                ⭐ 里程碑
+                <img className="quick-icon-img" src={growthIcon} alt="" />
+                里程碑
               </button>
               <button type="button" onClick={() => quickFill(`帮我记一笔${babyNickname}支出：`)}>
-                💰 记账
+                <ReceiptText size={16} />
+                记账
               </button>
               <button type="button" onClick={() => quickFill(`为什么这两天${babyNickname}更难哄睡？`)}>
-                🤖 问问AI
+                <CircleHelp size={16} />
+                问问AI
               </button>
             </div>
           </div>
@@ -7723,6 +7728,7 @@ function App() {
             <div className="assistant-actions reminder-actions">
               {REMINDER_QUICK_ACTIONS.map((action) => (
                 <button type="button" key={action.label} onClick={() => quickFill(withBabyNickname(action.prompt))}>
+                  {action.label === "疫苗" || action.label === "喂药" ? <Syringe size={16} /> : <Bell size={16} />}
                   {action.label}
                 </button>
               ))}

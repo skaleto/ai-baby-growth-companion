@@ -30,18 +30,14 @@ export function DailySummaryView({ summary, onActionClick, loading = false }: Da
       />
       {summary.facts && summary.facts.length > 0 && (
         <div className="daily-summary__section fade-in-up">
-          <h3>👶 宝宝今天</h3>
-          <ul className="daily-summary__facts-list">
-            {summary.facts.map((fact, idx) => (
-              <li key={idx}>· {fact}</li>
-            ))}
-          </ul>
+          <h3>宝宝今天</h3>
+          <p className="daily-summary__facts">{summary.facts.join("；")}</p>
         </div>
       )}
 
       {hasFindings && (
         <div className="daily-summary__section fade-in-up">
-          <h3>✨ 你可能没注意到</h3>
+          <h3>你可能没注意到</h3>
           {summary.findings.map((finding, idx) => (
             <FindingRow
               key={`${finding.type}-${idx}`}
@@ -54,7 +50,7 @@ export function DailySummaryView({ summary, onActionClick, loading = false }: Da
 
       {hasObservations && (
         <div className="daily-summary__section fade-in-up">
-          <h3>👀 需要你看一眼</h3>
+          <h3>需要你看一眼</h3>
           {summary.observations.map((text, idx) => (
             <div key={idx} className="daily-summary__missing-item">{text}</div>
           ))}
@@ -63,7 +59,7 @@ export function DailySummaryView({ summary, onActionClick, loading = false }: Da
 
       {hasMissing && (
         <div className="daily-summary__section fade-in-up">
-          <h3>📝 漏掉了吗</h3>
+          <h3>漏掉了吗</h3>
           {summary.missingItems.map((item) => (
             <div key={item.id} className="daily-summary__missing-item">
               {item.message}
