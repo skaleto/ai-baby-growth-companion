@@ -39,6 +39,7 @@ public class DatabaseInitializer implements ApplicationRunner {
             createRecordTable(connection, statement, "baby_profile");
             createRecordTable(connection, statement, "chat_message");
             createRecordTable(connection, statement, "growth_event");
+            createRecordTable(connection, statement, "growth_measurement");
             createRecordTable(connection, statement, "care_log");
             createRecordTable(connection, statement, "reminder");
             createRecordTable(connection, statement, "memory_item");
@@ -517,6 +518,7 @@ public class DatabaseInitializer implements ApplicationRunner {
                 "baby_profile",
                 "chat_message",
                 "growth_event",
+                "growth_measurement",
                 "care_log",
                 "reminder",
                 "memory_item",

@@ -25,6 +25,7 @@ public class AppStateController {
             "profile",
             "messages",
             "growthEvents",
+            "growthMeasurements",
             "careLogs",
             "reminders",
             "memories",

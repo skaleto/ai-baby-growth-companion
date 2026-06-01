@@ -11,6 +11,9 @@ public record AgentBabyProfile(
         @Size(max = 20, message = "stage must be at most 20 characters")
         String stage,
 
+        @Size(max = 10, message = "gender must be at most 10 characters")
+        String gender,
+
         @Size(max = 30, message = "expectedDate must be at most 30 characters")
         String expectedDate,
 
@@ -22,6 +25,10 @@ public record AgentBabyProfile(
 
         @Size(max = 80, message = "feeding must be at most 80 characters")
         String feeding,
+
+        Double birthWeight,
+
+        Double birthHeight,
 
         Integer ageDays,
 

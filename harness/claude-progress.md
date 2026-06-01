@@ -13,6 +13,51 @@
 
 ## Session Log
 
+### Session 2026-06-01 Merge Growth MVP To Main
+
+- Goal: 将远端分支 `claude/jovial-knuth-c5b390` 合并到最新 `main` 并推送远端。
+- Completed:
+  - 先将本地 `main` 快进到 `origin/main` 最新 9 个提交。
+  - 使用 `--no-ff --no-commit` 合并远端成长记录分支，解决 `docs/agent-benchmark-results.md`、`frontend/src/styles/mobile-app.css`、`harness/claude-progress.md` 三处冲突。
+  - 样式冲突保留最新视觉刷新空态插画样式，并合入成长记录 MVP 表单/历史样式。
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run verify:frontend`
+  - `mvn -f backend/pom.xml test`
+- Evidence:
+  - Harness init passed with production frontend build and Agent benchmark.
+  - Frontend verification passed across desktop and six mobile viewports.
+  - Backend Maven suite passed with 222 tests, 0 failures, 1 skipped.
+- Known risks:
+  - 本次只做代码分支集成和本地验证，未部署 Aliyun，也未改生产数据。
+
+### Session 2026-05-31 Growth Measurement MVP Simplification
+
+- Goal: 按 review 建议把成长指标功能收敛成简单可交付的 MVP，并补齐性别、出生体重、出生身长的全链路 UI/状态/持久化验证。
+- Completed:
+  - 移除 premature 的成长曲线组件、内置 WS/T 423 参考表和未验证的数据抽取说明，避免用复杂参考曲线掩盖当前简单记录需求。
+  - 保留并验证资料页中的性别、出生体重、出生身长字段，以及成长页中的身高/体重/头围手动记录、备注和历史列表。
+  - 给成长记录输入增加上下限校验，并让后端共享状态按 `growthMeasurement.date` 排序。
+  - 扩展前端 smoke：进入成长页、确认历史数据、拒绝 `999cm` 异常身高、记录 `68.2cm` 和备注，并断言页面不再渲染成长曲线。
+  - 重新同步 Capacitor 资源，并确认 iOS/Android debug 客户端包都能构建。
+- Verification run:
+  - `bash harness/init.sh`
+  - `npm run build && npm run smoke:frontend`
+  - `npm run verify:frontend`
+  - `mvn -f backend/pom.xml test`
+  - `git diff --check`
+  - `npm run mobile:sync`
+  - `npm run build:ios:debug`
+  - `npm run build:android:debug`
+- Evidence:
+  - Frontend verification passed across desktop and six mobile viewports.
+  - Backend Maven suite passed with 204 tests, 0 failures.
+  - Harness init passed with whitespace check, production frontend build, and Agent benchmark with 23 tests.
+  - iOS debug build succeeded for iPhone 17 simulator.
+  - Android debug APK built at `android/app/build/outputs/apk/debug/app-debug.apk`.
+- Known risks:
+  - 百分位、WHO/WS 参考曲线、早产校正、AI 解读和提醒仍是 future scope；本轮有意不把这些复杂逻辑塞进 MVP。
+
 ### Session 2026-05-26 Codex Placeholder Illustration Integration
 
 - Goal: 接手 `docs/codex-todo-2026-05-26-placeholder-images.md`，为 Visual Refresh Phase 2 的 3 个占位点生成真实插画并替换前端 `Placeholder`。
@@ -133,7 +178,6 @@
   - OTA `0.1.0-20260526122526` 已上传 OSS（checksum `0d7a1c5778448445e6e29d1c2d5b6090aaf501867d98e60435a83db2ef3c0682`），manifest 已同步到 ECS，云端 `/api/health` 返回 `ok`。
   - 部署命令：`SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun npm run deploy:aliyun`，本地 mvn 需 `JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home` + IDEA bundled mvn。
   - 真实家庭数据 + DeepSeek 模型质量需用户手动触发"生成今日小结"后观察。
-
 ### Session 2026-05-16 Voice Hold Pointer Drift Fix
 
 - Goal: 修复语音按钮按住后手指稍微移动就断开的问题，让移动端按住说话只在松手、取消或页面失焦时结束。

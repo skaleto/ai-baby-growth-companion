@@ -102,13 +102,20 @@ export interface AgentModelOption {
   supportsLowLatency: boolean;
 }
 
+export type BabyGender = "boy" | "girl" | "unknown";
+
 export interface BabyProfile {
   nickname: string;
   stage: "pregnancy" | "born";
+  gender: BabyGender;
   expectedDate: string;
   birthDate: string;
   region: string;
   feeding: string;
+  /** 出生体重（kg），用于生长曲线起点对照，可选 */
+  birthWeight?: number;
+  /** 出生身长（cm），用于生长曲线起点对照，可选 */
+  birthHeight?: number;
   allergies: string[];
   caregivers: string[];
 }
@@ -147,6 +154,20 @@ export interface GrowthEvent {
   firstTime: boolean;
   mediaKind?: AttachmentKind;
   tags: string[];
+  recordedBy?: RecordedBy;
+  createdByUserId?: string;
+}
+
+export type GrowthMeasurementType = "height" | "weight" | "headCircumference";
+
+export interface GrowthMeasurement {
+  id: string;
+  type: GrowthMeasurementType;
+  /** 数值：身高/头围单位 cm，体重单位 kg */
+  value: number;
+  /** 测量日期 YYYY-MM-DD */
+  date: string;
+  note?: string;
   recordedBy?: RecordedBy;
   createdByUserId?: string;
 }
@@ -380,6 +401,7 @@ export interface AppStateSnapshot {
   profile: BabyProfile;
   messages: ChatMessage[];
   growthEvents: GrowthEvent[];
+  growthMeasurements: GrowthMeasurement[];
   careLogs: CareLog[];
   reminders: Reminder[];
   memories: MemoryItem[];

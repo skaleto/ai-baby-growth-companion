@@ -24,6 +24,7 @@ import type {
   ExpenseCategory,
   ExpenseItem,
   GrowthEvent,
+  GrowthMeasurement,
   MemoryItem,
   PendingEffect,
   ProTrialStatus,
@@ -40,6 +41,7 @@ export const LEGACY_STORAGE_KEYS = [
   "baby-companion-profile",
   "baby-companion-messages",
   "baby-companion-growth",
+  "baby-companion-growth-measurements",
   "baby-companion-care",
   "baby-companion-reminders",
   "baby-companion-memories",
@@ -74,6 +76,7 @@ export const hasLegacyLocalState = () => {
       hasProfile ||
       hasLocalArrayItems("baby-companion-messages") ||
       hasLocalArrayItems("baby-companion-growth") ||
+      hasLocalArrayItems("baby-companion-growth-measurements") ||
       hasLocalArrayItems("baby-companion-care") ||
       hasLocalArrayItems("baby-companion-reminders") ||
       hasLocalArrayItems("baby-companion-memories") ||
@@ -107,6 +110,7 @@ export const clearLocalAppState = () => {
 export const blankProfile: BabyProfile = {
   nickname: "",
   stage: "born",
+  gender: "unknown",
   expectedDate: "",
   birthDate: "",
   region: "",
@@ -129,13 +133,19 @@ export const stringList = (value: unknown) => (Array.isArray(value) ? value.filt
 export const stringMember = <T extends string>(values: readonly T[], value: unknown): value is T =>
   typeof value === "string" && values.includes(value as T);
 
+const numericOrUndefined = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+
 export const normalizeBabyProfile = (value: Partial<BabyProfile> | null | undefined): BabyProfile => ({
   nickname: textValue(value?.nickname),
   stage: value?.stage === "pregnancy" ? "pregnancy" : "born",
+  gender: value?.gender === "boy" || value?.gender === "girl" ? value.gender : "unknown",
   expectedDate: textValue(value?.expectedDate),
   birthDate: textValue(value?.birthDate),
   region: textValue(value?.region),
   feeding: textValue(value?.feeding),
+  birthWeight: numericOrUndefined(value?.birthWeight),
+  birthHeight: numericOrUndefined(value?.birthHeight),
   allergies: stringList(value?.allergies),
   caregivers: stringList(value?.caregivers),
 });
@@ -684,6 +694,20 @@ export const normalizeGrowthEvent = (value: Partial<GrowthEvent> | null | undefi
   firstTime: Boolean(value?.firstTime),
   mediaKind: value?.mediaKind,
   tags: stringList(value?.tags),
+  recordedBy: normalizeRecordedBy(value?.recordedBy),
+  createdByUserId: textValue(value?.createdByUserId) || undefined,
+});
+
+export const normalizeGrowthMeasurement = (
+  value: Partial<GrowthMeasurement> | null | undefined,
+  index: number,
+): GrowthMeasurement => ({
+  id: textValue(value?.id, `growth-measurement-${index}`),
+  type:
+    value?.type === "weight" || value?.type === "headCircumference" ? value.type : "height",
+  value: typeof value?.value === "number" && Number.isFinite(value.value) ? value.value : 0,
+  date: textValue(value?.date, todayISO()),
+  note: textValue(value?.note) || undefined,
   recordedBy: normalizeRecordedBy(value?.recordedBy),
   createdByUserId: textValue(value?.createdByUserId) || undefined,
 });

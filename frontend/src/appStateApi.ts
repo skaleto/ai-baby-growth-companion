@@ -5,6 +5,7 @@ export type AppStateCollection =
   | "profile"
   | "messages"
   | "growthEvents"
+  | "growthMeasurements"
   | "careLogs"
   | "reminders"
   | "memories"

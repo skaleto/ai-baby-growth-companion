@@ -2185,10 +2185,13 @@ public class AgentRuntime {
 
         values.put("nickname", profile.nickname());
         values.put("stage", profile.stage());
+        values.put("gender", profile.gender());
         values.put("expectedDate", profile.expectedDate());
         values.put("birthDate", profile.birthDate());
         values.put("region", profile.region());
         values.put("feeding", profile.feeding());
+        values.put("birthWeight", profile.birthWeight());
+        values.put("birthHeight", profile.birthHeight());
         values.put("allergies", profile.allergies());
         values.put("caregivers", profile.caregivers());
 

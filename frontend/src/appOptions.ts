@@ -13,6 +13,7 @@ import type {
   BabyProfile,
   CareLogEventType,
   ExpenseCategory,
+  GrowthMeasurementType,
   Reminder,
   ReminderAlertMode,
   ReminderScheduleMode,
@@ -62,7 +63,7 @@ export const MOBILE_TABS = [
 ] as const;
 
 export type MobileTab = (typeof MOBILE_TABS)[number]["id"];
-export type RecordView = "today" | "trend" | "calendar";
+export type RecordView = "today" | "growth" | "trend" | "calendar";
 export type LedgerView = "month" | "year" | "details";
 
 export const ROLE_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "月嫂", "保姆", "亲友", "其他"] as const;
@@ -70,9 +71,21 @@ export const UNIQUE_ROLE_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外
 
 export const RECORD_VIEWS: Array<{ id: RecordView; label: string }> = [
   { id: "today", label: "今日" },
+  { id: "growth", label: "成长" },
   { id: "trend", label: "趋势" },
   { id: "calendar", label: "日历" },
 ];
+
+export const GROWTH_MEASUREMENT_META: Record<
+  GrowthMeasurementType,
+  { label: string; unit: string; step: string; min: number; max: number }
+> = {
+  height: { label: "身高", unit: "cm", step: "0.1", min: 20, max: 130 },
+  weight: { label: "体重", unit: "kg", step: "0.01", min: 1, max: 60 },
+  headCircumference: { label: "头围", unit: "cm", step: "0.1", min: 20, max: 65 },
+};
+
+export const GROWTH_MEASUREMENT_TYPES: GrowthMeasurementType[] = ["height", "weight", "headCircumference"];
 
 export const LEDGER_VIEWS: Array<{ id: LedgerView; label: string }> = [
   { id: "month", label: "本月" },
@@ -137,6 +150,12 @@ export const ROLE_SELECT_OPTIONS: Array<SelectOption<"" | (typeof ROLE_OPTIONS)[
 export const STAGE_SELECT_OPTIONS: Array<SelectOption<BabyProfile["stage"]>> = [
   { value: "born", label: "已出生", hint: "按出生日期计算月龄" },
   { value: "pregnancy", label: "孕期", hint: "按预产期记录准备事项" },
+];
+
+export const GENDER_SELECT_OPTIONS: Array<SelectOption<BabyProfile["gender"]>> = [
+  { value: "unknown", label: "暂不填写", hint: "生长曲线需要性别才能更准确" },
+  { value: "boy", label: "男孩" },
+  { value: "girl", label: "女孩" },
 ];
 
 export const REGION_SELECT_OPTIONS: Array<SelectOption<string>> = [
