@@ -118,6 +118,7 @@ import {
 import { isNativeMediaPickerAvailable, isNativeMediaPickerCancel, pickNativeMediaFiles } from "./nativeMediaPicker";
 import { MOBILE_UPDATE_NOTICE_EVENT, type MobileUpdateNoticeDetail, type MobileUpdateNoticeTone } from "./mobileUpdates";
 import { useStoredState } from "./storage";
+import { summarizeCareLogEffect } from "./utils/dailySummary";
 import { useStableViewport } from "./hooks/useStableViewport";
 import {
   CARE_EVENT_TYPE_OPTIONS,
@@ -546,6 +547,9 @@ type AutoRecordUndo = {
   id: string;
   messageId: string;
   label: string;
+  summary: string[];
+  destination: string;
+  date: string;
   collection: "careLogs";
   recordId: string;
   previous?: CareLog;
@@ -3308,18 +3312,14 @@ function App() {
 
   const requestGenerateDailySummary = async () => {
     if (!canCaregive) return;
-    if (!proTrial.enabled) {
-      showSystemWeakNotice("当前家庭还没有开通 Pro 内测，可以先申请体验。", "info");
-      return;
-    }
     setIsGeneratingDailySummary(true);
     try {
       const summary = await generateDailySummary(selectedDate);
       setDailySummary(normalizeDailySummary(summary));
       void refreshAiUsageSummary({ quiet: true });
-      showSystemWeakNotice("今日小结已整理好。", "success");
+      showSystemWeakNotice("小宝今日观察已整理好。", "success");
     } catch (error) {
-      showSystemWeakNotice(error instanceof Error ? error.message : "今日小结生成失败，请稍后再试。", "warning");
+      showSystemWeakNotice(error instanceof Error ? error.message : "今日观察整理失败，请稍后再试。", "warning");
     } finally {
       setIsGeneratingDailySummary(false);
     }
@@ -3352,6 +3352,15 @@ function App() {
   const muteMissingItemType = async (item: MissingItemPrompt) => {
     const nextTypes = Array.from(new Set([...dailySummarySettings.mutedMissingTypes, item.type]));
     await saveDailySummarySettings({ ...dailySummarySettings, mutedMissingTypes: nextTypes });
+  };
+
+  const copyHandoffSummary = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showSystemWeakNotice("今日交接已复制。", "success");
+    } catch {
+      window.alert(text);
+    }
   };
 
   const applyNativeAlarmEvents = async (events: NativeAlarmEvent[]) => {
@@ -3451,7 +3460,7 @@ function App() {
       setActiveMobileTab("records");
       setRecordView("today");
       setSelectedDate(todayISO());
-      showSystemWeakNotice("可以先看看今天有没有要补充的记录，再生成今日小结。", "info");
+      showSystemWeakNotice("可以先看看今天已有的记录，没记全也能整理。", "info");
     });
     return () => {
       void actionListener.then((handle) => handle.remove());
@@ -4712,6 +4721,9 @@ function App() {
               id: makeId("undo"),
               messageId: aiMessage.id,
               label: decisionSummary({ id: "", mode: "auto", type: "careLog", payload: patch }),
+              summary: summarizeCareLogEffect(patch),
+              destination: "会放进今天的观察里",
+              date: targetDate,
               collection: "careLogs",
               recordId: nextLog.id,
               previous,
@@ -6467,13 +6479,26 @@ function App() {
                       .map((undo) => (
                         <section className="auto-effect-card" key={undo.id}>
                           <CheckCircle2 size={16} />
-                          <div>
-                            <strong>已自动记录{undo.label}</strong>
-                            <span>这条很明确，所以先帮你记好了。</span>
+                          <div className="auto-effect-copy">
+                            <strong>已记好</strong>
+                            <span>{undo.summary.length ? undo.summary.join(" · ") : undo.label}</span>
+                            <small>{storageStatus === "offline" ? "本地先记着，云端同步待恢复" : undo.destination}</small>
                           </div>
-                          <button type="button" onClick={() => void undoAutoRecord(undo)}>
-                            撤销
-                          </button>
+                          <div className="auto-effect-actions">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                selectRecordDate(undo.date);
+                                setRecordView("today");
+                                switchMobileTab("records");
+                              }}
+                            >
+                              查看今天
+                            </button>
+                            <button type="button" className="quiet" onClick={() => void undoAutoRecord(undo)}>
+                              撤销
+                            </button>
+                          </div>
                         </section>
                       ))}
                   </div>
@@ -7069,6 +7094,20 @@ function App() {
               summary={selectedDailySummary}
               onActionClick={handleFindingActionClick}
               loading={isGeneratingDailySummary}
+              careLog={selectedCareLog}
+              growthMeasurements={growthMeasurements}
+              date={selectedDate}
+              babyNickname={babyNickname}
+              canCaregive={canCaregive}
+              missingItems={selectedSummaryMissingItems}
+              onGenerate={() => void requestGenerateDailySummary()}
+              onOpenGrowth={openGrowthEntry}
+              onMissingAction={(item) => item.type === "reminder" ? switchMobileTab("reminders") : switchMobileTab("chat")}
+              onDismissMissing={dismissMissingItemForToday}
+              onMuteMissing={(item) => void muteMissingItemType(item)}
+              reminders={reminders}
+              pendingEffectCount={pendingEffects.length}
+              onCopyHandoff={(text) => void copyHandoffSummary(text)}
             />
           ) : null}
 
@@ -7137,84 +7176,6 @@ function App() {
               ))}
             </div>
           </section>
-          ) : null}
-
-          {recordView === "today" ? (
-            <section className="daily-summary-card">
-              <div className="daily-summary-head">
-                <div>
-                  <span className="section-kicker">Pro 今日小结</span>
-                  <h3>少输入、少遗漏、自动整理</h3>
-                </div>
-                <span className={`pro-status-pill ${proTrial.enabled ? "enabled" : proApplicationPending ? "pending" : ""}`}>
-                  {proStatusText}
-                </span>
-              </div>
-              {proTrial.enabled ? (
-                <>
-                  {selectedDailySummary ? (
-                    <div className="daily-summary-body">
-                      <p>{selectedDailySummary.text}</p>
-                      <div className="summary-fact-list">
-                        {selectedDailySummary.facts.map((fact) => <span key={fact}>{fact}</span>)}
-                      </div>
-                      {selectedDailySummary.stale ? <small className="summary-stale-note">有新记录，可重新整理一版。</small> : null}
-                    </div>
-                  ) : (
-                    <p className="daily-summary-empty">今天的小结还没有生成。生成前可以先补齐关键记录，内容会更稳。</p>
-                  )}
-                  {selectedSummaryMissingItems.length ? (
-                    <div className="missing-item-list">
-                      {selectedSummaryMissingItems.map((item) => (
-                        <article className="missing-item-card" key={`${item.scope}-${item.id}`}>
-                          <div>
-                            <strong>{item.title}</strong>
-                            <p>{item.message}</p>
-                          </div>
-                          <div className="missing-item-actions">
-                            <button type="button" onClick={() => item.type === "reminder" ? switchMobileTab("reminders") : switchMobileTab("chat")}>
-                              补一下
-                            </button>
-                            <button type="button" className="quiet" onClick={() => dismissMissingItemForToday(item)}>
-                              今天不用记
-                            </button>
-                            <button type="button" className="quiet" onClick={() => void muteMissingItemType(item)}>
-                              以后别提醒这个
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="screen-action-button daily-summary-generate"
-                    onClick={() => void requestGenerateDailySummary()}
-                    disabled={!canCaregive || isGeneratingDailySummary}
-                  >
-                    <Sparkles size={16} />
-                    {selectedDailySummary ? "重新生成小结" : "生成今日小结"}
-                  </button>
-                  {!canCaregive ? <p className="readonly-copy">当前身份仅可查看，生成小结需要照护人操作。</p> : null}
-                </>
-              ) : (
-                <div className="pro-intro-copy">
-                  <p>Pro 内测会优先开放今日小结、漏项轻提醒，以及语音/图片/视频辅助整理，适合想少记一点、少漏一点的家庭。</p>
-                  {/* Pro trial entry hidden during validation phase — see docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md §4.2 */}
-                  {false && (
-                    <button
-                      type="button"
-                      className="screen-action-button"
-                      onClick={() => void applyForProTrial("record-daily-summary")}
-                      disabled={isApplyingProTrial || proApplicationPending}
-                    >
-                      <Sparkles size={16} />
-                      {proApplicationPending ? "已提交申请" : "申请 Pro 内测"}
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
           ) : null}
 
           {recordView === "today" ? (
@@ -8353,7 +8314,7 @@ function App() {
                 <img className="care-tile-icon" src={temperatureIcon} alt="" />
                 <span>哄睡</span>
                 <strong>{todayLog?.soothing ? soothingText[todayLog.soothing] : "待观察"}</strong>
-                <small>{todayLog?.temperature ? `体温 ${todayLog.temperature}` : "无异常标记"}</small>
+                <small>{todayLog?.temperature ? `体温 ${todayLog.temperature}` : "还没看到体温备注"}</small>
               </div>
               <div className="care-tile food">
                 <img className="care-tile-icon" src={solidIcon} alt="" />
@@ -8412,7 +8373,7 @@ function App() {
           <section className="assistant-panel">
             <div className="assistant-card">
               <ShieldAlert size={20} />
-              <p>健康、疫苗、用药相关内容只做记录和提醒，异常情况以医生和社区医院安排为准。</p>
+              <p>健康、疫苗、用药相关内容只做记录和提醒，宝宝不舒服时以医生和社区医院安排为准。</p>
             </div>
             <div className="assistant-card native-card">
               <Smartphone size={20} />

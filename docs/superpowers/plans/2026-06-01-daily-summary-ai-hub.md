@@ -8,7 +8,11 @@
 
 **Tech Stack:** React 18 + TypeScript + Vite，lucide-react 图标，Capacitor OTA。验证沿用项目既有体系：`npm run build`（类型检查）+ `npm run smoke:frontend`（7 视口 Playwright 布局）+ `scripts/probe-daily-summary-view.mjs`（视觉截图）。本项目前端无 jest/vitest，不新引入测试框架；纯函数靠类型检查 + 视觉截图验证（与本仓库既往 30+ commit 一致）。
 
-**Reference Spec:** `docs/superpowers/specs/2026-06-01-cross-app-design-review.md`（Part 5 先动 3 件事）
+**Current Strategy Source:** `harness/app-development-roadmap.md`
+
+**Historical Reference Spec:** `docs/research-archive/mother-baby-strategy-2026-06-02/2026-06-01-cross-app-design-review.md`（archived; use only as evidence, not as current product direction）
+
+**Execution Note:** Before implementing this plan, align the work with the current roadmap's Phase 0 scope: low-friction recording, low-anxiety anti-fatigue copy, `小宝今日观察` branding, record-success feedback, stat cards, and growth latest values. Do not reintroduce archived strategy directions that conflict with the roadmap.
 
 ---
 

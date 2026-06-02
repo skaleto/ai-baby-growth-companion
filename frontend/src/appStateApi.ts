@@ -151,7 +151,7 @@ export async function generateDailySummary(date: string): Promise<DailySummary> 
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ date }),
   });
-  if (!response.ok) throw new Error(await parseError(response, `生成今日小结失败（${response.status}）`));
+  if (!response.ok) throw new Error(await parseError(response, `整理今日观察失败（${response.status}）`));
   return (await response.json()) as DailySummary;
 }
 

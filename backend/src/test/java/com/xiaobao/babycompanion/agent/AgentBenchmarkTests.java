@@ -448,6 +448,18 @@ class AgentBenchmarkTests {
         }
     }
 
+    @Test
+    void benchmarkAgentPromptIncludesCaregiverSupportAndHighRiskBoundaries() {
+        String prompt = AgentPrompts.AGENT_SYSTEM_PROMPT;
+
+        assertThat(prompt).contains("照护人表达疲惫、自责、无助");
+        assertThat(prompt).contains("结合上下文里的真实照护记录");
+        assertThat(prompt).contains("不要诊断心理状态");
+        assertThat(prompt).contains("不要把疲惫表达包装成付费焦虑");
+        assertThat(prompt).contains("自伤、伤害宝宝");
+        assertThat(prompt).contains("先联系身边家人、当地急救或专业医生");
+    }
+
     private AgentCareLog careLog(String date, Integer milkMl, List<AgentCareLogEvent> events) {
         return new AgentCareLog(null, date, milkMl, null, null, null, null, List.of(), null, null, List.of(), events);
     }

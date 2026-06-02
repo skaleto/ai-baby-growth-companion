@@ -2667,8 +2667,8 @@ body.keyboard-open .expense-optional-fields {
 
 .auto-effect-card {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
   gap: 8px;
   padding: 9px;
   border: 1px solid rgba(91, 127, 109, 0.3);
@@ -2689,6 +2689,25 @@ body.keyboard-open .expense-optional-fields {
   color: var(--muted);
 }
 
+.auto-effect-card small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(65, 91, 80, 0.72);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.auto-effect-copy {
+  min-width: 0;
+}
+
+.auto-effect-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .auto-effect-card button {
   min-height: 32px;
   padding: 0 10px;
@@ -2696,6 +2715,10 @@ body.keyboard-open .expense-optional-fields {
   border-radius: 8px;
   background: #fff;
   color: var(--sage-dark);
+}
+
+.auto-effect-card button.quiet {
+  color: var(--muted);
 }
 
 .ask-effect-card {

@@ -1,7 +1,14 @@
-import type { DailySummary, Finding } from "../types";
+import { ArrowUpRight, Sparkles } from "lucide-react";
+import type { CareLog, DailySummary, Finding, GrowthMeasurement, MissingItemPrompt, Reminder } from "../types";
 import { Skeleton } from "../components/Skeleton";
 import heroRecordsToday from "../assets/illustrations/hero-records-today.png";
 import {
+  buildCareStats,
+  buildCaregiverCompanionLine,
+  buildGrowthStats,
+  buildHandoffSummary,
+  countTodayDataPoints,
+  type DailyObservationStat,
   FINDING_TYPE_COLOR,
   FINDING_TYPE_LABEL,
   parseActionTarget,
@@ -11,34 +18,134 @@ export type DailySummaryViewProps = {
   summary: DailySummary | null;
   onActionClick: (domain: string, id: string) => void;
   loading?: boolean;
+  careLog?: CareLog | null;
+  growthMeasurements?: GrowthMeasurement[];
+  date: string;
+  babyNickname: string;
+  canCaregive: boolean;
+  missingItems?: MissingItemPrompt[];
+  onGenerate?: () => void;
+  onOpenGrowth?: () => void;
+  onMissingAction?: (item: MissingItemPrompt) => void;
+  onDismissMissing?: (item: MissingItemPrompt) => void;
+  onMuteMissing?: (item: MissingItemPrompt) => void;
+  reminders?: Reminder[];
+  pendingEffectCount?: number;
+  onCopyHandoff?: (text: string) => void;
 };
 
-export function DailySummaryView({ summary, onActionClick, loading = false }: DailySummaryViewProps) {
-  if (!summary && loading) return <DailySummarySkeleton />;
-  if (!summary) return null;
-
-  const hasFindings = summary.findings && summary.findings.length > 0;
-  const hasMissing = summary.missingItems && summary.missingItems.length > 0;
-  const hasObservations = summary.observations && summary.observations.length > 0;
+export function DailySummaryView({
+  summary,
+  onActionClick,
+  loading = false,
+  careLog,
+  growthMeasurements = [],
+  date,
+  babyNickname,
+  canCaregive,
+  missingItems,
+  onGenerate,
+  onOpenGrowth,
+  onMissingAction,
+  onDismissMissing,
+  onMuteMissing,
+  reminders = [],
+  pendingEffectCount = 0,
+  onCopyHandoff,
+}: DailySummaryViewProps) {
+  const hasFindings = Boolean(summary?.findings?.length);
+  const visibleMissingItems = missingItems ?? summary?.missingItems ?? [];
+  const hasMissing = visibleMissingItems.length > 0;
+  const hasObservations = Boolean(summary?.observations?.length);
+  const stats = [...buildCareStats(careLog), buildGrowthStats(growthMeasurements, date)];
+  const dataPoints = countTodayDataPoints(careLog, growthMeasurements, date);
+  const caregiverLine = buildCaregiverCompanionLine(careLog, growthMeasurements, date);
+  const handoff = buildHandoffSummary({
+    babyNickname,
+    careLog,
+    growthMeasurements,
+    selectedDate: date,
+    reminders,
+    pendingEffectCount,
+    observations: summary?.observations ?? [],
+  });
+  const statusLabel = loading ? "整理中" : summary?.stale ? "有新记录" : summary ? "已整理" : "还没整理";
+  const subtitle = buildSubtitle({ dataPoints, loading, summary });
+  const generateLabel = summary ? "重新整理" : "整理今天";
 
   return (
-    <section className="daily-summary stagger" aria-label="今日发现">
-      <img
-        src={heroRecordsToday}
-        alt="今日发现"
-        className="daily-summary__hero fade-in-up"
-      />
-      {summary.facts && summary.facts.length > 0 && (
-        <div className="daily-summary__section fade-in-up">
-          <h3>宝宝今天</h3>
-          <p className="daily-summary__facts">{summary.facts.join("；")}</p>
+    <section className="daily-summary daily-observation stagger" aria-label="小宝今日观察">
+      <div className="daily-summary__section daily-observation__main fade-in-up">
+        <header className="daily-observation__header">
+          <div>
+            <span className="daily-observation__kicker">{babyNickname}的今天</span>
+            <h3>小宝今日观察</h3>
+            <p>{subtitle}</p>
+          </div>
+          <span className={`daily-observation__status ${summary?.stale ? "stale" : ""}`}>{statusLabel}</span>
+        </header>
+
+        <img
+          src={heroRecordsToday}
+          alt=""
+          className="daily-summary__hero"
+          aria-hidden="true"
+        />
+
+        <div className="daily-observation__stats" aria-label="宝宝今天">
+          {stats.map((stat) => (
+            <ObservationStatCard
+              key={stat.key}
+              stat={stat}
+              onOpenGrowth={stat.key === "growth" ? onOpenGrowth : undefined}
+            />
+          ))}
         </div>
-      )}
+
+        <div className="daily-observation__body">
+          {loading && !summary ? (
+            <DailySummarySkeleton compact />
+          ) : summary ? (
+            <>
+              <p className="daily-observation__text">{summary.text}</p>
+              {summary.stale ? <small className="daily-observation__stale-note">有新记录，可以重新整理一版。</small> : null}
+            </>
+          ) : (
+            <p className="daily-observation__empty">
+              今天还没整理。有记录会更完整，没记全也可以先整理。
+            </p>
+          )}
+        </div>
+
+        <div className="daily-observation__caregiver-note">
+          <span>给照护人的话</span>
+          <p>{caregiverLine}</p>
+        </div>
+
+        <details className="daily-observation__explain">
+          <summary>这些观察怎么来的</summary>
+          <p>这些观察来自你和家人今天记下的照护记录、成长记录、提醒和家庭内资料。我会尽量把它们整理清楚，但不会替代医生做诊断。你删除的记录不会再进入后续整理。</p>
+        </details>
+
+        {canCaregive && onGenerate ? (
+          <button
+            type="button"
+            className="screen-action-button daily-observation__generate"
+            onClick={onGenerate}
+            disabled={loading}
+          >
+            <Sparkles size={16} />
+            {generateLabel}
+          </button>
+        ) : (
+          <p className="readonly-copy">当前身份仅可查看，整理今天需要照护人操作。</p>
+        )}
+      </div>
 
       {hasFindings && (
         <div className="daily-summary__section fade-in-up">
           <h3>你可能没注意到</h3>
-          {summary.findings.map((finding, idx) => (
+          {summary?.findings.map((finding, idx) => (
             <FindingRow
               key={`${finding.type}-${idx}`}
               finding={finding}
@@ -50,8 +157,8 @@ export function DailySummaryView({ summary, onActionClick, loading = false }: Da
 
       {hasObservations && (
         <div className="daily-summary__section fade-in-up">
-          <h3>需要你看一眼</h3>
-          {summary.observations.map((text, idx) => (
+          <h3>留意一下</h3>
+          {summary?.observations.map((text, idx) => (
             <div key={idx} className="daily-summary__missing-item">{text}</div>
           ))}
         </div>
@@ -59,21 +166,113 @@ export function DailySummaryView({ summary, onActionClick, loading = false }: Da
 
       {hasMissing && (
         <div className="daily-summary__section fade-in-up">
-          <h3>漏掉了吗</h3>
-          {summary.missingItems.map((item) => (
-            <div key={item.id} className="daily-summary__missing-item">
-              {item.message}
-            </div>
-          ))}
+          <h3>要顺手补一下吗</h3>
+          <div className="daily-observation__missing-list">
+            {visibleMissingItems.map((item) => (
+              <article key={`${item.scope}-${item.id}`} className="daily-observation__missing-item">
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{gentleMissingMessage(item.message)}</p>
+                </div>
+                <div className="daily-observation__missing-actions">
+                  {onMissingAction ? (
+                    <button type="button" onClick={() => onMissingAction(item)}>补一下</button>
+                  ) : null}
+                  {onDismissMissing ? (
+                    <button type="button" className="quiet" onClick={() => onDismissMissing(item)}>今天不用记</button>
+                  ) : null}
+                  {onMuteMissing ? (
+                    <button type="button" className="quiet" onClick={() => onMuteMissing(item)}>以后少提醒这个</button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
       )}
+
+      <div className="daily-summary__section daily-observation__handoff fade-in-up">
+        <div className="daily-observation__section-head">
+          <h3>今日交接</h3>
+          {onCopyHandoff ? (
+            <button type="button" onClick={() => onCopyHandoff(handoff.copyText)}>复制交接</button>
+          ) : null}
+        </div>
+        <div className="daily-observation__handoff-grid">
+          {handoff.sections.map((section) => (
+            <article key={section.title} className="daily-observation__handoff-section">
+              <strong>{section.title}</strong>
+              {section.items.map((item) => <span key={item}>{item}</span>)}
+            </article>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
 
-function DailySummarySkeleton() {
+function ObservationStatCard({ stat, onOpenGrowth }: { stat: DailyObservationStat; onOpenGrowth?: () => void }) {
+  const content = (
+    <>
+      <span className="daily-observation__stat-label">{stat.label}</span>
+      <strong>{stat.value}</strong>
+      <small>{stat.detail}</small>
+    </>
+  );
+
+  if (onOpenGrowth) {
+    return (
+      <button
+        type="button"
+        className={`daily-observation__stat daily-observation__stat--${stat.key} ${stat.empty ? "is-empty" : ""}`}
+        onClick={onOpenGrowth}
+      >
+        {content}
+        <ArrowUpRight size={14} aria-hidden="true" />
+      </button>
+    );
+  }
+
   return (
-    <section className="daily-summary daily-summary--loading stagger" aria-label="今日发现加载中" aria-busy="true">
+    <article className={`daily-observation__stat daily-observation__stat--${stat.key} ${stat.empty ? "is-empty" : ""}`}>
+      {content}
+    </article>
+  );
+}
+
+function buildSubtitle(input: { dataPoints: number; loading: boolean; summary: DailySummary | null }) {
+  if (input.loading) return input.summary ? "正在更新已有整理" : "正在整理已有记录";
+  if (input.dataPoints <= 0) return "今天还没有记录";
+  const generated = input.summary?.generatedAt ? ` · ${formatGeneratedTime(input.summary.generatedAt)} 整理` : "";
+  return `基于今天 ${input.dataPoints} 条记录${generated}`;
+}
+
+function formatGeneratedTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function gentleMissingMessage(message: string) {
+  return message
+    .replace(/缺失/g, "还没看到")
+    .replace(/漏掉了吗/g, "要顺手补一下吗")
+    .replace(/需要补一下吗/g, "要顺手补一下吗")
+    .replace(/补齐关键记录/g, "先整理已有记录");
+}
+
+function DailySummarySkeleton({ compact = false }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="daily-observation__skeleton" aria-busy="true">
+        <Skeleton width="92%" height={16} />
+        <div style={{ height: 6 }} />
+        <Skeleton width="74%" height={16} />
+      </div>
+    );
+  }
+  return (
+    <section className="daily-summary daily-summary--loading stagger" aria-label="小宝今日观察加载中" aria-busy="true">
       <div className="daily-summary__section fade-in-up">
         <Skeleton width={120} height={14} />
         <div style={{ height: 10 }} />

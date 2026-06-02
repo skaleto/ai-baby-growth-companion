@@ -10,6 +10,7 @@ It follows the Learn Harness Engineering template shape while keeping repository
 | --- | --- |
 | `feature_list.json` | Machine-readable feature state, priority, validation steps, and evidence. |
 | `claude-progress.md` | Human-readable current state and session log. |
+| `app-development-roadmap.md` | Current product development trajectory and strategic source of truth for app direction. |
 | `init.sh` | Standard initialization and smoke verification entrypoint. |
 | `quality-document.md` | Quality snapshot across product areas and architecture layers. |
 | `clean-state-checklist.md` | Checklist before ending a session or handing work off. |
@@ -27,3 +28,7 @@ Use the default smoke gate before normal coding. Use `bash harness/init.sh --ful
 ## Evidence Rule
 
 Do not mark work as complete just because code was edited. Completion requires evidence from a command, a screenshot/artifact, a database/service probe, or a documented blocked check.
+
+## Strategy Rule
+
+Use `app-development-roadmap.md` as the current source of truth for product direction. Historical market research, competitor research, draft strategy files, and slide decks are archived under `docs/research-archive/` and must be treated as reference evidence only.

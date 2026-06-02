@@ -93,7 +93,6 @@ function writeResultDoc(summary, command, exitCode) {
     "## Cases",
     "",
     ...summary.cases.map((testCase) => `- ${testCase.status} \`${testCase.name}\` (${testCase.time}s)`),
-    "",
   ];
   fs.mkdirSync(path.dirname(resultDocPath), { recursive: true });
   fs.writeFileSync(resultDocPath, `${lines.join("\n")}\n`);

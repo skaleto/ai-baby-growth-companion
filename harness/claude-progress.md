@@ -2,16 +2,146 @@
 
 ## Current Verified State
 
-- Repository root: `/Users/yaoyibin/Documents/ai-baby-growth-companion`
+- Repository root: `/Users/bytedance/Documents/ai-baby-growth-companion`
 - Branch: `main`
 - Standard start path: `bash harness/init.sh`
 - Standard smoke gate: `git diff --check`, `npm run build`, `npm run test:agent-benchmark`
 - Full gate: `bash harness/init.sh --full`
 - Cloud target: `120.55.188.242:8300`
+- Current app development roadmap: `harness/app-development-roadmap.md`
 - Current highest-priority active feature: none
 - Current blocker: none recorded for harness creation
 
 ## Session Log
+
+### Session 2026-06-02 Recording Companion P1 Implementation, Git Sync, ECS And OTA
+
+- Goal: 按用户要求实现 P1，并同步 Git、ECS 远端和 OTA 包；继续保持“记录为基线、低焦虑反疲劳设计、数据关联陪伴、不做专家/知识付费/电商/社区”的产品边界。
+- Completed:
+  - 新增 implementation plan `docs/superpowers/plans/2026-06-02-recording-companion-p1-implementation.md` 并按任务勾选。
+  - 扩展 `scripts/test-daily-summary-utils.mjs`，先验证 P1 helper 缺失失败，再实现并通过。
+  - 在 `frontend/src/utils/dailySummary.ts` 增加 `buildCaregiverCompanionLine` 和 `buildHandoffSummary`，只基于真实 care/growth/reminder/pending/observation 数据生成低焦虑陪伴句和交接摘要。
+  - 在 `DailySummaryView` 中新增 `给照护人的话`、`这些观察怎么来的` disclosure、`今日交接` 分组摘要和 `复制交接`；`App.tsx` 接入 reminders、pendingEffectCount 和剪贴板复制反馈。
+  - 更新 `daily-summary.css`，让 P1 note、解释入口和交接卡片在移动视口内稳定排版。
+  - 扩展 `scripts/probe-daily-summary-view.mjs`：断言 P1 文案，并额外截取交接区滚动位置。
+  - 修复 `scripts/frontend-smoke.mjs` 中固定 `2026-05-19` 未来提醒随日期漂移变过期的问题，并把提醒页断言收紧到 `.reminder-group-upcoming .reminder-item`。
+  - 在 `AgentPrompts` 增加照护人疲惫/自责/无助的非诊断陪伴边界，以及自伤/伤害宝宝等高风险线下求助边界；`AgentBenchmarkTests` 增加对应 prompt benchmark。
+  - 构建并部署 OTA `0.1.0-20260602232444` 到 `120.55.188.242:8300`，生产数据同步保持 `SYNC_DATA=0`。
+- Verification run:
+  - `node scripts/test-daily-summary-utils.mjs`（先失败于 P1 helper 未导出，后通过）
+  - `npm run build`
+  - `npm run test:agent-benchmark`（先失败于 prompt 缺少边界，后 26 tests 通过）
+  - `node scripts/probe-daily-summary-view.mjs`
+  - `npm run verify:frontend`
+  - `MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 MOBILE_UPDATE_MESSAGE='小宝今日观察升级：陪伴一句话、今日交接、记录反馈' npm run build:mobile:update`
+  - `SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun npm run deploy:aliyun`
+  - Production probe: `GET /api/health`, `POST /api/mobile-updates/check` for old/current bundle versions, and bundle checksum download verification.
+- Evidence:
+  - Probe 截图：`.verification/daily-summary-probe/iphone-13-390x844-1-records-today.png` 显示 P1 首屏陪伴句；`.verification/daily-summary-probe/iphone-13-390x844-1b-records-handoff.png` 显示 `今日交接` 分组摘要和 `复制交接`。
+  - `npm run verify:frontend` 通过 desktop + 6 个移动视口 smoke。
+  - `npm run test:agent-benchmark` 通过 26 tests，`docs/agent-benchmark-results.md` 已更新。
+  - 生产 `http://120.55.188.242:8300/api/health` 返回 `ok`。
+  - 生产 OTA check 对旧 bundle 返回 `updateAvailable=true`、版本 `0.1.0-20260602232444`；对当前 bundle 返回 `updateAvailable=false`。
+  - 生产 OTA bundle 下载 3321376 bytes，sha256 `087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2` 与 manifest 匹配。
+- Known risks:
+  - P1 Agent 情感陪伴目前是 prompt/benchmark 边界，不是独立风险分类器；真实模型输出仍需后续线上观察。
+  - 本轮发布的是 Web/OTA 和后端 prompt 更新；未做 native `mobile:sync` 或 iOS/Android debug build，因为没有改 Capacitor/native 配置、权限或 WebView-only 逻辑。
+
+### Session 2026-06-02 Recording Companion P0 Implementation
+
+- Goal: 按 `docs/superpowers/specs/2026-06-02-recording-companion-improvements-design.md` v2 启动 P0 实现，让记录页 today 视图出现单一 `小宝今日观察` 主入口，并强化记录后反馈。
+- Completed:
+  - 新增 implementation plan `docs/superpowers/plans/2026-06-02-recording-companion-p0-implementation.md`。
+  - 新增纯函数测试脚本 `scripts/test-daily-summary-utils.mjs`，先验证 helper 缺失失败，再实现并通过。
+  - 在 `frontend/src/utils/dailySummary.ts` 增加 `buildCareStats`、`buildGrowthStats`、`countTodayDataPoints`、`summarizeCareLogEffect`。
+  - 扩展 `DailySummaryView` 为 `小宝今日观察`：无 summary 也展示主卡，接入 careLog/growthMeasurements/date/babyNickname/canCaregive/missing actions，展示喂养/睡眠/护理/成长 stat cards，并合入 `整理今天/重新整理`。
+  - 移除记录页 today 视图中重复的 `Pro 今日小结` 主卡，保留现有生成、missing dismiss/mute、只读约束。
+  - 聊天自动记录反馈改为 `已记好`，展示结构化摘要、去向说明、`查看今天` 和 `撤销`。
+  - 更新 `scripts/probe-daily-summary-view.mjs`：fixture 注入 careLog/growthMeasurements，断言 `小宝今日观察`、stat cards、无旧 Pro/生成文案，并修复 probe import/shell wrapper 导致的副作用和退出问题。
+- Verification run:
+  - `bash harness/init.sh`（开工 baseline，通过 `git diff --check`、`npm run build`、`npm run test:agent-benchmark`）
+  - `node scripts/test-daily-summary-utils.mjs`（先失败于 helper 未导出，后通过）
+  - `npm run build`
+  - `node scripts/probe-daily-summary-view.mjs`
+  - `npm run verify:frontend`
+  - `npm run test:agent-benchmark`
+  - `git diff --check`
+- Evidence:
+  - Probe 截图：`.verification/daily-summary-probe/iphone-13-390x844-1-records-today.png` 显示 `小宝今日观察`、13 条记录、4 张 stat cards、`重新整理`，且页面下方露出 findings。
+  - `npm run verify:frontend` 通过 desktop + 6 个移动视口 smoke。
+  - `git diff --check` 通过，`harness/feature_list.json` 可被 JSON.parse。
+- Known risks:
+  - 本轮实现 P0 主闭环；P1 的数据关联陪伴一句话、今日交接摘要和 AI 隐私说明入口尚未实现。
+  - 聊天 `已记好` 卡片目前覆盖自动写入 careLog 的 undo 流；提醒/账本等更完整的分类型记录反馈仍需后续包扩展。
+
+### Session 2026-06-02 Recording Companion Improvements Spec
+
+- Goal: 基于 `harness/app-development-roadmap.md` 和当前 App 实现事实，梳理记录与低焦虑陪伴主线下需要改进和补充的点，并整理成 spec。
+- Completed:
+  - 核对当前实现：聊天自动/待确认记录、DailySummaryView、Pro 今日小结、成长记录 MVP、Agent 医疗边界和 Daily Summary validator。
+  - 新增并细化 spec `docs/superpowers/specs/2026-06-02-recording-companion-improvements-design.md`（v2）。
+  - Spec 覆盖 P0/P1：`小宝今日观察` 主卡片、宝宝今天 stat cards、聊天记录成功反馈、反疲劳文案、数据关联陪伴一句话、今日交接摘要、隐私与 AI 使用说明。
+  - v2 补充用户旅程、页面状态矩阵、stat card 数据映射、记录反馈卡片类型、文案审计清单、P1 高风险边界、埋点指标、UI probe 场景和 5 个 implementation 拆包建议。
+  - 明确非目标：专家/知识付费、电商、开放社区、成长曲线/百分位、睡眠预测、心理诊疗、复杂权限、PDF 儿保资料包、孕期到 3 岁全量扩展。
+- Verification run:
+  - `bash harness/init.sh`（通过 `git diff --check`、`npm run build`、`npm run test:agent-benchmark`）
+  - `git diff --check`
+  - `rg -n "TODO|TBD|FIXME|待填|占位|不确定|暂定|xxx|\?\?" docs/superpowers/specs/2026-06-02-recording-companion-improvements-design.md`（唯一命中为“不要强行占位”的普通用词）
+- Evidence:
+  - Spec 当前只引用 `harness/app-development-roadmap.md` 作为战略源，未从 archive 直接取方向。
+- Known risks:
+  - 本轮只产出 spec，未进入 implementation plan 或代码实现。
+
+### Session 2026-06-02 Research Archive And Roadmap Promotion
+
+- Goal: 将历史调研/竞品/市场/战略草稿统一归档，只保留当前发展脉络在核心 harness，避免后续 agent 把旧研究结论当成当前方向。
+- Completed:
+  - 将当前战略源迁移到 `harness/app-development-roadmap.md`。
+  - 将历史调研与草稿集中归档到 `docs/research-archive/mother-baby-strategy-2026-06-02/`，并新增 `README.md` 索引和读取规则。
+  - 归档范围包括 Claude market/cross-app research、Codex 竞品调研与 slide、未跟踪战略草稿、以及含市场/竞品调研的成长指标旧未来设计。
+  - 更新 `harness/README.md` 与 `harness/feature_list.json`，声明 `app-development-roadmap.md` 是当前产品方向 source of truth。
+  - 更新 `docs/superpowers/plans/2026-06-01-daily-summary-ai-hub.md`，要求执行前按当前 roadmap Phase 0 校准。
+- Verification run:
+  - `bash harness/init.sh`（通过 `git diff --check`、`npm run build`、`npm run test:agent-benchmark`）
+  - `git diff --check`
+- Evidence:
+  - Archive index: `docs/research-archive/mother-baby-strategy-2026-06-02/README.md`
+- Known risks:
+  - 历史文件被移动，旧路径不再可直接读取；需要从 archive index 或当前 roadmap 进入。
+
+### Session 2026-06-02 Recording Companion Development Plan
+
+- Goal: 重点复核 Claude 的 `2026-06-01-market-landscape-positioning.md`，结合 `2026-06-01-cross-app-design-review.md`、Codex 竞品调研和用户最新取舍，形成新的产品发展规划。
+- Completed:
+  - 对齐并修正 market 文档：保留“中文 AI 情感陪伴 × baby 数据关联”和“反记录疲劳陪伴叙事”，但明确情感陪伴不是心理治疗、专家咨询或知识付费。
+  - 将“跨域洞察”从独立卖点降为陪伴和反疲劳体验的支撑能力，避免做成用户无感的技术展示。
+  - 明确专家 IP、知识付费、电商不做；社区仅远期观察；孕期到 3 岁延展放到主线验证后。
+  - 新增发展规划文档，后续迁移为 `harness/app-development-roadmap.md`。
+- Verification run:
+  - `bash harness/init.sh`（通过 `git diff --check`、`npm run build`、`npm run test:agent-benchmark`）
+- Evidence:
+  - 新文档推荐 Phase 0 先做 `小宝今日观察` 品牌化、反疲劳文案、聊天记录成功反馈、stat cards、成长最新值接入。
+- Known risks:
+  - 本轮仍是战略和产品规划，未进入 UI/后端实现。
+  - 原未跟踪草稿已归档为 `docs/research-archive/mother-baby-strategy-2026-06-02/2026-06-02-product-strategy-roadmap-draft.md`。
+
+### Session 2026-06-02 Mother-Baby Competitor Research And Strategy Deck
+
+- Goal: 复核 Claude 近期母婴竞品调研，不直接复述其结论；独立 fan-out 国内/海外/策略/代码现状调研，聚焦“记录和陪伴”而非电商，并整合成可执行的产品方向。
+- Completed:
+  - 并行调研国内竞品（亲宝宝、宝宝树孕育、育学园、妈妈网孕育、时光小屋、小豆苗）和海外竞品（Baby Tracker、Huckleberry、Glow Baby、The Wonder Weeks、FamilyAlbum、What to Expect、BabyCenter）。
+  - 核对 Claude 的 `2026-06-01-cross-app-design-review` 与 `daily-summary-ai-hub` plan，保留“AI 中枢/今日发现品牌化/stat cards/成长最新值接入”的精华，并补充家庭私域、儿保资料包、隐私信任、家庭角色权限和焦虑边界。
+  - 落地详细调研文档，后续归档为 `docs/research-archive/mother-baby-strategy-2026-06-02/mother-baby-competitor-research-2026-06-02.md`。
+  - 落地本地 HTML slide deck，后续归档为 `docs/research-archive/mother-baby-strategy-2026-06-02/mother-baby-strategy-2026-06-02-slides.html`。
+- Verification run:
+  - `bash harness/init.sh`（开工 baseline，通过 `git diff --check`、`npm run build`、`npm run test:agent-benchmark`）
+  - 静态 slide 校验：10 个 slide、2 张本地图片均存在、无重复 slide id、包含键盘翻页和移动端媒体查询。
+- Evidence:
+  - 详细来源链接已写入调研文档 §16。
+  - 推荐第一轮产品主题为“小宝今日观察：AI 中枢 + 家庭交接 + 成长最新值”。
+- Known risks:
+  - 本轮没有真机安装国内外竞品，证据主要来自公开 App Store、官网、帮助中心、隐私政策和仓库代码。
+  - in-app Browser 拒绝直接打开 `file://` 本地 HTML（URL 安全策略），因此 slide 未做浏览器截图验证；已完成静态资源和结构校验。
 
 ### Session 2026-06-01 Merge Growth MVP To Main
 

@@ -1,11 +1,13 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-01",
+  "lastUpdated": "2026-06-02",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
     "progressLog": "harness/claude-progress.md",
-    "qualityDocument": "harness/quality-document.md"
+    "qualityDocument": "harness/quality-document.md",
+    "appDevelopmentRoadmap": "harness/app-development-roadmap.md",
+    "researchArchive": "docs/research-archive"
   },
   "rules": {
     "singleActiveFeature": true,
@@ -59,7 +61,8 @@
         "2026-05-16 npm run test:agent-benchmark passed with 21 tests after adding saved expense no-confirm-again coverage.",
         "2026-05-16 npm run test:agent-benchmark passed with 21 tests after fixing async expense persistence to use explicit family/user identity instead of CurrentUser in the stream thread.",
         "2026-05-16 npm run test:agent-benchmark passed with 23 tests after adding visual stream timeout budgeting, cancellation guards, and detailed backend progress events.",
-        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after previous-image retry was optimized to use agent-sized JPEG hydration, concurrent expense-recognition batches, and planner-backed persistence intent."
+        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after previous-image retry was optimized to use agent-sized JPEG hydration, concurrent expense-recognition batches, and planner-backed persistence intent.",
+        "2026-06-02 npm run test:agent-benchmark passed with 26 tests after adding caregiver-support and high-risk boundary prompt coverage."
       ],
       "notes": "New Agent work should add at least one positive and one boundary benchmark case."
     },
@@ -132,9 +135,58 @@
         "2026-05-16 npm run verify:frontend passed after replacing the crowded chat attachment strip with a collapsible attachment tray and aligned remove buttons; a local 8-image Playwright probe on 390x844 found no horizontal overflow.",
         "2026-05-16 npm run verify:frontend passed after stabilizing the voice hold button pointer lifecycle; a local pointer-drift probe stayed connecting after pointerleave and returned idle after pointerup.",
         "2026-05-31 npm run verify:frontend passed after simplifying growth metrics to the MVP recording flow, including profile sex/birth size, invalid height rejection, valid height note entry, and no growth chart rendering across desktop plus six mobile viewports.",
-        "2026-06-01 npm run verify:frontend passed on merged main after resolving growth MVP style conflicts with the latest visual refresh work."
+        "2026-06-01 npm run verify:frontend passed on merged main after resolving growth MVP style conflicts with the latest visual refresh work.",
+        "2026-06-02 npm run verify:frontend passed after Recording Companion P0 updated 小宝今日观察, stat cards, and chat record feedback.",
+        "2026-06-02 npm run verify:frontend passed after Recording Companion P1 added caregiver note, AI explanation disclosure, and 今日交接; smoke fixture future-reminder date drift was fixed."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
+    },
+    {
+      "id": "recording-companion-p0",
+      "priority": 4,
+      "area": "records",
+      "title": "Recording companion P0: daily observation and record feedback",
+      "userVisibleBehavior": "Records/today now uses a single 小宝今日观察 entry with low-pressure feeding/sleep/care/growth stat cards, integrated整理 action and missing prompts, while chat auto-record cards show 已记好, structured fields, destination copy, 查看今天, and 撤销.",
+      "status": "passing",
+      "verification": [
+        "Run node scripts/test-daily-summary-utils.mjs.",
+        "Run node scripts/probe-daily-summary-view.mjs.",
+        "Run npm run verify:frontend.",
+        "Run npm run test:agent-benchmark.",
+        "Run git diff --check."
+      ],
+      "evidence": [
+        "2026-06-02 node scripts/test-daily-summary-utils.mjs passed after RED verified missing helper exports.",
+        "2026-06-02 node scripts/probe-daily-summary-view.mjs passed across iphone-13, iphone-pro-max, and desktop; assertions covered 小宝今日观察, stat cards, and absence of Pro 今日小结 / 生成今日小结 / 漏掉了吗.",
+        "2026-06-02 npm run verify:frontend passed across desktop and six mobile viewports.",
+        "2026-06-02 npm run test:agent-benchmark passed after frontend changes.",
+        "2026-06-02 git diff --check passed; harness/feature_list.json parsed successfully."
+      ],
+      "notes": "P1 companion sentence, handoff summary, and AI explanation are covered by recording-companion-p1."
+    },
+    {
+      "id": "recording-companion-p1",
+      "priority": 4,
+      "area": "records",
+      "title": "Recording companion P1: caregiver note and handoff summary",
+      "userVisibleBehavior": "Records/today now adds a data-linked low-pressure caregiver line, an explainable observation disclosure, and a copyable 今日交接 summary grouped into baby status, completed items, handoff items, and watch-outs.",
+      "status": "passing",
+      "verification": [
+        "Run node scripts/test-daily-summary-utils.mjs.",
+        "Run node scripts/probe-daily-summary-view.mjs.",
+        "Run npm run verify:frontend.",
+        "Run npm run test:agent-benchmark.",
+        "Build and deploy OTA with production data sync disabled.",
+        "Verify cloud /api/health and /api/mobile-updates/check."
+      ],
+      "evidence": [
+        "2026-06-02 node scripts/test-daily-summary-utils.mjs passed after RED verified missing P1 helper exports.",
+        "2026-06-02 node scripts/probe-daily-summary-view.mjs passed across iphone-13, iphone-pro-max, and desktop; screenshots include first-screen and handoff scroll positions.",
+        "2026-06-02 npm run verify:frontend passed across desktop and six mobile viewports after fixing smoke future-reminder date drift.",
+        "2026-06-02 npm run test:agent-benchmark passed with 26 tests after adding caregiver-support and high-risk prompt boundary coverage.",
+        "2026-06-02 OTA 0.1.0-20260602232444 deployed to ECS with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; /api/health returned ok, OTA check returned updateAvailable=true for old bundle and false for current bundle, and bundle checksum matched 087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2."
+      ],
+      "notes": "This remains non-diagnostic emotional support. It uses recorded baby data and high-risk handoff guidance; expert, knowledge-paid, ecommerce, and community features remain out of scope."
     },
     {
       "id": "cloud-001",
@@ -165,7 +217,8 @@
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent stream timeout/progress handling; /api/health returned ok and OTA check returned version 0.1.0-20260516205323.",
         "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for previous-image retry latency optimization; /api/health returned ok.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for collapsible chat attachment tray layout; /api/health returned ok, OTA check returned 0.1.0-20260516220400, and up-to-date probe returned updateAvailable=false.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for voice hold pointer drift; /api/health returned ok, OTA check returned 0.1.0-20260516223427, and up-to-date probe returned updateAvailable=false."
+        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for voice hold pointer drift; /api/health returned ok, OTA check returned 0.1.0-20260516223427, and up-to-date probe returned updateAvailable=false.",
+        "2026-06-02 code plus OTA bundle deployment completed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1 for Recording Companion P1; /api/health returned ok and OTA check returned version 0.1.0-20260602232444."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },
@@ -199,7 +252,8 @@
         "2026-05-16 OTA 0.1.0-20260516220400 uploaded under baby-companion/mobile-updates; signed download returned 2640958 bytes and checksum 7b504315d9aa9db266035dcd6636d4509120be6b0e990baccd49253502e340f6.",
         "2026-05-16 npm run mobile:sync and npm run build:ios:debug passed after voice hold pointer drift fix.",
         "2026-05-16 OTA 0.1.0-20260516223427 uploaded under baby-companion/mobile-updates; signed download returned 2641156 bytes and checksum c2bb9c56a60b404f2a8ed967996697c2b02fe2da52cb0ee08f70a34e4c9f6592.",
-        "2026-05-31 npm run mobile:sync passed, npm run build:ios:debug succeeded for iPhone 17 simulator, and npm run build:android:debug produced android/app/build/outputs/apk/debug/app-debug.apk after growth metrics MVP changes."
+        "2026-05-31 npm run mobile:sync passed, npm run build:ios:debug succeeded for iPhone 17 simulator, and npm run build:android:debug produced android/app/build/outputs/apk/debug/app-debug.apk after growth metrics MVP changes.",
+        "2026-06-02 OTA 0.1.0-20260602232444 deployed from ECS mobile-updates; downloaded bundle returned 3321376 bytes and checksum 087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2."
       ],
       "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
     },

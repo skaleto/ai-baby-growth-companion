@@ -24,6 +24,7 @@ const viewports = [
 ];
 
 const tabLabels = ["聊天", "记录", "账本", "相册", "提醒", "我的"];
+const smokeFutureReminderAt = futureDateTimeParts(7 * 24 * 60);
 
 const smokeState = {
   profile: {
@@ -110,8 +111,8 @@ const smokeState = {
     {
       id: "smoke-reminder-future",
       title: "体检疫苗",
-      dueText: "2026-05-19 09:00",
-      dueAt: "2026-05-19T01:00:00.000Z",
+      dueText: `${smokeFutureReminderAt.date} ${smokeFutureReminderAt.time}`,
+      dueAt: smokeFutureReminderAt.iso,
       category: "vaccine",
       status: "open",
       createdAt: "2026-05-13T14:31:56.623Z",
@@ -250,6 +251,7 @@ function futureDateTimeParts(minutesFromNow = 90) {
   return {
     date: `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`,
     time: `${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")}`,
+    iso: target.toISOString(),
   };
 }
 
@@ -1047,7 +1049,7 @@ async function exerciseAppShell(page, viewport) {
     await page.waitForTimeout(120);
     if (label === "提醒") {
       await page.getByText("未来安排").waitFor({ timeout: 5000 });
-      await page.getByText("体检疫苗").first().waitFor({ timeout: 5000 });
+      await page.locator(".reminder-group-upcoming .reminder-item", { hasText: "体检疫苗" }).first().waitFor({ timeout: 5000 });
       await page.getByText(/未完成待办/).waitFor({ timeout: 5000 });
     }
     checkedTabs.push(label);

@@ -1,6 +1,6 @@
 # Agent Benchmark Results
 
-Generated at: 2026-06-01T00:25:43.028Z
+Generated at: 2026-06-02T15:29:57.572Z
 
 ## Command
 
@@ -11,36 +11,37 @@ npm run test:agent-benchmark
 ## Summary
 
 - Status: PASS
-- Tests: 25
+- Tests: 26
 - Failures: 0
 - Errors: 0
 - Skipped: 0
-- Time: 0.512s
+- Time: 0.418s
 
 ## Cases
 
-- PASS `benchmarkCompleteMixedFeedingRecordAutoWritesCareLog` (0.117s)
+- PASS `benchmarkCompleteMixedFeedingRecordAutoWritesCareLog` (0.08s)
 - PASS `benchmarkGenericIntervalDefaultsToNotificationUnlessRingingRequested` (0.005s)
 - PASS `benchmarkDailySummaryFallbackOnModelExceptionYieldsEmptyFindings` (0.002s)
-- PASS `benchmarkDailySummaryMissingItemsUseGentleNonTechnicalCopy` (0.002s)
-- PASS `benchmarkSharedDailySummaryContractExcludesPrivateAccountCopy` (0.001s)
-- PASS `benchmarkExpenseCreatesPendingDraftButBarcodePriceQueryDoesNotRecord` (0.003s)
-- PASS `benchmarkExpenseImageRecognitionDoesNotUseWebSearch` (0.003s)
-- PASS `benchmarkSkillDisclosureOnlyLoadsCareGuideWhenNeeded` (0.004s)
-- PASS `benchmarkVagueReminderAsksForNaturalTimeOnly` (0.005s)
-- PASS `benchmarkPreviousImageRetryRoutesIntoExpenseSkill` (0.002s)
+- PASS `benchmarkDailySummaryMissingItemsUseGentleNonTechnicalCopy` (0.001s)
+- PASS `benchmarkAgentPromptIncludesCaregiverSupportAndHighRiskBoundaries` (0.001s)
+- PASS `benchmarkSharedDailySummaryContractExcludesPrivateAccountCopy` (0.0s)
+- PASS `benchmarkExpenseCreatesPendingDraftButBarcodePriceQueryDoesNotRecord` (0.004s)
+- PASS `benchmarkExpenseImageRecognitionDoesNotUseWebSearch` (0.005s)
+- PASS `benchmarkSkillDisclosureOnlyLoadsCareGuideWhenNeeded` (0.005s)
+- PASS `benchmarkVagueReminderAsksForNaturalTimeOnly` (0.004s)
+- PASS `benchmarkPreviousImageRetryRoutesIntoExpenseSkill` (0.003s)
 - PASS `benchmarkPreviousImageRetryDoesNotDependOnFrontendAttachmentForwarding` (0.003s)
-- PASS `benchmarkExpenseSkillDoesNotAskCategoryOnlyClarification` (0.015s)
-- PASS `benchmarkSleepDurationAutoWritesAndSleepStartAsks` (0.006s)
-- PASS `benchmarkOneImageExpenseSkillCreatesPendingDraft` (0.003s)
+- PASS `benchmarkExpenseSkillDoesNotAskCategoryOnlyClarification` (0.018s)
+- PASS `benchmarkSleepDurationAutoWritesAndSleepStartAsks` (0.005s)
+- PASS `benchmarkOneImageExpenseSkillCreatesPendingDraft` (0.002s)
 - PASS `benchmarkHighRiskFeverStaysPending` (0.004s)
 - PASS `benchmarkUnsupportedChatMutationIsBoundaryOnly` (0.001s)
-- PASS `benchmarkSavedExpenseRecognitionDoesNotBecomeConfirmAgainAsk` (0.001s)
+- PASS `benchmarkSavedExpenseRecognitionDoesNotBecomeConfirmAgainAsk` (0.0s)
 - PASS `benchmarkTwelveHourFeedingTimeUsesCurrentAppClock` (0.001s)
-- PASS `benchmarkPlannerKeepsWebSearchFallbackWhenModelReturnsEmptyTools` (0.021s)
+- PASS `benchmarkPlannerKeepsWebSearchFallbackWhenModelReturnsEmptyTools` (0.018s)
 - PASS `benchmarkMilkIntervalReminderOverridesBadModelOutputAndSuppressesMemory` (0.001s)
-- PASS `benchmarkEightImageExpenseSkillBatchesWithoutWebSearch` (0.012s)
-- PASS `benchmarkDailySummaryAiHappyPathAllSixFindingTypesPassValidator` (0.002s)
-- PASS `benchmarkFeedingStartWithoutAmountAsksInsteadOfWriting` (0.005s)
+- PASS `benchmarkEightImageExpenseSkillBatchesWithoutWebSearch` (0.008s)
+- PASS `benchmarkDailySummaryAiHappyPathAllSixFindingTypesPassValidator` (0.006s)
+- PASS `benchmarkFeedingStartWithoutAmountAsksInsteadOfWriting` (0.003s)
 - PASS `benchmarkOnceMilkReminderDoesNotAskCareRecordFields` (0.003s)
-- PASS `benchmarkRecognizedExpenseAmountDoesNotBecomeRedundantAmountAsk` (0.001s)
+- PASS `benchmarkRecognizedExpenseAmountDoesNotBecomeRedundantAmountAsk` (0.0s)

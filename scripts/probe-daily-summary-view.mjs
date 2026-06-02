@@ -27,7 +27,7 @@ const viewports = [
 
 // Import smokeState by reading the file (avoiding ES module export changes)
 async function loadSmokeState() {
-  const mod = await import(path.join(rootDir, "scripts/frontend-smoke.mjs")).catch(() => null);
+  const today = new Date().toISOString().slice(0, 10);
   // Fallback: smokeState is module-private; copy a minimal fixture from inline
   // To stay simple, we re-define a tiny state with daily summary findings
   return {
@@ -41,7 +41,30 @@ async function loadSmokeState() {
       caregivers: [{ relation: "妈妈" }, { relation: "爸爸" }],
     },
     growthEvents: [],
-    careLogs: [],
+    careLogs: [
+      {
+        id: "care-probe-today",
+        date: today,
+        milkMl: 620,
+        milkTimes: 5,
+        sleepHours: 11.25,
+        wakes: 3,
+        soothing: "normal",
+        solids: ["米粉"],
+        poop: "便便 1 次",
+        temperature: 36.8,
+        notes: ["外出晒太阳"],
+        events: [
+          { id: "milk-1", type: "milk", date: today, time: "03:00", amountMl: 120 },
+          { id: "sleep-1", type: "sleep", date: today, time: "13:00", durationHours: 1.5 },
+          { id: "poop-1", type: "poop", date: today, time: "17:00" },
+        ],
+      },
+    ],
+    growthMeasurements: [
+      { id: "height-probe", type: "height", value: 68.2, date: today, note: "体检" },
+      { id: "weight-probe", type: "weight", value: 7.35, date: today, note: "体检" },
+    ],
     albumItems: [],
     expenses: [],
     reminders: [],
@@ -50,7 +73,7 @@ async function loadSmokeState() {
     messages: [],
     dailySummary: {
       id: "probe-daily-summary",
-      date: new Date().toISOString().slice(0, 10),
+      date: today,
       text: "小宝今天总体发展良好，全天进食和睡眠正常。",
       facts: [
         "今天共喝奶 6 次，约 660ml",
@@ -61,7 +84,7 @@ async function loadSmokeState() {
         "晚 8 点洗澡提醒还没标完成。",
       ],
       missingItems: [
-        { id: "missing-poop", scope: "family", category: "poop", title: "便便记录", message: "今天还没记便便和体温，需要补一下吗？", actionLabel: "补一下" },
+        { id: "missing-poop", type: "poop", scope: "family", title: "便便记录", message: "今天还没看到便便和体温，要顺手补一下吗？", action: "chat" },
       ],
       accountMissingItems: [],
       findings: [
@@ -101,7 +124,7 @@ async function loadSmokeState() {
 }
 
 async function startPreviewServer() {
-  const child = spawn("npx", ["vite", "preview", "--config", "frontend/vite.config.ts", "--host", host, "--port", String(port), "--strictPort"], {
+  const child = spawn("node", [path.join(rootDir, "node_modules/vite/bin/vite.js"), "preview", "--config", "frontend/vite.config.ts", "--host", host, "--port", String(port), "--strictPort"], {
     cwd: rootDir,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -167,7 +190,22 @@ async function main() {
         // 1. 记录 Tab today (DailySummaryView)
         await clickTab("记录");
         await page.locator(".daily-summary").first().scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+        await assertVisibleText(page, "小宝今日观察");
+        await assertVisibleText(page, "620 ml");
+        await assertVisibleText(page, "11.3 小时");
+        await assertVisibleText(page, "体重 7.35 kg");
+        await assertVisibleText(page, "给照护人的话");
+        await assertVisibleText(page, "昨晚记录到 3 次夜醒");
+        await assertVisibleText(page, "这些观察怎么来的");
+        await assertVisibleText(page, "今日交接");
+        await assertVisibleText(page, "复制交接");
+        await assertNoText(page, "Pro 今日小结");
+        await assertNoText(page, "生成今日小结");
+        await assertNoText(page, "漏掉了吗");
         await page.screenshot({ path: path.join(artifactDir, `${vp.name}-1-records-today.png`), fullPage: true });
+        await page.locator(".daily-observation__handoff").first().scrollIntoViewIfNeeded({ timeout: 3000 });
+        await page.waitForTimeout(200);
+        await page.screenshot({ path: path.join(artifactDir, `${vp.name}-1b-records-handoff.png`), fullPage: true });
 
         // 2. 我的 Tab (verify Pro 申请 button hidden)
         await clickTab("我的");
@@ -203,7 +241,7 @@ async function main() {
         await page.waitForTimeout(300);
         await page.screenshot({ path: path.join(artifactDir, `${vp.name}-7-reminders.png`), fullPage: true });
 
-        console.log(`saved ${vp.name} (7 screenshots)`);
+        console.log(`saved ${vp.name} (8 screenshots)`);
 
         await ctx.close();
       }
@@ -214,6 +252,16 @@ async function main() {
     server.kill("SIGTERM");
     setTimeout(() => { if (server.exitCode === null) server.kill("SIGKILL"); }, 2000).unref();
   }
+}
+
+async function assertVisibleText(page, text) {
+  const count = await page.getByText(text, { exact: false }).count();
+  if (count < 1) throw new Error(`Expected visible text: ${text}`);
+}
+
+async function assertNoText(page, text) {
+  const count = await page.getByText(text, { exact: false }).count();
+  if (count > 0) throw new Error(`Unexpected text still visible: ${text}`);
 }
 
 main().catch((err) => {
