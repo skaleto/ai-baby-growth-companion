@@ -14,6 +14,29 @@
 
 ## Session Log
 
+### Session 2026-06-04 生产问题修复：聊天照片自动收藏 + OTA 瘦身 + 相册数据修复
+
+- Goal: 修复用户反馈的 3 个生产问题（聊天发的照片没进相册、上传后等 AI 很久才进相册、最新 OTA 包太大下载慢），并修复用户 13777892890 已丢失的相册数据。
+- 根因（systematic-debugging Phase 1，生产数据确认）:
+  - 问题 1+2 同源：聊天发的生活照走 `ask` 模式生成「点击保存」卡片，且卡片挂在 AI 响应消息上要等豆包视觉分析；后端 AI 回复「已经为你记录下成长瞬间」擦边误导用户以为已存。用户没点保存 → 没进相册。5/29 该用户发的照片里只有手动点了保存的 1 张进相册。
+  - 问题 3：mobile bundle 3.2M 里 alarm-scene.png(1.6M) + hero-records-today.png(524K) 两张未压缩 PNG 占 60%。
+- Completed:
+  - 问题 1+2（commit `2000c14`）：`albumDomain.ts` 把非截图的生活照默认从 ask 改为 `auto_save`；`App.tsx` 发送瞬间对 auto_save 的图乐观即时进相册（不等 AI、不需手动点），服务端 albumItem effectDecision 按 attachmentId 去重，补正向反馈「照片已放进成长相册」；后端 `AgentPrompts` 改成客观描述图片内容、禁止「已记录下成长瞬间/已收藏/已留存」等暗示已存的措辞。
+  - 问题 3（commit `029ac8f`，后台 agent 完成）：alarm-scene/hero 转 WebP（-95%/-90%），mobile bundle 3.2M→1.2M（-63%）。
+  - 数据修复：备份生产库后，为 family-eb3f4751 补建 5 条 album_item——3 张照片（长湿疹/玩气球/成长素材）+ 2 个视频（软乎乎的小手/玩气球），album_item 46→51；监控摄像头 App 截图（smarteye）按既有截图规则不补。
+- Verification run:
+  - `npm run build` + `npm run smoke:frontend`（7 视口）
+  - 后端 IDEA mvn 编译 + `npm run test:agent-benchmark`（26 PASS）
+  - 云端 `/api/health` ok + OTA check 返回新版本
+- Deploy: OTA `0.1.0-20260604002926`（前端 OTA 含照片自动收藏+WebP瘦身 + 后端 rebuild 含措辞），`SYNC_DATA=0`，云端 health ok，已 push origin main。
+- 生产数据备份:
+  - `baby-companion.sqlite.before-album-restore-20260604005557`（补照片前）
+  - `baby-companion.sqlite.before-video-restore-20260604010002`（补视频前）
+- Known risks:
+  - 相册自动收藏的真机行为待用户真机确认（mock 测不了真实「发图→进相册→AI 措辞」链路）。
+  - 「AI 回复本身慢」（豆包视觉串行分批）未解决，待 agent 全链路耗时审计单独立项（已摸清链路：planner + 视觉串行 + final composer，视觉是大头）。
+  - 补建的 album_item 是家庭共享数据，用户下次打开 App 拉 app state 即可见。
+
 ### Session 2026-06-02 Recording Companion P1 Implementation, Git Sync, ECS And OTA
 
 - Goal: 按用户要求实现 P1，并同步 Git、ECS 远端和 OTA 包；继续保持“记录为基线、低焦虑反疲劳设计、数据关联陪伴、不做专家/知识付费/电商/社区”的产品边界。
