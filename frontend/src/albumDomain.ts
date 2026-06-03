@@ -192,27 +192,20 @@ export const decideAlbumMedia = (message: ChatMessage, attachment: Attachment): 
     return { ...base, mode: "ignore", category: "daily", reason: "这看起来是 App、网页或聊天截图，不会保存到成长相册。", tags: ["截图"] };
   }
   const category = classifyAlbumCategoryFromText(source);
-  if (albumAutoSavePattern.test(source) || explicitAlbumSavePattern.test(text)) {
-    return {
-      ...base,
-      mode: "auto_save",
-      category,
-      reason: "用户表达了明确的留念或成长记录意图。",
-      title: albumTitleFromText(text, attachment, category, message.createdAt),
-      tags: [albumCategoryLabel(category), mediaKindLabel(attachment)],
-    };
-  }
-  if (albumAskPattern.test(source)) {
-    return {
-      ...base,
-      mode: "ask",
-      category,
-      reason: "这段素材可能和宝宝照护有关，但还不确定是否值得长期保存。",
-      title: albumTitleFromText(text, attachment, category, message.createdAt),
-      tags: [albumCategoryLabel(category), "待确认"],
-    };
-  }
-  return { ...base, mode: "ignore", category: "daily", reason: "没有识别到值得保存到相册的明确生活或成长信号。", tags: ["忽略"] };
+  const explicitIntent =
+    albumAutoSavePattern.test(source) || explicitAlbumSavePattern.test(text) || albumAskPattern.test(source);
+  // 用户主动把照片/视频发到聊天，默认就当作想留下的成长记录，直接自动进相册（低摩擦、不打扰、不需手动点）。
+  // 明显的 App/网页/聊天截图和非媒体附件已在上面 ignore。
+  return {
+    ...base,
+    mode: "auto_save",
+    category,
+    reason: explicitIntent
+      ? "用户表达了留念意图，已放进成长相册。"
+      : "宝宝的生活照片，已自动放进成长相册。",
+    title: albumTitleFromText(text, attachment, category, message.createdAt),
+    tags: [albumCategoryLabel(category), mediaKindLabel(attachment)],
+  };
 };
 
 export const albumPromptFromDecision = (decision: AlbumMediaDecision): AlbumPrompt => ({

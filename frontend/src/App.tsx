@@ -4503,8 +4503,21 @@ function App() {
       attachments: submittedAttachments,
     };
     const albumDecisions = submittedAttachments.map((attachment) => decideAlbumMedia(parentMessage, attachment));
+    // 自动收藏：用户发到聊天的生活照/视频，发送瞬间就乐观进相册（不等 AI、不需手动点）。
+    const autoSavedAttachmentIds = new Set<string>();
+    albumDecisions
+      .filter((decision) => decision.mode === "auto_save")
+      .forEach((decision) => {
+        const attachment = submittedAttachments.find((item) => item.id === decision.attachmentId);
+        if (!attachment) return;
+        const albumItem = albumItemFromDecision(decision, parentMessage, attachment);
+        autoSavedAttachmentIds.add(decision.attachmentId);
+        setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
+        void persistRecord("albumItems", albumItem.id, albumItemForStorage(albumItem)).catch(() => setStorageStatus("offline"));
+      });
+    // 只有"还不确定"的素材才保留确认卡片
     let albumPrompts = albumDecisions
-      .filter((decision) => decision.mode === "auto_save" || decision.mode === "ask")
+      .filter((decision) => decision.mode === "ask")
       .map(albumPromptFromDecision);
     const ignoredScreenshotDecision = albumDecisions.find(
       (decision) => decision.mode === "ignore" && decision.tags.includes("截图"),
@@ -4634,6 +4647,7 @@ function App() {
             albumEffectMissingTarget = true;
             return;
           }
+          if (autoSavedAttachmentIds.has(target.attachment.id)) return; // 已自动进相册，不再弹确认卡
           const prompt = albumPromptFromEffectDecision(decision, target.message, target.attachment);
           if (!albumPrompts.some((item) => item.sourceMessageId === prompt.sourceMessageId && item.attachmentId === prompt.attachmentId)) {
             albumPrompts = [...albumPrompts, prompt];
@@ -4645,6 +4659,9 @@ function App() {
         aiText = `${aiText}\n\n我没有找到要保存的照片或视频，可以重新发一下素材再告诉我保存到相册。`;
       } else if (albumPrompts.some((prompt) => prompt.status === "pending") && !/点.*保存到相册|确认.*保存到相册|保存到相册.*确认/.test(aiText)) {
         aiText = `${aiText}\n\n我会等你点「保存到相册」后再收藏这段素材。`;
+      }
+      if (autoSavedAttachmentIds.size > 0 && !/相册/.test(aiText)) {
+        aiText = `${aiText}\n\n照片已经放进成长相册啦，不想留的可以在相册里删掉。`;
       }
 
       const aiMessage: ChatMessage = {
