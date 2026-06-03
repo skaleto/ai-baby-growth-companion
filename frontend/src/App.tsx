@@ -260,7 +260,7 @@ import reminderIcon from "./assets/storybook-icons/reminder.png";
 import sleepIcon from "./assets/storybook-icons/sleep.png";
 import solidIcon from "./assets/storybook-icons/solid.png";
 import temperatureIcon from "./assets/storybook-icons/temperature.png";
-import alarmSceneImage from "./assets/alarm/alarm-scene.png";
+import alarmSceneImage from "./assets/alarm/alarm-scene.webp";
 import emptyRemindersImg from "./assets/illustrations/empty-reminders.png";
 import {
   aiUsageFeatureLabel,

@@ -1,7 +1,7 @@
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import type { CareLog, DailySummary, Finding, GrowthMeasurement, MissingItemPrompt, Reminder } from "../types";
 import { Skeleton } from "../components/Skeleton";
-import heroRecordsToday from "../assets/illustrations/hero-records-today.png";
+import heroRecordsToday from "../assets/illustrations/hero-records-today.webp";
 import {
   buildCareStats,
   buildCaregiverCompanionLine,
