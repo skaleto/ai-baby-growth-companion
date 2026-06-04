@@ -28,6 +28,9 @@ backend/data/
 backend/backend/data/
 backend/*.pid
 
+# Backup/restore artifacts (contain real app data — never commit)
+backups/
+
 # Deployment local secrets/config
 .env
 .env.*
