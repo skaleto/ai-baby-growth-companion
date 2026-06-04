@@ -770,11 +770,17 @@ public class AgentRuntime {
             sendModelWorkStatus(emitter, finalVisualInputs, visualAnalysisResults);
             sendProgressEvent(emitter, "final-composer", "running", "生成最终回复");
 
+            RuntimeModel finalRuntimeModel = resolveFinalComposerModel(plan, visualInputs, toolResults, runtimeModel);
+            String finalApiKey = resolvedApiKey(finalRuntimeModel);
+            // 让 agent_run.final_model 记录分流后实际使用的模型（lite/pro），保证耗时埋点可按档位查询
+            if (agentRun != null) {
+                agentRun.setFinalModel(finalRuntimeModel.id());
+            }
             String body = objectMapper.writeValueAsString(buildDeepSeekRequest(
                     request,
                     selectedSkills,
                     toolResults,
-                    runtimeModel,
+                    finalRuntimeModel,
                     traceId,
                     true,
                     plan,
@@ -788,10 +794,10 @@ public class AgentRuntime {
                     expensePersistenceResult
             ));
             HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(endpointUrl(runtimeModel)))
-                    .timeout(runtimeModel.readTimeout().plusSeconds(30))
+                    .uri(URI.create(endpointUrl(finalRuntimeModel)))
+                    .timeout(finalRuntimeModel.readTimeout().plusSeconds(30))
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + finalApiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
 
@@ -799,7 +805,7 @@ public class AgentRuntime {
                     httpRequest,
                     emitter,
                     traceId,
-                    runtimeModel,
+                    finalRuntimeModel,
                     usedSkills,
                     sources,
                     request.message(),
@@ -2074,6 +2080,25 @@ public class AgentRuntime {
             return fallback;
         }
         return resolveModel("doubao-seed-2.0-pro", false);
+    }
+
+    private RuntimeModel resolveFinalComposerModel(
+            AgentPlan plan,
+            List<VisualAttachmentInput> visualInputs,
+            List<AgentToolResult> toolResults,
+            RuntimeModel fallback
+    ) {
+        // 仅对 doubao 链路分流；用户显式选了别的 provider（如 deepseek）则保持原样
+        if (fallback == null || fallback.provider() != Provider.DOUBAO) {
+            return fallback;
+        }
+        boolean hasVisual = visualInputs != null && !visualInputs.isEmpty();
+        boolean hasTools = toolResults != null && !toolResults.isEmpty();
+        boolean recordIntent = plan != null && "record".equalsIgnoreCase(plan.intent());
+        // 简单记录（纯文本记录、无图、无联网工具）用更快更省的 lite；复杂问答用 pro。两者都走 fast 服务档提速。
+        boolean simpleRecord = recordIntent && !hasVisual && !hasTools;
+        String modelId = simpleRecord ? "doubao-seed-2.0-lite" : "doubao-seed-2.0-pro";
+        return resolveModel(modelId, true);
     }
 
     private int finalComposerMaxTokens() {
