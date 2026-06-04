@@ -51,6 +51,7 @@ public class DatabaseInitializer implements ApplicationRunner {
             createProTrialTables(statement);
             createAgentTraceTables(statement);
             createDataRightsTables(statement);
+            createClientErrorTables(statement);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS attachment (
                       id TEXT PRIMARY KEY,
@@ -242,6 +243,25 @@ public class DatabaseInitializer implements ApplicationRunner {
         statement.execute("CREATE INDEX IF NOT EXISTS idx_data_rights_request_user ON data_rights_request(user_id)");
         statement.execute("CREATE INDEX IF NOT EXISTS idx_data_rights_request_family ON data_rights_request(family_id)");
         statement.execute("CREATE INDEX IF NOT EXISTS idx_data_rights_request_status ON data_rights_request(status)");
+    }
+
+    private void createClientErrorTables(Statement statement) throws Exception {
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS client_error (
+                  id TEXT PRIMARY KEY,
+                  family_id TEXT,
+                  user_id TEXT,
+                  kind TEXT,
+                  message TEXT,
+                  page TEXT,
+                  app_version TEXT,
+                  bundle_version TEXT,
+                  device_info TEXT,
+                  created_at TEXT
+                )
+                """);
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_client_error_family_created ON client_error(family_id, created_at)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_client_error_kind_created ON client_error(kind, created_at)");
     }
 
     private void createRecordTable(Connection connection, Statement statement, String tableName) throws Exception {

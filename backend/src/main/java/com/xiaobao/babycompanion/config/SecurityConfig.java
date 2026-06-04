@@ -51,6 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/asr/stream").permitAll()
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/mobile-updates/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/client-errors").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(requestLoggingFilter(), UsernamePasswordAuthenticationFilter.class)
