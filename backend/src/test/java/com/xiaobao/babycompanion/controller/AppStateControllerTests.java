@@ -118,6 +118,55 @@ class AppStateControllerTests {
     }
 
     @Test
+    void rejectsQueryTokenOnNonMediaApiButAcceptsBearer() throws Exception {
+        // REQ-AUTH-005: a valid token in ?token= must NOT authenticate a normal API; only the
+        // Authorization: Bearer header is accepted, so tokens never leak via URLs/logs/Referer.
+        mockMvc.perform(get("/api/app/state").param("token", token))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/app/state")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void allowsQueryTokenOnUploadMediaPathForBrowserImgSrc() throws Exception {
+        // Whitelist: /api/uploads/ media downloads keep the ?token= fallback because the browser
+        // cannot set an Authorization header on <img>/<video> src.
+        mockMvc.perform(put("/api/app/state")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "messages": [
+                                    {
+                                      "id": "msg-media-token",
+                                      "role": "user",
+                                      "text": "看看这张照片",
+                                      "createdAt": "2026-05-01T00:00:00Z",
+                                      "attachments": [
+                                        {
+                                          "id": "att-media-token",
+                                          "name": "photo.png",
+                                          "kind": "image",
+                                          "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/uploads/att-media-token"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/uploads/att-media-token").param("token", token))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+    }
+
+    @Test
     void rejectsUnsupportedUploadTypes() throws Exception {
         mockMvc.perform(post("/api/uploads")
                         .header(HttpHeaders.AUTHORIZATION, bearer())

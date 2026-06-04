@@ -44,6 +44,9 @@ export type UploadProgressHandler = (progress: number) => void;
 const toAbsoluteUrl = (url?: string) => {
   if (!url) return url;
   if (url.startsWith("data:")) return url;
+  // REQ-AUTH-005: only media downloads under /api/uploads/ may carry a ?token= query, because the
+  // browser cannot attach an Authorization header to <img>/<video> src. Everything else stays
+  // token-free in the URL and authenticates via the Bearer header on its fetch/XHR.
   try {
     const parsed = new URL(url);
     if (parsed.pathname.startsWith("/api/uploads/")) return withAuthQuery(`${apiBaseUrl}${parsed.pathname}`);
@@ -51,7 +54,8 @@ const toAbsoluteUrl = (url?: string) => {
     // Relative URLs are handled below.
   }
   if (/^https?:\/\//.test(url)) return url;
-  return withAuthQuery(`${apiBaseUrl}${url.startsWith("/") ? "" : "/"}${url}`);
+  const absolute = `${apiBaseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+  return url.startsWith("/api/uploads/") ? withAuthQuery(absolute) : absolute;
 };
 
 const withAbsoluteAttachmentUrls = <T>(value: T): T => {
