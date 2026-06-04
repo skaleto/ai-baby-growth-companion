@@ -176,6 +176,7 @@ import {
   localDateKey,
   localTimeKey,
   markLegacyImported,
+  mergeAlbumItemsFromSnapshot,
   monthTitle,
   normalizeAlbumItem,
   normalizeBabyProfile,
@@ -2267,6 +2268,10 @@ function App() {
   const hasPositionedMessageListRef = useRef(false);
   const messageScrollSignatureRef = useRef("");
   const backendReadyRef = useRef(false);
+  // Album items whose optimistic persistRecord has not yet succeeded. While an id
+  // is here, applyAppSnapshot must not let a backend snapshot that omits it drop
+  // the item (production data-loss guard). Removed on persist success.
+  const pendingPersistAlbumIdsRef = useRef<Set<string>>(new Set());
   const compressionInFlightRef = useRef(false);
   const compressionResetTimerRef = useRef<number | null>(null);
   const intervalReminderRescheduleRef = useRef("");
@@ -3242,7 +3247,19 @@ function App() {
     if (state.reminders) setReminders(state.reminders.map(normalizeReminder));
     if (state.memories) setMemories(state.memories);
     if (state.pendingEffects) setPendingEffects(state.pendingEffects);
-    if (state.albumItems) setAlbumItems(state.albumItems);
+    if (state.albumItems) {
+      const snapshotAlbumItems = state.albumItems;
+      // Merge instead of overwrite so optimistic album items still awaiting
+      // confirmed persistence survive a snapshot that omits them (data-loss guard).
+      setAlbumItems((current) =>
+        mergeAlbumItemsFromSnapshot(current, snapshotAlbumItems, pendingPersistAlbumIdsRef.current),
+      );
+      // Any pending id the backend now reports is confirmed persisted; stop
+      // tracking it so the guard set stays bounded and later deletes propagate.
+      if (pendingPersistAlbumIdsRef.current.size) {
+        snapshotAlbumItems.forEach((item) => pendingPersistAlbumIdsRef.current.delete(item.id));
+      }
+    }
     if (state.expenses) setExpenses(state.expenses);
     if ("conversationSummary" in state) {
       setConversationSummary((state.conversationSummary ?? null) as ConversationSummary | null);
@@ -3328,6 +3345,21 @@ function App() {
       setStorageStatus("offline");
       throw error;
     }
+  };
+
+  // Persist an optimistic album item while protecting it from snapshot overwrites.
+  // The id is marked pending up front; on success it is cleared (backend now owns
+  // it) so future snapshots may delete it normally; on failure it stays pending so
+  // mergeAlbumItemsFromSnapshot keeps the item alive until it is eventually saved.
+  const persistAlbumItemOptimistic = (item: AlbumItem) => {
+    pendingPersistAlbumIdsRef.current.add(item.id);
+    // On failure the id stays pending on purpose: mergeAlbumItemsFromSnapshot then
+    // protects the item from being dropped by a snapshot that omits it. persistRecord
+    // already flips storage status to "offline", so we only need to rethrow here.
+    return persistRecord("albumItems", item.id, albumItemForStorage(item)).then((response) => {
+      pendingPersistAlbumIdsRef.current.delete(item.id);
+      return response;
+    });
   };
 
   const applyForProTrial = async (source: string) => {
@@ -3979,7 +4011,7 @@ function App() {
           setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
           updateMediaUploadItem(item.id, { status: "done", progress: 100, message: "已加入相册" });
           removeMediaUploadItemLater(item.id, 1600);
-          void persistRecord("albumItems", albumItem.id, albumItemForStorage(albumItem)).catch(() => setStorageStatus("offline"));
+          void persistAlbumItemOptimistic(albumItem).catch(() => undefined);
           hapticSuccess();
         }
       } catch (error) {
@@ -4546,7 +4578,7 @@ function App() {
         const albumItem = albumItemFromDecision(decision, parentMessage, attachment);
         autoSavedAttachmentIds.add(decision.attachmentId);
         setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
-        void persistRecord("albumItems", albumItem.id, albumItemForStorage(albumItem)).catch(() => setStorageStatus("offline"));
+        void persistAlbumItemOptimistic(albumItem).catch(() => undefined);
       });
     // 只有"还不确定"的素材才保留确认卡片
     let albumPrompts = albumDecisions
@@ -5330,7 +5362,7 @@ function App() {
     );
     setAlbumItems((current) => dedupeAlbumItems([nextItem, ...current.filter((entry) => entry.id !== nextItem.id)]));
     setPreviewAlbumItem((current) => (current?.id === nextItem.id ? nextItem : current));
-    void persistRecord("albumItems", nextItem.id, albumItemForStorage(nextItem)).catch(() => setStorageStatus("offline"));
+    void persistAlbumItemOptimistic(nextItem).catch(() => undefined);
   };
 
   const removeAlbumItem = async (item: AlbumItem) => {
@@ -5399,10 +5431,13 @@ function App() {
     const albumItem = albumItemFromDecision({ ...prompt, mode: "auto_save" }, sourceMessage, attachment);
     setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
     try {
-      await persistRecord("albumItems", albumItem.id, albumItemForStorage(albumItem));
+      await persistAlbumItemOptimistic(albumItem);
       updateAlbumPromptStatus(messageId, prompt.id, "saved");
       hapticSuccess();
     } catch (error) {
+      // This manual save intentionally rolls back on failure (with a visible
+      // notice), so drop the pending guard for the item we are removing.
+      pendingPersistAlbumIdsRef.current.delete(albumItem.id);
       setAlbumItems((current) => current.filter((item) => item.id !== albumItem.id));
       setStorageStatus("offline");
       showSystemWeakNotice(

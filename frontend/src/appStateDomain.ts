@@ -1,4 +1,5 @@
 import type { SetStateAction } from "react";
+import { dedupeAlbumItems } from "./albumDomain";
 import { makeId, todayISO } from "./data";
 import {
   ALBUM_CATEGORY_VALUES,
@@ -221,6 +222,28 @@ export const normalizeAlbumItem = (value: Partial<AlbumItem> | null | undefined,
   recordedBy: normalizeRecordedBy(value?.recordedBy),
   createdByUserId: textValue(value?.createdByUserId) || undefined,
 });
+
+// Guards against the silent loss of optimistic album items (e.g. chat auto_save)
+// whose persistRecord PUT failed and therefore never made it into a backend
+// snapshot. applyAppSnapshot would otherwise replace album state wholesale and
+// drop them. Here the backend snapshot stays authoritative — including for
+// deletes — except that any LOCAL item still awaiting confirmed persistence
+// (its id is in pendingPersistIds) survives even when the snapshot omits it.
+// dedupeAlbumItems keys media by attachmentId, so once the backend catches up
+// the protected item collapses into its backend twin instead of duplicating.
+export const mergeAlbumItemsFromSnapshot = (
+  localItems: AlbumItem[],
+  snapshotItems: AlbumItem[],
+  pendingPersistIds: ReadonlySet<string>,
+): AlbumItem[] => {
+  if (pendingPersistIds.size === 0) return snapshotItems;
+  const snapshotIds = new Set(snapshotItems.map((item) => item.id));
+  const survivors = localItems.filter(
+    (item) => pendingPersistIds.has(item.id) && !snapshotIds.has(item.id),
+  );
+  if (survivors.length === 0) return snapshotItems;
+  return dedupeAlbumItems([...snapshotItems, ...survivors]);
+};
 
 export const normalizeExpenseCategory = (value: unknown): ExpenseCategory =>
   stringMember(EXPENSE_CATEGORY_IDS, value) ? value : "other";
