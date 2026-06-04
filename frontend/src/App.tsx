@@ -211,6 +211,10 @@ import {
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { StorybookScene } from "./components/StorybookScene";
+import { ConsentGate } from "./components/ConsentGate";
+import { AiDataNotice } from "./components/AiDataNotice";
+import { LegalDocModal } from "./components/LegalDocModal";
+import type { LegalDocId } from "./legalContent";
 import {
   AgentChatResponse,
   AgentModelId,
@@ -2074,6 +2078,10 @@ function App() {
   const [thinkingEnabled, setThinkingEnabled] = useStoredState("baby-companion-thinking-enabled", false);
   const [selectedModel, setSelectedModel] = useStoredState<AgentModelId>("baby-companion-model", DEFAULT_MODEL);
   const [lowLatencyEnabled, setLowLatencyEnabled] = useState(false);
+  // 首登知情同意：勾选一次后记住，不再弹。
+  const [consentGiven, setConsentGiven] = useStoredState("baby-companion-consent-v1", false);
+  // 设置页里点开的隐私/协议/儿童信息静态页。
+  const [settingsLegalDoc, setSettingsLegalDoc] = useState<LegalDocId | null>(null);
   const profile = useMemo(() => normalizeBabyProfile(storedProfile), [storedProfile]);
   const messages = useMemo(() => storedMessages.map(normalizeChatMessage), [storedMessages]);
   const growthEvents = useMemo(() => storedGrowthEvents.map(normalizeGrowthEvent), [storedGrowthEvents]);
@@ -6041,6 +6049,11 @@ function App() {
     </div>
   ) : null;
 
+  // 首登知情同意：未同意前挡住一切（登录/引导/主界面都看不到）。
+  if (!consentGiven) {
+    return <ConsentGate onAccept={() => setConsentGiven(true)} />;
+  }
+
   if (authStatus === "checking") {
     return (
       <main className="app-shell auth-shell">
@@ -6420,6 +6433,7 @@ function App() {
               </div>
             </div>
             <div className="head-actions">
+              <AiDataNotice />
               <button
                 type="button"
                 className="icon-button"
@@ -8375,6 +8389,26 @@ function App() {
               ) : (
                 <p className="readonly-copy">当前身份可以查看家庭共享记录，不能修改小宝资料或写入照护日志。</p>
               )}
+              <section className="profile-detail-card profile-legal-card" aria-label="隐私与说明">
+                <div className="profile-legal-links">
+                  <button type="button" className="profile-legal-link" onClick={() => setSettingsLegalDoc("privacy")}>
+                    <span>隐私政策</span>
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                  <button type="button" className="profile-legal-link" onClick={() => setSettingsLegalDoc("terms")}>
+                    <span>用户协议</span>
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                  <button type="button" className="profile-legal-link" onClick={() => setSettingsLegalDoc("children")}>
+                    <span>儿童信息说明</span>
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                </div>
+                <div className="profile-legal-ai-row">
+                  <span>AI 会怎么用你的记录</span>
+                  <AiDataNotice />
+                </div>
+              </section>
               <button className="profile-logout-button" type="button" onClick={() => void handleLogout()}>
                 退出登录{(authUser?.maskedPhone ?? authUser?.phone) ? `（${authUser?.maskedPhone ?? authUser?.phone}）` : ""}
               </button>
@@ -8626,6 +8660,9 @@ function App() {
       {expenseEditorDialog}
       {deleteExpenseDialog}
       {bulkDeleteExpensesDialog}
+      {settingsLegalDoc ? (
+        <LegalDocModal docId={settingsLegalDoc} onClose={() => setSettingsLegalDoc(null)} />
+      ) : null}
       {ringingReminder ? (
         <div className="alarm-ringing-overlay" role="dialog" aria-modal="true" aria-labelledby="alarm-ringing-title">
           <div className="alarm-ringing-scene" aria-hidden="true">

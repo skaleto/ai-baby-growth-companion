@@ -1,0 +1,226 @@
+/* 首登知情同意 + 静态法律说明 + AI 数据说明（内测精简版） */
+
+/* ---- 首登同意页全屏遮罩 ---- */
+.consent-gate-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(160deg, rgba(255, 246, 235, 0.96), rgba(243, 238, 255, 0.96));
+  backdrop-filter: blur(6px);
+}
+
+.consent-gate-card {
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px 24px;
+  border-radius: 24px;
+  background: #fffdfa;
+  box-shadow: 0 24px 60px rgba(120, 96, 60, 0.22);
+}
+
+.consent-gate-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b4fd8;
+  background: rgba(124, 92, 240, 0.12);
+}
+
+.consent-gate-copy h1 {
+  margin: 4px 0 6px;
+  font-size: 24px;
+}
+
+.consent-gate-copy p {
+  margin: 0;
+  color: #6f6657;
+  line-height: 1.5;
+}
+
+.consent-beta-note {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #8a5a1c;
+  background: rgba(255, 196, 120, 0.18);
+}
+
+.consent-links-intro {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #5a5246;
+}
+
+.consent-link {
+  margin: 0 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #6b4fd8;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.consent-guardian-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4f483c;
+  background: rgba(124, 92, 240, 0.07);
+  cursor: pointer;
+}
+
+.consent-guardian-check input {
+  margin-top: 2px;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: #6b4fd8;
+}
+
+.consent-accept-button {
+  margin-top: 4px;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #7c5cf0, #9b7bff);
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.consent-accept-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.consent-accept-button:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+/* ---- 静态法律/说明文本查看器 ---- */
+.legal-doc-modal,
+.ai-data-notice-modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.legal-doc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid rgba(120, 96, 60, 0.12);
+}
+
+.legal-doc-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.legal-doc-body,
+.ai-data-notice-body {
+  padding: 16px 20px 22px;
+  overflow-y: auto;
+}
+
+.legal-doc-section {
+  margin-bottom: 16px;
+}
+
+.legal-doc-section h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: #3f3a32;
+}
+
+.legal-doc-section p,
+.ai-data-notice-body p {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #5a5246;
+}
+
+.legal-doc-footnote {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8a8276;
+}
+
+/* ---- 设置页里的法律入口行 ---- */
+.profile-legal-links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.profile-legal-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 4px;
+  border: none;
+  border-bottom: 1px solid rgba(120, 96, 60, 0.1);
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  color: #4f483c;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-legal-link:last-child {
+  border-bottom: none;
+}
+
+.profile-legal-link svg {
+  flex: none;
+  color: #b3a892;
+}
+
+.profile-legal-ai-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(120, 96, 60, 0.1);
+  font-size: 15px;
+  color: #4f483c;
+}
