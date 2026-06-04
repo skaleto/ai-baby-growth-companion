@@ -6175,7 +6175,7 @@ function App() {
               你当前是{authMember?.roleName ?? "家庭成员"}，仅可查看家庭记录。等照护人设置好小宝资料后，你刷新就能查看记录、提醒和趋势。
             </p>
             <button className="profile-logout-button" type="button" onClick={() => void handleLogout()}>
-              退出登录{authUser?.phone ? `（${authUser.phone}）` : ""}
+              退出登录{(authUser?.maskedPhone ?? authUser?.phone) ? `（${authUser?.maskedPhone ?? authUser?.phone}）` : ""}
             </button>
           </section>
         </main>
@@ -8376,7 +8376,7 @@ function App() {
                 <p className="readonly-copy">当前身份可以查看家庭共享记录，不能修改小宝资料或写入照护日志。</p>
               )}
               <button className="profile-logout-button" type="button" onClick={() => void handleLogout()}>
-                退出登录{authUser?.phone ? `（${authUser.phone}）` : ""}
+                退出登录{(authUser?.maskedPhone ?? authUser?.phone) ? `（${authUser?.maskedPhone ?? authUser?.phone}）` : ""}
               </button>
             </section>
           ) : (

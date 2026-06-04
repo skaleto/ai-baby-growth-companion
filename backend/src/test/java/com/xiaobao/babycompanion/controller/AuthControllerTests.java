@@ -122,11 +122,44 @@ class AuthControllerTests {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.authenticated").value(true))
-                .andExpect(jsonPath("$.user.phone").value("13800000112"))
+                .andExpect(jsonPath("$.user.phone").value("138****0112"))
+                .andExpect(jsonPath("$.user.maskedPhone").value("138****0112"))
                 .andExpect(jsonPath("$.family.name").value("小宝家"))
                 .andExpect(jsonPath("$.member.roleName").value("妈妈"))
                 .andExpect(jsonPath("$.member.caregiver").value(true))
                 .andExpect(jsonPath("$.onboardingRequired").value(true));
+    }
+
+    @Test
+    void loginAndMeResponsesMaskPhoneAndNeverLeakFullNumber() throws Exception {
+        // REQ-AUTH-004 contract: API never returns the full 11-digit phone; only the masked form.
+        String fullPhone = "13800000150";
+        String maskedPhone = "138****0150";
+
+        String loginBody = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"phone":"%s","inviteCode":"AUTH-CODE-1","roleName":"妈妈","caregiver":true}
+                                """.formatted(fullPhone)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.phone").value(maskedPhone))
+                .andExpect(jsonPath("$.user.maskedPhone").value(maskedPhone))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(loginBody).doesNotContain(fullPhone);
+        assertThat(maskedPhone).matches("\\d{3}\\*{4}\\d{4}");
+
+        String token = objectMapper.readTree(loginBody).get("accessToken").asText();
+        String meBody = mockMvc.perform(get("/api/auth/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.phone").value(maskedPhone))
+                .andExpect(jsonPath("$.user.maskedPhone").value(maskedPhone))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(meBody).doesNotContain(fullPhone);
     }
 
     @Test
@@ -418,7 +451,7 @@ class AuthControllerTests {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + originalToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").exists())
-                .andExpect(jsonPath("$.user.phone").value("13800000301"))
+                .andExpect(jsonPath("$.user.phone").value("138****0301"))
                 .andExpect(jsonPath("$.member.roleName").value("妈妈"))
                 .andReturn()
                 .getResponse()

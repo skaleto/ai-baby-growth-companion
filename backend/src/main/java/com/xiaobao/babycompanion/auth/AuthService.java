@@ -33,6 +33,7 @@ import com.xiaobao.babycompanion.persistence.service.AuthInviteCodeRecordService
 import com.xiaobao.babycompanion.persistence.service.AuthSessionRecordService;
 import com.xiaobao.babycompanion.persistence.service.AuthUserRecordService;
 import com.xiaobao.babycompanion.service.AppStateService;
+import com.xiaobao.babycompanion.util.PhoneMasking;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -316,7 +317,10 @@ public class AuthService {
     }
 
     public AuthUserDto toDto(AuthUserRecord user) {
-        return new AuthUserDto(user.getId(), user.getPhone(), user.getCreatedAt(), user.getLastLoginAt());
+        // REQ-AUTH-004: never serialize the full phone. The raw number stays on the record/principal
+        // for internal use (login credential, JWT subject); the API only ever returns the masked form.
+        String maskedPhone = PhoneMasking.mask(user.getPhone());
+        return new AuthUserDto(user.getId(), maskedPhone, maskedPhone, user.getCreatedAt(), user.getLastLoginAt());
     }
 
     public AuthFamilyDto currentFamily(AuthPrincipal principal) {

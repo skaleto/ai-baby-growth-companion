@@ -6,7 +6,10 @@ const AUTH_TOKEN_KEY = "baby-companion-auth-token";
 
 export interface AuthUser {
   id: string;
+  /** Masked phone for display only (e.g. 138****8888); the API never returns the full number. */
   phone: string;
+  /** Explicit masked phone field (REQ-AUTH-004); equals {@link phone}. */
+  maskedPhone?: string;
   createdAt?: string;
   lastLoginAt?: string;
 }
