@@ -50,6 +50,7 @@ public class DatabaseInitializer implements ApplicationRunner {
             createAuthTables(connection, statement);
             createProTrialTables(statement);
             createAgentTraceTables(statement);
+            createDataRightsTables(statement);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS attachment (
                       id TEXT PRIMARY KEY,
@@ -221,6 +222,26 @@ public class DatabaseInitializer implements ApplicationRunner {
         statement.execute("CREATE INDEX IF NOT EXISTS idx_skill_run_trace ON skill_run(trace_id)");
         statement.execute("CREATE INDEX IF NOT EXISTS idx_skill_run_agent ON skill_run(agent_run_id)");
         statement.execute("CREATE INDEX IF NOT EXISTS idx_skill_run_skill_status ON skill_run(skill_id, status)");
+    }
+
+    private void createDataRightsTables(Statement statement) throws Exception {
+        statement.execute("""
+                CREATE TABLE IF NOT EXISTS data_rights_request (
+                  id TEXT PRIMARY KEY,
+                  trace_id TEXT,
+                  family_id TEXT,
+                  user_id TEXT,
+                  type TEXT NOT NULL,
+                  status TEXT,
+                  reason TEXT,
+                  created_at TEXT,
+                  resolved_at TEXT,
+                  resolution_note TEXT
+                )
+                """);
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_data_rights_request_user ON data_rights_request(user_id)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_data_rights_request_family ON data_rights_request(family_id)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_data_rights_request_status ON data_rights_request(status)");
     }
 
     private void createRecordTable(Connection connection, Statement statement, String tableName) throws Exception {
