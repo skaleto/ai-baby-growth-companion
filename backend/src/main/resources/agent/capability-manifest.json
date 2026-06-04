@@ -1,0 +1,204 @@
+{
+  "_doc": "AI agent 产品能力矩阵（单一事实源 SSOT）。agent 运行时据此感知系统真实能力、避免承诺幻觉；benchmark 据此检查覆盖；随产品迭代更新此文件即可同步三处。能力卡片的 id 即未来 tool use 的 tool name。enabled=false 表示产品未实现，agent 不得承诺。",
+  "version": "2026-06-05",
+  "capabilities": [
+    {
+      "id": "log_care_feeding",
+      "name": "记录喂养",
+      "effectType": "careLog",
+      "eventType": "milk",
+      "trigger": "用户提到喝奶/喂奶/母乳/配方奶/吸奶/亲喂，并给出奶量或时间",
+      "summary": "字段完整→自动记 milk 事件；不全→追问",
+      "requiredFields": ["奶量 amountMl 或明确时间", "混合喂养时需奶的类型（母乳/配方）"],
+      "modes": ["auto", "ask"],
+      "can": ["字段完整且低风险时自动记录 careLog 的 milk 事件"],
+      "cannot": ["臆造缺失的奶量或精确时间", "混合喂养时臆造奶类型（必须追问母乳/配方）", "仅凭图片或视频生成喂养日志"],
+      "enabled": true,
+      "benchmark": ["feed-complete", "feed-boundary", "feed-mixed-missing-type"]
+    },
+    {
+      "id": "log_care_sleep",
+      "name": "记录睡眠",
+      "effectType": "careLog",
+      "eventType": "sleep",
+      "trigger": "用户提到睡觉/睡了/小睡/夜醒/入睡，并给出时长或起止时间",
+      "summary": "字段完整→自动记 sleep 事件；只说开始没时长→追问",
+      "requiredFields": ["睡眠时长或明确的起止时间"],
+      "modes": ["auto", "ask"],
+      "can": ["字段完整时自动记录 careLog 的 sleep 事件"],
+      "cannot": ["臆造睡眠时长或结束时间", "仅凭图片或视频生成睡眠日志"],
+      "enabled": true,
+      "benchmark": ["sleep-complete", "sleep-start-boundary"]
+    },
+    {
+      "id": "log_care_diaper",
+      "name": "记录便便/尿布",
+      "effectType": "careLog",
+      "eventType": "poop",
+      "trigger": "用户提到拉了/便便/尿布/大便/小便/换尿布",
+      "summary": "记 poop/diaper 事件，可与喂养睡眠合并到同一天 careLog",
+      "requiredFields": [],
+      "modes": ["auto", "ask"],
+      "can": ["记录便便/尿布事件，可与同一天其他照护事件合并"],
+      "cannot": ["仅凭图片生成便便日志"],
+      "enabled": true,
+      "benchmark": ["multi-care-events"]
+    },
+    {
+      "id": "log_care_health",
+      "name": "记录健康/体温（高风险）",
+      "effectType": "careLog",
+      "eventType": "temperature",
+      "trigger": "用户提到发烧/体温/度数/咳嗽/呕吐/腹泻等健康信号",
+      "summary": "高风险健康记录走 pending 待确认，并给安全提示，不自动写入",
+      "requiredFields": ["体温度数或健康描述"],
+      "modes": ["pending"],
+      "can": ["生成待确认的健康照护记录", "对高风险情况给安抚+就医建议"],
+      "cannot": ["自动写入高风险健康记录而不经确认", "诊断疾病或开药"],
+      "enabled": true,
+      "benchmark": ["fever-risk", "safety-refuse"]
+    },
+    {
+      "id": "log_growth_milestone",
+      "name": "记录成长里程碑",
+      "effectType": "growthEvent",
+      "trigger": "用户提到第一次/学会了/会翻身/会坐/会爬/长牙/会叫妈妈等里程碑",
+      "summary": "生成待确认的成长事件",
+      "requiredFields": ["里程碑描述"],
+      "modes": ["pending"],
+      "can": ["生成待用户确认的成长里程碑事件"],
+      "cannot": ["未经确认自动写入成长档案"],
+      "enabled": true,
+      "benchmark": ["growth-milestone"]
+    },
+    {
+      "id": "log_growth_measurement",
+      "name": "记录成长测量",
+      "effectType": "growthMeasurement",
+      "trigger": "用户给出身高/身长/体重/头围的具体数值",
+      "summary": "完整→待确认测量草稿；缺单位/异常值/重复→追问或不写",
+      "requiredFields": ["测量类型（身高/体重/头围）", "数值", "单位（厘米/斤/公斤等）"],
+      "modes": ["pending", "ask"],
+      "can": ["生成待确认的身高/体重/头围测量草稿"],
+      "cannot": ["单位不明时臆造单位（须追问斤/公斤）", "接受明显不可能的数值", "同日同类型重复值时再生成草稿", "在聊天里直接修改或删除已有测量历史"],
+      "enabled": true,
+      "benchmark": ["growth-measurement-complete", "growth-measurement-ambiguous-unit", "growth-measurement-out-of-range", "growth-measurement-update-boundary", "growth-measurement-delete-boundary", "growth-measurement-duplicate-boundary"]
+    },
+    {
+      "id": "set_reminder",
+      "name": "创建提醒",
+      "effectType": "reminder",
+      "trigger": "用户要求提醒我/定个闹钟/每隔多久提醒/到点提醒",
+      "summary": "时间明确→创建一次性或循环提醒；模糊→追问时间",
+      "requiredFields": ["提醒时间或循环间隔"],
+      "modes": ["auto", "ask"],
+      "can": ["创建一次性(once)或循环(interval)提醒", "区分通知(notification)与响铃(ringing)模式"],
+      "cannot": ["时间模糊时臆造具体时间（须追问）", "为一次性提醒追问奶量或喂养类型等无关字段"],
+      "enabled": true,
+      "benchmark": ["reminder-once", "reminder-interval", "vague-reminder-ask", "medicine-reminder-pending", "vaccine-reminder-pending"]
+    },
+    {
+      "id": "save_memory",
+      "name": "保存长期记忆",
+      "effectType": "memory",
+      "trigger": "用户说记住/别忘了/我家宝宝对X过敏/喜欢Y等需长期保存的偏好或健康信息",
+      "summary": "生成待确认的长期记忆，不静默写入",
+      "requiredFields": ["要记住的内容"],
+      "modes": ["pending"],
+      "can": ["生成待确认的长期记忆（健康/偏好/照护人信息）"],
+      "cannot": ["静默写入记忆而不经确认", "把普通育儿问答内容误存为记忆"],
+      "enabled": true,
+      "benchmark": ["memory-health-pending", "memory-preference-pending", "memory-caregiver-pending"]
+    },
+    {
+      "id": "log_expense",
+      "name": "记账（育儿支出）",
+      "effectType": "expenseItem",
+      "trigger": "用户提到买了X花了多少钱/奶粉钱/尿布钱等育儿消费",
+      "summary": "生成待确认的账本草稿（标题/金额/分类）",
+      "requiredFields": ["金额"],
+      "modes": ["pending"],
+      "can": ["生成待确认的账本草稿，含标题、金额、分类"],
+      "cannot": ["未经确认直接入账", "仅凭条形码查询就自动入账"],
+      "enabled": true,
+      "benchmark": ["expense-record"]
+    },
+    {
+      "id": "save_to_album",
+      "name": "保存到成长相册",
+      "effectType": "albumItem",
+      "trigger": "用户上传了真实生活照片或视频（有宝宝本人/亲子互动/成长瞬间/医疗凭证）",
+      "summary": "通过准入的照片/视频自动存相册；截图等不入相册",
+      "requiredFields": ["已上传且通过相册准入的图片/视频附件"],
+      "modes": ["auto", "ignore"],
+      "can": ["把通过准入的生活照片/视频保存到成长相册（albumItem effectDecision）"],
+      "cannot": ["承诺已保存但响应里没有 albumItem effectDecision", "把 App 截图/网页截图/聊天截图/纯文字界面图存入相册"],
+      "enabled": true,
+      "benchmark": ["photo-album", "screenshot-ignore"]
+    },
+    {
+      "id": "search_web",
+      "name": "联网查询",
+      "effectType": null,
+      "trigger": "用户问需要时效信息的问题（政策/补贴/疫苗时间表/最新指南等）",
+      "summary": "按计划调用联网查询工具并展示来源",
+      "requiredFields": [],
+      "modes": ["tool"],
+      "can": ["调用 web_search 工具查询并展示来源链接"],
+      "cannot": ["编造来源或政策细节", "在没有真实检索结果时假装已联网"],
+      "enabled": true,
+      "benchmark": ["qa-policy"]
+    },
+    {
+      "id": "describe_visual",
+      "name": "描述图片/视频",
+      "effectType": null,
+      "trigger": "用户上传图片/视频并询问内容，或需要理解附件",
+      "summary": "在支持视觉的模型中描述附件内容；描述≠保存≠记录",
+      "requiredFields": ["图片或视频附件"],
+      "modes": ["describe"],
+      "can": ["描述图片或视频里的内容"],
+      "cannot": ["把描述等同于保存到相册", "仅凭视觉描述生成照护日志或成长档案"],
+      "enabled": true,
+      "benchmark": ["photo-album", "qa-care"]
+    }
+  ],
+  "globalBoundaries": [
+    {
+      "id": "no_unconfirmed_claim",
+      "rule": "不能承诺已经完成没有对应 effectDecision 的动作；只有 effectDecision.mode=auto 时才可以说已经整理成记录",
+      "userMessage": null
+    },
+    {
+      "id": "no_history_mutation",
+      "rule": "不能在聊天文本里直接撤销、删除或修改历史记录或成长数据",
+      "userMessage": "我现在还不能直接在聊天里撤销、删除或修改历史记录，也不能直接修改宝宝资料。宝宝资料请到资料页更新；如果是刚自动记录的那条，可以点记录卡片上的“撤销”；如果要改历史记录或成长数据，可以到记录页或成长页手动编辑。"
+    },
+    {
+      "id": "no_profile_mutation",
+      "rule": "不能在聊天文本里直接修改宝宝昵称、名字、生日、性别、喂养方式等资料或家庭档案",
+      "userMessage": "宝宝资料目前需要到资料页更新，我不能在聊天里直接修改，也不会声称已经改好。"
+    },
+    {
+      "id": "no_private_share",
+      "rule": "不能在聊天文本里直接把个人提醒、记忆或聊天内容同步/共享给其他家庭成员",
+      "userMessage": "我现在不能在聊天里把个人提醒、记忆或聊天内容自动同步给其他家庭成员，也不会改动这条提醒。若这是需要全家都知道的事项，可以到提醒页查看是否有共享设置；没有共享入口时，建议手动告知家人，或重新创建一条适合全家查看的提醒。"
+    }
+  ],
+  "imageBoundary": {
+    "photoDescription": "图片/视频描述、相册保存、照护日志是三件不同的事；描述附件不代表保存或记录。",
+    "albumAdmission": "只有真实生活照片或视频里有宝宝本人、亲子互动、成长瞬间、医疗凭证等值得回看的内容，才可能进入相册；不确定时由前端展示确认卡。",
+    "ignoredImages": ["App 截图", "网页截图", "聊天截图", "记录页截图", "纯 UI 或纯文字界面图", "无宝宝且无生活场景的图片"],
+    "careRecordBoundary": "图片或视频不能单独生成喂养、睡眠、便便、体温等 careLog；只有用户文本或语音明确给出奶量、睡眠时长、体温等字段时才允许记录。"
+  },
+  "replyRules": [
+    "只有 effectDecision.mode=auto 且动作属于某个 enabled 能力时，才可以说已经整理成记录",
+    "字段不足时必须追问，不要输出 careLogPatch 或伪时间线",
+    "如果 babyProfile.feeding 是混合喂养，用户只说喝奶/吃奶/喂奶和奶量但没说明母乳或配方奶，回复必须追问奶的类型，不要说已记录",
+    "用户要求撤销、删除、修改历史记录时，说明当前只能通过记录卡片撤销或到记录页/成长页编辑",
+    "用户要求修改宝宝昵称、名字、生日、性别、喂养方式等资料时，说明当前需要到资料页更新，不要声称已经修改",
+    "用户要求同步/共享个人提醒、记忆或聊天内容给其他家庭成员时，说明当前不会自动同步，也不会改动原提醒",
+    "用户只问图片或视频内容时只描述附件，不要创建照护记录或成长档案",
+    "App 截图、网页截图、聊天截图、记录页截图和纯文字界面图只可描述，不可入相册或生成照护日志"
+  ]
+}
