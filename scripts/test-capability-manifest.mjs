@@ -1,27 +1,22 @@
-// Capability manifest 防漂移 gate。
-// 保证单一事实源 backend/src/main/resources/agent/capability-manifest.json
-// 与代码/benchmark 一致：结构完整、effectType 真实、enabled 能力都有真实存在的 benchmark 覆盖。
-// 接入 npm run test:agent-l2:unit，manifest 漂移即 CI 失败。
+// Capability manifest 防漂移 + 反向可达校验 gate。
+// 1) manifest 自身结构完整、id 唯一、enabled 能力有真实存在的 benchmark 覆盖。
+// 2) 反向可达校验（Claude×Codex 交叉 review 补强）：enabled 且会写数据的能力，其 effectType
+//    必须能被 effect-apply.mjs 真实落库——manifest 不能声明系统实际无法落地的能力，从结构层
+//    堵住"AI 说能做但系统没实现"。真相源是 effect-apply 的 EFFECT_TYPE_TO_COLLECTION，不是本文件的副本。
+// 接入 npm run test:agent-l2:unit，漂移即 CI 失败。
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scenarios } from "./l2-benchmark/scenarios.mjs";
+import { EFFECT_TYPE_TO_COLLECTION } from "./l2-benchmark/effect-apply.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = path.join(root, "backend/src/main/resources/agent/capability-manifest.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 
-// EffectPolicy 真实支持的落库类型（agent effectDecision.type）。新增 effectType 必须先在后端实现。
-const KNOWN_EFFECT_TYPES = new Set([
-  "careLog",
-  "growthEvent",
-  "growthMeasurement",
-  "reminder",
-  "memory",
-  "expenseItem",
-  "albumItem",
-]);
+// 真相源：effect-apply.mjs 实际能落库的 effectType 集合（不是本文件硬编码的副本）。
+const APPLICABLE_EFFECT_TYPES = new Set(Object.keys(EFFECT_TYPE_TO_COLLECTION));
 
 const scenarioIds = new Set(scenarios.map((s) => s.id));
 const errors = [];
@@ -41,8 +36,12 @@ for (const cap of manifest.capabilities ?? []) {
   if (seenIds.has(cap.id)) errors.push(`能力 id 重复：${cap.id}`);
   seenIds.add(cap.id);
 
-  if (cap.effectType !== null && !KNOWN_EFFECT_TYPES.has(cap.effectType)) {
-    errors.push(`能力 ${id} 的 effectType=${cap.effectType} 不在 EffectPolicy 真实支持集合内（漂移）`);
+  // 反向可达校验：enabled 且会写数据(effectType 非 null)的能力，effectType 必须能真实落库。
+  if (cap.enabled && cap.effectType != null && !APPLICABLE_EFFECT_TYPES.has(cap.effectType)) {
+    errors.push(
+      `能力 ${id} 声明 effectType=${cap.effectType}，但 effect-apply 无法把它落库——` +
+        `manifest 声明了系统实际没有的能力（这正是"AI 说能做但没实现"的根）。`,
+    );
   }
 
   if (cap.enabled) {
@@ -73,7 +72,8 @@ if (errors.length) {
 }
 
 const enabled = manifest.capabilities.filter((c) => c.enabled).length;
+const writeCaps = manifest.capabilities.filter((c) => c.enabled && c.effectType != null).length;
 console.log(
-  `✓ capability-manifest gate passed: ${manifest.capabilities.length} 个能力（${enabled} enabled），` +
-    `effectType 全部真实、enabled 能力均有真实存在的 benchmark 覆盖。`,
+  `✓ capability-manifest gate passed: ${manifest.capabilities.length} 个能力（${enabled} enabled，${writeCaps} 个会写数据）；` +
+    `结构完整、benchmark 覆盖真实存在、会写数据的能力 effectType 全部可被 effect-apply 真实落库（反向可达校验通过）。`,
 );

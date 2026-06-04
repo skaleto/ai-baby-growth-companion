@@ -146,6 +146,19 @@ function hasPendingContent(pending) {
   );
 }
 
+// 反向校验真相源：effectType → app_state collection。manifest 声明的 enabled 能力，
+// 其 effectType 必须能在这里落库，否则就是声明了系统实际没有的能力（防 AI 承诺幻觉）。
+// 需与下方 directCollectionFor + buildCareLogSnapshot(careLog) 的处理保持一致。
+export const EFFECT_TYPE_TO_COLLECTION = {
+  careLog: "careLogs",
+  reminder: "reminders",
+  albumItem: "albumItems",
+  expenseItem: "expenses",
+  growthEvent: "growthEvents",
+  growthMeasurement: "growthMeasurements",
+  memory: "memories",
+};
+
 function directCollectionFor(type) {
   if (type === "reminder") return { collection: "reminders", kind: "reminder" };
   if (type === "albumItem") return { collection: "albumItems", kind: "album" };
