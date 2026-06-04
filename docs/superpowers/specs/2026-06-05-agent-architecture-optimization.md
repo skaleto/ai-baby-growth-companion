@@ -77,6 +77,29 @@
 - **tool use 迁移（P1-2）渐进**：不一次性切换，灰度对比，现有链路保底
 - **manifest 与代码一致性**：靠 P0-1c 的 gate 强制（enabled 能力 effectType 必须真实支持），防止 manifest 漂移成又一份过期文档
 
+## Claude×Codex 交叉 review 共识（2026-06-05）
+
+经与 Codex 两轮交叉 review，本 spec 与发布硬化 spec（`2026-06-05-release-readiness-improvement-design.md`）协调到**一条统一发布路线**。四点关键修正：
+
+### 1. 反向可达校验 gate（Codex 补强，并入 R0.5）
+原 gate（P0-1c）只验 `manifest ↔ benchmark ↔ effectType` 三向。Codex 指出这**不证明能力真实可达**——manifest 可能声明一个有 effectType、有 benchmark、但前端根本没入口的能力，AI 仍会承诺它。补：**`enabled=true` 且会写数据的能力，必须有真实的前端入口 + 后端 effect 落点 + 状态落点**，否则 gate 红。这把"AI 说能做但没实现"从提示层堵到**结构层**——能力矩阵成为 `manifest ↔ benchmark ↔ 真实端到端入口` 的三向活契约。
+
+### 2. 快路径安全约束（与快路径绑定，不可分离）
+P1-1 快路径若实现，**任何医疗/高风险/隐私语境信号一律强制走慢路径**，快路径只接明确低风险单事件记录。可后置的只是快慢路径的**性能优化**；安全约束必须与快路径同时上线，不能分离（否则会把模糊医疗语境当普通记录吞掉）。
+
+### 3. tool use 上架前只 shadow
+P1-2 原生 tool use 迁移在系统已稳定（43 L0/L1 + 124 后端测试）时，上架前**只做 shadow 对比、不切流量**，避免引入模型选 tool / schema 兼容 / 失败重试的新风险。
+
+### 4. agent 优化在统一发布路线中的位置
+| 发布阶段 | agent 相关项 |
+|---|---|
+| **R0.5 最小可内测** | 能力矩阵 grounding（P0-1 ✅）+ **反向校验 gate**（待实现）—— 属上架可信度硬化，不是"新功能" |
+| R1 扩大灰度 | —（让位于短信/Pro/监控/真机）|
+| R2 渠道灰度 | — |
+| **R2 之后 / 技术债** | tool use 迁移、快慢路径分流、prompt caching、渐进披露 |
+
+> **共识核心**：能力矩阵 grounding 是**上架信任硬化**的一部分（AI 承诺幻觉 = 上架风险），优先做；纯性能/架构优化（tool use / 快路径 / caching）推到灰度稳定之后。
+
 ## 验收标准（整体）
 
 - 能力矩阵是单一事实源：改 manifest 即同步 agent 感知 + benchmark 覆盖
