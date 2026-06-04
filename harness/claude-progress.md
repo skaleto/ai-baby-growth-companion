@@ -14,6 +14,146 @@
 
 ## Session Log
 
+### Session 2026-06-04 AI Agent Benchmark 产品功能覆盖补缺
+
+- Goal: 按用户反馈把 agent benchmark 的重点收敛为“覆盖产品功能”，补上成长数据维护、数据关联陪伴等近期新增能力的覆盖视角，而不是只测 agent 能不能返回结构化结果。
+- Completed:
+  - 新增 `docs/superpowers/plans/2026-06-04-agent-product-benchmark-coverage.md`，把产品功能域分成 L0/L1、L2 runnable、fixture skip、known product gap 四类。
+  - 新增 `scripts/l2-benchmark/effect-apply.mjs`，让 L2 runner 在最后一次真实 stream 后模拟前端 apply effectDecision，通过 `PUT /api/app/state/{collection}/{id}` 写入 `careLogs`、`reminders`、`pendingEffects` 等集合，再做 app_state diff。
+  - 修改 `scripts/agent-l2-benchmark.mjs`：每个 scenario 开始前独立 reset app_state；支持 `setupState` 预置 care/growth 数据；报告里展示 Applied effects，并把 known product coverage gaps 与普通 fixture skip 分开。
+  - 扩展 `scripts/l2-benchmark/scenarios.mjs`：新增 `growth-milestone`（成长事件待确认）、`growth-measurement-complete`（身高/体重/头围维护待确认）、`daily-observation-context`（预置喝奶/睡眠/体重后做数据关联陪伴），并补入 `feed-mixed-missing-type`、`sleep-start-boundary`、`multi-care-events`、`vague-reminder-ask` 四个记录边界 L2 场景。
+  - 补齐成长数据维护链路：`RecordSignalExtractor` 抽取身高/体重/头围，`EffectPolicy` 生成 pending `growthMeasurement`，前端 pending effect UI 可编辑确认，`AppStateService` 确认后写入共享 `growthMeasurements`。
+  - 修复真实 L2 暴露的 `vague-reminder-ask` 红线：当模型只用自然语言追问、没有 reminder DTO 时，`EffectPolicy` 规则层兜底生成 `reminder/ask`，保证前端有稳定结构化语义。
+  - 新增 `scripts/test-album-domain.mjs`，把聊天生活照 auto-save、截图 ignore、重复 attachment 去重纳入快速产品规则 benchmark。
+  - 新增 `npm run test:agent-l2:unit`，覆盖 effect apply、产品功能覆盖矩阵和相册 domain 规则。
+  - 继续补齐产品功能矩阵：`expense-record` 现在断言 `pendingEffects.expenses`；新增 `medicine-reminder-pending`、`vaccine-reminder-pending`、`growth-measurement-ambiguous-unit`、`memory-health-pending` 四个 L2 场景。
+  - 新增确定性规则：体重缺单位时走 `growthMeasurement/ask`，显式“记住”健康线索走待确认 `memory`；`医生开的维生素D` 等用药表达进入 medicine risk，提醒保持 pending。
+  - 修复真实 L2 暴露的成长单位红线：当模型把 `体重14` 误整理为成长事件时，`EffectPolicy` 在单位澄清场景下 suppress 模型 `growthEvent`，避免 pendingEffects 旁路写入。
+  - 按用户反馈继续查漏补缺：新增偏好/照护人分工记忆规则，显式“记住小宝喜欢白噪音”和“爸爸哄睡、妈妈喂奶”都进入待确认 `memory`，不直接写长期记忆。
+  - 将资料维护明确成 chat 边界：`把宝宝昵称改成桃桃` 只返回能力边界和资料页指引，不生成记录、pendingEffect 或长期记忆。
+  - 扩展 L2 产品场景：`memory-preference-pending`、`memory-caregiver-pending`、`qa-care-allergy-context`、`caregiver-fatigue-context`、`profile-update-boundary`，覆盖偏好/照护人记忆、基于过敏记忆的育儿问答、低焦虑陪伴和资料修改边界。
+  - 继续补齐成长和问答边界：异常成长测量值（如 `身高999cm`）走 `growthMeasurement/ask` 且不进入 pendingEffects；普通育儿问答（如 `宝宝不爱吃辅食怎么办`）不再误生成辅食 careLog 或模型 memory 草稿。
+  - 新增 `growth-measurement-duplicate-known-gap`，把同日同类型同值成长数据重复维护显式标为 known gap；当前策略层没有 existing growthMeasurements 上下文，后续需要接入后才能从根上防重复。
+  - 按用户再次反馈补齐“成长数据维护”产品面：新增 `growth-measurement-update-boundary`、`growth-measurement-delete-boundary` 两个 L2 场景，覆盖聊天里请求更正/删除已有成长测量时只给边界回应、不改删历史数据、不新增 pendingEffects。
+  - 扩展 `AgentCapabilityContract`：把成长测量数据加入支持的待确认动作，同时把身高/体重/头围的历史更新/更正请求识别为 unsupported mutation；边界文案指向记录页/成长页手动编辑。
+  - 新增 `AppStateControllerTests#upsertingAndDeletingGrowthMeasurementMaintainsSharedData`，覆盖成长页手动维护 API 的同 id 更新和删除。
+  - 修复同日同类型同值成长数据重复维护 known gap：`AgentContextSnapshot` / `AgentContextService` 增加相关 `growthMeasurements`，普通 chat 与 stream 路径都传给 `EffectPolicy`；`今天体重还是7.4kg` 在已有今日体重 7.4kg 时返回 `growthMeasurement/ask` + `missingFields=["duplicate"]`，不新增 pending 草稿。
+  - 将 L2 场景从 `growth-measurement-duplicate-known-gap` 升级为 runnable `growth-measurement-duplicate-boundary`，并扩展规则抽取支持“身高/体重/头围还是/仍是/依然是 X”。
+  - 收紧重复成长数据的最终用户话术：当规则层已经判断为 `missingFields=["duplicate"]`，最终回复直接使用“今天已经有...”的边界问题，不再拼接模型草稿里的“再记一条”。
+  - 新增 L2 `aiTextAssertions` 硬断言层：`scripts/l2-benchmark/assertions.mjs` 统一结构断言，`scripts/test-l2-assertions.mjs` 覆盖只读查询不能追加“我再帮你设置/这个提醒想定”。
+  - 新增只读查询和私密状态边界 L2 场景：`read-only-reminder-list-context`、`read-only-growth-trend-context`、`private-reminder-share-boundary`。
+  - 修复真实 L2 暴露的只读/私密话术问题：提醒列表查询不再因“提醒”关键词触发 vague reminder ask；个人提醒同步给全家返回确定性隐私边界文案，不承诺同步、不追问新提醒时间。
+  - 新增只读日报/周报 L2 场景：`read-only-daily-summary-context`、`read-only-weekly-summary-context`，预置照护、成长和提醒数据后断言只读总结不新增 careLogs/growthMeasurements/reminders/pendingEffects/memories。
+  - 修复真实 L2 暴露的只读总结话术问题：日报/周报查询不再因“奶量/睡眠”关键词触发 careLog ask，也不再给正确总结后追加“告诉我喝了多少 ml / 我再帮你记”。
+  - 针对用户指出“成长数据维护怎么没看到”，重新跑通成长数据维护完整 L2 子集：新增待确认、单位不明、异常值、聊天改/删边界、重复值边界均可见且通过。
+  - 将后端视觉/相册 L2 从占位升级为 runnable：`photo-album` 和 `screenshot-ignore` 使用内置 dataUrl fixture，不再依赖外部图片文件或 upload 预步骤。
+  - 新增全产品 coverage index：`scripts/l2-benchmark/product-coverage-index.mjs` + `docs/agent-product-coverage-index.md`，把 `harness/feature_list.json` 每个 feature 映射到 L2、L0/L1、frontend、backend、cloud、native、docs 或 known-gap 证据层。
+  - 新增 `scripts/test-agent-product-coverage-index.mjs` 并接入 `npm run test:agent-l2:unit`，防止后续新增产品 feature 但没有 benchmark/verification 归属。
+  - 继续查漏补缺 `mobile-001`：新增 `scripts/native-capability-audit.mjs`、`scripts/test-native-capability-audit.mjs`、`docs/native-capability-benchmark.md`，把 ASR/通知/全屏响铃/haptics/原生媒体选择/OTA/安全区键盘拆成逐项 static evidence + device probe 合同。
+  - 将 `test-native-capability-audit` 接入 `npm run test:agent-l2:unit`，并让 `docs/agent-product-coverage-index.md` 与 `scripts/l2-benchmark/product-coverage-index.mjs` 显式引用 capability ids，避免移动端能力再次变成模糊 known gap。
+  - 继续把覆盖粒度从 `harness/feature_list.json` 下钻到 `docs/feature-inventory.md`：新增 `scripts/l2-benchmark/app-function-coverage-index.mjs`、`scripts/test-app-function-coverage-index.mjs`、`docs/app-function-coverage-index.md`，90 个 P0/P1/P2 功能场景均有 coverage owner 或 known gap。
+  - 将 `test-app-function-coverage-index` 接入 `npm run test:agent-l2:unit`，防止后续 feature inventory 新增功能行但没有 benchmark/gate 归属。
+  - 再次按用户反馈查漏补缺：将 `docs/feature-inventory.md` 增加独立“成长数据维护”功能域，并补上 `growthMeasurements` 属于家庭共享数据；行级覆盖从 90 行扩到 97 行。
+  - 新增成长维护必备行：成长入口与最新值、手动新增成长测量、手动删除成长测量、成长测量编辑能力、AI 成长数据待确认、成长数据边界、成长趋势只读查询。
+  - 扩展 `scripts/test-app-function-coverage-index.mjs`：如果成长维护核心行缺失，测试直接失败；`docs/app-function-coverage-index.md` 已明确每一行的 coverage owner 或 known gap。
+  - 扩展 `scripts/frontend-smoke.mjs`：成长页 smoke 现在新增 68.2cm 后删除该历史行，并断言删除后不再出现，覆盖成长测量手动删除前端路径。
+  - 继续关闭成长维护剩余缺口：`GrowthEntryView` 历史测量行新增“编辑”操作，保存复用同 id upsert；`scripts/frontend-smoke.mjs` 覆盖 66.5cm 编辑为 67.1cm、备注更新、旧行消失。
+  - 将 `成长测量编辑能力` 从 app-function known gap 升级为 `covered_by_layer(frontend, backend)`，当前行级覆盖统计变为 97 rows：`covered=15`、`covered_by_layer=52`、`known_gap=30`。
+- Verification run:
+  - RED: `node scripts/test-app-function-coverage-index.mjs` 失败于缺少 `scripts/l2-benchmark/app-function-coverage-index.mjs`。
+  - GREEN: `node scripts/test-app-function-coverage-index.mjs`，输出 `app function coverage index tests passed: 90 inventory rows covered`。
+  - GREEN: `node scripts/l2-benchmark/app-function-coverage-index.mjs`，统计 90 rows：`covered=12`、`covered_by_layer=48`、`known_gap=30`。
+  - GREEN: `npm run test:agent-l2:unit` 包含 `test-app-function-coverage-index` 后通过。
+  - GREEN: `npm run test:agent-benchmark`
+  - GREEN: `bash harness/init.sh` after app function coverage index integration passed `git diff --check`, `npm run build`, and `npm run test:agent-benchmark`.
+  - RED: `node scripts/test-native-capability-audit.mjs` 失败于缺少 `scripts/native-capability-audit.mjs`。
+  - GREEN: `node scripts/test-native-capability-audit.mjs`
+  - GREEN: `npm run test:agent-l2:unit`
+  - GREEN: `bash harness/init.sh` after native capability audit integration passed `git diff --check`, `npm run build`, and `npm run test:agent-benchmark`.
+  - RED: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkDuplicateGrowthMeasurementAsksWithoutPendingDraft test -q` 失败于 `EffectPolicy.decide` 缺少 existing growthMeasurements 参数；修复后再次失败于“体重还是7.4kg”未被抽取，随后补 regex。
+  - RED: `node scripts/test-l2-coverage-matrix.mjs` 失败于 `growth-measurement-duplicate-known-gap` 仍为 `skip=true`。
+  - GREEN: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkDuplicateGrowthMeasurementAsksWithoutPendingDraft test -q`
+  - GREEN: `node scripts/test-l2-coverage-matrix.mjs`
+  - `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only growth-measurement-duplicate-boundary --runs 1`
+  - GREEN: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkDuplicateGrowthMeasurementReplyDoesNotInviteDuplicateRecord test -q`
+  - RED: `node scripts/test-l2-assertions.mjs` 失败于缺少 `scripts/l2-benchmark/assertions.mjs`。
+  - RED: `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only read-only-reminder-list-context,read-only-growth-trend-context,private-reminder-share-boundary --runs 1` 失败于只读提醒查询追加“这个提醒想定在什么时候/我再帮你设置”，私密同步边界出现“我会把...同步给全家”。
+  - RED: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkReadOnlyReminderListDoesNotAppendReminderCreationAsk+benchmarkPrivateReminderShareBoundaryDoesNotPromiseSyncOrAskTime test -q` 失败于 `RecordSignals` 缺少 `readOnlyReminderQuery()` / `privateStateShareRequest()`。
+  - GREEN: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkReadOnlyReminderListDoesNotAppendReminderCreationAsk+benchmarkPrivateReminderShareBoundaryDoesNotPromiseSyncOrAskTime test -q`
+  - GREEN: `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only read-only-reminder-list-context,read-only-growth-trend-context,private-reminder-share-boundary --runs 1`
+  - RED: `node scripts/test-l2-coverage-matrix.mjs` 失败于缺少 `read-only-daily-summary-context`。
+  - RED: `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only read-only-daily-summary-context,read-only-weekly-summary-context --runs 1` 失败于日报被误判为喂养缺字段追问，周报尾部追加“告诉我喝了多少 ml / 我再帮你记”。
+  - RED: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkReadOnlyDailySummaryDoesNotAppendCareLogAsk+benchmarkReadOnlyWeeklySummaryDoesNotAppendCareLogAsk test -q` 失败于 `RecordSignals` 缺少 `readOnlySummaryQuery()`。
+  - GREEN: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkReadOnlyDailySummaryDoesNotAppendCareLogAsk+benchmarkReadOnlyWeeklySummaryDoesNotAppendCareLogAsk test -q`
+  - GREEN: `node scripts/test-l2-coverage-matrix.mjs`
+  - GREEN: `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only read-only-daily-summary-context,read-only-weekly-summary-context --runs 1`
+  - RED: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkGrowthMeasurementHistoryUpdateStaysBoundaryOnly test -q` 失败于 `unsupportedMutationRequest=false`。
+  - RED: `node scripts/test-l2-coverage-matrix.mjs` 失败于缺少 `growth-measurement-update-boundary`。
+  - GREEN: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkGrowthMeasurementHistoryUpdateStaysBoundaryOnly+benchmarkGrowthMeasurementHistoryDeleteStaysBoundaryOnly test -q`
+  - GREEN: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AppStateControllerTests#upsertingAndDeletingGrowthMeasurementMaintainsSharedData test -q`
+  - GREEN: `node scripts/test-l2-coverage-matrix.mjs`
+  - `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only growth-measurement-update-boundary,growth-measurement-delete-boundary --runs 1`
+  - `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests test -q`
+  - `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AppStateControllerTests test -q`
+  - `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" PATH="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:$PATH" /Applications/IntelliJ\ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn -f backend/pom.xml -Dtest=AuthControllerTests test -q`
+  - `npm run test:agent-l2:unit`
+  - `npm run test:agent-benchmark`
+  - `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only feed-complete,feed-mixed-missing-type,sleep-start-boundary,multi-care-events,vague-reminder-ask,growth-milestone,growth-measurement-complete,daily-observation-context --runs 1`
+  - `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only expense-record,growth-measurement-ambiguous-unit,memory-health-pending,medicine-reminder-pending,vaccine-reminder-pending --runs 1`（第一次暴露 `growth-measurement-ambiguous-unit` execution red-line，修复后 5/5 通过）
+  - `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only memory-preference-pending,memory-caregiver-pending,qa-care-allergy-context,caregiver-fatigue-context,profile-update-boundary --runs 1`
+  - `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only growth-measurement-out-of-range,qa-care-no-memory-pollution,growth-measurement-duplicate-known-gap --runs 1`
+  - `npm run verify:frontend`
+  - `curl -fsS -m 3 http://localhost:8300/api/auth/invite/roles?inviteCode=ping`（本地 backend 未启动）
+  - `curl -fsS -m 3 http://localhost:8080/api/auth/invite/roles?inviteCode=ping`（本地 backend 未启动）
+  - `bash harness/init.sh`（通过 `git diff --check`、`npm run build`、`npm run test:agent-benchmark`）
+  - `bash harness/init.sh`（在只读日报/周报补缺后再次通过 `git diff --check`、`npm run build`、`npm run test:agent-benchmark`）
+  - RED: `node scripts/test-l2-coverage-matrix.mjs` 失败于 `photo-album` 仍为 `skip=true`。
+  - GREEN: `npm run test:agent-l2:unit`
+  - GREEN: `L2_BASE_URL=http://localhost:8080 L2_INVITE_CODE=353541 L2_TEST_PHONE=13800009992 L2_TEST_ROLE=妈妈 npm run test:agent-l2 -- --only growth-measurement-complete,growth-measurement-ambiguous-unit,growth-measurement-out-of-range,growth-measurement-update-boundary,growth-measurement-delete-boundary,growth-measurement-duplicate-boundary,photo-album,screenshot-ignore --runs 1`
+  - RED: `node scripts/test-agent-product-coverage-index.mjs` 失败于缺少 `scripts/l2-benchmark/product-coverage-index.mjs`。
+  - GREEN: `node scripts/test-agent-product-coverage-index.mjs`
+  - GREEN: `npm run test:agent-l2:unit`
+  - RED: `node scripts/test-app-function-coverage-index.mjs` 失败于缺少 `P0:成长入口与最新值`，证明 feature inventory / coverage index 没有显式成长维护行。
+  - GREEN: `node scripts/test-app-function-coverage-index.mjs`，输出 `app function coverage index tests passed: 97 inventory rows covered`。
+  - GREEN: `node scripts/l2-benchmark/app-function-coverage-index.mjs`，统计 97 rows：`covered=15`、`covered_by_layer=51`、`known_gap=31`。
+  - GREEN: `npm run test:agent-l2:unit` 包含 97-row app function coverage index 后通过。
+  - GREEN: `npm run verify:frontend` 通过桌面和 6 个移动视口；成长 smoke 覆盖异常值拒绝、有效测量新增、备注展示和新增行删除。
+  - RED: `npm run smoke:frontend` 失败于 `.growth-history li` 中找不到 `编辑` 按钮，证明成长测量编辑入口缺失。
+  - GREEN: `npm run smoke:frontend` 通过桌面和 6 个移动视口；成长 smoke 覆盖历史测量编辑、异常值拒绝、有效测量新增和新增行删除。
+  - GREEN: `npm run verify:frontend` 通过：`npm run build` + `npm run smoke:frontend`，桌面和 6 个移动视口均通过成长测量编辑/新增/删除 smoke。
+- Evidence:
+  - `npm run test:agent-l2:unit` 通过：`L2 effect apply tests passed`、`L2 coverage matrix tests passed`、`album domain tests passed`。
+  - `npm run test:agent-benchmark` 通过 41 tests，`docs/agent-benchmark-results.md` 已更新，新增偏好/照护人记忆待确认、资料修改边界、异常成长值 ask、普通问答 no-memory/no-careLog、成长维护 update/delete chat 边界、成长重复维护 ask/no-write、重复成长数据最终话术不邀请“再记一条”、只读提醒列表不追加新建提醒追问、私密提醒同步边界不承诺同步，并保留健康记忆、健康提醒 pending、成长体重单位歧义 case。
+  - 新增 targeted evidence：成长维护 update/delete chat 边界 L1 通过，成长页手动 `growthMeasurements` update/delete API 通过，L2 coverage matrix 已要求 `growth-measurement-update-boundary` / `growth-measurement-delete-boundary`。
+  - 此前成长/问答边界批次真实 L2 2/2 runnable 通过，覆盖异常成长值 ask/no pendingEffects、普通辅食问答 no-mutation；当时 `growth-measurement-duplicate-known-gap` 作为 known gap 展示，后续已升级为 runnable `growth-measurement-duplicate-boundary`。
+  - `docs/agent-l2-benchmark-results.md` 已刷新为真实 L2 PASS：`growth-measurement-update-boundary`、`growth-measurement-delete-boundary` 2/2 通过；两者均预置已有成长数据后验证 `growthMeasurements` 不增长（1→1）、`pendingEffects` 不增长（0→0），judge 5/5。
+  - `docs/agent-l2-benchmark-results.md` 已刷新为真实 L2 PASS：`growth-measurement-duplicate-boundary` 1/1 通过；结构断言命中 `growthMeasurement/ask`、`missingFields.0=duplicate`，并验证 `growthMeasurements` 1→1、`pendingEffects` 0→0，judge 5/5。
+  - `docs/agent-l2-benchmark-results.md` 已刷新为真实 L2 PASS：`read-only-reminder-list-context`、`read-only-growth-trend-context`、`private-reminder-share-boundary` 3/3 通过；新增 aiText hard assertions 断言不出现“这个提醒想定/我再帮你设置/我会把/已同步”，并验证 `reminders`、`growthMeasurements`、`pendingEffects`、`memories` 不误增长。
+  - `docs/agent-l2-benchmark-results.md` 已刷新为真实 L2 PASS：`read-only-daily-summary-context`、`read-only-weekly-summary-context` 2/2 通过；新增 aiText hard assertions 断言出现 240/3/480/7.4 等 seeded 数据，且不出现“我再帮你记/喝了多少 ml”，并验证 `careLogs`、`growthMeasurements`、`reminders`、`pendingEffects`、`memories` 不误增长。
+  - `docs/agent-l2-benchmark-results.md` 已刷新为真实 L2 PASS：成长维护 + 视觉/相册补缺批次 8/8 通过。成长数据维护 6 个场景覆盖 pending 新增、缺单位 ask、异常值 ask、聊天 update/delete 边界、重复值 ask/no-write；`photo-album` 验证 `albumItems` 0→1 且不新增 care/growth/pending/memory；`screenshot-ignore` 验证 `albumItems`、`pendingEffects` 与其他记录集合均 0→0。
+  - `docs/agent-product-coverage-index.md` 已记录全产品覆盖归属：Agent L2、前端 smoke、AppState controller tests、cloud E2E/native builds/ProTrial tests 分层清楚；`mobile-001` 的 ASR/通知/全屏响铃/haptics/WebView-only 行为保留为 device/native known gap。
+  - `docs/native-capability-benchmark.md` 已记录 `mobile-001` 的逐项 native capability audit：`asr-voice-input`、`local-notifications`、`full-screen-ringing`、`haptics`、`native-media-picker`、`ota-updater`、`safe-area-keyboard`；`node scripts/test-native-capability-audit.mjs` 通过。
+  - `docs/app-function-coverage-index.md` 已记录 90 个 `docs/feature-inventory.md` 功能场景：12 个 covered、48 个 covered_by_layer、30 个 known_gap；`node scripts/test-app-function-coverage-index.mjs` 通过。
+  - `docs/feature-inventory.md` 已拆出独立“成长数据维护”功能域，并把 `growthMeasurements` 写入家庭共享数据；`docs/app-function-coverage-index.md` 已更新为 97 个功能场景：15 个 covered、52 个 covered_by_layer、30 个 known_gap。
+  - 成长维护现在人读可见：入口/最新值、手动新增、手动编辑、手动删除、AI 待确认、单位/异常/重复/改删边界、只读趋势查询均有覆盖归属。
+  - `npm run test:agent-l2:unit` 已包含 `test-agent-product-coverage-index`、`test-native-capability-audit`、`test-app-function-coverage-index` 并通过。
+  - App function coverage index 接入后，`bash harness/init.sh` 通过：`git diff --check`、`npm run build`、`npm run test:agent-benchmark`。
+  - Native capability audit 接入后，`bash harness/init.sh` 通过：`git diff --check`、`npm run build`、`npm run test:agent-benchmark`。
+  - `npm run test:agent-benchmark` 通过 43 tests，新增只读日报/周报不追加 careLog ask 的 L1 回归覆盖，`docs/agent-benchmark-results.md` 已更新。
+  - 只读日报/周报补缺后，`bash harness/init.sh` 通过：`git diff --check`、`npm run build`、`npm run test:agent-benchmark`；`harness/feature_list.json` JSON.parse 通过，8080 无监听进程遗留。
+  - `AppStateControllerTests` 已覆盖确认 pending `growthMeasurements` 后写入共享成长数据，以及手动维护同 id 更新/删除；`npm run verify:frontend` 已通过桌面和 6 个移动 viewport smoke。
+  - `docs/superpowers/specs/2026-06-04-agent-capability-benchmark.md` 的核心场景表已补入成长事件、成长数据维护 runnable case、成长异常值边界、成长维护 update/delete chat 边界、成长重复维护 no-write 边界、数据关联陪伴、记忆细分、资料边界、普通问答 no-memory 和基于记忆的育儿问答。
+  - `harness/feature_list.json` 已记录 L2 benchmark infrastructure 的 fast gate。
+  - 新增健康记忆/健康提醒/成长单位边界后，`bash harness/init.sh` 再次通过：`git diff --check`、`npm run build`、`npm run test:agent-benchmark`。
+- Known risks:
+  - 后端视觉 L2 已 unskip：`photo-album` / `screenshot-ignore` 使用内置 dataUrl fixture 通过；仍待补“保存 previous video 到相册”的多轮附件 hydration 场景。
+  - 成长数据维护已覆盖新增待确认、确认写入、手动前端新增/编辑/删除、手动 API 更新/删除、缺体重单位 ask、异常值 ask、聊天 update/delete 边界、同日同类型同值重复维护 ask/no-write。
+  - 只读产品查询已覆盖提醒列表、成长趋势、今日总结和周趋势；后续可补日报/周报 UI 层 probe 与 conversationSummary API 只读边界。
+  - 记忆能力已有显式健康/偏好/照护人 pending 正向场景，普通问答不误写 memory 也已覆盖；私密提醒同步边界已覆盖，但跨用户/只读角色云端隔离仍需单独 cloud L2。
+  - `mobile-001` 现在有 static/native capability audit，但仍不是设备通过证据；ASR 录音转写、通知送达、全屏响铃、haptics 触感、原生媒体选择、OTA apply、WebView 键盘/安全区仍需 iOS/Android 真机 probe。
+  - 最新 L2 中偏好/照护人记忆的 judge JSON 偶发不可解析，但结构化断言和 app_state 执行均 PASS；后续可增强 judge 输出约束。
+  - 工作区已有 AuthService/AuthControllerTests 本地改动（占位家庭照护人升级逻辑）不是本轮改动；后续合入前需确认登录页 existingMember 不要求角色选择时的兼容性。
+
 ### Session 2026-06-04 生产问题修复：聊天照片自动收藏 + OTA 瘦身 + 相册数据修复
 
 - Goal: 修复用户反馈的 3 个生产问题（聊天发的照片没进相册、上传后等 AI 很久才进相册、最新 OTA 包太大下载慢），并修复用户 13777892890 已丢失的相册数据。

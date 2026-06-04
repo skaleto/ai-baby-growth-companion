@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-02",
+  "lastUpdated": "2026-06-04",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -48,7 +48,8 @@
       "userVisibleBehavior": "Core Agent behaviors such as feeding records, reminder parsing, expense extraction, skill disclosure, and unsafe mutation boundaries are protected by repeatable tests.",
       "status": "passing",
       "verification": [
-        "Run npm run test:agent-benchmark."
+        "Run npm run test:agent-benchmark.",
+        "Run npm run test:agent-l2:unit after changing the L2 runner, scenario matrix, effect-application infrastructure, or album-domain product coverage."
       ],
       "evidence": [
         "2026-05-14 docs/agent-benchmark-results.md reports PASS, 15 tests, 0 failures, including daily summary gentle-copy and private-content boundary cases.",
@@ -62,9 +63,46 @@
         "2026-05-16 npm run test:agent-benchmark passed with 21 tests after fixing async expense persistence to use explicit family/user identity instead of CurrentUser in the stream thread.",
         "2026-05-16 npm run test:agent-benchmark passed with 23 tests after adding visual stream timeout budgeting, cancellation guards, and detailed backend progress events.",
         "2026-05-16 npm run test:agent-benchmark passed with 23 tests after previous-image retry was optimized to use agent-sized JPEG hydration, concurrent expense-recognition batches, and planner-backed persistence intent.",
-        "2026-06-02 npm run test:agent-benchmark passed with 26 tests after adding caregiver-support and high-risk boundary prompt coverage."
+        "2026-06-02 npm run test:agent-benchmark passed with 26 tests after adding caregiver-support and high-risk boundary prompt coverage.",
+        "2026-06-04 npm run test:agent-l2:unit passed after adding L2 effect application and product-function coverage checks for growth milestone, growth measurement, and data-linked companion scenarios.",
+        "2026-06-04 npm run test:agent-benchmark passed with 27 tests after adding growth measurement extraction and pending growthMeasurement decision coverage.",
+        "2026-06-04 npm run test:agent-benchmark passed with 28 tests after adding vague reminder rule fallback coverage when the model omits reminder DTOs.",
+        "2026-06-04 AgentBenchmarkTests and AppStateControllerTests passed after wiring height/weight/headCircumference into pendingEffects.growthMeasurements and confirm-to-growthMeasurements persistence.",
+        "2026-06-04 npm run verify:frontend passed after adding editable pending growth measurement drafts in the Agent confirmation UI.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 8/8 scenarios passing: feed-complete, feed-mixed-missing-type, sleep-start-boundary, multi-care-events, vague-reminder-ask, growth-milestone, growth-measurement-complete, daily-observation-context.",
+        "2026-06-04 npm run test:agent-l2:unit passed after adding album domain coverage for chat photo auto-save, screenshot ignore, and duplicate attachment de-dupe.",
+        "2026-06-04 npm run test:agent-benchmark passed with 31 tests after adding explicit health memory, medicine/vaccine reminder pending, and ambiguous growth weight unit boundary coverage.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 5/5 new scenarios passing: medicine-reminder-pending, vaccine-reminder-pending, growth-measurement-ambiguous-unit, expense-record, memory-health-pending. The first run exposed and then fixed a growth-measurement pendingEffects red-line.",
+        "2026-06-04 bash harness/init.sh passed after the health memory, health reminder, and growth weight unit boundary additions: git diff --check, npm run build, npm run test:agent-benchmark.",
+        "2026-06-04 npm run test:agent-benchmark passed with 33 tests after adding preference/caregiver memory pending coverage and profile-update chat boundary coverage.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 5/5 newest product-gap scenarios passing: memory-preference-pending, memory-caregiver-pending, qa-care-allergy-context, caregiver-fatigue-context, profile-update-boundary.",
+        "2026-06-04 npm run test:agent-benchmark passed with 35 tests after adding out-of-range growth measurement ask/no-pending coverage and generic care Q&A no-memory/no-careLog coverage.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 2/2 newest runnable growth/Q&A boundary scenarios passing: growth-measurement-out-of-range and qa-care-no-memory-pollution; growth-measurement-duplicate-known-gap was reported as a known gap.",
+        "2026-06-04 npm run test:agent-benchmark passed with 37 tests after adding growth measurement history update/delete chat boundary coverage.",
+        "2026-06-04 targeted AgentBenchmarkTests passed after adding growth measurement history update/delete chat boundaries; chat requests to change/delete existing growth data now return non-mutating boundary decisions instead of new pending growthMeasurement drafts.",
+        "2026-06-04 targeted AppStateControllerTests passed for growthMeasurements manual maintenance: same id upsert updates the shared record and delete removes it.",
+        "2026-06-04 node scripts/test-l2-coverage-matrix.mjs passed after adding growth-measurement-update-boundary and growth-measurement-delete-boundary runnable scenarios to the product-function matrix.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 2/2 growth maintenance boundary scenarios passing: growth-measurement-update-boundary and growth-measurement-delete-boundary. Both kept growthMeasurements and pendingEffects unchanged after seeding existing growth data.",
+        "2026-06-04 npm run test:agent-benchmark passed with 39 tests after wiring existing growthMeasurements into duplicate growth measurement detection and ensuring duplicate-growth final copy does not invite another record.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with growth-measurement-duplicate-boundary passing; the scenario seeded existing weight 7.4kg and verified growthMeasurements stayed 1->1 while pendingEffects stayed 0->0.",
+        "2026-06-04 npm run test:agent-benchmark passed with 41 tests after adding read-only reminder query and private reminder sharing boundary coverage.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 3/3 read-only/private-state scenarios passing: read-only-reminder-list-context, read-only-growth-trend-context, private-reminder-share-boundary; aiText hard assertions prevented accidental setup-time asks or sync promises.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 2/2 read-only daily/weekly summary scenarios passing: read-only-daily-summary-context and read-only-weekly-summary-context; the first run exposed a careLog ask tail, then readOnlySummaryQuery fixed it.",
+        "2026-06-04 npm run test:agent-benchmark passed with 43 tests after adding read-only daily/weekly summary coverage and preventing careLog ask tails on summary queries.",
+        "2026-06-04 bash harness/init.sh passed after read-only daily/weekly summary benchmark additions: git diff --check, npm run build, npm run test:agent-benchmark.",
+        "2026-06-04 bash harness/init.sh passed after L2 benchmark infrastructure and growth maintenance boundary changes: git diff --check, npm run build, npm run test:agent-benchmark.",
+        "2026-06-04 npm run test:agent-l2:unit passed after unskipping backend visual/album scenarios and enforcing dataUrl fixtures for photo-album and screenshot-ignore in the coverage matrix.",
+        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 8/8 growth maintenance plus visual/album scenarios passing: growth-measurement-complete, growth-measurement-ambiguous-unit, growth-measurement-out-of-range, growth-measurement-update-boundary, growth-measurement-delete-boundary, growth-measurement-duplicate-boundary, photo-album, screenshot-ignore.",
+        "2026-06-04 node scripts/test-agent-product-coverage-index.mjs passed after adding scripts/l2-benchmark/product-coverage-index.mjs and docs/agent-product-coverage-index.md; every feature_list feature now has explicit coverage ownership or a known gap.",
+        "2026-06-04 node scripts/test-native-capability-audit.mjs passed after adding scripts/native-capability-audit.mjs and docs/native-capability-benchmark.md; mobile-001 is now split into explicit ASR, notification, full-screen ringing, haptics, media picker, OTA, and safe-area/keyboard capability contracts.",
+        "2026-06-04 node scripts/test-app-function-coverage-index.mjs passed after adding scripts/l2-benchmark/app-function-coverage-index.mjs and docs/app-function-coverage-index.md; all 90 docs/feature-inventory.md function rows now have coverage ownership or a known gap.",
+        "2026-06-04 npm run test:agent-l2:unit passed with product coverage index, native capability audit, and app-function coverage index included in the fast L2 infrastructure gate.",
+        "2026-06-04 bash harness/init.sh passed after native capability audit integration: git diff --check, npm run build, npm run test:agent-benchmark.",
+        "2026-06-04 bash harness/init.sh passed after app function coverage index integration: git diff --check, npm run build, npm run test:agent-benchmark.",
+        "2026-06-04 node scripts/test-app-function-coverage-index.mjs passed after splitting docs/feature-inventory.md growth data maintenance into explicit rows; all 97 function rows now have coverage ownership or a known gap.",
+        "2026-06-04 npm run test:agent-l2:unit passed with the 97-row app-function coverage index included in the fast benchmark infrastructure gate."
       ],
-      "notes": "New Agent work should add at least one positive and one boundary benchmark case."
+      "notes": "New Agent work should add at least one positive and one boundary benchmark case. Product-function L2 coverage is tracked in docs/superpowers/plans/2026-06-04-agent-product-benchmark-coverage.md; known gaps should be explicit scenarios, not omitted."
     },
     {
       "id": "agent-002",
@@ -137,7 +175,10 @@
         "2026-05-31 npm run verify:frontend passed after simplifying growth metrics to the MVP recording flow, including profile sex/birth size, invalid height rejection, valid height note entry, and no growth chart rendering across desktop plus six mobile viewports.",
         "2026-06-01 npm run verify:frontend passed on merged main after resolving growth MVP style conflicts with the latest visual refresh work.",
         "2026-06-02 npm run verify:frontend passed after Recording Companion P0 updated 小宝今日观察, stat cards, and chat record feedback.",
-        "2026-06-02 npm run verify:frontend passed after Recording Companion P1 added caregiver note, AI explanation disclosure, and 今日交接; smoke fixture future-reminder date drift was fixed."
+        "2026-06-02 npm run verify:frontend passed after Recording Companion P1 added caregiver note, AI explanation disclosure, and 今日交接; smoke fixture future-reminder date drift was fixed.",
+        "2026-06-04 npm run verify:frontend passed after extending the growth measurement smoke flow to delete the newly added 68.2cm history row and verify it disappears across desktop plus six mobile viewports.",
+        "2026-06-04 npm run smoke:frontend passed after adding the growth measurement inline-edit smoke path: edit seeded 66.5cm to 67.1cm, update the note, verify the old row disappears, then continue add/delete checks.",
+        "2026-06-04 npm run verify:frontend passed after growth measurement inline-edit UI and smoke coverage were added."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -230,6 +271,7 @@
       "userVisibleBehavior": "Native media, reminders, haptics, ASR, OTA, and safe-area behavior are verified on the platform they affect.",
       "status": "in_progress",
       "verification": [
+        "Run node scripts/test-native-capability-audit.mjs to verify static evidence and known-gap ownership for native capabilities.",
         "Run npm run mobile:sync after native-risk changes.",
         "Run npm run build:android:debug for Android package changes.",
         "Run npm run build:ios:debug for iOS package changes when Xcode signing/build environment is ready."
@@ -253,9 +295,11 @@
         "2026-05-16 npm run mobile:sync and npm run build:ios:debug passed after voice hold pointer drift fix.",
         "2026-05-16 OTA 0.1.0-20260516223427 uploaded under baby-companion/mobile-updates; signed download returned 2641156 bytes and checksum c2bb9c56a60b404f2a8ed967996697c2b02fe2da52cb0ee08f70a34e4c9f6592.",
         "2026-05-31 npm run mobile:sync passed, npm run build:ios:debug succeeded for iPhone 17 simulator, and npm run build:android:debug produced android/app/build/outputs/apk/debug/app-debug.apk after growth metrics MVP changes.",
-        "2026-06-02 OTA 0.1.0-20260602232444 deployed from ECS mobile-updates; downloaded bundle returned 3321376 bytes and checksum 087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2."
+        "2026-06-02 OTA 0.1.0-20260602232444 deployed from ECS mobile-updates; downloaded bundle returned 3321376 bytes and checksum 087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2.",
+        "2026-06-04 node scripts/test-native-capability-audit.mjs passed and docs/native-capability-benchmark.md now tracks asr-voice-input, local-notifications, full-screen-ringing, haptics, native-media-picker, ota-updater, and safe-area-keyboard static evidence plus manual probe requirements.",
+        "2026-06-04 bash harness/init.sh passed after native capability audit integration; no native sync/build was required because only benchmark scripts, package scripts, and docs/harness evidence changed."
       ],
-      "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, or WebView-only behavior."
+      "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, native media picker, OTA apply, or WebView-only behavior. The native capability audit is a static contract; real iOS/Android device probes are still required."
     },
     {
       "id": "growth-001",
@@ -274,9 +318,13 @@
         "2026-05-31 mvn -f backend/pom.xml test passed with 204 tests, 0 failures after adding growthMeasurement date sorting.",
         "2026-05-31 bash harness/init.sh passed after the growth MVP simplification; npm run test:agent-benchmark passed with 23 tests.",
         "2026-05-31 npm run mobile:sync, npm run build:ios:debug, and npm run build:android:debug all passed.",
-        "2026-06-01 merged main gate passed: bash harness/init.sh, npm run verify:frontend, and mvn -f backend/pom.xml test with 222 tests, 0 failures, 1 skipped."
+        "2026-06-01 merged main gate passed: bash harness/init.sh, npm run verify:frontend, and mvn -f backend/pom.xml test with 222 tests, 0 failures, 1 skipped.",
+        "2026-06-04 docs/feature-inventory.md and docs/app-function-coverage-index.md now expose growth data maintenance as a dedicated domain: entry/latest values, manual add/delete, AI pending confirmation, boundary handling, read-only trend query, and the remaining inline-edit UI gap.",
+        "2026-06-04 npm run verify:frontend passed after the growth smoke flow verified out-of-range rejection, valid measurement add, note rendering, and delete of the newly added row.",
+        "2026-06-04 growth measurement inline edit shipped in GrowthEntryView and npm run smoke:frontend passed after changing seeded 66.5cm to 67.1cm with an updated note.",
+        "2026-06-04 npm run verify:frontend passed for growth measurement manual add/edit/delete coverage across desktop and six mobile viewports."
       ],
-      "notes": "Percentiles, WHO/WS reference data, preterm correction, AI interpretation, and reminder logic are intentionally out of the MVP scope and documented as future work."
+      "notes": "Percentiles, WHO/WS reference data, preterm correction, AI interpretation, and reminder logic are intentionally out of the MVP scope and documented as future work. Growth measurement manual add/edit/delete is now covered by frontend smoke plus backend same-id upsert/delete tests."
     },
     {
       "id": "shared-records-001",
