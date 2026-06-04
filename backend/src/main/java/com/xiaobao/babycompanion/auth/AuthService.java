@@ -47,6 +47,12 @@ public class AuthService {
     private static final List<String> UNIQUE_FAMILY_ROLES = List.of("爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆");
     private static final List<String> REPEATABLE_FAMILY_ROLES = List.of("月嫂", "保姆", "亲友", "其他");
     private static final Set<String> UNIQUE_FAMILY_ROLE_SET = Set.copyOf(UNIQUE_FAMILY_ROLES);
+    // System-assigned placeholder roles, never chosen by the user: "家庭成员" is what
+    // normalizeRoleName falls back to when no role is supplied; "家庭照护人" is the default the
+    // migration backfill (DatabaseInitializer) and the authenticateToken fallback stamp onto legacy
+    // members that predate role selection. An explicit role pick at login must be allowed to replace
+    // either of them, otherwise migrated members are frozen as the generic caregiver forever.
+    private static final Set<String> PLACEHOLDER_ROLE_NAMES = Set.of("家庭成员", "家庭照护人");
 
     private final AuthProperties properties;
     private final AuthUserRecordService userService;
@@ -524,16 +530,20 @@ public class AuthService {
 
     private void fillPlaceholderMemberIdentity(AuthFamilyMemberRecord member, String roleName, Boolean caregiver) {
         String currentRole = member.getRoleName() == null ? "" : member.getRoleName().trim();
-        if (!"家庭成员".equals(currentRole) && StringUtils.hasText(currentRole)) {
+        if (StringUtils.hasText(currentRole) && !isPlaceholderRole(currentRole)) {
             return;
         }
         requireMemberSelection(roleName, caregiver);
         String nextRole = normalizeRoleName(roleName);
-        if (!"家庭成员".equals(nextRole)) {
+        if (!isPlaceholderRole(nextRole)) {
             validateRoleAvailable(member.getFamilyId(), nextRole, member.getUserId());
             member.setRoleName(nextRole);
             member.setIsCaregiver(Boolean.FALSE.equals(caregiver) ? "false" : "true");
         }
+    }
+
+    private boolean isPlaceholderRole(String roleName) {
+        return roleName != null && PLACEHOLDER_ROLE_NAMES.contains(roleName.trim());
     }
 
     private void validateRoleAvailable(String familyId, String roleName, String excludeUserId) {

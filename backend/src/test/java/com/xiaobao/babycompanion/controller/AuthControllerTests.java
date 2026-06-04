@@ -365,6 +365,29 @@ class AuthControllerTests {
     }
 
     @Test
+    void repeatedLoginUpgradesSystemAssignedCaregiverPlaceholder() throws Exception {
+        // Legacy members backfilled by the migration (DatabaseInitializer) or the authenticateToken
+        // fallback carry the system-assigned "家庭照护人" placeholder rather than a chosen identity.
+        // Re-login with a real role must replace it, otherwise their records keep showing the generic
+        // caregiver label instead of e.g. 妈妈/爸爸 in a multi-caregiver family.
+        login("13800000140", "AUTH-CODE-4", "妈妈", true);
+        AuthUserRecord user = userService.getOne(
+                new QueryWrapper<AuthUserRecord>().eq("phone", "13800000140"), false);
+        AuthFamilyMemberRecord member = familyMemberService.getOne(
+                new QueryWrapper<AuthFamilyMemberRecord>().eq("user_id", user.getId()), false);
+        member.setRoleName("家庭照护人");
+        familyMemberService.updateById(member);
+
+        String secondToken = login("13800000140", "AUTH-CODE-4", "外婆", false);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.member.roleName").value("外婆"))
+                .andExpect(jsonPath("$.member.caregiver").value(false));
+    }
+
+    @Test
     void revokesSessionOnLogout() throws Exception {
         String token = login("13800000113", "AUTH-CODE-3");
 
