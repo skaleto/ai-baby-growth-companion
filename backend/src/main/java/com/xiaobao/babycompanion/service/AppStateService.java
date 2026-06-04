@@ -283,6 +283,7 @@ public class AppStateService {
         JsonNode effect = parse(record.getPayloadJson());
         String now = Instant.now().toString();
         saveEffectObject(growthService, GrowthEventRecord::new, effect.get("growthEvent"), "growth", now, familyId, userId);
+        saveEffectArray(growthMeasurementService, GrowthMeasurementRecord::new, effect.get("growthMeasurements"), "growthMeasurement", now, familyId, userId);
         saveCareLogPatch(effect.get("careLogPatch"), now, familyId, userId);
         saveEffectArray(reminderService, ReminderRecord::new, effect.get("reminders"), "reminder", now, familyId, userId);
         saveEffectArray(memoryService, MemoryItemRecord::new, effect.get("memories"), "memory", now, familyId, userId);

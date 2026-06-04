@@ -3981,6 +3981,12 @@ body.keyboard-open .expense-optional-fields {
   gap: 10px;
 }
 
+.growth-entry-editing {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .growth-entry-row {
   display: flex;
   gap: 10px;
@@ -4008,6 +4014,12 @@ body.keyboard-open .expense-optional-fields {
   font-size: 13px;
   color: var(--muted);
   pointer-events: none;
+}
+
+.growth-entry-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
 }
 
 .growth-history {
@@ -4100,14 +4112,33 @@ body.keyboard-open .expense-optional-fields {
   white-space: nowrap;
 }
 
-.growth-history-delete {
+.growth-history-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.growth-history-edit,
+.growth-history-delete {
   background: none;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: var(--danger, #c0635a);
   font-size: 12px;
   padding: 0;
   cursor: pointer;
+}
+
+.growth-history-edit {
+  color: var(--accent-strong, #4b9e6b);
+}
+
+.growth-history-edit.active {
+  font-weight: 700;
 }
 
 .growth-empty {

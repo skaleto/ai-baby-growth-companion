@@ -57,6 +57,7 @@ public class AgentContextService {
 
         List<JsonNode> careLogs = relevant(state.careLogs(), dates, topics, "date", 10);
         List<JsonNode> growthEvents = relevant(state.growthEvents(), dates, topics, "date", 6);
+        List<JsonNode> growthMeasurements = relevant(state.growthMeasurements(), dates, topics, "date", 12);
         List<JsonNode> reminders = relevant(state.reminders(), dates, topics, "createdAt", 6);
         List<JsonNode> memories = relevant(state.memories(), dates, topics, "updatedAt", 8);
         List<JsonNode> recentMessages = tail(state.messages(), 12);
@@ -69,6 +70,7 @@ public class AgentContextService {
                 recentMessages,
                 careLogs,
                 growthEvents,
+                growthMeasurements,
                 reminders,
                 memories,
                 conversationSummary,
@@ -85,6 +87,7 @@ public class AgentContextService {
 
         List<JsonNode> careLogs = state.careLogs() == null ? List.of() : state.careLogs();
         List<JsonNode> growthEvents = state.growthEvents() == null ? List.of() : state.growthEvents();
+        List<JsonNode> growthMeasurements = state.growthMeasurements() == null ? List.of() : state.growthMeasurements();
         List<JsonNode> reminders = state.reminders() == null ? List.of() : state.reminders();
         List<JsonNode> pendingEffects = state.pendingEffects() == null ? List.of() : state.pendingEffects();
 
@@ -106,6 +109,7 @@ public class AgentContextService {
                 ? arrayOrEmpty(pagePendingSummaries)
                 : pendingEffectSummaries(pendingEffects));
         context.put("recentGrowthEvents", tail(growthEvents, 5));
+        context.put("recentGrowthMeasurements", recentGrowthMeasurements(growthMeasurements, 8));
         context.put("trends", trends);
         return context;
     }
@@ -121,6 +125,13 @@ public class AgentContextService {
     private List<JsonNode> recentCareLogs(List<JsonNode> careLogs, int limit) {
         if (careLogs == null || careLogs.isEmpty()) return List.of();
         List<JsonNode> sorted = new ArrayList<>(careLogs);
+        sorted.sort((left, right) -> dateText(right, "date").compareTo(dateText(left, "date")));
+        return sorted.stream().limit(limit).toList();
+    }
+
+    private List<JsonNode> recentGrowthMeasurements(List<JsonNode> growthMeasurements, int limit) {
+        if (growthMeasurements == null || growthMeasurements.isEmpty()) return List.of();
+        List<JsonNode> sorted = new ArrayList<>(growthMeasurements);
         sorted.sort((left, right) -> dateText(right, "date").compareTo(dateText(left, "date")));
         return sorted.stream().limit(limit).toList();
     }

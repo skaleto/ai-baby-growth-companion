@@ -338,7 +338,8 @@ public class AgentRuntime {
                     plan,
                     contextSnapshot.babyProfile(),
                     skillEffectCandidates(expenseRecognitionResult, expensePersistenceResult, expenseRecordingIntent),
-                    expensePersistenceResult
+                    expensePersistenceResult,
+                    contextSnapshot.growthMeasurements()
             );
             completeAgentRunTrace(agentRun, finalResponse.effectDecisions());
             return finalResponse;
@@ -812,6 +813,7 @@ public class AgentRuntime {
                     signals,
                     plan,
                     contextSnapshot.babyProfile(),
+                    contextSnapshot.growthMeasurements(),
                     familyId,
                     principal.userId(),
                     inputType(request),
@@ -1426,6 +1428,7 @@ public class AgentRuntime {
             RecordSignals signals,
             AgentPlan plan,
             JsonNode babyProfile,
+            List<JsonNode> existingGrowthMeasurements,
             String familyId,
             String userId,
             String inputType,
@@ -1490,7 +1493,7 @@ public class AgentRuntime {
                     sources
             );
             recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, requestId.get(), null, true, null, false, true);
-            AgentChatResponse finalResponse = withSafetyAlertsAndDecisions(parsed, userMessage, signals, plan, babyProfile, skillCandidates, expensePersistenceResult);
+            AgentChatResponse finalResponse = withSafetyAlertsAndDecisions(parsed, userMessage, signals, plan, babyProfile, skillCandidates, expensePersistenceResult, existingGrowthMeasurements);
             completeAfterFinalSent(emitter, agentRun, finalResponse);
             emitter.complete();
         } catch (Exception exception) {
@@ -1599,6 +1602,19 @@ public class AgentRuntime {
             List<AgentEffectDecision> skillCandidates,
             ExpensePersistenceResult expensePersistenceResult
     ) {
+        return withSafetyAlertsAndDecisions(response, userMessage, signals, plan, babyProfile, skillCandidates, expensePersistenceResult, List.of());
+    }
+
+    AgentChatResponse withSafetyAlertsAndDecisions(
+            AgentChatResponse response,
+            String userMessage,
+            RecordSignals signals,
+            AgentPlan plan,
+            JsonNode babyProfile,
+            List<AgentEffectDecision> skillCandidates,
+            ExpensePersistenceResult expensePersistenceResult,
+            List<JsonNode> existingGrowthMeasurements
+    ) {
         var alerts = safetyGuard.assess(userMessage, response.aiText());
         AgentChatResponse withSafety = new AgentChatResponse(
                 response.aiText(),
@@ -1620,7 +1636,7 @@ public class AgentRuntime {
         boolean albumSaveOnly = isAlbumSaveOnly(plan, userMessage);
         List<AgentEffectDecision> decisions = albumSaveOnly
                 ? new ArrayList<>()
-                : new ArrayList<>(effectPolicy.decide(withSafety, signals, babyProfile, userMessage, skillCandidates));
+                : new ArrayList<>(effectPolicy.decide(withSafety, signals, babyProfile, userMessage, skillCandidates, existingGrowthMeasurements));
         if (isExpenseReadOnlyResult(expensePersistenceResult)) {
             decisions.removeIf((decision) -> "expenseItem".equals(decision.type()));
         }
@@ -1778,6 +1794,9 @@ public class AgentRuntime {
     }
 
     private String adjustedAiText(String aiText, RecordSignals signals, List<AgentEffectDecision> decisions, ExpensePersistenceResult expensePersistenceResult) {
+        if (signals.privateStateShareRequest()) {
+            return AgentCapabilityContract.privateStateShareMessage();
+        }
         if (signals.unsupportedMutationRequest()) {
             return containsBoundaryExplanation(aiText) ? aiText : AgentCapabilityContract.unsupportedMutationMessage();
         }
@@ -1795,6 +1814,9 @@ public class AgentRuntime {
                 .filter(StringUtils::hasText)
                 .findFirst()
                 .orElse("");
+        if (StringUtils.hasText(askQuestion) && hasDuplicateGrowthMeasurementAsk(decisions)) {
+            return askQuestion;
+        }
         if (StringUtils.hasText(askQuestion)) return mergeFollowUpQuestion(aiText, askQuestion);
 
         boolean hasPendingExpense = decisions.stream().anyMatch((decision) ->
@@ -1804,6 +1826,18 @@ public class AgentRuntime {
             return "我已识别出这笔支出，并整理成待确认的账本草稿。请确认后我再记到账本里。";
         }
         return aiText;
+    }
+
+    private boolean hasDuplicateGrowthMeasurementAsk(List<AgentEffectDecision> decisions) {
+        return decisions.stream().anyMatch((decision) -> {
+            if (!"growthMeasurement".equals(decision.type()) || !"ask".equals(decision.mode())) return false;
+            JsonNode missingFields = decision.payload() == null ? null : decision.payload().path("missingFields");
+            if (missingFields == null || !missingFields.isArray()) return false;
+            for (JsonNode missingField : missingFields) {
+                if ("duplicate".equals(missingField.asText())) return true;
+            }
+            return false;
+        });
     }
 
     private boolean looksLikeExpenseConfirmation(String text) {

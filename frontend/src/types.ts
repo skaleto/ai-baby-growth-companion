@@ -390,6 +390,7 @@ export interface PendingEffect {
   status: "pending";
   tags: string[];
   growthEvent?: GrowthEvent;
+  growthMeasurements?: GrowthMeasurement[];
   careLogPatch?: Partial<CareLog>;
   reminders: Reminder[];
   memories: MemoryItem[];
@@ -493,7 +494,7 @@ export interface AgentChatResponse {
 export interface EffectDecision {
   id: string;
   mode: "auto" | "pending" | "ask" | "ignore";
-  type: "careLog" | "reminder" | "growthEvent" | "memory" | "albumItem" | "expenseItem";
+  type: "careLog" | "reminder" | "growthEvent" | "growthMeasurement" | "memory" | "albumItem" | "expenseItem";
   payload?: unknown;
   confidence?: number;
   reason?: string;

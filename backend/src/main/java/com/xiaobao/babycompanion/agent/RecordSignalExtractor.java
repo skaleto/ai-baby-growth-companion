@@ -32,6 +32,9 @@ public class RecordSignalExtractor {
     private static final Pattern SLEEP = Pattern.compile("(?:睡了|睡眠|睡觉)\\s*(\\d+(?:\\.\\d+)?)\\s*(?:个)?(?:小时|h)");
     private static final Pattern WAKES = Pattern.compile("(?:夜醒|醒了|醒来)\\s*(\\d{1,2})\\s*次");
     private static final Pattern TEMPERATURE = Pattern.compile("(3[5-9](?:\\.\\d)?)\\s*(?:度|℃)");
+    private static final Pattern HEIGHT = Pattern.compile("(?:身高|身长)\\s*(?:还是|仍是|依然是)?\\s*(\\d{2,3}(?:\\.\\d+)?)\\s*(?:cm|厘米|公分)?");
+    private static final Pattern WEIGHT = Pattern.compile("(?:体重|重量)\\s*(?:还是|仍是|依然是)?\\s*(\\d{1,2}(?:\\.\\d+)?)\\s*(kg|KG|公斤|千克|斤)?");
+    private static final Pattern HEAD_CIRCUMFERENCE = Pattern.compile("头围\\s*(?:还是|仍是|依然是)?\\s*(\\d{2,3}(?:\\.\\d+)?)\\s*(?:cm|厘米|公分)?");
     private static final Pattern INTERVAL_REMINDER = Pattern.compile("(?:每隔|每)\\s*(半|\\d+(?:\\.\\d+)?|[一二两三四五六七八九十]+)\\s*(?:个)?\\s*(分钟|分|小时)");
     private static final Pattern MONEY = Pattern.compile("(?:¥|￥)?\\s*(\\d+(?:\\.\\d{1,2})?)\\s*(?:元|块|rmb|RMB)?");
     private static final Pattern PART_SEPARATOR = Pattern.compile("[。；;\\n，,]");
@@ -65,6 +68,14 @@ public class RecordSignalExtractor {
         boolean concreteCare = false;
         ReminderSignal reminderSignal = reminderSignal(text);
         ExpenseSignal expenseSignal = expenseSignal(text, date);
+        List<GrowthMeasurementSignal> growthMeasurements = growthMeasurementSignals(text, date);
+        boolean explicitMemoryRequest = explicitMemoryRequest(text);
+        boolean questionOnly = questionOnly(text);
+        List<MemorySignal> memorySignals = memorySignals(text, explicitMemoryRequest);
+        boolean readOnlyReminderQuery = readOnlyReminderQuery(text);
+        boolean readOnlySummaryQuery = readOnlySummaryQuery(text);
+        boolean privateStateShareRequest = privateStateShareRequest(text);
+        boolean readOnlyProductQuery = readOnlyReminderQuery || readOnlySummaryQuery;
 
         if (matches(text, feedingPattern())) topics.add("feeding");
         if (matches(text, "睡|夜醒|哄睡")) topics.add("sleep");
@@ -73,16 +84,18 @@ public class RecordSignalExtractor {
         if (matches(text, "疫苗|接种")) topics.add("vaccine");
         if (matches(text, "提醒|闹钟|记得|定时|每隔\\s*(\\d+|[一二两三四五六七八九十半]+)\\s*(分钟|分|小时)")) topics.add("reminder");
         if (expenseSignal != null || matches(text, "记账|花了|花费|支出|买了|购买|付款|多少钱|价格")) topics.add("expense");
+        if (!growthMeasurements.isEmpty() || matches(text, "成长|身高|身长|体重|头围|翻身|抬头|会坐|会爬|站|走路|长牙")) topics.add("growth");
+        if (!memorySignals.isEmpty()) topics.add("memory");
 
         if (matches(text, "发烧|发热|退烧|体温")) risks.add("fever");
-        if (matches(text, "药|用药|吃药|剂量")) risks.add("medicine");
+        if (matches(text, "药|用药|吃药|喂药|剂量|维生素|滴剂|医生开")) risks.add("medicine");
         if (matches(text, "疫苗|接种")) risks.add("vaccine");
         if (matches(text, "过敏|皮疹|疹子")) risks.add("allergy");
         if (matches(text, "呼吸|喘|憋气")) risks.add("breathing");
         if (matches(text, "摔|撞|磕|出血|外伤")) risks.add("injury");
 
-        Integer milkTimes = firstInt(TIMES, text);
-        Integer milkMl = firstInt(ML, text);
+        Integer milkTimes = questionOnly || readOnlyProductQuery ? null : firstInt(TIMES, text);
+        Integer milkMl = questionOnly || readOnlyProductQuery ? null : firstInt(ML, text);
         if (milkTimes != null) {
             care.put("milkTimes", milkTimes);
         }
@@ -90,7 +103,7 @@ public class RecordSignalExtractor {
             int totalMl = milkTimes != null && text.matches(".*(每次|每顿).*") ? milkMl * milkTimes : milkMl;
             care.put("milkMl", totalMl);
             concreteCare = true;
-        } else if (topics.contains("feeding") && (milkTimes != null || incompleteFeeding(text))) {
+        } else if (!questionOnly && !readOnlyProductQuery && topics.contains("feeding") && (milkTimes != null || incompleteFeeding(text))) {
             clarifications.add(new CareRecordClarification(
                     "feeding",
                     List.of("milkMl"),
@@ -100,27 +113,27 @@ public class RecordSignalExtractor {
             ));
         }
 
-        Double sleepHours = firstDouble(SLEEP, text);
+        Double sleepHours = questionOnly || readOnlyProductQuery ? null : firstDouble(SLEEP, text);
         if (sleepHours != null) {
             care.put("sleepHours", sleepHours);
             concreteCare = true;
         }
-        Integer wakes = firstInt(WAKES, text);
+        Integer wakes = questionOnly || readOnlyProductQuery ? null : firstInt(WAKES, text);
         if (wakes != null) {
             care.put("wakes", wakes);
             concreteCare = true;
         }
-        Double temperature = firstDouble(TEMPERATURE, text);
+        Double temperature = questionOnly || readOnlyProductQuery ? null : firstDouble(TEMPERATURE, text);
         if (temperature != null) {
             care.put("temperature", temperature);
             concreteCare = true;
         }
-        if (matches(text, "便便|大便|拉了|臭臭")) {
+        if (!questionOnly && !readOnlyProductQuery && matches(text, "便便|大便|拉了|臭臭")) {
             care.put("poop", compact(text));
             concreteCare = true;
         }
 
-        List<ObjectNode> extractedEvents = extractCareEvents(text, date, today);
+        List<ObjectNode> extractedEvents = questionOnly || readOnlyProductQuery ? List.of() : extractCareEvents(text, date, today);
         int milkEventTotal = 0;
         int milkEventCount = 0;
         double sleepEventTotal = 0;
@@ -147,7 +160,7 @@ public class RecordSignalExtractor {
             concreteCare = true;
         }
 
-        if (topics.contains("sleep") && sleepHours == null && incompleteSleep(text)) {
+        if (!questionOnly && !readOnlyProductQuery && topics.contains("sleep") && sleepHours == null && incompleteSleep(text)) {
             clarifications.add(new CareRecordClarification(
                     "sleep",
                     List.of("durationHours"),
@@ -178,8 +191,126 @@ public class RecordSignalExtractor {
                 clarifications,
                 AgentCapabilityContract.unsupportedMutationRequest(text),
                 reminderSignal,
-                expenseSignal
+                expenseSignal,
+                growthMeasurements,
+                memorySignals,
+                explicitMemoryRequest,
+                readOnlyReminderQuery,
+                readOnlySummaryQuery,
+                privateStateShareRequest
         );
+    }
+
+    private boolean readOnlyReminderQuery(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        return matches(text, "提醒")
+                && matches(text, "哪些|列表|列一下|查看|看看|看一下|还有|有没有")
+                && matches(text, "不用新增|不要新增|不新增|不用创建|不要创建|不用设置|不要设置|只看|只列|列一下就好");
+    }
+
+    private boolean readOnlySummaryQuery(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        boolean summaryIntent = matches(text, "总结|小结|复盘|趋势|交接|状态|日报|周报|这周|今天.*怎么样|看一下");
+        boolean existingOnly = matches(text, "只基于|只看|已有记录|不要新增|不新增|不要生成新记录|不用新增|不要记录|别记录|不要保存|只读");
+        boolean productData = matches(text, "记录|奶量|喝奶|喂奶|睡眠|体重|成长|照护|提醒|交接|状态");
+        return summaryIntent && existingOnly && productData;
+    }
+
+    private boolean privateStateShareRequest(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        boolean stateObject = matches(text, "提醒|记忆|聊天|消息|待办|复诊");
+        boolean shareIntent = matches(text, "同步|共享|分享|发给|给全家|全家|家人|爷爷奶奶|让.*看到|让.*能看到");
+        boolean privateHint = matches(text, "我的|个人|私密|产后|复诊");
+        return stateObject && shareIntent && privateHint;
+    }
+
+    private boolean explicitMemoryRequest(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        return matches(text, "记住|记一下|以后.*注意|以后.*提醒.*注意|长期记住");
+    }
+
+    private boolean questionOnly(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        boolean question = matches(text, "怎么办|怎么|为什么|可以吗|能不能|要不要|需不需要|正常吗|吗\\??|吗？|\\?|？");
+        boolean recordIntent = matches(text, "帮我记|记录|记一下|维护|保存|归档|记到");
+        return question && !recordIntent;
+    }
+
+    private List<MemorySignal> memorySignals(String text, boolean explicitMemory) {
+        if (!StringUtils.hasText(text)) return List.of();
+        if (!explicitMemory) return List.of();
+        if (matches(text, "过敏|疹子|皮疹|湿疹|发烧|咳嗽|用药|吃药|疫苗|接种")) {
+            return List.of(new MemorySignal(compact(text), "health", 0.84));
+        }
+        if (matches(text, "喜欢|不喜欢|偏好|习惯|睡前|白噪音|安抚")) {
+            return List.of(new MemorySignal(compact(text), "preference", 0.78));
+        }
+        if (matches(text, "(爸爸|妈妈|奶奶|爷爷|姥姥|姥爷|外婆|外公|照护人).*(负责|主要|哄睡|喂奶|洗澡|陪玩)")
+                || matches(text, "(负责|主要|哄睡|喂奶|洗澡|陪玩).*(爸爸|妈妈|奶奶|爷爷|姥姥|姥爷|外婆|外公|照护人)")) {
+            return List.of(new MemorySignal(compact(text), "caregiver", 0.8));
+        }
+        return List.of();
+    }
+
+    private List<GrowthMeasurementSignal> growthMeasurementSignals(String text, String date) {
+        List<GrowthMeasurementSignal> signals = new ArrayList<>();
+        addMeasurementSignal(signals, "height", HEIGHT, text, date, false);
+        addMeasurementSignal(signals, "weight", WEIGHT, text, date, true);
+        addMeasurementSignal(signals, "headCircumference", HEAD_CIRCUMFERENCE, text, date, false);
+        return signals;
+    }
+
+    private void addMeasurementSignal(
+            List<GrowthMeasurementSignal> signals,
+            String type,
+            Pattern pattern,
+            String text,
+            String date,
+            boolean weight
+    ) {
+        Matcher matcher = pattern.matcher(text);
+        if (!matcher.find()) return;
+        Double value = doubleValue(matcher.group(1));
+        if (value == null || value <= 0) return;
+        String unit = weight && matcher.groupCount() >= 2 ? matcher.group(2) : "";
+        boolean needsClarification = weight && !StringUtils.hasText(unit);
+        if (weight && "斤".equals(unit)) {
+            value = value * 0.5;
+        }
+        value = roundOneDecimal(value);
+        if (outOfRangeMeasurement(type, value)) {
+            signals.add(new GrowthMeasurementSignal(
+                    type,
+                    value,
+                    date,
+                    compact(text),
+                    true,
+                    "range",
+                    growthRangeQuestion(type, value)
+            ));
+            return;
+        }
+        signals.add(new GrowthMeasurementSignal(type, value, date, compact(text), needsClarification));
+    }
+
+    private boolean outOfRangeMeasurement(String type, double value) {
+        return switch (type) {
+            case "height" -> value < 30 || value > 130;
+            case "weight" -> value < 1 || value > 40;
+            case "headCircumference" -> value < 20 || value > 65;
+            default -> false;
+        };
+    }
+
+    private String growthRangeQuestion(String type, double value) {
+        String label = switch (type) {
+            case "height" -> "身高";
+            case "weight" -> "体重";
+            case "headCircumference" -> "头围";
+            default -> "成长数据";
+        };
+        String unit = "weight".equals(type) ? "kg" : "cm";
+        return "这个" + label + " " + value + unit + " 看起来不太像宝宝当前的成长数据。可以再确认一下数值和单位吗？确认后我再帮你维护到成长数据里。";
     }
 
     private ExpenseSignal expenseSignal(String text, String date) {

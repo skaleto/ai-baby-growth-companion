@@ -839,6 +839,7 @@ export const normalizePendingEffect = (value: Partial<PendingEffect> | null | un
   status: "pending",
   tags: stringList(value?.tags),
   growthEvent: value?.growthEvent ? normalizeGrowthEvent(value.growthEvent, index) : undefined,
+  growthMeasurements: Array.isArray(value?.growthMeasurements) ? value.growthMeasurements.map(normalizeGrowthMeasurement) : [],
   careLogPatch: value?.careLogPatch ? normalizeCareLog(value.careLogPatch, index) : undefined,
   reminders: Array.isArray(value?.reminders) ? value.reminders.map(normalizeReminder) : [],
   memories: Array.isArray(value?.memories) ? value.memories.map(normalizeMemoryItem) : [],

@@ -49,10 +49,23 @@ public class EffectPolicy {
             String userMessage,
             List<AgentEffectDecision> skillCandidates
     ) {
+        return decide(response, signals, babyProfile, userMessage, skillCandidates, List.of());
+    }
+
+    public List<AgentEffectDecision> decide(
+            AgentChatResponse response,
+            RecordSignals signals,
+            JsonNode babyProfile,
+            String userMessage,
+            List<AgentEffectDecision> skillCandidates,
+            List<JsonNode> existingGrowthMeasurements
+    ) {
         List<AgentEffectDecision> decisions = new ArrayList<>();
         boolean highRisk = highRisk(response.safetyAlerts(), signals);
         decisions.addAll(completenessPolicy.boundaryDecisions(signals));
         if (signals.unsupportedMutationRequest()) return decisions;
+        if (signals.privateStateShareRequest()) return decisions;
+        if (signals.readOnlySummaryQuery()) return decisions;
         AgentEffectDecision expenseDecision = expenseSignalDecision(signals);
         List<AgentEffectDecision> expenseSkillCandidates = listOrEmpty(skillCandidates).stream()
                 .filter(this::validExpenseSkillCandidate)
@@ -95,23 +108,116 @@ public class EffectPolicy {
             ));
         }
 
-        if (response.growthEvent() != null) {
+        boolean hasGrowthMeasurementClarification = signals.growthMeasurements().stream()
+                .anyMatch(GrowthMeasurementSignal::needsClarification);
+        if (response.growthEvent() != null && !hasGrowthMeasurementClarification) {
             decisions.add(decision("pending", "growthEvent", objectMapper.valueToTree(response.growthEvent()), 0.72, "成长事件需要确认后归档。", "model"));
         }
-        AgentEffectDecision ruleReminder = reminderSignalDecision(signals, highRisk);
-        if (ruleReminder != null) {
-            decisions.add(ruleReminder);
-        } else {
-            listOrEmpty(response.reminders()).forEach((reminder) ->
-                    decisions.add(reminderDecision(reminder, signals, highRisk))
-            );
+        signals.growthMeasurements().forEach((measurement) -> {
+            if (measurement.needsClarification()) {
+                decisions.add(decision(
+                        "ask",
+                        "growthMeasurement",
+                        growthMeasurementClarificationPayload(measurement),
+                        0.86,
+                        "成长测量数据缺少必要单位，需要确认后再维护。",
+                        "rule"
+                ));
+                return;
+            }
+            AgentEffectDecision duplicate = duplicateGrowthMeasurementDecision(measurement, existingGrowthMeasurements);
+            if (duplicate != null) {
+                decisions.add(duplicate);
+                return;
+            }
+            decisions.add(decision(
+                    "pending",
+                    "growthMeasurement",
+                    growthMeasurementPayload(measurement),
+                    0.88,
+                    "识别到明确的成长测量数据，请确认后维护到成长记录。",
+                    "rule"
+            ));
+        });
+        AgentEffectDecision ruleReminder = null;
+        if (!signals.readOnlyReminderQuery()) {
+            ruleReminder = reminderSignalDecision(signals, highRisk);
+            if (ruleReminder != null) {
+                decisions.add(ruleReminder);
+            } else {
+                List<AgentEffectDecision> modelReminderDecisions = listOrEmpty(response.reminders()).stream()
+                        .map((reminder) -> reminderDecision(reminder, signals, highRisk))
+                        .toList();
+                if (modelReminderDecisions.isEmpty()) {
+                    AgentEffectDecision vagueReminderAsk = vagueReminderClarification(signals);
+                    if (vagueReminderAsk != null) {
+                        decisions.add(vagueReminderAsk);
+                    }
+                } else {
+                    decisions.addAll(modelReminderDecisions);
+                }
+            }
         }
         if (!suppressModelMemories(signals, ruleReminder)) {
-            listOrEmpty(response.memories()).forEach((memory) ->
-                    decisions.add(decision("pending", "memory", objectMapper.valueToTree(memory), 0.66, "长期记忆需要确认后保存。", "model"))
+            signals.memorySignals().forEach((memory) ->
+                    decisions.add(decision("pending", "memory", memoryPayload(memory), 0.78, "重要线索需要确认后保存为长期记忆。", "rule"))
             );
+            if (signals.explicitMemoryRequest()) {
+                listOrEmpty(response.memories()).forEach((memory) ->
+                        decisions.add(decision("pending", "memory", objectMapper.valueToTree(memory), 0.66, "长期记忆需要确认后保存。", "model"))
+                );
+            }
         }
         return decisions;
+    }
+
+    private AgentEffectDecision duplicateGrowthMeasurementDecision(GrowthMeasurementSignal measurement, List<JsonNode> existingGrowthMeasurements) {
+        JsonNode existing = matchingGrowthMeasurement(measurement, existingGrowthMeasurements);
+        if (existing == null) return null;
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("topic", "growthMeasurement");
+        ArrayNode missingFields = objectMapper.createArrayNode();
+        missingFields.add("duplicate");
+        payload.set("missingFields", missingFields);
+        payload.put("type", measurement.type());
+        payload.put("value", measurement.value());
+        payload.put("date", measurement.date());
+        payload.put("existingId", text(existing, "id"));
+        payload.put("question", "今天已经有一条" + growthMeasurementLabel(measurement.type())
+                + " " + measurement.value() + growthMeasurementUnit(measurement.type())
+                + " 的成长数据了，我先不重复维护。若要更正这条数据，可以到成长页编辑。");
+        if (StringUtils.hasText(measurement.note())) {
+            payload.put("note", measurement.note());
+        }
+        return decision("ask", "growthMeasurement", payload, 0.9, "同日同类型同值成长数据已经存在，不重复生成待确认草稿。", "rule");
+    }
+
+    private JsonNode matchingGrowthMeasurement(GrowthMeasurementSignal measurement, List<JsonNode> existingGrowthMeasurements) {
+        if (measurement == null || measurement.needsClarification()) return null;
+        if (!StringUtils.hasText(measurement.type()) || !StringUtils.hasText(measurement.date()) || measurement.value() == null) {
+            return null;
+        }
+        for (JsonNode existing : listOrEmpty(existingGrowthMeasurements)) {
+            if (existing == null || existing.isNull()) continue;
+            if (!measurement.type().equals(text(existing, "type"))) continue;
+            if (!measurement.date().equals(text(existing, "date"))) continue;
+            if (Math.abs(number(existing, "value") - measurement.value()) > 0.01) continue;
+            return existing;
+        }
+        return null;
+    }
+
+    private String growthMeasurementLabel(String type) {
+        return switch (type) {
+            case "height" -> "身高";
+            case "weight" -> "体重";
+            case "headCircumference" -> "头围";
+            default -> "成长数据";
+        };
+    }
+
+    private String growthMeasurementUnit(String type) {
+        return "weight".equals(type) ? "kg" : "cm";
     }
 
     private boolean validExpenseSkillCandidate(AgentEffectDecision decision) {
@@ -236,6 +342,47 @@ public class EffectPolicy {
         return Math.round(value * 100.0) / 100.0;
     }
 
+    private ObjectNode growthMeasurementPayload(GrowthMeasurementSignal measurement) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putNull("id");
+        payload.put("type", measurement.type());
+        payload.put("value", measurement.value());
+        payload.put("date", measurement.date());
+        if (StringUtils.hasText(measurement.note())) {
+            payload.put("note", measurement.note());
+        }
+        return payload;
+    }
+
+    private ObjectNode growthMeasurementClarificationPayload(GrowthMeasurementSignal measurement) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("topic", "growthMeasurement");
+        ArrayNode missingFields = objectMapper.createArrayNode();
+        String field = StringUtils.hasText(measurement.clarificationField()) ? measurement.clarificationField() : "unit";
+        missingFields.add(field);
+        payload.set("missingFields", missingFields);
+        payload.put("type", measurement.type());
+        payload.put("value", measurement.value());
+        payload.put("date", measurement.date());
+        payload.put("question", StringUtils.hasText(measurement.clarificationQuestion())
+                ? measurement.clarificationQuestion()
+                : "这次体重是按斤还是公斤记录？确认单位后，我再帮你维护到成长数据里。");
+        if (StringUtils.hasText(measurement.note())) {
+            payload.put("note", measurement.note());
+        }
+        return payload;
+    }
+
+    private ObjectNode memoryPayload(MemorySignal memory) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putNull("id");
+        payload.put("text", memory.text());
+        payload.put("category", memory.category());
+        payload.put("confidence", memory.confidence());
+        payload.putNull("updatedAt");
+        return payload;
+    }
+
     private AgentEffectDecision reminderSignalDecision(RecordSignals signals, boolean highRisk) {
         ReminderSignal signal = signals.reminderSignal();
         if (signal == null || !"interval".equals(signal.kind())) return null;
@@ -305,6 +452,16 @@ public class EffectPolicy {
 
     private boolean suppressModelMemories(RecordSignals signals, AgentEffectDecision ruleReminder) {
         return ruleReminder != null || (signals.topics().contains("reminder") && !signals.concreteCareLog());
+    }
+
+    private AgentEffectDecision vagueReminderClarification(RecordSignals signals) {
+        if (!signals.topics().contains("reminder")) return null;
+        if (signals.explicitReminderTime()) return null;
+        ObjectNode ask = objectMapper.createObjectNode();
+        ask.put("topic", "reminder");
+        ask.putArray("missingFields").add("提醒时间");
+        ask.put("question", "这个提醒想定在什么时候？告诉我具体时间后，我再帮你设置。");
+        return decision("ask", "reminder", ask, 0.82, "提醒时间不明确，需要补充具体时间。", "rule");
     }
 
     private String formatIntervalText(int minutes) {

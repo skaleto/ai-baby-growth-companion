@@ -1,4 +1,4 @@
-import { ChevronLeft, Save, LineChart } from "lucide-react";
+import { ChevronLeft, PencilLine, Save, LineChart } from "lucide-react";
 import { StorySelect } from "../components/StorySelect";
 import { GROWTH_MEASUREMENT_META, GROWTH_MEASUREMENT_TYPES } from "../appOptions";
 import type { BabyProfile, GrowthMeasurement, GrowthMeasurementType } from "../types";
@@ -8,14 +8,18 @@ export type GrowthEntryViewProps = {
   growthMeasurements: GrowthMeasurement[];
   canCaregive: boolean;
   draft: { type: GrowthMeasurementType; value: string; date: string; note: string };
+  editingMeasurementId: string;
   onDraftChange: (next: GrowthEntryViewProps["draft"]) => void;
   onSubmit: (e: React.FormEvent) => void;
+  onEdit: (measurement: GrowthMeasurement) => void;
+  onCancelEdit: () => void;
   onDelete: (id: string) => void;
   onClose: () => void;
 };
 
 export function GrowthEntryView(props: GrowthEntryViewProps) {
-  const { profile, growthMeasurements, canCaregive, draft, onDraftChange, onSubmit, onDelete, onClose } = props;
+  const { profile, growthMeasurements, canCaregive, draft, editingMeasurementId, onDraftChange, onSubmit, onEdit, onCancelEdit, onDelete, onClose } = props;
+  const isEditing = Boolean(editingMeasurementId);
 
   return (
     <section className="milestone-screen" aria-label="宝宝成长">
@@ -36,6 +40,7 @@ export function GrowthEntryView(props: GrowthEntryViewProps) {
         </div>
         {canCaregive ? (
           <form className="growth-entry-form" onSubmit={onSubmit}>
+            {isEditing ? <p className="growth-entry-editing">正在编辑这条成长数据。保存后会更新历史记录。</p> : null}
             <div className="growth-entry-row">
               <StorySelect
                 ariaLabel="测量项"
@@ -81,10 +86,17 @@ export function GrowthEntryView(props: GrowthEntryViewProps) {
                 }
               />
             </div>
-            <button type="submit" className="screen-action-button">
-              <Save size={16} />
-              记录一笔
-            </button>
+            <div className="growth-entry-actions">
+              <button type="submit" className="screen-action-button">
+                <Save size={16} />
+                {isEditing ? "保存修改" : "记录一笔"}
+              </button>
+              {isEditing ? (
+                <button type="button" className="screen-action-button quiet" onClick={onCancelEdit}>
+                  取消编辑
+                </button>
+              ) : null}
+            </div>
           </form>
         ) : (
           <p className="readonly-copy">当前身份仅可查看，记录成长数据需要照护人操作。</p>
@@ -133,13 +145,23 @@ export function GrowthEntryView(props: GrowthEntryViewProps) {
                           <span>{item.date}</span>
                           {item.note ? <span className="growth-history-note">{item.note}</span> : null}
                           {canCaregive ? (
-                            <button
-                              type="button"
-                              className="growth-history-delete"
-                              onClick={() => onDelete(item.id)}
-                            >
-                              删除
-                            </button>
+                            <div className="growth-history-actions">
+                              <button
+                                type="button"
+                                className={`growth-history-edit ${editingMeasurementId === item.id ? "active" : ""}`}
+                                onClick={() => onEdit(item)}
+                              >
+                                <PencilLine size={13} />
+                                {editingMeasurementId === item.id ? "编辑中" : "编辑"}
+                              </button>
+                              <button
+                                type="button"
+                                className="growth-history-delete"
+                                onClick={() => onDelete(item.id)}
+                              >
+                                删除
+                              </button>
+                            </div>
                           ) : null}
                         </div>
                       </li>

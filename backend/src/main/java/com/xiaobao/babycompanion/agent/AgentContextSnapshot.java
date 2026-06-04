@@ -10,6 +10,7 @@ public record AgentContextSnapshot(
         List<JsonNode> recentMessages,
         List<JsonNode> careLogs,
         List<JsonNode> growthEvents,
+        List<JsonNode> growthMeasurements,
         List<JsonNode> reminders,
         List<JsonNode> memories,
         JsonNode conversationSummary,

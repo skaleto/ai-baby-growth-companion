@@ -623,6 +623,76 @@ class AppStateControllerTests {
     }
 
     @Test
+    void confirmingPendingGrowthMeasurementsPersistsSharedGrowthData() throws Exception {
+        mockMvc.perform(put("/api/app/state/pendingEffects/effect-growth-measurements")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "effect-growth-measurements",
+                                  "status": "pending",
+                                  "createdAt": "2026-06-04T09:21:42Z",
+                                  "growthMeasurements": [
+                                    {"id": "growth-measurement-height", "type": "height", "value": 68.2, "date": "2026-06-04", "note": "身高68.2cm"},
+                                    {"id": "growth-measurement-weight", "type": "weight", "value": 7.4, "date": "2026-06-04", "note": "体重7.4kg"},
+                                    {"id": "growth-measurement-head", "type": "headCircumference", "value": 42.0, "date": "2026-06-04", "note": "头围42cm"}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/app/state/pending-effects/effect-growth-measurements/confirm")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.pendingEffects.length()").value(0))
+                .andExpect(jsonPath("$.state.growthMeasurements.length()").value(3))
+                .andExpect(jsonPath("$.state.growthMeasurements[?(@.type == 'height')].value").value(org.hamcrest.Matchers.hasItem(68.2)))
+                .andExpect(jsonPath("$.state.growthMeasurements[?(@.type == 'weight')].value").value(org.hamcrest.Matchers.hasItem(7.4)))
+                .andExpect(jsonPath("$.state.growthMeasurements[?(@.type == 'headCircumference')].value").value(org.hamcrest.Matchers.hasItem(42.0)));
+    }
+
+    @Test
+    void upsertingAndDeletingGrowthMeasurementMaintainsSharedData() throws Exception {
+        mockMvc.perform(put("/api/app/state/growthMeasurements/growth-weight-maintenance")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "growth-weight-maintenance",
+                                  "type": "weight",
+                                  "value": 7.4,
+                                  "date": "2026-06-04",
+                                  "note": "初始体重"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.growthMeasurements.length()").value(1))
+                .andExpect(jsonPath("$.state.growthMeasurements[0].value").value(7.4));
+
+        mockMvc.perform(put("/api/app/state/growthMeasurements/growth-weight-maintenance")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "growth-weight-maintenance",
+                                  "type": "weight",
+                                  "value": 7.5,
+                                  "date": "2026-06-04",
+                                  "note": "更正体重"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.growthMeasurements.length()").value(1))
+                .andExpect(jsonPath("$.state.growthMeasurements[0].value").value(7.5))
+                .andExpect(jsonPath("$.state.growthMeasurements[0].note").value("更正体重"));
+
+        mockMvc.perform(delete("/api/app/state/growthMeasurements/growth-weight-maintenance")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.growthMeasurements.length()").value(0));
+    }
+
+    @Test
     void confirmingPendingExpenseWithGeneratedIndexIdDoesNotOverwriteExistingExpense() throws Exception {
         mockMvc.perform(put("/api/app/state/expenses/expense-0")
                         .header(HttpHeaders.AUTHORIZATION, bearer())

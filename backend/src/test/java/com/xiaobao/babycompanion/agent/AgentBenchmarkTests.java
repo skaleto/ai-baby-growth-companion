@@ -10,6 +10,10 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.xiaobao.babycompanion.auth.CurrentUser;
+import com.xiaobao.babycompanion.config.AgentRuntimeProperties;
+import com.xiaobao.babycompanion.config.DeepSeekProperties;
+import com.xiaobao.babycompanion.config.DoubaoProperties;
 import com.xiaobao.babycompanion.dto.agent.AgentAttachment;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLog;
 import com.xiaobao.babycompanion.dto.agent.AgentCareLogEvent;
@@ -18,9 +22,11 @@ import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentEffectDecision;
 import com.xiaobao.babycompanion.dto.agent.AgentExpense;
+import com.xiaobao.babycompanion.dto.agent.AgentGrowthEvent;
 import com.xiaobao.babycompanion.dto.agent.AgentMemory;
 import com.xiaobao.babycompanion.dto.agent.AgentReminder;
 import com.xiaobao.babycompanion.dto.agent.AgentSafetyAlert;
+import com.xiaobao.babycompanion.service.ExpensePersistenceResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -112,6 +118,328 @@ class AgentBenchmarkTests {
     }
 
     @Test
+    void benchmarkMedicineAndVaccineRemindersStayPending() {
+        var medicineDecisions = policy.decide(
+                response(null, List.of(reminder("用药提醒", "schedule", "once", "notification", "明天 09:00", "2026-06-05T09:00:00+08:00", null)), List.of(), List.of(), List.of()),
+                extractor.extract("明天上午9点提醒我给宝宝吃医生开的维生素D")
+        );
+        var vaccineDecisions = policy.decide(
+                response(null, List.of(reminder("疫苗提醒", "schedule", "once", "notification", "下周二 09:00", "2026-06-09T09:00:00+08:00", null)), List.of(), List.of(), List.of()),
+                extractor.extract("下周二上午9点提醒我带小宝去社区医院打疫苗")
+        );
+
+        assertThat(medicineDecisions).hasSize(1);
+        assertThat(medicineDecisions.get(0).type()).isEqualTo("reminder");
+        assertThat(medicineDecisions.get(0).mode()).isEqualTo("pending");
+        assertThat(medicineDecisions.get(0).reason()).contains("用药");
+        assertThat(vaccineDecisions).hasSize(1);
+        assertThat(vaccineDecisions.get(0).type()).isEqualTo("reminder");
+        assertThat(vaccineDecisions.get(0).mode()).isEqualTo("pending");
+        assertThat(vaccineDecisions.get(0).reason()).contains("疫苗");
+    }
+
+    @Test
+    void benchmarkGrowthMeasurementsBecomePendingDrafts() {
+        String message = "今天身高68.2cm，体重7.4kg，头围42cm，帮我维护到成长数据里";
+        RecordSignals signals = extractor.extract(message);
+
+        assertThat(signals.topics()).contains("growth");
+        assertThat(signals.growthMeasurements()).hasSize(3);
+        assertThat(signals.growthMeasurements()).extracting(GrowthMeasurementSignal::type)
+                .containsExactly("height", "weight", "headCircumference");
+
+        var decisions = policy.decide(response(null, List.of(), List.of(), List.of(), List.of()), signals);
+
+        assertThat(decisions).hasSize(3);
+        assertThat(decisions).allMatch((decision) -> "pending".equals(decision.mode()));
+        assertThat(decisions).allMatch((decision) -> "growthMeasurement".equals(decision.type()));
+        assertThat(decisions).extracting((decision) -> decision.payload().path("value").asDouble())
+                .containsExactly(68.2, 7.4, 42.0);
+    }
+
+    @Test
+    void benchmarkAmbiguousGrowthWeightUnitAsksInsteadOfPendingDraft() {
+        String message = "今天体重14，帮我维护到成长数据里";
+        RecordSignals signals = extractor.extract(message);
+
+        assertThat(signals.topics()).contains("growth");
+
+        var decisions = policy.decide(
+                responseWithGrowthEvent(new AgentGrowthEvent(null, "measurement", "体重14", "2026-05-13", "今天体重14", false, null, List.of("成长"))),
+                signals
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).type()).isEqualTo("growthMeasurement");
+        assertThat(decisions.get(0).mode()).isEqualTo("ask");
+        assertThat(decisions.get(0).payload().path("question").asText()).contains("斤").contains("公斤");
+    }
+
+    @Test
+    void benchmarkOutOfRangeGrowthMeasurementAsksInsteadOfPendingDraft() {
+        String message = "今天身高999cm，帮我维护到成长数据里";
+        RecordSignals signals = extractor.extract(message);
+
+        assertThat(signals.topics()).contains("growth");
+
+        var decisions = policy.decide(
+                responseWithGrowthEvent(new AgentGrowthEvent(null, "measurement", "身高999cm", "2026-05-13", "今天身高999cm", false, null, List.of("成长"))),
+                signals
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).type()).isEqualTo("growthMeasurement");
+        assertThat(decisions.get(0).mode()).isEqualTo("ask");
+        assertThat(decisions.get(0).payload().path("question").asText()).contains("身高").contains("确认");
+    }
+
+    @Test
+    void benchmarkGrowthMeasurementHistoryUpdateStaysBoundaryOnly() {
+        String message = "把今天体重7.4kg改成7.5kg";
+        RecordSignals signals = extractor.extract(message);
+
+        assertThat(signals.topics()).contains("growth");
+        assertThat(signals.unsupportedMutationRequest()).isTrue();
+
+        var decisions = policy.decide(
+                responseWithGrowthEvent(new AgentGrowthEvent(null, "measurement", "体重7.5kg", "2026-05-13", "更正体重", false, null, List.of("成长"))),
+                signals,
+                objectMapper.createObjectNode(),
+                message
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("ignore");
+        assertThat(decisions.get(0).payload().path("question").asText()).contains("成长数据").contains("成长页");
+        assertThat(AgentCapabilityContract.unsupportedMutationMessage()).contains("记录页").contains("修改");
+    }
+
+    @Test
+    void benchmarkGrowthMeasurementHistoryDeleteStaysBoundaryOnly() {
+        String message = "删掉今天的体重记录";
+        RecordSignals signals = extractor.extract(message);
+
+        assertThat(signals.topics()).contains("growth");
+        assertThat(signals.unsupportedMutationRequest()).isTrue();
+
+        var decisions = policy.decide(response(null, List.of(), List.of(), List.of(), List.of()), signals);
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("ignore");
+        assertThat(decisions.get(0).payload().path("question").asText()).contains("成长数据").contains("成长页");
+    }
+
+    @Test
+    void benchmarkDuplicateGrowthMeasurementAsksWithoutPendingDraft() {
+        String message = "今天体重还是7.4kg，帮我维护到成长数据里";
+        RecordSignals signals = extractor.extract(message);
+        ObjectNode existing = objectMapper.createObjectNode();
+        existing.put("id", "growth-weight-today");
+        existing.put("type", "weight");
+        existing.put("value", 7.4);
+        existing.put("date", "2026-05-13");
+        existing.put("note", "已有同日体重");
+
+        var decisions = policy.decide(
+                response(null, List.of(), List.of(), List.of(), List.of()),
+                signals,
+                objectMapper.createObjectNode(),
+                message,
+                List.<AgentEffectDecision>of(),
+                List.of(existing)
+        );
+
+        assertThat(signals.growthMeasurements()).hasSize(1);
+        assertThat(signals.growthMeasurements().get(0).type()).isEqualTo("weight");
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).type()).isEqualTo("growthMeasurement");
+        assertThat(decisions.get(0).mode()).isEqualTo("ask");
+        assertThat(decisions.get(0).payload().path("question").asText()).contains("今天").contains("体重").contains("7.4");
+    }
+
+    @Test
+    void benchmarkDuplicateGrowthMeasurementReplyDoesNotInviteDuplicateRecord() {
+        String message = "今天体重还是7.4kg，帮我维护到成长数据里";
+        RecordSignals signals = extractor.extract(message);
+        ObjectNode existing = objectMapper.createObjectNode();
+        existing.put("id", "growth-weight-today");
+        existing.put("type", "weight");
+        existing.put("value", 7.4);
+        existing.put("date", signals.growthMeasurements().get(0).date());
+        existing.put("note", "已有同日体重");
+
+        AgentChatResponse finalResponse = runtimeForBenchmark().withSafetyAlertsAndDecisions(
+                aiTextOnlyResponse("需要我帮你再记一条今天的体重吗？还是想修改之前那条？"),
+                message,
+                signals,
+                null,
+                objectMapper.createObjectNode(),
+                List.of(),
+                ExpensePersistenceResult.empty(),
+                List.of(existing)
+        );
+
+        assertThat(finalResponse.aiText()).contains("已经有").contains("体重").contains("7.4");
+        assertThat(finalResponse.aiText()).doesNotContain("再记一条");
+        assertThat(finalResponse.effectDecisions()).hasSize(1);
+        assertThat(finalResponse.effectDecisions().get(0).mode()).isEqualTo("ask");
+    }
+
+    @Test
+    void benchmarkReadOnlyReminderListDoesNotAppendReminderCreationAsk() {
+        String message = "今天还有哪些提醒？帮我列一下就好，不用新增";
+        RecordSignals signals = extractor.extract(message);
+
+        AgentChatResponse finalResponse = runtimeForBenchmark().withSafetyAlertsAndDecisions(
+                aiTextOnlyResponse("今天有一个提醒：社区医院疫苗预约，时间在今天 15:30。"),
+                message,
+                signals,
+                null,
+                objectMapper.createObjectNode(),
+                List.of(),
+                ExpensePersistenceResult.empty(),
+                List.of()
+        );
+
+        assertThat(signals.readOnlyReminderQuery()).isTrue();
+        assertThat(finalResponse.aiText()).contains("社区医院疫苗预约");
+        assertThat(finalResponse.aiText()).doesNotContain("这个提醒想定");
+        assertThat(finalResponse.aiText()).doesNotContain("我再帮你设置");
+        assertThat(finalResponse.effectDecisions()).isEmpty();
+    }
+
+    @Test
+    void benchmarkReadOnlyDailySummaryDoesNotAppendCareLogAsk() {
+        String message = "请只基于今天已有记录，帮我总结一下今天的奶量、睡眠和需要交接的点，不要新增任何记录";
+        RecordSignals signals = extractor.extract(message);
+
+        AgentChatResponse finalResponse = runtimeForBenchmark().withSafetyAlertsAndDecisions(
+                aiTextOnlyResponse("今天已有记录：奶量 240ml，睡眠 3 小时，晚上留意湿疹提醒。"),
+                message,
+                signals,
+                null,
+                objectMapper.createObjectNode(),
+                List.of(),
+                ExpensePersistenceResult.empty(),
+                List.of()
+        );
+
+        assertThat(signals.readOnlySummaryQuery()).isTrue();
+        assertThat(finalResponse.effectDecisions()).isEmpty();
+        assertThat(finalResponse.aiText()).contains("240").contains("3");
+        assertThat(finalResponse.aiText()).doesNotContain("喝了多少 ml");
+        assertThat(finalResponse.aiText()).doesNotContain("我再帮你记");
+    }
+
+    @Test
+    void benchmarkReadOnlyWeeklySummaryDoesNotAppendCareLogAsk() {
+        String message = "请只看这周已有记录，帮我总结奶量、睡眠和体重趋势，不要生成新记录";
+        RecordSignals signals = extractor.extract(message);
+
+        AgentChatResponse finalResponse = runtimeForBenchmark().withSafetyAlertsAndDecisions(
+                aiTextOnlyResponse("这周奶量从 420ml 到 480ml，睡眠从 5.5 小时到 6.5 小时，体重 7.4kg。"),
+                message,
+                signals,
+                null,
+                objectMapper.createObjectNode(),
+                List.of(),
+                ExpensePersistenceResult.empty(),
+                List.of()
+        );
+
+        assertThat(signals.readOnlySummaryQuery()).isTrue();
+        assertThat(finalResponse.effectDecisions()).isEmpty();
+        assertThat(finalResponse.aiText()).contains("480").contains("7.4");
+        assertThat(finalResponse.aiText()).doesNotContain("喝了多少 ml");
+        assertThat(finalResponse.aiText()).doesNotContain("我再帮你记");
+    }
+
+    @Test
+    void benchmarkPrivateReminderShareBoundaryDoesNotPromiseSyncOrAskTime() {
+        String message = "把我的产后复诊提醒同步给全家，让爷爷奶奶也都能看到";
+        RecordSignals signals = extractor.extract(message);
+
+        AgentChatResponse finalResponse = runtimeForBenchmark().withSafetyAlertsAndDecisions(
+                aiTextOnlyResponse("好的，我会把“产后复诊”提醒同步给全家，这样爷爷奶奶也能看到了。"),
+                message,
+                signals,
+                null,
+                objectMapper.createObjectNode(),
+                List.of(),
+                ExpensePersistenceResult.empty(),
+                List.of()
+        );
+
+        assertThat(signals.privateStateShareRequest()).isTrue();
+        assertThat(finalResponse.aiText()).contains("不能").contains("自动同步");
+        assertThat(finalResponse.aiText()).doesNotContain("我会把");
+        assertThat(finalResponse.aiText()).doesNotContain("已同步");
+        assertThat(finalResponse.aiText()).doesNotContain("他们就能看到了");
+        assertThat(finalResponse.aiText()).doesNotContain("这个提醒想定");
+        assertThat(finalResponse.effectDecisions()).isEmpty();
+    }
+
+    @Test
+    void benchmarkGenericCareQuestionSuppressesModelMemoryCandidate() {
+        var decisions = policy.decide(
+                response(null, List.of(), List.of(new AgentMemory(null, "小宝不爱吃辅食", "preference", 0.62, null)), List.of(), List.of()),
+                extractor.extract("宝宝不爱吃辅食怎么办")
+        );
+
+        assertThat(decisions).isEmpty();
+    }
+
+    @Test
+    void benchmarkExplicitHealthMemoryBecomesPendingDraft() {
+        String message = "记住一下，小宝吃鸡蛋会起疹子，以后要注意";
+        RecordSignals signals = extractor.extract(message);
+
+        var decisions = policy.decide(response(null, List.of(), List.of(), List.of(), List.of()), signals);
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).type()).isEqualTo("memory");
+        assertThat(decisions.get(0).mode()).isEqualTo("pending");
+        assertThat(decisions.get(0).payload().path("category").asText()).isEqualTo("health");
+        assertThat(decisions.get(0).payload().path("text").asText()).contains("鸡蛋").contains("疹子");
+    }
+
+    @Test
+    void benchmarkExplicitPreferenceAndCaregiverMemoriesBecomePendingDrafts() {
+        var preferenceDecisions = policy.decide(
+                response(null, List.of(), List.of(), List.of(), List.of()),
+                extractor.extract("记住一下，小宝喜欢睡前听白噪音")
+        );
+        var caregiverDecisions = policy.decide(
+                response(null, List.of(), List.of(), List.of(), List.of()),
+                extractor.extract("记住一下，晚上主要是爸爸哄睡，妈妈负责喂奶")
+        );
+
+        assertThat(preferenceDecisions).hasSize(1);
+        assertThat(preferenceDecisions.get(0).type()).isEqualTo("memory");
+        assertThat(preferenceDecisions.get(0).mode()).isEqualTo("pending");
+        assertThat(preferenceDecisions.get(0).payload().path("category").asText()).isEqualTo("preference");
+        assertThat(preferenceDecisions.get(0).payload().path("text").asText()).contains("白噪音");
+        assertThat(caregiverDecisions).hasSize(1);
+        assertThat(caregiverDecisions.get(0).type()).isEqualTo("memory");
+        assertThat(caregiverDecisions.get(0).mode()).isEqualTo("pending");
+        assertThat(caregiverDecisions.get(0).payload().path("category").asText()).isEqualTo("caregiver");
+        assertThat(caregiverDecisions.get(0).payload().path("text").asText()).contains("爸爸").contains("妈妈");
+    }
+
+    @Test
+    void benchmarkProfileUpdateRequestIsBoundaryOnly() {
+        RecordSignals signals = extractor.extract("把宝宝昵称改成桃桃");
+
+        assertThat(signals.unsupportedMutationRequest()).isTrue();
+        var decisions = policy.decide(response(null, List.of(), List.of(), List.of(), List.of()), signals);
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("ignore");
+        assertThat(decisions.get(0).payload().path("question").asText()).contains("资料页");
+        assertUserFacingTextIsNatural(decisions.get(0));
+    }
+
+    @Test
     void benchmarkHighRiskFeverStaysPending() {
         var decisions = policy.decide(
                 response(
@@ -193,6 +521,20 @@ class AgentBenchmarkTests {
 
         assertThat(decisions).hasSize(1);
         assertThat(decisions.get(0).mode()).isEqualTo("ask");
+        assertThat(decisions.get(0).payload().path("question").asText()).contains("具体时间");
+        assertUserFacingTextIsNatural(decisions.get(0));
+    }
+
+    @Test
+    void benchmarkVagueReminderAsksEvenWhenModelOmitsReminderDto() {
+        var decisions = policy.decide(
+                response(null, List.of(), List.of(), List.of(), List.of()),
+                extractor.extract("过会儿提醒我喝奶")
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("ask");
+        assertThat(decisions.get(0).type()).isEqualTo("reminder");
         assertThat(decisions.get(0).payload().path("question").asText()).contains("具体时间");
         assertUserFacingTextIsNatural(decisions.get(0));
     }
@@ -541,6 +883,70 @@ class AgentBenchmarkTests {
                 "benchmark-trace",
                 "benchmark-fixture",
                 "benchmark-request"
+        );
+    }
+
+    private AgentChatResponse responseWithGrowthEvent(AgentGrowthEvent growthEvent) {
+        return new AgentChatResponse(
+                "好的",
+                List.of(),
+                growthEvent,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "benchmark-trace",
+                "benchmark-fixture",
+                "benchmark-request"
+        );
+    }
+
+    private AgentChatResponse aiTextOnlyResponse(String aiText) {
+        return new AgentChatResponse(
+                aiText,
+                List.of(),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("default-baby-companion"),
+                "benchmark-trace",
+                "benchmark-fixture",
+                "benchmark-request"
+        );
+    }
+
+    private AgentRuntime runtimeForBenchmark() {
+        return new AgentRuntime(
+                new DeepSeekProperties(),
+                new DoubaoProperties(),
+                objectMapper,
+                planner,
+                null,
+                null,
+                null,
+                extractor,
+                policy,
+                new CurrentUser(),
+                skillRegistry,
+                skillDisclosureService,
+                new AgentRuntimeProperties(),
+                new SkillRouter(skillDisclosureService),
+                new ExpenseRecognitionSkill(objectMapper),
+                null,
+                new ToolRegistry(List.of()),
+                new SafetyGuard(),
+                null,
+                Runnable::run,
+                clock
         );
     }
 

@@ -453,6 +453,14 @@ type PendingGrowthDraft = {
   summary: string;
 };
 
+type PendingGrowthMeasurementDraft = {
+  id: string;
+  type: GrowthMeasurementType;
+  value: string;
+  date: string;
+  note: string;
+};
+
 type PendingCareDraft = {
   date: string;
   milkMl: string;
@@ -466,6 +474,7 @@ type PendingCareDraft = {
 
 type PendingEffectDraft = {
   growthEvent?: PendingGrowthDraft;
+  growthMeasurements: PendingGrowthMeasurementDraft[];
   careLogPatch?: PendingCareDraft;
   reminders: PendingReminderDraft[];
   memories: PendingMemoryDraft[];
@@ -1463,6 +1472,13 @@ const pendingDraftFromEffect = (effect: PendingEffect): PendingEffectDraft => ({
         summary: effect.growthEvent.summary ?? "",
       }
     : undefined,
+  growthMeasurements: (effect.growthMeasurements ?? []).map((measurement) => ({
+    id: measurement.id,
+    type: measurement.type,
+    value: measurement.value ? String(measurement.value) : "",
+    date: measurement.date || selectedDateFallback(effect),
+    note: measurement.note ?? "",
+  })),
   careLogPatch: effect.careLogPatch
     ? {
         date: effect.careLogPatch.date ?? selectedDateFallback(effect),
@@ -1498,6 +1514,20 @@ const growthEventFromPendingDraft = (effect: PendingEffect, draft: PendingGrowth
         summary: draft.summary.trim() || effect.growthEvent.summary,
       }, 0)
     : undefined;
+
+const growthMeasurementsFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
+  (effect.growthMeasurements ?? []).map((measurement, index) => {
+    const nextDraft = draft.growthMeasurements.find((item) => item.id === measurement.id);
+    if (!nextDraft) return measurement;
+    const numericValue = Number(nextDraft.value);
+    return normalizeGrowthMeasurement({
+      ...measurement,
+      type: nextDraft.type,
+      value: Number.isFinite(numericValue) ? numericValue : measurement.value,
+      date: nextDraft.date || measurement.date,
+      note: nextDraft.note.trim() || undefined,
+    }, index);
+  });
 
 const careLogPatchFromPendingDraft = (effect: PendingEffect, draft: PendingCareDraft | undefined): Partial<CareLog> | undefined =>
   effect.careLogPatch && draft
@@ -1769,9 +1799,10 @@ const decisionSummary = (decision: EffectDecision) => {
   return "长期记忆";
 };
 
-const hasPendingEffectContent = (effect: Pick<PendingEffect, "growthEvent" | "careLogPatch" | "reminders" | "memories" | "expenses">) =>
+const hasPendingEffectContent = (effect: Pick<PendingEffect, "growthEvent" | "growthMeasurements" | "careLogPatch" | "reminders" | "memories" | "expenses">) =>
   Boolean(
     effect.growthEvent ||
+      (effect.growthMeasurements?.length ?? 0) > 0 ||
       (effect.careLogPatch && hasCareLogContent(effect.careLogPatch)) ||
       effect.reminders.length ||
       effect.memories.length ||
@@ -1780,6 +1811,7 @@ const hasPendingEffectContent = (effect: Pick<PendingEffect, "growthEvent" | "ca
 
 const pendingEffectSummary = (effect: PendingEffect) => [
   effect.growthEvent ? `成长：${effect.growthEvent.title}` : "",
+  effect.growthMeasurements?.length ? `成长数据 ${effect.growthMeasurements.length} 条` : "",
   effect.careLogPatch && hasCareLogContent(effect.careLogPatch) ? "照护日志" : "",
   effect.reminders.length ? `提醒 ${effect.reminders.length} 条` : "",
   effect.memories.length ? `记忆 ${effect.memories.length} 条` : "",
@@ -2195,6 +2227,7 @@ function App() {
     date: todayISO(),
     note: "",
   });
+  const [editingGrowthMeasurementId, setEditingGrowthMeasurementId] = useState("");
   const [reminderEditorOpen, setReminderEditorOpen] = useState(false);
   const [editingReminderId, setEditingReminderId] = useState("");
   const [reminderDraft, setReminderDraft] = useState<ReminderDraft>(() => createReminderDraft());
@@ -4680,6 +4713,7 @@ function App() {
       };
 
       let pendingGrowthEvent: GrowthEvent | undefined = hasServerDecisions ? undefined : result.growthEvent;
+      let pendingGrowthMeasurements: GrowthMeasurement[] = [];
       let pendingCareLogPatch: Partial<CareLog> | undefined = hasServerDecisions ? undefined : result.careLogPatch;
       let pendingReminders: Reminder[] = hasServerDecisions ? [] : result.reminders;
       let pendingMemories: MemoryItem[] = hasServerDecisions ? [] : result.memories;
@@ -4702,6 +4736,10 @@ function App() {
           if (decision.type === "growthEvent") {
             const growth = normalizeGrowthEvent(decision.payload as Partial<GrowthEvent>, index);
             if (decision.mode === "pending") pendingGrowthEvent = growth;
+          }
+          if (decision.type === "growthMeasurement") {
+            const measurement = normalizeGrowthMeasurement(decision.payload as Partial<GrowthMeasurement>, index);
+            if (decision.mode === "pending") pendingGrowthMeasurements = [...pendingGrowthMeasurements, measurement];
           }
           if (decision.type === "reminder") {
             const reminder = normalizeReminder(decision.payload as Partial<Reminder>, index);
@@ -4779,6 +4817,7 @@ function App() {
         status: "pending",
         tags: result.tags,
         growthEvent: pendingGrowthEvent,
+        growthMeasurements: pendingGrowthMeasurements,
         careLogPatch: pendingCareLogPatch,
         reminders: pendingReminders,
         memories: pendingMemories,
@@ -5164,7 +5203,19 @@ function App() {
   const openMilestones = useCallback(() => setMilestonesViewOpen(true), []);
   const closeMilestones = useCallback(() => setMilestonesViewOpen(false), []);
   const openGrowthEntry = useCallback(() => setGrowthEntryOpen(true), []);
-  const closeGrowthEntry = useCallback(() => setGrowthEntryOpen(false), []);
+  const resetGrowthMeasurementDraft = useCallback(() => {
+    setEditingGrowthMeasurementId("");
+    setGrowthMeasurementDraft({
+      type: "height",
+      value: "",
+      date: todayISO(),
+      note: "",
+    });
+  }, []);
+  const closeGrowthEntry = useCallback(() => {
+    setGrowthEntryOpen(false);
+    resetGrowthMeasurementDraft();
+  }, [resetGrowthMeasurementDraft]);
 
   const handleFindingActionClick = useCallback((domain: string, _id: string) => {
     switch (domain) {
@@ -5211,9 +5262,13 @@ function App() {
       showSystemWeakNotice(`请输入 ${meta.min}-${meta.max}${meta.unit} 之间的${meta.label}。`, "warning");
       return;
     }
+    const existingMeasurement = editingGrowthMeasurementId
+      ? growthMeasurements.find((item) => item.id === editingGrowthMeasurementId)
+      : undefined;
     const measurement = normalizeGrowthMeasurement(
       {
-        id: makeId("growth-measurement"),
+        ...existingMeasurement,
+        id: editingGrowthMeasurementId || makeId("growth-measurement"),
         type: growthMeasurementDraft.type,
         value: numericValue,
         date: growthMeasurementDraft.date || todayISO(),
@@ -5221,14 +5276,39 @@ function App() {
       },
       0,
     );
-    setGrowthMeasurements((current) => [...current, measurement]);
+    setGrowthMeasurements((current) => {
+      if (!editingGrowthMeasurementId) return [...current, measurement];
+      let updated = false;
+      const next = current.map((item) => {
+        if (item.id !== editingGrowthMeasurementId) return item;
+        updated = true;
+        return measurement;
+      });
+      return updated ? next : [...next, measurement];
+    });
     void persistRecord("growthMeasurements", measurement.id, measurement).catch(() => setStorageStatus("offline"));
-    setGrowthMeasurementDraft((current) => ({ ...current, value: "", note: "" }));
+    if (editingGrowthMeasurementId) {
+      resetGrowthMeasurementDraft();
+    } else {
+      setGrowthMeasurementDraft((current) => ({ ...current, value: "", note: "" }));
+    }
     hapticSuccess();
+  };
+
+  const handleEditGrowthMeasurement = (measurement: GrowthMeasurement) => {
+    if (!canCaregive) return;
+    setEditingGrowthMeasurementId(measurement.id);
+    setGrowthMeasurementDraft({
+      type: measurement.type,
+      value: String(measurement.value),
+      date: measurement.date || todayISO(),
+      note: measurement.note ?? "",
+    });
   };
 
   const handleDeleteGrowthMeasurement = (id: string) => {
     if (!canCaregive) return;
+    if (editingGrowthMeasurementId === id) resetGrowthMeasurementDraft();
     setGrowthMeasurements((current) => current.filter((item) => item.id !== id));
     void deleteAppRecord("growthMeasurements", id).catch(() => setStorageStatus("offline"));
   };
@@ -5410,6 +5490,7 @@ function App() {
     const nextEffect: PendingEffect = {
       ...effect,
       growthEvent: growthEventFromPendingDraft(effect, pendingDraft.growthEvent),
+      growthMeasurements: growthMeasurementsFromPendingDraft(effect, pendingDraft),
       careLogPatch: careLogPatchFromPendingDraft(effect, pendingDraft.careLogPatch),
       reminders: remindersFromPendingDraft(effect, pendingDraft),
       memories: memoriesFromPendingDraft(effect, pendingDraft),
@@ -5430,6 +5511,17 @@ function App() {
   const updatePendingGrowthDraft = (patch: Partial<PendingGrowthDraft>) => {
     setPendingDraft((current) =>
       current?.growthEvent ? { ...current, growthEvent: { ...current.growthEvent, ...patch } } : current,
+    );
+  };
+
+  const updatePendingGrowthMeasurementDraft = (id: string, patch: Partial<PendingGrowthMeasurementDraft>) => {
+    setPendingDraft((current) =>
+      current
+        ? {
+            ...current,
+            growthMeasurements: current.growthMeasurements.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+          }
+        : current,
     );
   };
 
@@ -6566,6 +6658,63 @@ function App() {
                                     </label>
                                   </fieldset>
                                 ) : null}
+                                {pendingDraft.growthMeasurements.map((measurement) => {
+                                  const meta = GROWTH_MEASUREMENT_META[measurement.type];
+                                  return (
+                                    <fieldset key={measurement.id}>
+                                      <legend>成长数据</legend>
+                                      <div className="pending-effect-grid">
+                                        <label>
+                                          类型
+                                          <StorySelect
+                                            value={measurement.type}
+                                            options={GROWTH_MEASUREMENT_TYPES.map((type) => ({
+                                              value: type,
+                                              label: GROWTH_MEASUREMENT_META[type].label,
+                                            }))}
+                                            ariaLabel="待确认成长数据类型"
+                                            onChange={(type) =>
+                                              updatePendingGrowthMeasurementDraft(measurement.id, { type: type as GrowthMeasurementType })
+                                            }
+                                          />
+                                        </label>
+                                        <label>
+                                          数值（{meta.unit}）
+                                          <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            step={meta.step}
+                                            min={meta.min}
+                                            max={meta.max}
+                                            value={measurement.value}
+                                            onChange={(event) =>
+                                              updatePendingGrowthMeasurementDraft(measurement.id, { value: event.target.value })
+                                            }
+                                          />
+                                        </label>
+                                      </div>
+                                      <label>
+                                        日期
+                                        <input
+                                          type="date"
+                                          value={measurement.date}
+                                          onChange={(event) =>
+                                            updatePendingGrowthMeasurementDraft(measurement.id, { date: event.target.value })
+                                          }
+                                        />
+                                      </label>
+                                      <label>
+                                        备注
+                                        <textarea
+                                          value={measurement.note}
+                                          onChange={(event) =>
+                                            updatePendingGrowthMeasurementDraft(measurement.id, { note: event.target.value })
+                                          }
+                                        />
+                                      </label>
+                                    </fieldset>
+                                  );
+                                })}
                                 {pendingDraft.careLogPatch ? (
                                   <fieldset>
                                     <legend>照护记录</legend>
@@ -6806,6 +6955,14 @@ function App() {
                           ) : (
                             <div className="pending-effect-body">
                               {effect.growthEvent ? <p>成长：{effect.growthEvent.title}</p> : null}
+                              {(effect.growthMeasurements ?? []).map((measurement) => {
+                                const meta = GROWTH_MEASUREMENT_META[measurement.type];
+                                return (
+                                  <p key={measurement.id}>
+                                    成长数据：{meta.label} {measurement.value}{meta.unit}
+                                  </p>
+                                );
+                              })}
                               {effect.careLogPatch ? <p>照护：{effect.careLogPatch.notes?.join("、") || "已识别照护日志"}</p> : null}
                               {effect.reminders.map((reminder) => (
                                 <p key={reminder.id}>提醒：{reminder.dueText} {reminder.title}</p>
@@ -7068,8 +7225,11 @@ function App() {
               growthMeasurements={growthMeasurements}
               canCaregive={canCaregive}
               draft={growthMeasurementDraft}
+              editingMeasurementId={editingGrowthMeasurementId}
               onDraftChange={setGrowthMeasurementDraft}
               onSubmit={handleAddGrowthMeasurement}
+              onEdit={handleEditGrowthMeasurement}
+              onCancelEdit={resetGrowthMeasurementDraft}
               onDelete={handleDeleteGrowthMeasurement}
               onClose={closeGrowthEntry}
             />
