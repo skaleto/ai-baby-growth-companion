@@ -744,6 +744,52 @@ class AppStateControllerTests {
     }
 
     @Test
+    void confirmingPendingGrowthEventWithGeneratedIndexIdDoesNotOverwriteExistingGrowthEvent() throws Exception {
+        // 用户已有一条 fallback 格式 id 的成长记录（生产里真实存在 growth-0 / growth-1）
+        mockMvc.perform(put("/api/app/state/growthEvents/growth-0")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "growth-0",
+                                  "type": "日常瞬间",
+                                  "title": "躺在床上睁着眼",
+                                  "date": "2026-06-03"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        // AI 生成的 pending 成长事件复用了同样的 fallback id growth-0
+        mockMvc.perform(put("/api/app/state/pendingEffects/effect-growth")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "effect-growth",
+                                  "status": "pending",
+                                  "createdAt": "2026-06-04T13:37:53Z",
+                                  "growthEvent": {
+                                    "id": "growth-0",
+                                    "type": "日常瞬间",
+                                    "title": "练习抬头",
+                                    "date": "2026-06-04"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        // 确认后：既有 growth-0 不能被覆盖，新事件必须用新生成的唯一 id
+        mockMvc.perform(post("/api/app/state/pending-effects/effect-growth/confirm")
+                        .header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.growthEvents.length()").value(2))
+                .andExpect(jsonPath("$.state.growthEvents[?(@.id == 'growth-0')].title")
+                        .value(org.hamcrest.Matchers.hasItem("躺在床上睁着眼")))
+                .andExpect(jsonPath("$.state.growthEvents[?(@.title == '练习抬头')].id")
+                        .value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("growth-0"))));
+    }
+
+    @Test
     void confirmingDuplicateExpenseAcrossPendingEffectsSavesOnlyOnce() throws Exception {
         String pendingExpense = """
                 {

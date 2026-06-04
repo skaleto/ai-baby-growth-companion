@@ -282,7 +282,7 @@ public class AppStateService {
         }
         JsonNode effect = parse(record.getPayloadJson());
         String now = Instant.now().toString();
-        saveEffectObject(growthService, GrowthEventRecord::new, effect.get("growthEvent"), "growth", now, familyId, userId);
+        saveEffectObject(growthService, GrowthEventRecord::new, effect.get("growthEvent"), "growth", now, familyId, userId, true);
         saveEffectArray(growthMeasurementService, GrowthMeasurementRecord::new, effect.get("growthMeasurements"), "growthMeasurement", now, familyId, userId);
         saveCareLogPatch(effect.get("careLogPatch"), now, familyId, userId);
         saveEffectArray(reminderService, ReminderRecord::new, effect.get("reminders"), "reminder", now, familyId, userId);
@@ -673,8 +673,23 @@ public class AppStateService {
             String familyId,
             String userId
     ) {
+        // 用户直写（upsertRecord）路径：保留传入 id，允许更新既有 fallback-id 记录（如 growth-0）。
+        saveEffectObject(service, supplier, node, ownerType, now, familyId, userId, false);
+    }
+
+    private <T extends AppRecordEntity> void saveEffectObject(
+            IService<T> service,
+            Supplier<T> supplier,
+            JsonNode node,
+            String ownerType,
+            String now,
+            String familyId,
+            String userId,
+            boolean regenerateEffectFallbackIds
+    ) {
         if (node == null || node.isNull()) return;
-        String id = recordId(node, ownerType, 0, false);
+        // confirm 路径传 true：AI 生成的 fallback id（如 growth-0）重新生成唯一 id，避免覆盖既有同 id 记录。
+        String id = recordId(node, ownerType, 0, regenerateEffectFallbackIds);
         ObjectNode payload = mutable(node, ownerType, id, familyId, userId);
         T existing = service.getOne(new QueryWrapper<T>().eq("family_id", familyId).eq("id", id), false);
         service.saveOrUpdate(preserveCreator(record(supplier, id, payload, ownerType, sortKey(payload, ownerType, 0), now, familyId, userId), existing));
