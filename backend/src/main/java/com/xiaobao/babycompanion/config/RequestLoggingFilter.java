@@ -1,6 +1,7 @@
 package com.xiaobao.babycompanion.config;
 
 import com.xiaobao.babycompanion.auth.AuthPrincipal;
+import com.xiaobao.babycompanion.util.PhoneMasking;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -57,7 +58,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
         AuthPrincipal principal = principal();
         String userId = principal == null ? "-" : principal.userId();
-        String phone = principal == null ? "-" : principal.phone();
+        String phone = principal == null ? "-" : PhoneMasking.mask(principal.phone());
         String familyId = principal == null ? "-" : principal.familyId();
         if (status >= 500) {
             LOGGER.error(
