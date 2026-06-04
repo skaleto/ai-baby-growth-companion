@@ -1102,3 +1102,23 @@ REQ-LONG-003：月度小故事：照片、里程碑、照护事实整理，不�
 | 100 家庭压测（R2）| 低 | ~1-2 天 | 中 |
 
 > 成本为单人开发者定性估算；短信/OSS/CDN/监控的实际单价需按 provider 真实报价校准后再排期。
+
+## 16. R0.5 实现进度（2026-06-05，Claude 实现）
+
+按 15 节统一发布路线，R0.5 已落地如下（均有 commit + 测试/演练证据）：
+
+| R0.5 项 | 状态 | 证据 |
+|---|---|---|
+| 能力矩阵 grounding + 反向可达校验 gate（agent）| ✅ | `57b53f9` + `bfa69e5`，124 测试 + unit gate |
+| 日志手机号脱敏 | ✅ | `fd0db81`，PhoneMaskingTests |
+| API 手机号脱敏 | ✅ | `ed2c86a`，56 测试，单一 `toDto` chokepoint |
+| 第三方数据处理口径清单 | ✅ | `2f3b85e` |
+| 数据权利请求人工通道（导出/删除/注销）| ✅ | `f310a77`，DataRightsControllerTests 4 |
+| query token 收敛（普通 API 只 Bearer，媒体白名单）| ✅ | `af345b8`，56 测试 |
+| DB+媒体+app_state 一致性备份恢复 + 演练 | ✅ | `1454d75`，演练 PASS（25 表 row-for-row + dump shasum 一致）|
+| HTTPS+域名+CORS 配置准备 | ✅ 文档 | `abe0e3f`，实际启用待正式域名+备案 |
+| AI 非诊疗边界 | ✅ 已覆盖 | capability manifest `log_care_health`（cannot 诊断/开药）+ benchmark fever-risk/safety-refuse + SafetyGuardTests |
+| 内测知情同意+监护人+AI数据说明入口 | ✅ | `8cc20e1`，ConsentGate 全屏同意+监护人勾选+AI数据说明入口，tsc 0 |
+| 最小崩溃/失败采集 | ✅ | `e6526a5`，POST /api/client-errors，4 测试（前端 error boundary 后续）|
+
+**剩余（明确后续）**：崩溃采集前端 error boundary；HTTPS 实际启用（需正式域名+备案，审核有周期，建议最先启动）；前端入口反向校验深化（agent spec）。**R1/R2 项**（短信验证码、Pro entitlement+额度、100家庭压测、完整监控告警、OSS/CDN、渠道材料、支付）按统一路线在 R0.5 稳定后推进。
