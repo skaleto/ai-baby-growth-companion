@@ -312,6 +312,7 @@ function startPreview() {
 
 async function installApiMocks(page) {
   if (authMode !== "mock") return;
+  let apiState = JSON.parse(JSON.stringify(smokeState));
 
   await page.addInitScript(() => {
     window.localStorage.setItem("baby-companion-auth-token", "frontend-smoke-token");
@@ -348,12 +349,49 @@ async function installApiMocks(page) {
     }
 
     if (url.pathname === "/api/app/state") {
+      if (request.method() === "PUT") {
+        apiState = await request.postDataJSON();
+      }
       await route.fulfill({
         status: 200,
         headers,
-        body: JSON.stringify({ empty: false, state: smokeState }),
+        body: JSON.stringify({ empty: false, state: apiState }),
       });
       return;
+    }
+
+    const appRecordMatch = url.pathname.match(/^\/api\/app\/state\/([^/]+)\/([^/]+)$/);
+    if (appRecordMatch) {
+      const collection = decodeURIComponent(appRecordMatch[1]);
+      const id = decodeURIComponent(appRecordMatch[2]);
+      if (request.method() === "PUT") {
+        const item = await request.postDataJSON();
+        if (collection === "profile") {
+          apiState.profile = item;
+        } else if (Array.isArray(apiState[collection])) {
+          const nextItems = apiState[collection].filter((entry) => entry?.id !== id);
+          apiState = { ...apiState, [collection]: [...nextItems, { ...item, id }] };
+        } else {
+          apiState = { ...apiState, [collection]: item };
+        }
+        await route.fulfill({
+          status: 200,
+          headers,
+          body: JSON.stringify({ empty: false, state: apiState }),
+        });
+        return;
+      }
+      if (request.method() === "DELETE") {
+        if (Array.isArray(apiState[collection])) {
+          apiState = { ...apiState, [collection]: apiState[collection].filter((entry) => entry?.id !== id) };
+        }
+        await route.fulfill({
+          status: 200,
+          headers,
+          body: JSON.stringify({ empty: false, state: apiState }),
+        });
+        return;
+      }
     }
 
     if (url.pathname === "/api/pro/usage") {
@@ -437,7 +475,7 @@ async function installApiMocks(page) {
     await route.fulfill({
       status: 200,
       headers,
-      body: JSON.stringify({ ok: true, empty: false, state: smokeState }),
+      body: JSON.stringify({ ok: true, empty: false, state: apiState }),
     });
   });
 }
@@ -882,7 +920,17 @@ async function exerciseGrowthMeasurementFlow(page, viewport) {
   await growthCardBtn.waitFor({ timeout: 5000 });
   await growthCardBtn.click();
   await page.getByRole("heading", { name: "成长记录" }).waitFor({ timeout: 5000 });
-  await page.locator(".growth-history-value", { hasText: "66.5cm" }).first().waitFor({ timeout: 5000 });
+  const seededMeasurementRow = page.locator(".growth-history li", { hasText: "66.5cm" }).first();
+  await seededMeasurementRow.locator(".growth-history-value", { hasText: "66.5cm" }).waitFor({ timeout: 5000 });
+  await seededMeasurementRow.getByRole("button", { name: "编辑" }).click();
+  const editValueInput = page.locator(".growth-value-input input").first();
+  await editValueInput.fill("67.1");
+  await page.locator('.growth-entry-form input[type="text"]').fill("复查更新");
+  await page.getByRole("button", { name: "保存修改" }).click();
+  await page.locator(".growth-history li", { hasText: "67.1cm" }).filter({ hasText: "复查更新" }).first().waitFor({ timeout: 5000 });
+  if (await page.locator(".growth-history li", { hasText: "66.5cm" }).filter({ hasText: "体检测量" }).count()) {
+    throw new Error("growth measurement edit kept the old seeded history row unchanged");
+  }
 
   const chartCount = await page.locator(".growth-chart").count();
   if (chartCount > 0) {
@@ -900,8 +948,14 @@ async function exerciseGrowthMeasurementFlow(page, viewport) {
   await valueInput.fill("68.2");
   await page.locator('.growth-entry-form input[type="text"]').fill("家里复测");
   await page.getByRole("button", { name: "记录一笔" }).click();
+  const addedMeasurementRow = page.locator(".growth-history li", { hasText: "68.2cm" }).filter({ hasText: "家里复测" }).first();
   await page.locator(".growth-history-value", { hasText: "68.2cm" }).first().waitFor({ timeout: 5000 });
   await page.getByText("家里复测").waitFor({ timeout: 5000 });
+  await addedMeasurementRow.getByRole("button", { name: "删除" }).click();
+  await page.waitForTimeout(120);
+  if (await page.locator(".growth-history li", { hasText: "68.2cm" }).filter({ hasText: "家里复测" }).count()) {
+    throw new Error("growth measurement delete did not remove the newly added history row");
+  }
 
   if (viewport.mobile) {
     await checkAppShellAligned(page, `${viewport.name} growth measurement flow`);
@@ -911,7 +965,7 @@ async function exerciseGrowthMeasurementFlow(page, viewport) {
   await page.getByRole("button", { name: "返回" }).click();
   await page.waitForTimeout(120);
 
-  return { growthMeasurementFlowChecked: true };
+  return { growthMeasurementFlowChecked: true, growthMeasurementDeleteChecked: true };
 }
 
 async function simulateKeyboardCycle(page, viewport, field) {
@@ -1005,6 +1059,10 @@ async function exerciseReminderFlow(page, viewport) {
   }
   await completeDialog.getByRole("button", { name: /先不完成/ }).click();
   await completeDialog.waitFor({ state: "hidden", timeout: 5000 });
+  await page.getByRole("button", { name: /标记完成 体检疫苗/ }).waitFor({ timeout: 5000 });
+  if (await page.locator(".reminder-group-done .reminder-item", { hasText: "体检疫苗" }).count()) {
+    throw new Error("cancelling reminder completion unexpectedly moved 体检疫苗 to done");
+  }
 
   await page.getByRole("button", { name: /删除提醒 体检疫苗/ }).click();
   const deleteDialog = page.getByRole("dialog", { name: "确定不再提醒吗？" });
@@ -1015,6 +1073,28 @@ async function exerciseReminderFlow(page, viewport) {
   }
   await deleteDialog.getByRole("button", { name: /先保留/ }).click();
   await deleteDialog.waitFor({ state: "hidden", timeout: 5000 });
+  await page.getByRole("button", { name: /删除提醒 体检疫苗/ }).waitFor({ timeout: 5000 });
+
+  await page.getByRole("button", { name: /标记完成 体检疫苗/ }).click();
+  await completeDialog.waitFor({ timeout: 5000 });
+  await completeDialog.getByRole("button", { name: /确认完成/ }).click();
+  await completeDialog.waitFor({ state: "hidden", timeout: 5000 });
+  await page.locator(".reminder-group-done .reminder-item", { hasText: "体检疫苗" }).first().waitFor({ timeout: 5000 });
+  if (await page.getByRole("button", { name: /标记完成 体检疫苗/ }).count()) {
+    throw new Error("confirming reminder completion left 体检疫苗 in an actionable reminder bucket");
+  }
+
+  await page.getByRole("button", { name: /删除提醒 晚间洗澡/ }).click();
+  await deleteDialog.waitFor({ timeout: 5000 });
+  await deleteDialog.getByRole("button", { name: /先保留/ }).click();
+  await deleteDialog.waitFor({ state: "hidden", timeout: 5000 });
+  await page.getByRole("button", { name: /删除提醒 晚间洗澡/ }).waitFor({ timeout: 5000 });
+
+  await page.getByRole("button", { name: /删除提醒 晚间洗澡/ }).click();
+  await deleteDialog.waitFor({ timeout: 5000 });
+  await deleteDialog.getByRole("button", { name: "删除" }).click();
+  await deleteDialog.waitFor({ state: "hidden", timeout: 5000 });
+  await page.locator(".reminder-item", { hasText: "晚间洗澡" }).waitFor({ state: "detached", timeout: 5000 });
 
   await page.getByRole("button", { name: /新建/ }).click();
   const editor = page.getByRole("dialog", { name: "新建提醒" });

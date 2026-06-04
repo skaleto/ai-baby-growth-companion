@@ -27,6 +27,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { selectScenarios } from "./l2-benchmark/scenarios.mjs";
+import { assertOp, evaluateStructural, getPath } from "./l2-benchmark/assertions.mjs";
+import { applyEffectDecisions, upsertStateRecord } from "./l2-benchmark/effect-apply.mjs";
 import {
   judgeAiText,
   resolveJudgeApiKey,
@@ -100,40 +102,6 @@ function median(values) {
   if (nums.length === 0) return null;
   const mid = Math.floor(nums.length / 2);
   return nums.length % 2 === 0 ? (nums[mid - 1] + nums[mid]) / 2 : nums[mid];
-}
-
-/** Resolve a dotted path (with numeric segments for arrays) inside a JSON value. */
-function getPath(obj, dottedPath) {
-  if (obj == null) return undefined;
-  const segments = String(dottedPath).split(".");
-  let cursor = obj;
-  for (const seg of segments) {
-    if (cursor == null) return undefined;
-    const key = /^\d+$/.test(seg) ? Number(seg) : seg;
-    cursor = cursor[key];
-  }
-  return cursor;
-}
-
-function assertOp(actual, op, expected) {
-  switch (op) {
-    case "eq":
-      return { pass: actual === expected, detail: `${JSON.stringify(actual)} === ${JSON.stringify(expected)}` };
-    case "approx": {
-      const a = Number(actual);
-      const e = Number(expected);
-      const pass = Number.isFinite(a) && Number.isFinite(e) && Math.abs(a - e) <= Math.max(0.01, Math.abs(e) * 0.01);
-      return { pass, detail: `${JSON.stringify(actual)} ≈ ${JSON.stringify(expected)}` };
-    }
-    case "present":
-      return { pass: actual !== undefined && actual !== null && actual !== "", detail: `present(${JSON.stringify(actual)})` };
-    case "contains": {
-      const pass = typeof actual === "string" && actual.includes(String(expected));
-      return { pass, detail: `${JSON.stringify(actual)} contains ${JSON.stringify(expected)}` };
-    }
-    default:
-      return { pass: false, detail: `unknown op ${op}` };
-  }
 }
 
 // ── HTTP helpers (native fetch) ──────────────────────────────────────────────
@@ -380,98 +348,6 @@ function parseSseFrame(rawFrame) {
   return { name, data };
 }
 
-// ── Structural (result-accuracy) assertions ─────────────────────────────────
-
-const MUTATION_EFFECT_TYPES = new Set(["careLog", "reminder", "expenseItem", "albumItem"]);
-const MUTATION_MODES = new Set(["auto", "pending"]);
-
-function findEffect(decisions, type, mode) {
-  return (decisions || []).find(
-    (d) => d?.type === type && (mode == null || d?.mode === mode),
-  );
-}
-
-/**
- * Evaluate the scenario.expect block against the parsed final response + tool events.
- * Returns { checks: [{ label, pass, detail }], pass }.
- */
-function evaluateStructural(scenario, finalResponse, toolEvents) {
-  const checks = [];
-  const decisions = finalResponse?.effectDecisions || [];
-  const expect = scenario.expect || {};
-
-  if (expect.effect) {
-    const { type, mode, payloadAssertions } = expect.effect;
-    const decision = findEffect(decisions, type, mode);
-    checks.push({
-      label: `effect ${type}/${mode}`,
-      pass: Boolean(decision),
-      detail: decision ? "found" : `no ${type}/${mode} decision (got: ${decisions.map((d) => `${d.type}/${d.mode}`).join(", ") || "none"})`,
-    });
-    if (decision && Array.isArray(payloadAssertions)) {
-      for (const pa of payloadAssertions) {
-        const actual = getPath(decision.payload, pa.path);
-        const { pass, detail } = assertOp(actual, pa.op, pa.value);
-        checks.push({ label: `payload.${pa.path} ${pa.op}`, pass, detail });
-      }
-    }
-  }
-
-  if (Array.isArray(expect.anyEffect)) {
-    const matched = expect.anyEffect.some((e) => Boolean(findEffect(decisions, e.type, e.mode)));
-    checks.push({
-      label: `anyEffect [${expect.anyEffect.map((e) => `${e.type}/${e.mode}`).join(" | ")}]`,
-      pass: matched,
-      detail: matched ? "matched" : `got: ${decisions.map((d) => `${d.type}/${d.mode}`).join(", ") || "none"}`,
-    });
-  }
-
-  if (expect.safetyAlert) {
-    const alerts = finalResponse?.safetyAlerts || [];
-    checks.push({
-      label: "safetyAlert present",
-      pass: alerts.length > 0,
-      detail: alerts.length > 0 ? `${alerts.length} alert(s)` : "no safetyAlerts",
-    });
-  }
-
-  if (expect.noEffectMutation) {
-    const mutating = decisions.filter(
-      (d) => MUTATION_EFFECT_TYPES.has(d?.type) && MUTATION_MODES.has(d?.mode),
-    );
-    checks.push({
-      label: "no mutating effect",
-      pass: mutating.length === 0,
-      detail: mutating.length === 0 ? "clean" : `unexpected: ${mutating.map((d) => `${d.type}/${d.mode}`).join(", ")}`,
-    });
-  }
-
-  if (expect.noAlbumGrowth) {
-    const albumAuto = decisions.filter((d) => d?.type === "albumItem" && d?.mode === "auto");
-    checks.push({
-      label: "no album auto-save",
-      pass: albumAuto.length === 0,
-      detail: albumAuto.length === 0 ? "clean" : `unexpected album auto-save x${albumAuto.length}`,
-    });
-  }
-
-  if (expect.tool) {
-    const fired = (toolEvents || []).some((t) => {
-      const id = String(t?.toolId || t?.id || "");
-      const name = String(t?.name || "");
-      return id.includes(expect.tool) || name.includes(expect.tool);
-    });
-    checks.push({
-      label: `tool ${expect.tool} fired`,
-      pass: fired,
-      detail: fired ? "fired" : `tools seen: ${(toolEvents || []).map((t) => t?.toolId || t?.name).filter(Boolean).join(", ") || "none"}`,
-    });
-  }
-
-  const pass = checks.every((c) => c.pass);
-  return { checks, pass };
-}
-
 // ── System-execution (app_state diff) assertions ────────────────────────────
 
 function collectionLength(state, name) {
@@ -525,6 +401,41 @@ function evaluateExecution(scenario, beforeState, afterState) {
 
   const pass = checks.every((c) => c.pass);
   return { checks, pass };
+}
+
+// ── Per-scenario state setup ────────────────────────────────────────────────
+
+function todayInAppZone() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function resolveFixtureValue(value, replacements = { today: todayInAppZone() }) {
+  if (value === "$today") return replacements.today;
+  if (Array.isArray(value)) return value.map((item) => resolveFixtureValue(item, replacements));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolveFixtureValue(item, replacements)]));
+  }
+  return value;
+}
+
+async function applyScenarioSetup(token, scenario) {
+  const records = Array.isArray(scenario.setupState) ? scenario.setupState : [];
+  for (const record of records) {
+    await upsertStateRecord({
+      baseUrl: CONFIG.baseUrl,
+      token,
+      collection: record.collection,
+      id: record.id,
+      item: resolveFixtureValue(record.item),
+      mode: record.mode || "merge",
+    });
+  }
+  return records.length;
 }
 
 // ── agent_run.final_model lookup (optional, best-effort) ─────────────────────
@@ -604,15 +515,22 @@ async function runScenario(scenario, token, runs) {
 
   if (scenario.skip) {
     log(`  ⏭  skipped: ${scenario.skipReason || "placeholder"}`);
-    return { id: scenario.id, skipped: true, skipReason: scenario.skipReason };
+    return { id: scenario.id, capability: scenario.capability, skipped: true, knownGap: scenario.knownGap, skipReason: scenario.skipReason };
   }
+
+  const resetResult = await resetOrBaselineState(token).catch((e) => ({ reset: false, error: e.message }));
+  if (!resetResult.reset) {
+    log(`  ⚠ could not reset app_state before scenario; diff baseline may include old data${resetResult.error ? ` (${resetResult.error})` : ""}`);
+  }
+  const setupCount = await applyScenarioSetup(token, scenario);
+  if (setupCount) log(`  ✓ seeded ${setupCount} app_state record(s)`);
 
   const ttfts = [];
   const totals = [];
   let lastRun = null;
 
-  // Latency: N runs; for diff/structural we use the LAST run (state already mutated
-  // by prior runs, so we baseline immediately before the measured run).
+  // Latency: N runs; for diff/structural we use the LAST run. Earlier runs do
+  // not apply effects, so they cannot consume the state growth we need to verify.
   for (let i = 0; i < runs; i += 1) {
     let beforeState = {};
     if (i === runs - 1) {
@@ -623,13 +541,20 @@ async function runScenario(scenario, token, runs) {
     ttfts.push(result.ttftMs);
     totals.push(result.totalMs);
     if (i === runs - 1) {
+      const appliedEffects = await applyEffectDecisions({
+        baseUrl: CONFIG.baseUrl,
+        token,
+        scenarioId: scenario.id,
+        beforeState,
+        finalResponse: result.finalResponse,
+      });
       const afterSnap = await getAppState(token).catch(() => ({ state: {} }));
-      lastRun = { result, beforeState, afterState: afterSnap?.state || {} };
+      lastRun = { result, beforeState, afterState: afterSnap?.state || {}, appliedEffects };
     }
     log(`  run ${i + 1}/${runs}: TTFT=${result.ttftMs == null ? "n/a" : result.ttftMs.toFixed(0)}ms total=${result.totalMs.toFixed(0)}ms${result.errorEvent ? `  ⚠ ${JSON.stringify(result.errorEvent).slice(0, 120)}` : ""}`);
   }
 
-  const { result, beforeState, afterState } = lastRun;
+  const { result, beforeState, afterState, appliedEffects } = lastRun;
   const finalResponse = result.finalResponse;
   const aiText = finalResponse?.aiText || result.aiTextStream || "";
 
@@ -683,6 +608,8 @@ async function runScenario(scenario, token, runs) {
     judge,
     redlines,
     toolEvents: result.toolEvents,
+    appliedEffects,
+    setupCount,
     aiTextPreview: aiText.slice(0, 200),
   };
 }
@@ -786,12 +713,33 @@ function buildReport({ args, scenarioResults, baseline, regressionsById, overall
       lines.push(`> aiText preview: ${r.aiTextPreview.replace(/\n/g, " ")}${r.aiTextPreview.length >= 200 ? "…" : ""}`);
       lines.push("");
     }
+    if (r.appliedEffects?.applied?.length) {
+      lines.push(`- Applied effects: ${r.appliedEffects.applied.map((item) => `${item.collection}/${item.id}`).join(", ")}`);
+      lines.push("");
+    }
   }
 
   if (skipped.length) {
-    lines.push("## Skipped scenarios");
+    const knownGaps = skipped.filter((s) => s.knownGap);
+    const placeholders = skipped.filter((s) => !s.knownGap);
+    if (knownGaps.length) {
+      lines.push("## Known product coverage gaps");
+      lines.push("");
+      for (const s of knownGaps) lines.push(`- \`${s.id}\`: ${s.skipReason || "known gap"}`);
+      lines.push("");
+    }
+    if (placeholders.length) {
+      lines.push("## Skipped scenarios");
+      lines.push("");
+      for (const s of placeholders) lines.push(`- \`${s.id}\`: ${s.skipReason || "placeholder"}`);
+      lines.push("");
+    }
+    lines.push("## Scenario coverage inventory");
     lines.push("");
-    for (const s of skipped) lines.push(`- \`${s.id}\`: ${s.skipReason || "placeholder"}`);
+    for (const r of [...ran, ...skipped]) {
+      const marker = r.skipped ? (r.knownGap ? "known-gap" : "skipped") : "runnable";
+      lines.push(`- \`${r.id}\` — ${r.capability || "?"} — ${marker}`);
+    }
     lines.push("");
   }
 
@@ -840,9 +788,8 @@ async function main() {
     process.exit(1);
   }
 
-  // 3) Reset / record baseline app_state.
-  const resetResult = await resetOrBaselineState(token).catch((e) => ({ reset: false, error: e.message }));
-  log(`  ${resetResult.reset ? "✓ reset test family app_state" : "⚠ could not reset app_state; using current state as diff baseline"}`);
+  // 3) Scenarios reset their app_state independently before they run.
+  log("  ✓ scenario-level app_state reset enabled");
 
   // 4) Run scenarios.
   const scenarioResults = [];
@@ -855,6 +802,7 @@ async function main() {
         id: scenario.id,
         capability: scenario.capability,
         inputType: scenario.inputType,
+        knownGap: scenario.knownGap,
         metrics: { ttftMs: null, totalMs: null, finalModel: null, judge: { skipped: true } },
         structural: { checks: [{ label: "scenario execution", pass: false, detail: error.message }], pass: false },
         execution: { checks: [], pass: false },
