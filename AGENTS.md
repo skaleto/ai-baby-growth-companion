@@ -72,6 +72,11 @@ SYNC_DATA=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun
 ```
 
 - Production evidence should include service health plus persisted behavior when relevant; `/api/health` alone does not prove Agent, reminder, media, or state persistence behavior.
+- **⚠️ 移动热更新（OTA）发布是高危操作，必须显式注入 API base URL（2026-06-05 生产事故教训）。** 构建 OTA 包时若不设 `VITE_AGENT_API_BASE_URL`，前端会静默 fallback 到 `http://localhost:8080`，导致**所有更新到该包的 App 全量 `load failed`**——而且 OTA check 也走同一个 base URL，中招用户连修复包都拉不到（只能重装），没中招用户会继续 check 到坏包跟着中招、故障扩散。硬性规则：
+  - 构建 OTA 必须传生产地址：`VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`。`scripts/build-mobile-update.sh` 已加防护——base URL 为空时报错退出，不再静默 fallback。
+  - 发布后**必须验证 base URL**：解压 bundle 用 `grep` 确认编译进去的是 `120.55.188.242:8300` 而非 `localhost:8080`，再确认 OTA check API 返回正确 url+checksum，且下载的 bundle checksum 匹配。
+  - OTA 只升不降：发了坏包要回滚，必须构建一个**版本号更高**的正确包覆盖，不能简单把 manifest 指回旧版本（已更新的设备不会降级）。
+  - 紧急止扩散：第一时间把生产 `mobile-updates/manifest.json` 的 `enabled` 置 false，阻止未中招设备继续更新到坏包。
 
 ## Definition Of Done
 
