@@ -9,7 +9,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: linear-gradient(160deg, rgba(255, 246, 235, 0.96), rgba(243, 238, 255, 0.96));
+  background: linear-gradient(160deg, rgba(255, 253, 248, 0.96), rgba(240, 251, 244, 0.96));
   backdrop-filter: blur(6px);
 }
 
@@ -34,8 +34,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b4fd8;
-  background: rgba(124, 92, 240, 0.12);
+  color: #2f5e4d;
+  background: rgba(88, 163, 127, 0.12);
 }
 
 .consent-gate-copy h1 {
@@ -72,7 +72,7 @@
   border: none;
   background: none;
   font: inherit;
-  color: #6b4fd8;
+  color: #2f5e4d;
   text-decoration: underline;
   cursor: pointer;
 }
@@ -86,7 +86,7 @@
   font-size: 14px;
   line-height: 1.5;
   color: #4f483c;
-  background: rgba(124, 92, 240, 0.07);
+  background: rgba(88, 163, 127, 0.07);
   cursor: pointer;
 }
 
@@ -95,7 +95,7 @@
   width: 18px;
   height: 18px;
   flex: none;
-  accent-color: #6b4fd8;
+  accent-color: #2f5e4d;
 }
 
 .consent-accept-button {
@@ -107,7 +107,7 @@
   font-size: 16px;
   font-weight: 600;
   color: #fff;
-  background: linear-gradient(135deg, #7c5cf0, #9b7bff);
+  background: linear-gradient(135deg, #4a6f5d, #58a37f);
   cursor: pointer;
   transition: opacity 0.15s ease, transform 0.1s ease;
 }
