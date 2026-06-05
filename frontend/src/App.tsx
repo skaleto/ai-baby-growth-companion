@@ -98,8 +98,14 @@ import {
   loginWithInvite,
   logoutCurrentUser,
   readCurrentUser,
+  readFamilyMembers,
   refreshAccessToken,
+  removeFamilyMember,
+  resetFamilyInviteCode,
+  updateFamilyMemberCaregiver,
   updateFamilyName,
+  type FamilyMember,
+  type FamilyMembersResponse,
 } from "./authApi";
 import {
   initialProfile,
@@ -2131,6 +2137,10 @@ function App() {
   const [dailySummarySettings, setDailySummarySettings] = useState<DailySummarySettings>(() => normalizeDailySummarySettings(null));
   const [aiUsageSummary, setAiUsageSummary] = useState<AiUsageSummary | null>(null);
   const [aiUsageStatus, setAiUsageStatus] = useState<AiUsageStatus>("idle");
+  const [familyMembers, setFamilyMembers] = useState<FamilyMembersResponse | null>(null);
+  const [familyMembersStatus, setFamilyMembersStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [familyMemberBusyUserId, setFamilyMemberBusyUserId] = useState<string | null>(null);
+  const [resetInviteCodeValue, setResetInviteCodeValue] = useState<string | null>(null);
   const [dismissedDailySummaryMissingItemIds, setDismissedDailySummaryMissingItemIds] = useState<string[]>([]);
   const [isApplyingProTrial, setIsApplyingProTrial] = useState(false);
   const [isGeneratingDailySummary, setIsGeneratingDailySummary] = useState(false);
@@ -2450,6 +2460,64 @@ function App() {
       }
     }
   }, [showSystemWeakNotice]);
+
+  const refreshFamilyMembers = useCallback(async (options: { quiet?: boolean } = {}) => {
+    setFamilyMembersStatus("loading");
+    try {
+      const data = await readFamilyMembers();
+      setFamilyMembers(data);
+      setFamilyMembersStatus("ready");
+    } catch (error) {
+      setFamilyMembersStatus("error");
+      if (!options.quiet) {
+        showSystemWeakNotice(error instanceof Error ? error.message : "家庭成员读取失败。", "warning");
+      }
+    }
+  }, [showSystemWeakNotice]);
+
+  const handleToggleMemberCaregiver = async (member: FamilyMember) => {
+    if (member.self) return;
+    const next = !member.caregiver;
+    setFamilyMemberBusyUserId(member.userId);
+    try {
+      await updateFamilyMemberCaregiver(member.userId, next);
+      showSystemWeakNotice(next ? "已设为照护人。" : "已设为仅查看，对方需重新登录。", "success");
+      await refreshFamilyMembers({ quiet: true });
+    } catch (error) {
+      showSystemWeakNotice(error instanceof Error ? error.message : "权限调整失败。", "warning");
+    } finally {
+      setFamilyMemberBusyUserId(null);
+    }
+  };
+
+  const handleRemoveFamilyMember = async (member: FamilyMember) => {
+    if (member.self) return;
+    if (!window.confirm(`确定移除「${member.roleName}」吗？对方会被退出登录，需重新用邀请码加入。`)) return;
+    setFamilyMemberBusyUserId(member.userId);
+    try {
+      await removeFamilyMember(member.userId);
+      showSystemWeakNotice("已移除该成员。", "success");
+      await refreshFamilyMembers({ quiet: true });
+    } catch (error) {
+      showSystemWeakNotice(error instanceof Error ? error.message : "移除失败。", "warning");
+    } finally {
+      setFamilyMemberBusyUserId(null);
+    }
+  };
+
+  const handleResetFamilyInviteCode = async () => {
+    if (!window.confirm("重置后旧邀请码立即失效（已加入的成员不受影响）。确定重置？")) return;
+    setFamilyMemberBusyUserId("__reset__");
+    try {
+      const result = await resetFamilyInviteCode();
+      setResetInviteCodeValue(result.inviteCode);
+      showSystemWeakNotice("邀请码已重置，请把新码发给家人。", "success");
+    } catch (error) {
+      showSystemWeakNotice(error instanceof Error ? error.message : "重置邀请码失败。", "warning");
+    } finally {
+      setFamilyMemberBusyUserId(null);
+    }
+  };
 
   const clearPreviewTimers = useCallback(() => {
     if (previewOpenTimerRef.current !== null) {
@@ -3727,7 +3795,8 @@ function App() {
       return;
     }
     void refreshAiUsageSummary({ quiet: true });
-  }, [authStatus, refreshAiUsageSummary]);
+    void refreshFamilyMembers({ quiet: true });
+  }, [authStatus, refreshAiUsageSummary, refreshFamilyMembers]);
 
   useLayoutEffect(() => {
     const list = messageListRef.current;
@@ -8379,6 +8448,65 @@ function App() {
                     <Sparkles size={16} />
                     {proApplicationPending ? "已提交申请" : "申请 Pro 内测"}
                   </button>
+                ) : null}
+              </section>
+              <section className="profile-detail-card family-members-card" aria-label="家庭成员">
+                <div className="family-members-head">
+                  <span className="section-kicker"><Users size={14} aria-hidden="true" /> 家庭成员</span>
+                  {familyMembers?.canManage ? (
+                    <button
+                      type="button"
+                      className="family-invite-reset"
+                      onClick={() => void handleResetFamilyInviteCode()}
+                      disabled={familyMemberBusyUserId === "__reset__"}
+                    >
+                      <RefreshCw size={14} aria-hidden="true" /> 重置邀请码
+                    </button>
+                  ) : null}
+                </div>
+                {familyMembersStatus === "loading" && !familyMembers ? (
+                  <p className="family-members-empty">正在加载家庭成员…</p>
+                ) : familyMembers && familyMembers.members.length ? (
+                  <ul className="family-members-list">
+                    {familyMembers.members.map((member) => (
+                      <li key={member.userId} className="family-member-row">
+                        <div className="family-member-main">
+                          <strong>{member.roleName}{member.self ? "（我）" : ""}</strong>
+                          <small>{member.maskedPhone || "—"} · {member.caregiver ? "照护人" : "仅查看"}</small>
+                        </div>
+                        {familyMembers.canManage && !member.self ? (
+                          <div className="family-member-actions">
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleMemberCaregiver(member)}
+                              disabled={familyMemberBusyUserId === member.userId}
+                            >
+                              {member.caregiver ? "设为仅查看" : "设为照护人"}
+                            </button>
+                            <button
+                              type="button"
+                              className="family-member-remove"
+                              onClick={() => void handleRemoveFamilyMember(member)}
+                              disabled={familyMemberBusyUserId === member.userId}
+                              aria-label={`移除 ${member.roleName}`}
+                            >
+                              <Trash2 size={15} aria-hidden="true" />
+                            </button>
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="family-members-empty">
+                    还没有其他成员。{familyMembers?.canManage ? "把邀请码发给家人即可加入。" : ""}
+                  </p>
+                )}
+                {resetInviteCodeValue ? (
+                  <div className="family-invite-result">
+                    <span>新邀请码（仅显示这一次，请发给家人）</span>
+                    <strong>{resetInviteCodeValue}</strong>
+                  </div>
                 ) : null}
               </section>
               {canCaregive ? (

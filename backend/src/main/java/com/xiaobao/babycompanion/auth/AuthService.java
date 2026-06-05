@@ -20,7 +20,11 @@ import com.xiaobao.babycompanion.dto.auth.AuthInviteRolesResponse;
 import com.xiaobao.babycompanion.dto.auth.AuthLoginResponse;
 import com.xiaobao.babycompanion.dto.auth.AuthMemberDto;
 import com.xiaobao.babycompanion.dto.auth.AuthUserDto;
+import com.xiaobao.babycompanion.dto.auth.FamilyMemberDto;
+import com.xiaobao.babycompanion.dto.auth.FamilyMembersResponse;
+import com.xiaobao.babycompanion.dto.auth.ResetInviteCodeResponse;
 import com.xiaobao.babycompanion.exception.AuthException;
+import com.xiaobao.babycompanion.exception.ForbiddenException;
 import com.xiaobao.babycompanion.persistence.DatabaseInitializer;
 import com.xiaobao.babycompanion.persistence.entity.AuthFamilyMemberRecord;
 import com.xiaobao.babycompanion.persistence.entity.AuthFamilyRecord;
@@ -308,6 +312,127 @@ public class AuthService {
         if (session == null || StringUtils.hasText(session.getRevokedAt())) return;
         session.setRevokedAt(Instant.now().toString());
         sessionService.updateById(session);
+    }
+
+    // ---- 家庭成员管理 + 邀请码重置（REQ-AUTH, R1）----
+
+    /** 撤销某用户全部有效 session（token 立即失效）。token 是 session 制，无需改 JWT 结构。 */
+    @Transactional
+    public int revokeAllUserSessions(String userId) {
+        if (!StringUtils.hasText(userId)) return 0;
+        String now = Instant.now().toString();
+        int revoked = 0;
+        for (AuthSessionRecord session : sessionService.list(
+                new QueryWrapper<AuthSessionRecord>().eq("user_id", userId))) {
+            if (!StringUtils.hasText(session.getRevokedAt())) {
+                session.setRevokedAt(now);
+                sessionService.updateById(session);
+                revoked += 1;
+            }
+        }
+        return revoked;
+    }
+
+    public FamilyMembersResponse listFamilyMembers(AuthPrincipal principal) {
+        List<AuthFamilyMemberRecord> members = familyMemberService.list(
+                new QueryWrapper<AuthFamilyMemberRecord>()
+                        .eq("family_id", principal.familyId())
+                        .orderByAsc("joined_at"));
+        List<FamilyMemberDto> dtos = members.stream()
+                .map((member) -> toFamilyMemberDto(member, principal.userId()))
+                .toList();
+        return new FamilyMembersResponse(dtos, principal.caregiver());
+    }
+
+    /** 踢出家庭成员：撤销其全部 session + 删除成员记录。仅 caregiver，不能踢自己。 */
+    @Transactional
+    public void removeFamilyMember(AuthPrincipal principal, String targetUserId) {
+        requireManageCaregiver(principal);
+        if (principal.userId().equals(targetUserId)) {
+            throw new IllegalArgumentException("不能移除自己。如需退出，请使用退出登录。");
+        }
+        AuthFamilyMemberRecord member = memberByUser(targetUserId);
+        if (member == null || !principal.familyId().equals(member.getFamilyId())) {
+            throw new IllegalArgumentException("成员不存在或不在当前家庭。");
+        }
+        revokeAllUserSessions(targetUserId);
+        familyMemberService.removeById(member.getId());
+    }
+
+    /** 调整成员照护权限：改 isCaregiver + 撤销其 session 强制重登（权限即时刷新）。仅 caregiver。 */
+    @Transactional
+    public FamilyMemberDto updateMemberCaregiver(AuthPrincipal principal, String targetUserId, boolean caregiver) {
+        requireManageCaregiver(principal);
+        AuthFamilyMemberRecord member = memberByUser(targetUserId);
+        if (member == null || !principal.familyId().equals(member.getFamilyId())) {
+            throw new IllegalArgumentException("成员不存在或不在当前家庭。");
+        }
+        if (principal.userId().equals(targetUserId) && !caregiver) {
+            throw new IllegalArgumentException("不能撤销自己的照护权限，以免家庭无人可管理。");
+        }
+        member.setIsCaregiver(caregiver ? "true" : "false");
+        familyMemberService.updateById(member);
+        revokeAllUserSessions(targetUserId);
+        return toFamilyMemberDto(member, principal.userId());
+    }
+
+    /** 重置家庭邀请码：作废该家庭所有 active 码 + 生成新码。仅 caregiver。已登录成员不受影响（防的是新人用泄漏码加入）。 */
+    @Transactional
+    public ResetInviteCodeResponse resetFamilyInviteCode(AuthPrincipal principal) {
+        requireManageCaregiver(principal);
+        String familyId = principal.familyId();
+        String now = Instant.now().toString();
+        for (AuthInviteCodeRecord code : inviteCodeService.list(
+                new QueryWrapper<AuthInviteCodeRecord>().eq("family_id", familyId))) {
+            if (!"false".equalsIgnoreCase(code.getActive())) {
+                code.setActive("false");
+                inviteCodeService.updateById(code);
+            }
+        }
+        String newCode = uniqueRandomCode();
+        AuthInviteCodeRecord record = new AuthInviteCodeRecord();
+        record.setId("invite-" + UUID.randomUUID());
+        record.setCodeHash(AuthHashing.sha256Hex(AuthHashing.normalizedInviteCode(newCode)));
+        record.setLabel("重置于 " + now);
+        record.setFamilyId(familyId);
+        record.setActive("true");
+        record.setCreatedAt(now);
+        inviteCodeService.save(record);
+        AuthFamilyRecord family = familyService.getById(familyId);
+        if (family != null) {
+            family.setDefaultInviteCodeId(record.getId());
+            familyService.updateById(family);
+        }
+        return new ResetInviteCodeResponse(newCode);
+    }
+
+    private void requireManageCaregiver(AuthPrincipal principal) {
+        if (!principal.caregiver()) {
+            throw new ForbiddenException("当前身份仅可查看，不能管理家庭成员。");
+        }
+    }
+
+    private String uniqueRandomCode() {
+        for (int attempt = 0; attempt < 20; attempt += 1) {
+            String code = randomCode();
+            if (inviteCodeByHash(AuthHashing.sha256Hex(AuthHashing.normalizedInviteCode(code))) == null) {
+                return code;
+            }
+        }
+        return randomCode();
+    }
+
+    private FamilyMemberDto toFamilyMemberDto(AuthFamilyMemberRecord member, String selfUserId) {
+        AuthUserRecord user = userService.getById(member.getUserId());
+        String maskedPhone = user == null ? "" : PhoneMasking.mask(user.getPhone());
+        return new FamilyMemberDto(
+                member.getUserId(),
+                member.getRoleName(),
+                "true".equalsIgnoreCase(member.getIsCaregiver()),
+                maskedPhone,
+                member.getLastSeenAt(),
+                member.getUserId().equals(selfUserId)
+        );
     }
 
     public AuthUserDto currentUser(AuthPrincipal principal) {

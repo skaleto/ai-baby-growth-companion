@@ -228,3 +228,56 @@ export async function refreshAccessToken(): Promise<AuthLoginResponse> {
   setAuthToken(payload.accessToken);
   return payload;
 }
+
+// ---- 家庭成员管理（REQ-AUTH, R1）----
+
+export interface FamilyMember {
+  userId: string;
+  roleName: string;
+  caregiver: boolean;
+  /** 已脱敏手机号，仅用于识别成员，例如 138****8888。 */
+  maskedPhone: string;
+  lastSeenAt?: string | null;
+  /** 是否当前登录用户，前端据此禁用"移除自己/撤销自己权限"。 */
+  self: boolean;
+}
+
+export interface FamilyMembersResponse {
+  members: FamilyMember[];
+  canManage: boolean;
+}
+
+export async function readFamilyMembers(): Promise<FamilyMembersResponse> {
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/family/members`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error(await parseError(response, "家庭成员加载失败，请稍后再试。"));
+  return (await response.json()) as FamilyMembersResponse;
+}
+
+export async function removeFamilyMember(userId: string): Promise<void> {
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/family/members/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error(await parseError(response, "移除成员失败，请稍后再试。"));
+}
+
+export async function updateFamilyMemberCaregiver(userId: string, caregiver: boolean): Promise<FamilyMember> {
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/family/members/${encodeURIComponent(userId)}/caregiver`, {
+    method: "PUT",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ caregiver }),
+  });
+  if (!response.ok) throw new Error(await parseError(response, "权限调整失败，请稍后再试。"));
+  return (await response.json()) as FamilyMember;
+}
+
+export async function resetFamilyInviteCode(): Promise<{ inviteCode: string }> {
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/family/invite-code/reset`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error(await parseError(response, "重置邀请码失败，请稍后再试。"));
+  return (await response.json()) as { inviteCode: string };
+}

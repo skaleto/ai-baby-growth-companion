@@ -4242,3 +4242,136 @@ body.keyboard-open .expense-optional-fields {
   text-align: center;
   padding: 8px 0;
 }
+
+/* 家庭成员管理（REQ-AUTH, R1）。配色对齐产品:暖白卡 + sage 强调 + 柔珊瑚移除。 */
+.family-members-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.family-members-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.family-members-head .section-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.family-invite-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 1px solid rgba(88, 163, 127, 0.4);
+  border-radius: 999px;
+  background: rgba(88, 163, 127, 0.08);
+  color: #2f5e4d;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.family-invite-reset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.family-members-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.family-member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(88, 163, 127, 0.06);
+}
+
+.family-member-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.family-member-main strong {
+  font-size: 14px;
+  color: #3f3a32;
+}
+
+.family-member-main small {
+  font-size: 12px;
+  color: #8a8276;
+}
+
+.family-member-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.family-member-actions button {
+  padding: 6px 10px;
+  border: 1px solid rgba(120, 96, 60, 0.18);
+  border-radius: 10px;
+  background: #fffdfa;
+  color: #4f483c;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.family-member-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.family-member-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #b25a47;
+  border-color: rgba(232, 144, 124, 0.4) !important;
+}
+
+.family-members-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8a8276;
+}
+
+.family-invite-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(88, 163, 127, 0.1);
+  border: 1px dashed rgba(88, 163, 127, 0.4);
+}
+
+.family-invite-result span {
+  font-size: 12px;
+  color: #6f6657;
+}
+
+.family-invite-result strong {
+  font-size: 22px;
+  letter-spacing: 4px;
+  color: #2f5e4d;
+  font-variant-numeric: tabular-nums;
+}
