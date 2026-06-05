@@ -1,0 +1,67 @@
+/* 应用顶层崩溃降级页（REQ-OBS-001）。配色对齐产品:暖白底 + sage 主色 + 柔和阴影。 */
+.app-crash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(160deg, #fffdf8, #f0fbf4);
+}
+
+.app-crash-card {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 32px 24px;
+  border-radius: 24px;
+  background: #fffdfa;
+  box-shadow: 0 24px 60px rgba(120, 96, 60, 0.18);
+}
+
+.app-crash-mark {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  border-radius: 18px;
+  background: rgba(88, 163, 127, 0.14);
+}
+
+.app-crash-title {
+  margin: 0;
+  font-size: 20px;
+  color: #2f3a33;
+}
+
+.app-crash-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #6f6657;
+}
+
+.app-crash-button {
+  margin-top: 6px;
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #4a6f5d, #58a37f);
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.app-crash-button:active {
+  transform: scale(0.98);
+}
