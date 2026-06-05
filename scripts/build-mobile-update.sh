@@ -77,6 +77,38 @@ fs.mkdirSync(path.dirname(process.env.MANIFEST_PATH), { recursive: true });
 fs.writeFileSync(process.env.MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 
+# --- Retention policy: keep only the newest N bundles to avoid unbounded growth ---
+# Background: on 2026-06-05 bundles/ had accumulated ~100 stale OTA zips (hundreds of MB).
+# Bundle names are app-<version>-YYYYMMDDHHMMSS.zip, so a plain lexical sort is chronological.
+# The bundle the manifest currently points to is ALWAYS preserved, even if it would
+# otherwise fall outside the newest-N window. Override the count with MOBILE_UPDATE_RETAIN.
+# Kept portable (no bash-4 mapfile / no GNU-only `head -n -N`) so it also runs on macOS bash 3.2.
+RETAIN_COUNT="${MOBILE_UPDATE_RETAIN:-10}"
+if printf '%s' "$RETAIN_COUNT" | grep -Eq '^[0-9]+$' && [ "$RETAIN_COUNT" -gt 0 ]; then
+  MANIFEST_CURRENT="$(node -p "require('$UPDATE_DIR/manifest.json').fileName" 2>/dev/null || true)"
+  [ -z "$MANIFEST_CURRENT" ] && MANIFEST_CURRENT="$FILE_NAME"
+  cd "$BUNDLE_DIR"
+  total_bundles=$(ls -1 app-*.zip 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$total_bundles" -gt "$RETAIN_COUNT" ]; then
+    prune_count=$(( total_bundles - RETAIN_COUNT ))
+    pruned=0
+    # oldest-first; take everything except the newest RETAIN_COUNT
+    for old in $(ls -1 app-*.zip 2>/dev/null | sort | head -n "$prune_count"); do
+      if [ "$old" = "$MANIFEST_CURRENT" ]; then
+        echo "Retention: skipping current manifest bundle $old"
+        continue
+      fi
+      if rm -f -- "$old"; then
+        pruned=$((pruned + 1))
+      fi
+    done
+    echo "Retention: pruned $pruned old bundle(s); kept newest $RETAIN_COUNT (current: $MANIFEST_CURRENT)."
+  else
+    echo "Retention: $total_bundles bundle(s) within retain limit $RETAIN_COUNT; nothing to prune."
+  fi
+  cd "$ROOT_DIR"
+fi
+
 cat <<EOF
 
 Mobile update bundle built.
