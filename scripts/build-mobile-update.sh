@@ -25,11 +25,13 @@ fi
 
 cd "$ROOT_DIR"
 echo "Building web assets..."
-if [[ -n "$API_BASE_URL" ]]; then
-  VITE_BUILD_TARGET=mobile VITE_MOBILE_UPDATE_VERSION="$VERSION" VITE_AGENT_API_BASE_URL="$API_BASE_URL" npm run build
-else
-  VITE_BUILD_TARGET=mobile VITE_MOBILE_UPDATE_VERSION="$VERSION" npm run build
+if [[ -z "$API_BASE_URL" ]]; then
+  echo "ERROR: 未设置 VITE_AGENT_API_BASE_URL / MOBILE_UPDATE_PUBLIC_BASE_URL / APP_MOBILE_UPDATES_PUBLIC_BASE_URL。" >&2
+  echo "拒绝构建移动热更新包：否则前端会 fallback 到 http://localhost:8080，导致生产 App 全部 load failed（参见 2026-06-05 OTA 故障）。" >&2
+  echo "正确用法: VITE_AGENT_API_BASE_URL=http://<生产域名或IP:端口> npm run build:mobile:update" >&2
+  exit 1
 fi
+VITE_BUILD_TARGET=mobile VITE_MOBILE_UPDATE_VERSION="$VERSION" VITE_AGENT_API_BASE_URL="$API_BASE_URL" npm run build
 
 mkdir -p "$BUNDLE_DIR"
 rm -f "$BUNDLE_PATH"
