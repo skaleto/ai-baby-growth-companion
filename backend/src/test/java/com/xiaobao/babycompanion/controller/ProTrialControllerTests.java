@@ -156,8 +156,9 @@ class ProTrialControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.containsString("喂养记录")))
                 .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("私密复诊提醒"))))
-                .andExpect(jsonPath("$.missingItems[0].type").value("sleep"))
-                .andExpect(jsonPath("$.accountMissingItems[0].scope").value("account"));
+                .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("要补一下"))))
+                .andExpect(jsonPath("$.missingItems").value(hasSize(0)))
+                .andExpect(jsonPath("$.accountMissingItems").value(hasSize(0)));
 
         DailySummaryRecord stored = summaryRecordService.getOne(new QueryWrapper<DailySummaryRecord>()
                 .eq("family_id", caregiver.familyId())

@@ -1825,6 +1825,12 @@ public class AgentRuntime {
         if (hasPendingExpense && looksLikeAmountClarification(aiText)) {
             return "我已识别出这笔支出，并整理成待确认的账本草稿。请确认后我再记到账本里。";
         }
+        boolean hasPendingCareLog = decisions.stream().anyMatch((decision) ->
+                "careLog".equals(decision.type()) && "pending".equals(decision.mode())
+        );
+        if (hasPendingCareLog && (!StringUtils.hasText(aiText) || looksLikeCareLogRecorded(aiText))) {
+            return "我已整理出一条待确认照护记录。确认后会写入今天记录；需要调整的话，可以先编辑。";
+        }
         return aiText;
     }
 
@@ -1891,6 +1897,12 @@ public class AgentRuntime {
     private boolean looksLikeAmountClarification(String text) {
         if (!StringUtils.hasText(text)) return false;
         return text.matches(".*(实际花了多少钱|实际支付金额|实际金额|确认金额|金额是多少|告诉我.*金额|补充.*金额).*");
+    }
+
+    private boolean looksLikeCareLogRecorded(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        return text.matches(".*(已经|已|帮你).*(记到|记录|保存|写入).*(今天|照护|喂养|记录|日志).*")
+                || text.matches(".*(今天|照护|喂养).*(记录|日志).*(已经|已).*(记好|记录|保存|写入).*");
     }
 
     private void handleStreamLine(

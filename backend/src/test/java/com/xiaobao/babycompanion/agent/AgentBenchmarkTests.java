@@ -85,6 +85,33 @@ class AgentBenchmarkTests {
     }
 
     @Test
+    void benchmarkEmbeddedQuestionWithConcreteMilkRecordStillAutoWritesCareLog() {
+        String message = "今天芊宝发生了什么？刚才9点多喝了100毫升的奶粉，喝完之后吐了。";
+        RecordSignalExtractor lateEveningExtractor = new RecordSignalExtractor(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-05-13T14:15:00Z"), APP_ZONE)
+        );
+        RecordSignals signals = lateEveningExtractor.extract(message);
+
+        assertThat(signals.concreteCareLog()).isTrue();
+        assertThat(signals.careLogPatch().path("milkMl").asInt()).isEqualTo(100);
+        assertThat(signals.careLogPatch().path("milkTimes").asInt()).isEqualTo(1);
+        assertThat(signals.careLogPatch().path("events").get(0).path("time").asText()).isEqualTo("21:00");
+
+        var decisions = policy.decide(
+                response(careLog("2026-05-13", 100, List.of(milkEvent("21:00", 100))), List.of(), List.of(), List.of(), List.of(new AgentSafetyAlert("notice", "health", "吐奶留意", "观察状态"))),
+                signals,
+                objectMapper.createObjectNode().put("feeding", "混合喂养"),
+                message
+        );
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.get(0).mode()).isEqualTo("auto");
+        assertThat(decisions.get(0).type()).isEqualTo("careLog");
+        assertThat(decisions.get(0).payload().path("events").get(0).path("time").asText()).isEqualTo("21:00");
+    }
+
+    @Test
     void benchmarkFeedingStartWithoutAmountAsksInsteadOfWriting() {
         String message = "现在5:16开始吃奶";
         var decisions = policy.decide(
@@ -767,10 +794,11 @@ class AgentBenchmarkTests {
 
     @Test
     void benchmarkDailySummaryMissingItemsUseGentleNonTechnicalCopy() {
-        String copy = "今天还没看到喂养记录，要补一下吗？今天还没看到睡眠记录，要补一下吗？";
+        String copy = "小宝今天的小结：喂养记录：1 次，共 120 ml。";
 
-        assertThat(copy).contains("还没看到");
-        assertThat(copy).contains("要补一下吗");
+        assertThat(copy).doesNotContain("还没看到");
+        assertThat(copy).doesNotContain("要补一下吗");
+        assertThat(copy).doesNotContain("补一下");
         assertThat(copy).doesNotContain("漏记了");
         assertThat(copy).doesNotContain("异常");
         for (String word : TECHNICAL_WORDS) {
@@ -780,11 +808,14 @@ class AgentBenchmarkTests {
 
     @Test
     void benchmarkSharedDailySummaryContractExcludesPrivateAccountCopy() {
-        String summaryText = "小宝今天的小结：喂养记录：1 次，共 120 ml。 今天还没看到睡眠记录，要补一下吗？";
+        String summaryText = "小宝今天的小结：喂养记录：1 次，共 120 ml。";
 
         assertThat(summaryText).doesNotContain("私密复诊提醒");
         assertThat(summaryText).doesNotContain("账号私有聊天");
         assertThat(summaryText).doesNotContain("会话摘要");
+        assertThat(summaryText).doesNotContain("待确认信息");
+        assertThat(summaryText).doesNotContain("未完成提醒");
+        assertThat(summaryText).doesNotContain("要补一下吗");
         for (String word : TECHNICAL_WORDS) {
             assertThat(summaryText).doesNotContain(word);
         }

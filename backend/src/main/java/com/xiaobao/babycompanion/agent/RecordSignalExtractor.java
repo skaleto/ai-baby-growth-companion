@@ -151,7 +151,7 @@ public class RecordSignalExtractor {
             if (milkEventTotal > 0 && (milkMl == null || milkEventCount > 1 || !text.matches(".*(每次|每顿).*"))) {
                 care.put("milkMl", milkEventTotal);
             }
-            if (milkTimes == null && milkEventCount > 1) {
+            if (milkTimes == null && milkEventCount > 0) {
                 care.put("milkTimes", milkEventCount);
             }
             if (sleepHours == null && sleepEventTotal > 0) {
@@ -233,7 +233,18 @@ public class RecordSignalExtractor {
         if (!StringUtils.hasText(text)) return false;
         boolean question = matches(text, "怎么办|怎么|为什么|可以吗|能不能|要不要|需不需要|正常吗|吗\\??|吗？|\\?|？");
         boolean recordIntent = matches(text, "帮我记|记录|记一下|维护|保存|归档|记到");
-        return question && !recordIntent;
+        return question && !recordIntent && !containsConcreteRecordSignal(text);
+    }
+
+    private boolean containsConcreteRecordSignal(String text) {
+        return firstInt(ML, text) != null
+                || firstDouble(SLEEP, text) != null
+                || firstInt(WAKES, text) != null
+                || firstDouble(TEMPERATURE, text) != null
+                || !growthMeasurementSignals(text, LocalDate.now(clock).toString()).isEmpty()
+                || expenseSignal(text, LocalDate.now(clock).toString()) != null
+                || reminderSignal(text) != null
+                || matches(text, "便便|大便|拉了|臭臭");
     }
 
     private List<MemorySignal> memorySignals(String text, boolean explicitMemory) {

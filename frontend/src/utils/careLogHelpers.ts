@@ -67,6 +67,16 @@ export const mergeUniqueText = (left: string[], right: string[]) => {
     .slice(-6);
 };
 
+const roundOneDecimal = (value: number) => Math.round(value * 10) / 10;
+
+const sumOptionalNumber = (existing: number | undefined, patch: number | undefined, round = false) => {
+  if (typeof existing === "number" && typeof patch === "number") {
+    const value = existing + patch;
+    return round ? roundOneDecimal(value) : value;
+  }
+  return patch ?? existing;
+};
+
 export const mergeCareLog = (logs: CareLog[], patch: Partial<CareLog>) => {
   const date = patch.date ?? todayISO();
   const existing = logs.find((item) => item.date === date);
@@ -94,10 +104,10 @@ export const mergeCareLog = (logs: CareLog[], patch: Partial<CareLog>) => {
     item.date === date
       ? {
           ...item,
-          milkMl: patch.milkMl ?? item.milkMl,
-          milkTimes: patch.milkTimes ?? item.milkTimes,
-          sleepHours: patch.sleepHours ?? item.sleepHours,
-          wakes: patch.wakes ?? item.wakes,
+          milkMl: sumOptionalNumber(item.milkMl, patch.milkMl),
+          milkTimes: sumOptionalNumber(item.milkTimes, patch.milkTimes),
+          sleepHours: sumOptionalNumber(item.sleepHours, patch.sleepHours, true),
+          wakes: sumOptionalNumber(item.wakes, patch.wakes),
           soothing: patch.soothing ?? item.soothing,
           solids: [...new Set([...(item.solids ?? []), ...(patch.solids ?? [])])],
           poop: patch.poop ?? item.poop,

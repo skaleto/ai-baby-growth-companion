@@ -247,7 +247,6 @@ import {
   GrowthMeasurement,
   GrowthMeasurementType,
   MemoryItem,
-  MissingItemPrompt,
   PendingEffect,
   ProTrialStatus,
   RecordedBy,
@@ -1895,6 +1894,14 @@ const upsertToolActivity = (items: ToolActivity[] | undefined, activity: ToolAct
 
 const isAgentProgressActivity = (activity: ToolActivity) => activity.toolId === "agent-progress";
 
+const VOICE_CANCEL_DISTANCE_PX = 76;
+
+const visibleToolActivitiesForMessage = (message: ChatMessage) => {
+  const activities = message.toolActivities ?? [];
+  if (message.isStreaming) return activities;
+  return activities.filter((activity) => activity.status !== "completed");
+};
+
 const failedRunningActivities = (items: ToolActivity[]) =>
   items.map((item) => (item.status === "running" ? { ...item, status: "failed" as const } : item));
 
@@ -2141,7 +2148,6 @@ function App() {
   const [familyMembersStatus, setFamilyMembersStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [familyMemberBusyUserId, setFamilyMemberBusyUserId] = useState<string | null>(null);
   const [resetInviteCodeValue, setResetInviteCodeValue] = useState<string | null>(null);
-  const [dismissedDailySummaryMissingItemIds, setDismissedDailySummaryMissingItemIds] = useState<string[]>([]);
   const [isApplyingProTrial, setIsApplyingProTrial] = useState(false);
   const [isGeneratingDailySummary, setIsGeneratingDailySummary] = useState(false);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
@@ -2188,6 +2194,7 @@ function App() {
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [voiceLevel, setVoiceLevel] = useState(0);
   const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceCancelArmed, setVoiceCancelArmed] = useState(false);
   const [voiceError, setVoiceError] = useState("");
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -2277,7 +2284,7 @@ function App() {
   const voiceAsrReadyRef = useRef(false);
   const voiceAutoSubmitRef = useRef(false);
   const voicePressingRef = useRef(false);
-  const voicePointerRef = useRef<{ pointerId: number } | null>(null);
+  const voicePointerRef = useRef<{ pointerId: number; startY: number; canceling: boolean } | null>(null);
   const voicePointerCleanupRef = useRef<(() => void) | null>(null);
   const voiceAutoSubmitTimerRef = useRef<number | null>(null);
   const inputValueRef = useRef(input);
@@ -3140,12 +3147,6 @@ function App() {
     return formatFullDate(selectedDate);
   })();
   const selectedDailySummary = dailySummary?.date === selectedDate ? dailySummary : null;
-  const mutedMissingTypes = new Set(dailySummarySettings.mutedMissingTypes);
-  const dismissedMissingIds = new Set(dismissedDailySummaryMissingItemIds);
-  const selectedSummaryMissingItems = [
-    ...(selectedDailySummary?.missingItems ?? []),
-    ...(selectedDateIsToday ? selectedDailySummary?.accountMissingItems ?? [] : []),
-  ].filter((item) => !mutedMissingTypes.has(item.type) && !dismissedMissingIds.has(`${selectedDate}:${item.scope}:${item.id}`));
   const milkTrend = useMemo(() => {
     const recent = careLogs.slice(-3).map((item) => item.milkMl ?? 0).filter(Boolean);
     if (recent.length < 2) return "继续收集中";
@@ -3481,26 +3482,6 @@ function App() {
       }
     } catch (error) {
       showSystemWeakNotice(error instanceof Error ? error.message : "小结提醒设置保存失败。", "warning");
-    }
-  };
-
-  const dismissMissingItemForToday = (item: MissingItemPrompt) => {
-    const key = `${selectedDate}:${item.scope}:${item.id}`;
-    setDismissedDailySummaryMissingItemIds((current) => current.includes(key) ? current : [...current, key]);
-    showSystemWeakNotice("好的，今天先不提醒这项。", "info");
-  };
-
-  const muteMissingItemType = async (item: MissingItemPrompt) => {
-    const nextTypes = Array.from(new Set([...dailySummarySettings.mutedMissingTypes, item.type]));
-    await saveDailySummarySettings({ ...dailySummarySettings, mutedMissingTypes: nextTypes });
-  };
-
-  const copyHandoffSummary = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      showSystemWeakNotice("今日交接已复制。", "success");
-    } catch {
-      window.alert(text);
     }
   };
 
@@ -4369,6 +4350,7 @@ function App() {
     voicePointerCleanupRef.current?.();
     voicePointerCleanupRef.current = null;
     voicePointerRef.current = null;
+    setVoiceCancelArmed(false);
   };
 
   const stopVoiceCapture = (autoSubmit = false, keepStandby = true) => {
@@ -4382,6 +4364,25 @@ function App() {
     voiceShouldStopRef.current = true;
     cleanupLocalVoiceCapture(keepStandby);
     finishVoiceStream();
+  };
+
+  const cancelVoiceCapture = () => {
+    clearVoicePointerTracking();
+    voicePressingRef.current = false;
+    voiceSessionRef.current += 1;
+    voiceShouldStopRef.current = true;
+    voiceEndedRef.current = true;
+    voiceAutoSubmitRef.current = false;
+    clearVoiceAutoSubmitTimer();
+    const baseText = voiceBaseTextRef.current;
+    inputValueRef.current = baseText;
+    setInput(baseText);
+    setVoiceTranscript("");
+    setVoiceError("");
+    cleanupLocalVoiceCapture(true);
+    asrControllerRef.current?.close();
+    asrControllerRef.current = null;
+    setVoiceStatus("idle");
   };
 
   const startVoiceCapture = async () => {
@@ -4534,13 +4535,18 @@ function App() {
   };
 
   const finishVoicePress = () => {
-    if (!voicePointerRef.current) return;
+    const pointer = voicePointerRef.current;
+    if (!pointer) return;
+    if (pointer.canceling) {
+      cancelVoiceCapture();
+      return;
+    }
     stopVoiceCapture(true);
   };
 
   const cancelVoicePress = () => {
     if (!voicePointerRef.current && !voicePressingRef.current) return;
-    stopVoiceCapture(false);
+    cancelVoiceCapture();
   };
 
   const startVoicePress = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -4548,12 +4554,23 @@ function App() {
     event.preventDefault();
     const button = event.currentTarget;
     const pointerId = event.pointerId;
-    voicePointerRef.current = { pointerId };
+    voiceBaseTextRef.current = inputValueRef.current.trim();
+    voicePointerRef.current = { pointerId, startY: event.clientY, canceling: false };
+    setVoiceCancelArmed(false);
 
     const finishFromWindow = (pointerEvent: PointerEvent) => {
       if (voicePointerRef.current?.pointerId !== pointerEvent.pointerId) return;
       pointerEvent.preventDefault();
       finishVoicePress();
+    };
+    const updateCancelFromWindow = (pointerEvent: PointerEvent) => {
+      const pointer = voicePointerRef.current;
+      if (!pointer || pointer.pointerId !== pointerEvent.pointerId) return;
+      const canceling = pointerEvent.clientY <= pointer.startY - VOICE_CANCEL_DISTANCE_PX;
+      if (pointer.canceling === canceling) return;
+      voicePointerRef.current = { ...pointer, canceling };
+      setVoiceCancelArmed(canceling);
+      if (canceling) hapticSelection();
     };
     const cancelFromWindow = (pointerEvent: PointerEvent) => {
       if (voicePointerRef.current?.pointerId !== pointerEvent.pointerId) return;
@@ -4562,10 +4579,12 @@ function App() {
     const cancelOnBlur = () => cancelVoicePress();
 
     window.addEventListener("pointerup", finishFromWindow, true);
+    window.addEventListener("pointermove", updateCancelFromWindow, true);
     window.addEventListener("pointercancel", cancelFromWindow, true);
     window.addEventListener("blur", cancelOnBlur);
     voicePointerCleanupRef.current = () => {
       window.removeEventListener("pointerup", finishFromWindow, true);
+      window.removeEventListener("pointermove", updateCancelFromWindow, true);
       window.removeEventListener("pointercancel", cancelFromWindow, true);
       window.removeEventListener("blur", cancelOnBlur);
     };
@@ -4871,6 +4890,7 @@ function App() {
       }
 
       const autoRecordedCareLogs: CareLog[] = [];
+      const autoRecordedCareLogPatches: Array<{ id: string; patch: Partial<CareLog> }> = [];
       const autoUndos: AutoRecordUndo[] = [];
       if (autoCareLogPatches.length) {
         let nextLogs = careLogs;
@@ -4881,6 +4901,7 @@ function App() {
           const nextLog = nextLogs.find((item) => item.date === targetDate);
           if (nextLog) {
             autoRecordedCareLogs.push(nextLog);
+            autoRecordedCareLogPatches.push({ id: nextLog.id, patch: { ...patch, id: nextLog.id, date: targetDate } });
             autoUndos.push({
               id: makeId("undo"),
               messageId: aiMessage.id,
@@ -4937,9 +4958,9 @@ function App() {
         () => persistRecord("messages", parentMessage.id, messageForStorage(parentMessage)),
         () => persistRecord("messages", aiMessage.id, messageForStorage(aiMessage)),
       ];
-      if (autoRecordedCareLogs.length) {
-        autoRecordedCareLogs.forEach((log) => {
-          persistenceTasks.push(() => persistRecord("careLogs", log.id, log));
+      if (autoRecordedCareLogPatches.length) {
+        autoRecordedCareLogPatches.forEach(({ id, patch }) => {
+          persistenceTasks.push(() => persistRecord("careLogs", id, patch));
         });
       }
       if (autoScheduledReminders.length) {
@@ -5902,7 +5923,9 @@ function App() {
   };
 
   const voiceHoldLabel =
-    voiceStatus === "error"
+    voiceCancelArmed
+      ? "松开取消"
+      : voiceStatus === "error"
       ? voiceError || "语音识别暂时不可用"
       : voiceStatus === "unsupported"
         ? voiceError || "当前环境不支持语音输入"
@@ -6573,9 +6596,9 @@ function App() {
                     <p>{message.reasoning}</p>
                   </details>
                 ) : null}
-                {message.role === "ai" && message.toolActivities?.length ? (
+                {message.role === "ai" && visibleToolActivitiesForMessage(message).length ? (
                   <div className="tool-activity-list">
-                    {message.toolActivities.map((activity) => (
+                    {visibleToolActivitiesForMessage(message).map((activity) => (
                       <div className={`tool-activity ${activity.status}`} key={activity.id}>
                         {isAgentProgressActivity(activity) ? (
                           activity.status === "completed" ? (
@@ -7300,11 +7323,17 @@ function App() {
               {effectiveLowLatencyEnabled ? (
                 <p className="composer-mode-note">低延迟模式已开启，会在请求中使用 fast 服务档位。</p>
               ) : null}
+              {composerMode === "voice" && (isListening || voiceStatus === "connecting" || voiceCancelArmed) ? (
+                <div className={`voice-cancel-hint ${voiceCancelArmed ? "armed" : ""}`} role="status">
+                  <X size={14} />
+                  <span>{voiceCancelArmed ? "松开取消" : "上滑取消"}</span>
+                </div>
+              ) : null}
               <div className="composer-input-line">
                 {composerMode === "voice" ? (
                   <button
                     type="button"
-                    className={`voice-hold-button ${isListening ? "listening" : ""} ${voiceStatus}`}
+                    className={`voice-hold-button ${isListening ? "listening" : ""} ${voiceStatus} ${voiceCancelArmed ? "canceling" : ""}`}
                     style={voiceButtonStyle}
                     disabled={isSubmitting}
                     aria-label="按住说话"
@@ -7394,15 +7423,8 @@ function App() {
               date={selectedDate}
               babyNickname={babyNickname}
               canCaregive={canCaregive}
-              missingItems={selectedSummaryMissingItems}
               onGenerate={() => void requestGenerateDailySummary()}
               onOpenGrowth={openGrowthEntry}
-              onMissingAction={(item) => item.type === "reminder" ? switchMobileTab("reminders") : switchMobileTab("chat")}
-              onDismissMissing={dismissMissingItemForToday}
-              onMuteMissing={(item) => void muteMissingItemType(item)}
-              reminders={reminders}
-              pendingEffectCount={pendingEffects.length}
-              onCopyHandoff={(text) => void copyHandoffSummary(text)}
             />
           ) : null}
 

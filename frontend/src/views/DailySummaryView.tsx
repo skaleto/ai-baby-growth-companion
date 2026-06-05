@@ -1,12 +1,11 @@
 import { ArrowUpRight, Sparkles } from "lucide-react";
-import type { CareLog, DailySummary, Finding, GrowthMeasurement, MissingItemPrompt, Reminder } from "../types";
+import type { CareLog, DailySummary, Finding, GrowthMeasurement } from "../types";
 import { Skeleton } from "../components/Skeleton";
 import heroRecordsToday from "../assets/illustrations/hero-records-today.webp";
 import {
   buildCareStats,
   buildCaregiverCompanionLine,
   buildGrowthStats,
-  buildHandoffSummary,
   countTodayDataPoints,
   type DailyObservationStat,
   FINDING_TYPE_COLOR,
@@ -23,15 +22,8 @@ export type DailySummaryViewProps = {
   date: string;
   babyNickname: string;
   canCaregive: boolean;
-  missingItems?: MissingItemPrompt[];
   onGenerate?: () => void;
   onOpenGrowth?: () => void;
-  onMissingAction?: (item: MissingItemPrompt) => void;
-  onDismissMissing?: (item: MissingItemPrompt) => void;
-  onMuteMissing?: (item: MissingItemPrompt) => void;
-  reminders?: Reminder[];
-  pendingEffectCount?: number;
-  onCopyHandoff?: (text: string) => void;
 };
 
 export function DailySummaryView({
@@ -43,32 +35,14 @@ export function DailySummaryView({
   date,
   babyNickname,
   canCaregive,
-  missingItems,
   onGenerate,
   onOpenGrowth,
-  onMissingAction,
-  onDismissMissing,
-  onMuteMissing,
-  reminders = [],
-  pendingEffectCount = 0,
-  onCopyHandoff,
 }: DailySummaryViewProps) {
   const hasFindings = Boolean(summary?.findings?.length);
-  const visibleMissingItems = missingItems ?? summary?.missingItems ?? [];
-  const hasMissing = visibleMissingItems.length > 0;
   const hasObservations = Boolean(summary?.observations?.length);
   const stats = [...buildCareStats(careLog), buildGrowthStats(growthMeasurements, date)];
   const dataPoints = countTodayDataPoints(careLog, growthMeasurements, date);
   const caregiverLine = buildCaregiverCompanionLine(careLog, growthMeasurements, date);
-  const handoff = buildHandoffSummary({
-    babyNickname,
-    careLog,
-    growthMeasurements,
-    selectedDate: date,
-    reminders,
-    pendingEffectCount,
-    observations: summary?.observations ?? [],
-  });
   const statusLabel = loading ? "整理中" : summary?.stale ? "有新记录" : summary ? "已整理" : "还没整理";
   const subtitle = buildSubtitle({ dataPoints, loading, summary });
   const generateLabel = summary ? "重新整理" : "整理今天";
@@ -164,49 +138,6 @@ export function DailySummaryView({
         </div>
       )}
 
-      {hasMissing && (
-        <div className="daily-summary__section fade-in-up">
-          <h3>要顺手补一下吗</h3>
-          <div className="daily-observation__missing-list">
-            {visibleMissingItems.map((item) => (
-              <article key={`${item.scope}-${item.id}`} className="daily-observation__missing-item">
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{gentleMissingMessage(item.message)}</p>
-                </div>
-                <div className="daily-observation__missing-actions">
-                  {onMissingAction ? (
-                    <button type="button" onClick={() => onMissingAction(item)}>补一下</button>
-                  ) : null}
-                  {onDismissMissing ? (
-                    <button type="button" className="quiet" onClick={() => onDismissMissing(item)}>今天不用记</button>
-                  ) : null}
-                  {onMuteMissing ? (
-                    <button type="button" className="quiet" onClick={() => onMuteMissing(item)}>以后少提醒这个</button>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="daily-summary__section daily-observation__handoff fade-in-up">
-        <div className="daily-observation__section-head">
-          <h3>今日交接</h3>
-          {onCopyHandoff ? (
-            <button type="button" onClick={() => onCopyHandoff(handoff.copyText)}>复制交接</button>
-          ) : null}
-        </div>
-        <div className="daily-observation__handoff-grid">
-          {handoff.sections.map((section) => (
-            <article key={section.title} className="daily-observation__handoff-section">
-              <strong>{section.title}</strong>
-              {section.items.map((item) => <span key={item}>{item}</span>)}
-            </article>
-          ))}
-        </div>
-      </div>
     </section>
   );
 }
@@ -251,14 +182,6 @@ function formatGeneratedTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-}
-
-function gentleMissingMessage(message: string) {
-  return message
-    .replace(/缺失/g, "还没看到")
-    .replace(/漏掉了吗/g, "要顺手补一下吗")
-    .replace(/需要补一下吗/g, "要顺手补一下吗")
-    .replace(/补齐关键记录/g, "先整理已有记录");
 }
 
 function DailySummarySkeleton({ compact = false }: { compact?: boolean }) {

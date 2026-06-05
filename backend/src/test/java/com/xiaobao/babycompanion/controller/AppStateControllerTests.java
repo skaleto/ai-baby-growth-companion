@@ -1078,6 +1078,47 @@ class AppStateControllerTests {
     }
 
     @Test
+    void mergesCareLogPatchByAddingDailyTotalsAndKeepingTimelineEvents() throws Exception {
+        mockMvc.perform(put("/api/app/state/careLogs/care-feed")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "care-feed",
+                                  "date": "2026-06-05",
+                                  "milkMl": 100,
+                                  "milkTimes": 1,
+                                  "notes": ["今天喝了100ml母乳"],
+                                  "events": [
+                                    {"id": "event-milk-1", "type": "milk", "date": "2026-06-05", "time": "13:24", "amountMl": 100}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/app/state/careLogs/care-feed")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "id": "care-feed",
+                                  "date": "2026-06-05",
+                                  "milkMl": 100,
+                                  "milkTimes": 1,
+                                  "notes": ["今天9点多喝了100ml奶粉，喝完吐了"],
+                                  "events": [
+                                    {"id": "event-milk-2", "type": "milk", "date": "2026-06-05", "time": "21:00", "amountMl": 100}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state.careLogs[0].milkMl").value(200))
+                .andExpect(jsonPath("$.state.careLogs[0].milkTimes").value(2))
+                .andExpect(jsonPath("$.state.careLogs[0].events.length()").value(2))
+                .andExpect(jsonPath("$.state.careLogs[0].events[?(@.time == '21:00')].amountMl").value(100));
+    }
+
+    @Test
     void rejectsUnsupportedCollectionOnUpsert() throws Exception {
         mockMvc.perform(put("/api/app/state/secrets/anything")
                         .header(HttpHeaders.AUTHORIZATION, bearer())

@@ -61,6 +61,7 @@ public class AppStateService {
 
     private static final String PROFILE_ID = "default";
     private static final Set<String> ATTACHMENT_KINDS = Set.of("image", "video", "audio");
+    private static final Set<String> ADDITIVE_CARE_NUMBER_FIELDS = Set.of("milkMl", "milkTimes", "sleepHours", "wakes");
     private static final List<String> SHARED_ATTACHMENT_OWNER_TYPES = List.of("profile", "growth", "care", "album", "expense");
     private static final Set<String> EXPENSE_CATEGORIES = Set.of(
             "formula", "diaper", "food", "clothing", "toy", "health", "vaccine", "daily", "education", "other"
@@ -781,11 +782,35 @@ public class AppStateService {
         patch.fields().forEachRemaining((entry) -> {
             if ("notes".equals(entry.getKey()) || "solids".equals(entry.getKey()) || "events".equals(entry.getKey())) {
                 merged.set(entry.getKey(), mergeArrayUnique(entry.getKey(), merged.get(entry.getKey()), entry.getValue()));
+            } else if (isAdditiveCareNumber(entry.getKey(), merged.get(entry.getKey()), entry.getValue())) {
+                merged.set(entry.getKey(), summedCareNumber(entry.getKey(), merged.get(entry.getKey()), entry.getValue()));
             } else if (!entry.getValue().isNull()) {
                 merged.set(entry.getKey(), entry.getValue());
             }
         });
         return merged;
+    }
+
+    private boolean isAdditiveCareNumber(String field, JsonNode existing, JsonNode patch) {
+        return ADDITIVE_CARE_NUMBER_FIELDS.contains(field)
+                && existing != null
+                && existing.isNumber()
+                && patch != null
+                && patch.isNumber();
+    }
+
+    private JsonNode summedCareNumber(String field, JsonNode existing, JsonNode patch) {
+        ObjectNode container = objectMapper.createObjectNode();
+        if ("sleepHours".equals(field)) {
+            container.put(field, roundOneDecimal(existing.asDouble() + patch.asDouble()));
+        } else {
+            container.put(field, existing.asInt() + patch.asInt());
+        }
+        return container.get(field);
+    }
+
+    private double roundOneDecimal(double value) {
+        return Math.round(value * 10.0) / 10.0;
     }
 
     private ArrayNode mergeArrayUnique(String field, JsonNode left, JsonNode right) {

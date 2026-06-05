@@ -637,11 +637,12 @@ canvas {
 
 .quick-row {
   gap: 8px;
-  margin: 0 -2px;
-  padding: 0 2px 10px;
+  margin: 0;
+  padding: 0 10px 10px;
   overflow-x: auto;
   border-bottom: 0;
   overscroll-behavior-x: contain;
+  scroll-padding-inline: 10px;
   scrollbar-width: none;
 }
 
@@ -773,6 +774,30 @@ canvas {
   line-height: 18px;
 }
 
+.voice-cancel-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-self: center;
+  gap: 5px;
+  width: fit-content;
+  margin: -2px auto 0;
+  padding: 5px 10px;
+  border: 1px solid rgba(124, 146, 166, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: rgba(72, 89, 101, 0.76);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 16px;
+  box-shadow: 0 8px 20px rgba(42, 56, 66, 0.08);
+}
+
+.voice-cancel-hint.armed {
+  border-color: rgba(169, 85, 104, 0.38);
+  background: #fff7f8;
+  color: #9b344a;
+}
+
 .model-select,
 .composer textarea,
 .voice-hold-button {
@@ -879,6 +904,19 @@ canvas {
 .voice-hold-button.listening::before {
   opacity: 1;
   animation: voiceBreath 1.6s ease-in-out infinite;
+}
+
+.voice-hold-button.canceling {
+  color: #9b344a;
+  border-color: rgba(169, 85, 104, 0.55);
+  background: #fff7f8;
+  box-shadow: 0 10px 22px rgba(169, 85, 104, 0.12);
+  transform: scale(0.985);
+}
+
+.voice-hold-button.canceling::before {
+  opacity: 0;
+  animation: none;
 }
 
 .voice-hold-button.processing {

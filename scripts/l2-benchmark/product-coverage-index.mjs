@@ -111,7 +111,7 @@ export const productCoverageIndex = [
     coverage: [
       {
         layer: "frontend",
-        evidence: "scripts/test-daily-summary-utils.mjs and scripts/probe-daily-summary-view.mjs cover caregiver line, explanation disclosure, and handoff summary.",
+        evidence: "scripts/test-daily-summary-utils.mjs and scripts/probe-daily-summary-view.mjs cover caregiver line, explanation disclosure, and verify handoff/missing prompts stay out of the primary records view.",
       },
       {
         layer: "l2",

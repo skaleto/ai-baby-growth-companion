@@ -316,6 +316,7 @@ async function installApiMocks(page) {
 
   await page.addInitScript(() => {
     window.localStorage.setItem("baby-companion-auth-token", "frontend-smoke-token");
+    window.localStorage.setItem("baby-companion-consent-v1", JSON.stringify(true));
   });
 
   await page.route("**/api/**", async (route) => {
@@ -456,6 +457,25 @@ async function installApiMocks(page) {
               inputTokens: 1250,
               outputTokens: 180,
               totalTokens: 1430,
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    if (url.pathname === "/api/auth/family/members") {
+      await route.fulfill({
+        status: 200,
+        headers,
+        body: JSON.stringify({
+          members: [
+            {
+              userId: "smoke-user",
+              roleName: "妈妈",
+              caregiver: true,
+              maskedPhone: "138****0000",
+              joinedAt: "2026-05-12T00:00:00.000Z",
             },
           ],
         }),
@@ -824,19 +844,27 @@ async function checkLedgerModalChrome(page, label) {
 }
 
 async function exerciseMobileUpdateNotice(page) {
-  await page.evaluate(() => {
-    window.dispatchEvent(new CustomEvent("xiaobao-mobile-update-notice", {
-      detail: {
-        message: "正在下载新版本 smoke",
-        tone: "info",
-        durationMs: 0,
-        progress: null,
-        progressMode: "indeterminate",
-      },
-    }));
-  });
   const toast = page.locator(".system-weak-toast.with-progress").last();
-  await toast.waitFor({ timeout: 5000 });
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("xiaobao-mobile-update-notice", {
+        detail: {
+          message: "正在下载新版本 smoke",
+          tone: "info",
+          durationMs: 0,
+          progress: null,
+          progressMode: "indeterminate",
+        },
+      }));
+    });
+    try {
+      await toast.waitFor({ timeout: 1200 });
+      break;
+    } catch (error) {
+      if (attempt === 3) throw error;
+      await page.waitForTimeout(250);
+    }
+  }
   const indeterminateText = (await toast.textContent()) ?? "";
   if (indeterminateText.includes("0%")) {
     throw new Error(`mobile update indeterminate progress should not render 0%: "${indeterminateText}"`);

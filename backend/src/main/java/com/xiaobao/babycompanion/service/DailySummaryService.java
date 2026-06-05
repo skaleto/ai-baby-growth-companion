@@ -19,23 +19,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.auth.AuthPrincipal;
 import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.pro.DailySummaryDto;
-import com.xiaobao.babycompanion.dto.pro.MissingItemDto;
 import com.xiaobao.babycompanion.persistence.entity.AlbumItemRecord;
 import com.xiaobao.babycompanion.persistence.entity.BabyProfileRecord;
 import com.xiaobao.babycompanion.persistence.entity.CareLogRecord;
 import com.xiaobao.babycompanion.persistence.entity.DailySummaryRecord;
 import com.xiaobao.babycompanion.persistence.entity.ExpenseItemRecord;
 import com.xiaobao.babycompanion.persistence.entity.GrowthEventRecord;
-import com.xiaobao.babycompanion.persistence.entity.PendingEffectRecord;
-import com.xiaobao.babycompanion.persistence.entity.ReminderRecord;
 import com.xiaobao.babycompanion.persistence.service.AlbumItemRecordService;
 import com.xiaobao.babycompanion.persistence.service.BabyProfileRecordService;
 import com.xiaobao.babycompanion.persistence.service.CareLogRecordService;
 import com.xiaobao.babycompanion.persistence.service.DailySummaryRecordService;
 import com.xiaobao.babycompanion.persistence.service.ExpenseItemRecordService;
 import com.xiaobao.babycompanion.persistence.service.GrowthEventRecordService;
-import com.xiaobao.babycompanion.persistence.service.PendingEffectRecordService;
-import com.xiaobao.babycompanion.persistence.service.ReminderRecordService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -49,8 +44,6 @@ public class DailySummaryService {
     private final GrowthEventRecordService growthEventService;
     private final AlbumItemRecordService albumItemService;
     private final ExpenseItemRecordService expenseItemService;
-    private final ReminderRecordService reminderService;
-    private final PendingEffectRecordService pendingEffectService;
     private final ProTrialService proTrialService;
     private final AiUsageLogService aiUsageLogService;
     private final CurrentUser currentUser;
@@ -66,8 +59,6 @@ public class DailySummaryService {
             GrowthEventRecordService growthEventService,
             AlbumItemRecordService albumItemService,
             ExpenseItemRecordService expenseItemService,
-            ReminderRecordService reminderService,
-            PendingEffectRecordService pendingEffectService,
             ProTrialService proTrialService,
             AiUsageLogService aiUsageLogService,
             CurrentUser currentUser,
@@ -82,8 +73,6 @@ public class DailySummaryService {
         this.growthEventService = growthEventService;
         this.albumItemService = albumItemService;
         this.expenseItemService = expenseItemService;
-        this.reminderService = reminderService;
-        this.pendingEffectService = pendingEffectService;
         this.proTrialService = proTrialService;
         this.aiUsageLogService = aiUsageLogService;
         this.currentUser = currentUser;
@@ -107,11 +96,11 @@ public class DailySummaryService {
         return new DailySummaryDto(
                 stored.id(),
                 stored.date(),
-                stored.text(),
+                stripDailySummaryPromptCopy(stored.text()),
                 safeList(stored.facts()),
-                safeList(stored.observations()),
-                safeList(stored.missingItems()),
-                accountMissingItems(familyId, userId, summaryDate),
+                List.of(),
+                List.of(),
+                List.of(),
                 safeList(stored.findings()),
                 stored.generatedAt(),
                 stored.generatedByUserId(),
@@ -165,15 +154,15 @@ public class DailySummaryService {
     }
 
     private DailySummaryDto sharedSummary(DailySummaryDto summary) {
-        // accountMissingItems is account-private — stripped before persistence and recomputed at read time
+        // Missing prompts and account-private nudges are intentionally stripped from the primary records experience.
         // findings are derived from family-shared inputs (careLog/expense/album) — safe to persist + share within family
         return new DailySummaryDto(
                 summary.id(),
                 summary.date(),
-                summary.text(),
+                stripDailySummaryPromptCopy(summary.text()),
                 safeList(summary.facts()),
-                safeList(summary.observations()),
-                safeList(summary.missingItems()),
+                List.of(),
+                List.of(),
                 List.of(),
                 safeList(summary.findings()),
                 summary.generatedAt(),
@@ -183,13 +172,21 @@ public class DailySummaryService {
         );
     }
 
+    private String stripDailySummaryPromptCopy(String text) {
+        if (!StringUtils.hasText(text)) return text;
+        return text
+                .replaceAll("\\s*今天还没看到[^。！？?]*要补一下吗[？?]?", "")
+                .replaceAll("\\s*你还有\\s*\\d+\\s*个提醒没处理[^。！？?]*[。！？?]?", "")
+                .replaceAll("\\s*你还有\\s*\\d+\\s*条待确认信息[^。！？?]*[。！？?]?", "")
+                .trim();
+    }
+
     private DailySummaryDto buildSummary(String familyId, String userId, String date, String generatedAt, String fingerprint) {
         JsonNode profile = profile(familyId);
         JsonNode careLog = careLog(familyId, date);
         List<JsonNode> growthEvents = recordsForDate(growthEventService, familyId, date);
         List<JsonNode> albumItems = recordsForDate(albumItemService, familyId, date);
         List<JsonNode> expenses = recordsForDate(expenseItemService, familyId, date);
-        List<MissingItemDto> missingItems = familyMissingItems(careLog);
 
         List<String> facts = new ArrayList<>();
         String babyName = text(profile, "nickname", "小宝");
@@ -210,18 +207,9 @@ public class DailySummaryService {
         if (!expenses.isEmpty()) facts.add("账本支出：" + expenses.size() + " 笔，共 " + trimMoney(expenseTotal(expenses)) + " 元");
         if (facts.isEmpty()) facts.add("今天还没有太多正式记录。");
 
-        List<String> observations = new ArrayList<>();
-        for (MissingItemDto item : missingItems) {
-            observations.add(item.message());
-        }
-        if (observations.isEmpty()) {
-            observations.add("今天的关键记录看起来已经有了基础线索，后续补充也可以随时重新整理。");
-        }
+        List<String> observations = List.of();
 
         String text = babyName + "今天的小结：" + String.join("；", facts) + "。";
-        if (!observations.isEmpty()) {
-            text = text + " " + String.join(" ", observations);
-        }
 
         List<FindingDto> findings = generateFindings(
                 familyId, userId, date, profile, careLog, growthEvents, albumItems, expenses);
@@ -232,8 +220,8 @@ public class DailySummaryService {
                 text,
                 facts,
                 observations,
-                missingItems,
-                accountMissingItems(familyId, userId, date),
+                List.of(),
+                List.of(),
                 findings,
                 generatedAt,
                 userId,
@@ -327,82 +315,6 @@ public class DailySummaryService {
                 java.util.Set.of(),  // members: not yet collected
                 java.util.Set.of()   // memory: not yet collected
         );
-    }
-
-    private List<MissingItemDto> familyMissingItems(JsonNode careLog) {
-        List<MissingItemDto> items = new ArrayList<>();
-        if (!hasFeeding(careLog)) {
-            items.add(new MissingItemDto(
-                    "missing-feeding",
-                    "feeding",
-                    "family",
-                    "喂养记录",
-                    "今天还没看到喂养记录，要补一下吗？",
-                    "补一下"
-            ));
-        }
-        if (!hasSleep(careLog)) {
-            items.add(new MissingItemDto(
-                    "missing-sleep",
-                    "sleep",
-                    "family",
-                    "睡眠记录",
-                    "今天还没看到睡眠记录，要补一下吗？",
-                    "补一下"
-            ));
-        }
-        return items;
-    }
-
-    private List<MissingItemDto> accountMissingItems(String familyId, String userId, String date) {
-        if (!StringUtils.hasText(userId)) return List.of();
-        List<MissingItemDto> items = new ArrayList<>();
-        long openReminders = reminderService.count(privateQuery(ReminderRecord.class, familyId, userId)
-                .ne("status", "done"));
-        if (openReminders > 0) {
-            items.add(new MissingItemDto(
-                    "account-open-reminders",
-                    "reminder",
-                    "account",
-                    "未完成提醒",
-                    "你还有 " + openReminders + " 个提醒没处理，要看一下吗？",
-                    "去提醒"
-            ));
-        }
-        long pending = pendingEffectService.count(privateQuery(PendingEffectRecord.class, familyId, userId));
-        if (pending > 0) {
-            items.add(new MissingItemDto(
-                    "account-pending-effects",
-                    "pending",
-                    "account",
-                    "待确认信息",
-                    "你还有 " + pending + " 条待确认信息，可以确认后再重新整理。",
-                    "去确认"
-            ));
-        }
-        return items;
-    }
-
-    private boolean hasFeeding(JsonNode careLog) {
-        if (careLog == null || careLog.isNull()) return false;
-        if (careLog.path("milkMl").asInt(0) > 0 || careLog.path("milkTimes").asInt(0) > 0) return true;
-        JsonNode events = careLog.path("events");
-        if (!events.isArray()) return false;
-        for (JsonNode event : events) {
-            if ("milk".equals(event.path("type").asText(""))) return true;
-        }
-        return false;
-    }
-
-    private boolean hasSleep(JsonNode careLog) {
-        if (careLog == null || careLog.isNull()) return false;
-        if (careLog.path("sleepHours").asDouble(0) > 0) return true;
-        JsonNode events = careLog.path("events");
-        if (!events.isArray()) return false;
-        for (JsonNode event : events) {
-            if ("sleep".equals(event.path("type").asText(""))) return true;
-        }
-        return false;
     }
 
     private String sourceFingerprint(String familyId, String date) {
@@ -527,9 +439,4 @@ public class DailySummaryService {
         return new QueryWrapper<T>().eq("family_id", familyId);
     }
 
-    private <T extends com.xiaobao.babycompanion.persistence.entity.AppRecordEntity> QueryWrapper<T> privateQuery(Class<T> ignored, String familyId, String userId) {
-        QueryWrapper<T> query = familyQuery(ignored, familyId);
-        query.eq("owner_user_id", userId);
-        return query;
-    }
 }

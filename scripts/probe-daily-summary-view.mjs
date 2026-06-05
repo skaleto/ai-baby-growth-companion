@@ -197,15 +197,13 @@ async function main() {
         await assertVisibleText(page, "给照护人的话");
         await assertVisibleText(page, "昨晚记录到 3 次夜醒");
         await assertVisibleText(page, "这些观察怎么来的");
-        await assertVisibleText(page, "今日交接");
-        await assertVisibleText(page, "复制交接");
+        await assertNoText(page, "今日交接");
+        await assertNoText(page, "复制交接");
+        await assertNoText(page, "要顺手补一下吗");
         await assertNoText(page, "Pro 今日小结");
         await assertNoText(page, "生成今日小结");
         await assertNoText(page, "漏掉了吗");
         await page.screenshot({ path: path.join(artifactDir, `${vp.name}-1-records-today.png`), fullPage: true });
-        await page.locator(".daily-observation__handoff").first().scrollIntoViewIfNeeded({ timeout: 3000 });
-        await page.waitForTimeout(200);
-        await page.screenshot({ path: path.join(artifactDir, `${vp.name}-1b-records-handoff.png`), fullPage: true });
 
         // 2. 我的 Tab (verify Pro 申请 button hidden)
         await clickTab("我的");

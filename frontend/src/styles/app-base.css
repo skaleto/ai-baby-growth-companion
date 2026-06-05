@@ -419,16 +419,18 @@ h3 {
 }
 
 .compression-notice {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 10px 16px 0;
-  padding: 9px 10px;
+  margin: 8px 16px 0;
+  padding: 8px 10px;
   border: 1px solid rgba(88, 127, 168, 0.22);
   border-radius: 8px;
   background: #f4f9fc;
   color: #37566d;
-  font-size: 0.84rem;
+  font-size: 0.8rem;
   line-height: 1.35;
 }
 
@@ -446,7 +448,8 @@ h3 {
 
 .system-weak-toast {
   position: fixed;
-  top: max(14px, env(safe-area-inset-top));
+  top: auto;
+  bottom: calc(96px + max(12px, env(safe-area-inset-bottom)));
   left: 50%;
   z-index: 120;
   display: flex;
@@ -542,13 +545,19 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 34px;
+  min-height: 40px;
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
   color: var(--ink);
   white-space: nowrap;
+}
+
+.quick-row button svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
 }
 
 .quick-row button:hover,

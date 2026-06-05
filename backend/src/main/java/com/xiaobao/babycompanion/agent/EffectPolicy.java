@@ -97,7 +97,9 @@ public class EffectPolicy {
         JsonNode carePayload = mergedCarePayload(response, signals);
         carePayload = completenessPolicy.normalizeCarePayload(carePayload);
         if (!needsClarification && completenessPolicy.hasCompleteCareContent(carePayload)) {
-            boolean auto = !highRisk && signals.concreteCareLog() && completenessPolicy.hasAutoRecordableCare(carePayload);
+            boolean auto = !highRisk
+                    && completenessPolicy.hasAutoRecordableCare(carePayload)
+                    && (signals.concreteCareLog() || completesCareRecordAfterClarification(userMessage, carePayload));
             decisions.add(decision(
                     auto ? "auto" : "pending",
                     "careLog",
@@ -515,6 +517,12 @@ public class EffectPolicy {
 
     private boolean explicitMilkType(String text) {
         return StringUtils.hasText(text) && text.matches(".*(母乳|亲喂|配方奶|奶粉|水奶|液态奶|冻奶|解冻奶|挤奶|吸出来的奶).*");
+    }
+
+    private boolean completesCareRecordAfterClarification(String text, JsonNode carePayload) {
+        if (!explicitMilkType(text)) return false;
+        if (carePayload == null || carePayload.isNull()) return false;
+        return number(carePayload, "milkMl") > 0 || hasMilkAmountEvent(carePayload.path("events"));
     }
 
     private boolean reminderIntent(String text) {
