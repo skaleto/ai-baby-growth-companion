@@ -8368,8 +8368,8 @@ function App() {
                     aria-label="每日小结提醒时间"
                   />
                 </div>
-                {/* Pro trial entry hidden during validation phase — see docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md §4.2 */}
-                {false && !proTrial.enabled ? (
+                {/* R1 (REQ-PRO-001): Pro gating 已启用，非 Pro 家庭展示申请入口 */}
+                {!proTrial.enabled ? (
                   <button
                     className="screen-action-button"
                     type="button"

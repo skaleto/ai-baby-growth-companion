@@ -68,31 +68,25 @@ public class ProTrialService {
     }
 
     /**
-     * Validation phase: all families have Pro access by default.
-     * To re-enable Pro gating, change the body to: {@code return isProEnabledByEntitlement(familyId);}
-     * See docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md §4.2
+     * R1 (REQ-PRO-001): Pro 由家庭 entitlement 决定，不再默认全开。
+     * entitlement 缺失/到期即非 Pro；历史数据仍可查看、导出、删除（不经此 gate）。
      */
     public boolean isProEnabled(String familyId) {
-        return true;
+        return isProEnabledByEntitlement(familyId);
     }
 
-    @SuppressWarnings("unused")
     private boolean isProEnabledByEntitlement(String familyId) {
         return entitlementEnabled(entitlement(familyId));
     }
 
     /**
-     * Validation phase: no-op. See isProEnabled() Javadoc.
+     * R1 (REQ-PRO-001): 需要 caregiver 身份 + 家庭有有效 Pro entitlement。
+     * 仅"发起新的 Pro 高成本能力"受限；历史数据查看/导出/删除不经此 gate。
      */
     public void requireProCaregiver(String familyId) {
         currentUser.requireCaregiver();
-        // Pro gating bypassed during validation phase.
-    }
-
-    @SuppressWarnings("unused")
-    private void requireProCaregiverByEntitlement(String familyId) {
         if (!isProEnabledByEntitlement(familyId)) {
-            throw new ForbiddenException("当前家庭还没有开通 Pro 内测，先申请后再使用今日小结。");
+            throw new ForbiddenException("这个功能需要 Pro 内测权益，先在「我的」里申请，开通后即可使用。");
         }
     }
 

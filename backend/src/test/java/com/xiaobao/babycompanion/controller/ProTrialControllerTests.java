@@ -188,7 +188,6 @@ class ProTrialControllerTests {
     }
 
     @Test
-    @org.junit.jupiter.api.Disabled("Pro gating bypassed during validation phase, see ProTrialService.isProEnabled Javadoc")
     void nonProFamilyCannotGenerateDailySummary() throws Exception {
         LoginResult login = login(phone(), inviteCode(), "妈妈", true);
 
@@ -197,7 +196,7 @@ class ProTrialControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"date\":\"2026-05-14\"}"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("当前家庭还没有开通 Pro 内测，先申请后再使用今日小结。"));
+                .andExpect(jsonPath("$.message").value("这个功能需要 Pro 内测权益，先在「我的」里申请，开通后即可使用。"));
     }
 
     @Test
