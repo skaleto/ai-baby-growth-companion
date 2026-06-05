@@ -34,7 +34,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #2f5e4d;
+  color: #58a37f;
   background: rgba(88, 163, 127, 0.12);
 }
 
@@ -55,8 +55,8 @@
   border-radius: 14px;
   font-size: 13px;
   line-height: 1.55;
-  color: #8a5a1c;
-  background: rgba(255, 196, 120, 0.18);
+  color: #b25a47;
+  background: rgba(232, 144, 124, 0.16);
 }
 
 .consent-links-intro {
@@ -72,7 +72,7 @@
   border: none;
   background: none;
   font: inherit;
-  color: #2f5e4d;
+  color: #58a37f;
   text-decoration: underline;
   cursor: pointer;
 }
@@ -95,7 +95,7 @@
   width: 18px;
   height: 18px;
   flex: none;
-  accent-color: #2f5e4d;
+  accent-color: #58a37f;
 }
 
 .consent-accept-button {
