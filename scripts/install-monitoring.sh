@@ -42,8 +42,11 @@ rm -f "$CRON_TMP"
 
 echo "已安装 cron:"
 crontab -l | grep -E "monitor|backup" || true
+echo "先跑一次备份（种下首个备份，避免监控首次误报无备份）:"
+DATA_DIR="$DATA_DIR" BACKUP_ROOT="$BACKUP_ROOT" bash "$REMOTE_BIN/backup-app-data.sh" >> /var/log/baby-backup.log 2>&1 \
+  && echo "  backup ok" || echo "  backup 首跑有问题，见 /var/log/baby-backup.log"
 echo "立即跑一次 monitor (smoke):"
-ALERT_WEBHOOK_URL='$ALERT_WEBHOOK_URL' ALERT_WEBHOOK_TYPE='$ALERT_WEBHOOK_TYPE' DATA_DIR='$DATA_DIR' BACKUP_ROOT='$BACKUP_ROOT' bash "$REMOTE_BIN/monitor.sh" || true
+ALERT_WEBHOOK_URL="$ALERT_WEBHOOK_URL" ALERT_WEBHOOK_TYPE="$ALERT_WEBHOOK_TYPE" DATA_DIR="$DATA_DIR" BACKUP_ROOT="$BACKUP_ROOT" bash "$REMOTE_BIN/monitor.sh" || true
 tail -3 /var/log/baby-monitor.log 2>/dev/null || true
 REMOTE
 
