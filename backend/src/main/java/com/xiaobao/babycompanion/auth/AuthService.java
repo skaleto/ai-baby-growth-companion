@@ -396,6 +396,9 @@ public class AuthService {
         record.setLabel("重置于 " + now);
         record.setFamilyId(familyId);
         record.setActive("true");
+        // 标记已绑定家庭：usedAt 非空 → 不被 login 当成"全新未认领的码"而去新建家庭。
+        // 新成员仍可用它加入本家庭（familyForExistingUserInvite），markInviteUsedForCompatibility 再补 assignedUserId。
+        record.setUsedAt(now);
         record.setCreatedAt(now);
         inviteCodeService.save(record);
         AuthFamilyRecord family = familyService.getById(familyId);
