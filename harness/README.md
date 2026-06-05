@@ -8,6 +8,7 @@ It follows the Learn Harness Engineering template shape while keeping repository
 
 | File | Purpose |
 | --- | --- |
+| `project-index.md` | Top-level repository navigation map: what to read, ignore, archive, or protect. |
 | `feature_list.json` | Machine-readable feature state, priority, validation steps, and evidence. |
 | `claude-progress.md` | Human-readable current state and session log. |
 | `app-development-roadmap.md` | Current product development trajectory and strategic source of truth for app direction. |
@@ -22,6 +23,8 @@ It follows the Learn Harness Engineering template shape while keeping repository
 ```bash
 bash harness/init.sh
 ```
+
+Read `project-index.md` before broad repository cleanup, onboarding, or choosing where a new document should live.
 
 Use the default smoke gate before normal coding. Use `bash harness/init.sh --full` before major releases or risky backend/frontend changes. Use `bash harness/init.sh --cloud` only when the live test account and cloud environment are intentionally being exercised.
 

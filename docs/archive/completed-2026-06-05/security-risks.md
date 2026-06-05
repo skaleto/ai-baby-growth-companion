@@ -2,8 +2,11 @@
 
 最近一次审计：2026-05-16（Claude，结合自动化 + 人工复核）
 最近一次部署：`263c1da security: agent guards, jwt refresh, app state allowlist`（已上 main + ECS + OTA `0.1.0-202605170021`）
+最近一次整理：2026-06-05（Codex，文件清理时校准当前状态）
 
-本文件追踪**已识别但尚未修复**的风险点。已完成项在 git history 里查 `263c1da`。
+本文件保留安全技术债历史。当前发布阻断和 R0.5/R1/R2 准出应优先看 `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`，实际会话状态看 `harness/claude-progress.md`。
+
+本文件中 2026-05-16 以前的状态可能已经被后续 R0.5 改动覆盖；清理时只更新了能从当前代码直接确认的项目。
 
 ---
 
@@ -22,7 +25,7 @@
 | R9 | 运维 | 无监控告警（rate limit / budget / 5xx / OTA 失败） | P2 | TODO | 4h |
 | R10 | 数据 | SQLite schema 无版本化迁移（无 Flyway/Liquibase） | P3 | TODO | 30min 接入 |
 | R11 | 安全 | Capacitor `allowMixedContent=true` + `cleartext=true` | P2 | TODO（依赖 HTTPS） | 看后端 HTTPS 进度 |
-| R12 | 隐私 | `RequestLoggingFilter` 把手机号写进日志 | P3 | TODO | 30min |
+| R12 | 隐私 | `RequestLoggingFilter` 把手机号写进日志 | P3 | 完成（2026-06-05，`PhoneMasking` 已接入日志和 auth DTO 测试） | — |
 | R13 | 工程 | `AgentRequestGuard` 内存版，多实例时失效 | P3 | 监控触发后再改 | — |
 | R14 | 安全 | DeepSeek API 单点，无 fallback / 熔断 | P3 | 长期规划 | — |
 | R15 | 安全 | `SecurityConfig.csrf.disable()` | P3 | TODO（影响有限） | 1h |

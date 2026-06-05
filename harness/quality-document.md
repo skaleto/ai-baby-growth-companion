@@ -1,6 +1,6 @@
 # Quality Document
 
-Updated: 2026-05-13
+Updated: 2026-06-05
 
 This file is the quality snapshot for agent and human handoffs. Ratings are intentionally conservative.
 
@@ -44,7 +44,27 @@ This file is the quality snapshot for agent and human handoffs. Ratings are inte
 | Native plugin, permissions, media, audio, haptics, notifications, WebView | `npm run mobile:sync` plus affected platform build |
 | Cloud behavior or deployment | `SYNC_DATA=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun` plus live health/behavior evidence |
 
+## Current Security And Release Risks
+
+Current release blockers are tracked in `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`. The historical risk log is archived at `docs/archive/completed-2026-06-05/security-risks.md`.
+
+| Risk | Current Gate / Owner |
+| --- | --- |
+| HTTPS, domain, mixed-content, and cleartext traffic remain release blockers before broader distribution. | R2 release gate / `REQ-OPS-001` |
+| Monitoring, alerting, deep health checks, cost alerts, and OTA failure visibility are still thin. | R1-R2 release gates / `REQ-OPS-003`, `REQ-OPS-004` |
+| SQLite has no versioned migration layer and single-instance cloud topology remains a scale/rollback limit. | Later scale gate / `REQ-SCALE-001` |
+| `AgentRequestGuard` is still memory-backed, so multi-instance rate and quota enforcement would drift. | Keep single instance, or move quotas to shared storage before horizontal scale |
+| CSRF is disabled; current bearer-token JSON API risk is limited, but revisit before cookie sessions or public web forms. | Security review before public web expansion |
+| ECS still relies on local secret files for some cloud credentials. | Harden with RAM role or managed secret path before broader release |
+| Native device behavior for ASR, notifications, full-screen ringing, haptics, OTA apply, and WebView safe-area/keyboard still needs device proof. | `mobile-001` native capability gate |
+
 ## Change History
+
+### 2026-06-05
+
+- Recorded real-user path fixes for record-and-companion UX: additive care-log writes, no final completed tool-status rows, no missing-prompt nudges on records view, toast/quick-action layout cleanup, and voice drag-to-cancel. Verified with targeted backend tests, `npm run test:agent-benchmark`, `npm run test:agent-l2:unit`, and `npm run verify:frontend`.
+- Archived the historical `docs/security-risks.md` into `docs/archive/completed-2026-06-05/security-risks.md`.
+- Merged the still-current security and release risks into this live harness quality snapshot.
 
 ### 2026-05-13
 

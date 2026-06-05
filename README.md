@@ -6,7 +6,11 @@ ai-baby-growth-companion
 
 ## 产品文档
 
-- [AI宝宝成长伙伴 App 需求文档](docs/product-requirements.md)
+- 项目总索引：[harness/project-index.md](harness/project-index.md)
+- 当前发展脉络：[harness/app-development-roadmap.md](harness/app-development-roadmap.md)
+- 发布硬化方案：[docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md](docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md)
+- 功能清单与验证归属：[docs/feature-inventory.md](docs/feature-inventory.md)
+- 历史 PRD：[docs/archive/completed-2026-06-05/product-requirements.md](docs/archive/completed-2026-06-05/product-requirements.md)
 
 ## 本地运行
 
@@ -52,21 +56,27 @@ npm run mobile:android
 
 ## 阿里云 ECS 部署
 
-已有公网 IP 的 ECS 可以通过 JAR + systemd 方式部署后端：
+已有公网 IP 的 ECS 可以通过 JAR + systemd 方式部署后端。生产数据同步默认关闭，部署时也要显式保持 `SYNC_DATA=0`：
 
 ```bash
-ECS_HOST=<ECS_PUBLIC_IP> npm run deploy:aliyun
-VITE_AGENT_API_BASE_URL=http://<ECS_PUBLIC_IP>:8300 npm run build:android:debug
+SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun npm run deploy:aliyun
 ```
 
-完整步骤、密钥文件位置、日志和备份说明见：[阿里云 ECS 公网 IP 部署](docs/aliyun-ecs-deploy.md)。
+移动端 OTA 包必须显式注入生产 API base URL，构建后还要校验包内不含 `localhost`：
+
+```bash
+VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update
+```
+
+完整步骤、密钥文件位置、日志和备份说明见：[阿里云 ECS 公网 IP 部署](docs/aliyun-ecs-deploy.md)。2026-06-05 的 OTA base URL 事故复盘见：[docs/ops/ota-incident-2026-06-05.md](docs/ops/ota-incident-2026-06-05.md)。
 
 ## 已接入的移动能力
 
 - Capacitor iOS/Android 工程：`ios/`、`android/`
-- 原生相机/相册：手机端通过 `@capacitor/camera` 添加成长照片
+- 原生媒体选择：手机端通过 Capacitor WebView 能力选择照片/视频并上传
 - 本地通知：创建提醒时通过 `@capacitor/local-notifications` 尝试注册系统通知
 - 触感反馈：关键操作通过 `@capacitor/haptics` 提供轻触反馈
+- OTA：通过 `@capgo/capacitor-updater` 下发前端 bundle
 - 浏览器降级：非手机环境继续使用文件上传和界面内提醒
 
 ## MVP 功能
@@ -78,7 +88,7 @@ VITE_AGENT_API_BASE_URL=http://<ECS_PUBLIC_IP>:8300 npm run build:android:debug
 
 ## 后端服务
 
-仓库包含一个 Spring Boot 后端模块：[backend](backend)。当前后端提供文字聊天接口，接收 App 端文本后调用 DeepSeek Chat Completions API。
+仓库包含一个 Spring Boot 后端模块：[backend](backend)。当前后端提供登录、家庭共享状态、附件上传、Agent chat/stream、ASR、Pro 内测、数据权利请求、OTA 等接口。
 
 ```powershell
 cd backend
@@ -89,5 +99,7 @@ mvn spring-boot:run
 接口：
 
 ```http
-POST http://localhost:8080/api/ai/chat
+GET  http://localhost:8080/api/health
+POST http://localhost:8080/api/agent/chat
+POST http://localhost:8080/api/agent/chat/stream
 ```

@@ -2,7 +2,7 @@
 
 - 创建日期：2026-06-05
 - 状态：产品/技术改进 spec，进入 implementation plan 前需评审
-- 输入评估：`docs/release-readiness-review-2026-06-04.md`
+- 输入评估：`docs/archive/completed-2026-06-05/release-readiness-review-2026-06-04.md`（已归档）
 - 战略源：`harness/app-development-roadmap.md`
 - 商业化参考：`docs/commercialization/version-strategy.md`、`docs/commercialization/pro-trial-policy.md`、`docs/commercialization/privacy-policy-draft.md`
 - 适用范围：正式发布上架前的账号、安全、隐私、Free/Pro、云端、真机和产品信任补齐
@@ -54,7 +54,7 @@
 进入条件：
 
 - `bash harness/init.sh` 通过。
-- `docs/release-readiness-review-2026-06-04.md` 和本文档已存在，后续 agent 有统一方向。
+- `docs/archive/completed-2026-06-05/release-readiness-review-2026-06-04.md`（已归档）和本文档已存在，后续 agent 有统一方向。
 
 退出条件：
 

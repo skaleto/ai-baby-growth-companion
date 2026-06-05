@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-04",
+  "lastUpdated": "2026-06-05",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -100,7 +100,9 @@
         "2026-06-04 bash harness/init.sh passed after native capability audit integration: git diff --check, npm run build, npm run test:agent-benchmark.",
         "2026-06-04 bash harness/init.sh passed after app function coverage index integration: git diff --check, npm run build, npm run test:agent-benchmark.",
         "2026-06-04 node scripts/test-app-function-coverage-index.mjs passed after splitting docs/feature-inventory.md growth data maintenance into explicit rows; all 97 function rows now have coverage ownership or a known gap.",
-        "2026-06-04 npm run test:agent-l2:unit passed with the 97-row app-function coverage index included in the fast benchmark infrastructure gate."
+        "2026-06-04 npm run test:agent-l2:unit passed with the 97-row app-function coverage index included in the fast benchmark infrastructure gate.",
+        "2026-06-05 npm run test:agent-benchmark passed after adding embedded-question care record auto-write coverage, daily-summary no-nudge copy coverage, and care-log additive merge tests.",
+        "2026-06-05 npm run test:agent-l2:unit passed after adding frontend care-log merge helper coverage and refreshing product coverage ownership."
       ],
       "notes": "New Agent work should add at least one positive and one boundary benchmark case. Product-function L2 coverage is tracked in docs/superpowers/plans/2026-06-04-agent-product-benchmark-coverage.md; known gaps should be explicit scenarios, not omitted."
     },
@@ -149,7 +151,7 @@
       "area": "frontend",
       "title": "Mobile frontend verification gate",
       "userVisibleBehavior": "UI changes are checked across phone-sized viewports and common mobile interaction failure modes instead of relying on build success only.",
-      "status": "in_progress",
+      "status": "passing",
       "verification": [
         "Run npm run verify:frontend for UI or layout changes.",
         "Inspect generated artifacts under .verification/frontend-smoke when failures occur."
@@ -178,7 +180,8 @@
         "2026-06-02 npm run verify:frontend passed after Recording Companion P1 added caregiver note, AI explanation disclosure, and 今日交接; smoke fixture future-reminder date drift was fixed.",
         "2026-06-04 npm run verify:frontend passed after extending the growth measurement smoke flow to delete the newly added 68.2cm history row and verify it disappears across desktop plus six mobile viewports.",
         "2026-06-04 npm run smoke:frontend passed after adding the growth measurement inline-edit smoke path: edit seeded 66.5cm to 67.1cm, update the note, verify the old row disappears, then continue add/delete checks.",
-        "2026-06-04 npm run verify:frontend passed after growth measurement inline-edit UI and smoke coverage were added."
+        "2026-06-04 npm run verify:frontend passed after growth measurement inline-edit UI and smoke coverage were added.",
+        "2026-06-05 npm run verify:frontend passed after moving weak toasts, enlarging quick-action icons within mobile bounds, adding voice drag-to-cancel, hiding completed agent progress rows, removing 今日交接/missing prompts, and updating smoke mocks for consent and family members."
       ],
       "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
     },
@@ -187,7 +190,7 @@
       "priority": 4,
       "area": "records",
       "title": "Recording companion P0: daily observation and record feedback",
-      "userVisibleBehavior": "Records/today now uses a single 小宝今日观察 entry with low-pressure feeding/sleep/care/growth stat cards, integrated整理 action and missing prompts, while chat auto-record cards show 已记好, structured fields, destination copy, 查看今天, and 撤销.",
+      "userVisibleBehavior": "Records/today now uses a single 小宝今日观察 entry with low-pressure feeding/sleep/care/growth stat cards and integrated整理 action without missing-prompt nudges, while chat auto-record cards show 已记好, structured fields, destination copy, 查看今天, and 撤销.",
       "status": "passing",
       "verification": [
         "Run node scripts/test-daily-summary-utils.mjs.",
@@ -209,8 +212,8 @@
       "id": "recording-companion-p1",
       "priority": 4,
       "area": "records",
-      "title": "Recording companion P1: caregiver note and handoff summary",
-      "userVisibleBehavior": "Records/today now adds a data-linked low-pressure caregiver line, an explainable observation disclosure, and a copyable 今日交接 summary grouped into baby status, completed items, handoff items, and watch-outs.",
+      "title": "Recording companion P1: caregiver note and explanation disclosure",
+      "userVisibleBehavior": "Records/today keeps the data-linked low-pressure caregiver line and explainable observation disclosure, while 今日交接, missing-record nudges, unfinished-reminder nudges, and pending-confirmation nudges are intentionally absent from the primary records view.",
       "status": "passing",
       "verification": [
         "Run node scripts/test-daily-summary-utils.mjs.",
@@ -225,9 +228,10 @@
         "2026-06-02 node scripts/probe-daily-summary-view.mjs passed across iphone-13, iphone-pro-max, and desktop; screenshots include first-screen and handoff scroll positions.",
         "2026-06-02 npm run verify:frontend passed across desktop and six mobile viewports after fixing smoke future-reminder date drift.",
         "2026-06-02 npm run test:agent-benchmark passed with 26 tests after adding caregiver-support and high-risk prompt boundary coverage.",
-        "2026-06-02 OTA 0.1.0-20260602232444 deployed to ECS with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; /api/health returned ok, OTA check returned updateAvailable=true for old bundle and false for current bundle, and bundle checksum matched 087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2."
+        "2026-06-02 OTA 0.1.0-20260602232444 deployed to ECS with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; /api/health returned ok, OTA check returned updateAvailable=true for old bundle and false for current bundle, and bundle checksum matched 087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2.",
+        "2026-06-05 npm run verify:frontend passed after removing 今日交接 and missing prompt sections from DailySummaryView and updating probe-daily-summary-view to assert those prompts stay absent."
       ],
-      "notes": "This remains non-diagnostic emotional support. It uses recorded baby data and high-risk handoff guidance; expert, knowledge-paid, ecommerce, and community features remain out of scope."
+      "notes": "This remains non-diagnostic emotional support. It uses recorded baby data and high-risk guidance; expert, knowledge-paid, ecommerce, and community features remain out of scope. Handoff-copy UI was removed after user testing because it increased clutter in the primary records path."
     },
     {
       "id": "cloud-001",
@@ -259,7 +263,8 @@
         "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for previous-image retry latency optimization; /api/health returned ok.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for collapsible chat attachment tray layout; /api/health returned ok, OTA check returned 0.1.0-20260516220400, and up-to-date probe returned updateAvailable=false.",
         "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for voice hold pointer drift; /api/health returned ok, OTA check returned 0.1.0-20260516223427, and up-to-date probe returned updateAvailable=false.",
-        "2026-06-02 code plus OTA bundle deployment completed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1 for Recording Companion P1; /api/health returned ok and OTA check returned version 0.1.0-20260602232444."
+      "2026-06-02 code plus OTA bundle deployment completed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1 for Recording Companion P1; /api/health returned ok and OTA check returned version 0.1.0-20260602232444.",
+      "2026-06-05 code plus OTA bundle deployment completed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1 for real-user record UX fixes; /api/health returned ok, OTA check returned version 0.1.0-20260605223856 for stale bundles and updateAvailable=false for current bundle, checksum 4b00053a4cf3484a5328117d6d6557da1397835e27bd7d3fcb252d86831eec88 matched production download."
       ],
       "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
     },
@@ -342,7 +347,7 @@
         "2026-05-15 AppStateControllerTests passed with shared records returning recordedBy labels and hydrated expense attachments.",
         "2026-05-15 npm run verify:frontend passed across desktop and configured mobile viewports.",
         "2026-05-15 npm run test:cloud-e2e passed 10/10 cases, including timeline 记录人 display and ledger attachment preview.",
-        "2026-05-15 cloud inspection confirmed user 18915618653 family expense 8887.24 already links attachment-mp2lomag-chc0xt; backend hydration and frontend preview now surface it.",
+        "2026-05-15 cloud inspection confirmed user 189****8653 family expense 8887.24 already links attachment-mp2lomag-chc0xt; backend hydration and frontend preview now surface it.",
         "2026-05-15 album gallery metadata placement update: npm run verify:frontend passed, and OTA 0.1.0-20260515153705 was published.",
         "2026-05-16 production restoration confirmed expense-restored-hospital-mp2lqef1 links attachment-mp2lomag-chc0xt and preserves the original hospitalization reimbursement/self-paid note."
       ],

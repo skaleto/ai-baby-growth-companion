@@ -7,10 +7,11 @@ All harness files live under `harness/` except this root entry file.
 ## Start Every Session
 
 1. Confirm the repository root with `pwd`.
-2. Read `harness/claude-progress.md` for the latest verified state and next step.
-3. Read `harness/feature_list.json` before choosing or changing feature scope.
-4. Check `git status --short` and `git log --oneline -5`.
-5. Run the standard harness entrypoint:
+2. Read `harness/project-index.md` for the repository navigation map.
+3. Read `harness/claude-progress.md` for the latest verified state and next step.
+4. Read `harness/feature_list.json` before choosing or changing feature scope.
+5. Check `git status --short` and `git log --oneline -5`.
+6. Run the standard harness entrypoint:
 
 ```bash
 bash harness/init.sh
@@ -21,6 +22,7 @@ If the baseline gate fails, fix the baseline first or clearly record the blocker
 ## Required Harness Files
 
 - `harness/feature_list.json`: feature state and evidence tracker.
+- `harness/project-index.md`: top-level repository navigation map.
 - `harness/claude-progress.md`: current progress, validated state, and next action.
 - `harness/init.sh`: standard repo initialization and verification entrypoint.
 - `harness/quality-document.md`: quality snapshot by product area and architecture layer.

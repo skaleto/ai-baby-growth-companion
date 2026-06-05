@@ -4,8 +4,20 @@ This project can be deployed to a single Aliyun ECS instance as a Spring Boot
 JAR managed by systemd. The Android app should be built with
 `VITE_AGENT_API_BASE_URL=http://<ECS_PUBLIC_IP>:8300`.
 
-This setup is intended for prototype testing over a public IP. For regular
-use, prefer a domain, HTTPS, and `wss://` for ASR.
+This setup is intended for prototype testing over a public IP. Current
+production host is `120.55.188.242:8300`, but formal release hardening should
+move to a domain, HTTPS, restricted CORS, and `wss://` for ASR. The current
+HTTPS rollout checklist lives in `docs/ops/https-domain-setup.md`.
+
+For code-only production deploys, keep production data sync disabled:
+
+```bash
+SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun npm run deploy:aliyun
+```
+
+For OTA builds, always pass the production API base URL explicitly. The
+2026-06-05 incident in `docs/ops/ota-incident-2026-06-05.md` was caused by a
+bundle compiled with a localhost API base URL.
 
 ## 1. Aliyun Console Checklist
 

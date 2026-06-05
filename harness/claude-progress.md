@@ -14,6 +14,96 @@
 
 ## Session Log
 
+### Session 2026-06-05 Real User UX Fix ECS + OTA Release
+
+- Goal: 发布真实用户路径修复到 ECS，并下发 OTA 包；保持 `SYNC_DATA=0`，不覆盖生产 SQLite 或 auth secret。
+- Completed:
+  - ECS: `SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun SYNC_DATA=0 SYNC_MOBILE_UPDATES=1 ECS_HOST=120.55.188.242 npm run deploy:aliyun` 完成 JAR 构建、上传、systemd restart 和健康检查。
+  - OTA: `VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 MOBILE_UPDATE_PUBLIC_BASE_URL=http://120.55.188.242:8300 MOBILE_UPDATE_MESSAGE='记录体验优化：自动写入更准确，语音输入可上滑取消，页面提示更清爽' npm run build:mobile:update` 生成 `0.1.0-20260605223856`。
+  - OTA 防事故验证: 本地拆包与生产下载包均确认 `120.55.188.242:8300` 存在、`localhost:8080` 为 0；manifest checksum 与生产下载 checksum 均为 `4b00053a4cf3484a5328117d6d6557da1397835e27bd7d3fcb252d86831eec88`。
+- Verification run:
+  - `bash harness/init.sh` 通过：`git diff --check`、`npm run build`、`npm run test:agent-benchmark`。
+  - `GET http://120.55.188.242:8300/api/health` 返回 `ok`。
+  - `POST /api/mobile-updates/check` 使用旧 `currentBundleVersion` 返回 `updateAvailable=true`；使用当前 `0.1.0-20260605223856` 返回 `updateAvailable=false`。
+- Known risks:
+  - 未做真机安装后的 Capgo apply 行为验证；当前证据覆盖服务健康、OTA check、bundle download checksum 和 bundle base URL。
+
+### Session 2026-06-05 R1 第一波: error boundary + Pro entitlement + 邀请管理 + 监控
+
+- Goal: 用户从 R1 待办选 4 项(Pro 真实权益、邀请泄漏踢人/撤权/清 token、最小监控告警、前端崩溃 error boundary)，按风险两波推进；本会话完成第一波并发布。
+- Completed + 已上生产:
+  - 前端崩溃 error boundary (REQ-OBS-001, `8476b54`): `AppErrorBoundary` 包裹 App/OfficialSite + sage 降级页 + `errorReporting.ts` 上报 `/api/client-errors`(限流+keepalive) + 全局 onerror/unhandledrejection。
+  - Pro 真实 entitlement (REQ-PRO-001, `ac77176`): `isProEnabled`/`requireProCaregiver` 切到家庭 entitlement；启用此前 @Disabled 的 gating 测试；前端恢复申请入口；`seed-internal-pro-entitlements.sh`。**dry-run 确认唯一真实家庭 `eb3f4751` 已有有效 entitlement(到 2026-06-15)**，其余 6 个空壳/测试家庭无需种，迁移跳过(省一次生产写)。
+  - 家庭成员管理 (REQ-AUTH, `8da6014`): 后端成员列表/踢人(撤全部 session+删成员)/撤权(改 caregiver+撤 session)/重置邀请码(作废旧码+发新码)，限 caregiver、不自伤、复用 session 制清 token、不动 JWT 结构；前端设置页家庭成员卡片。`FamilyMemberManagementTests` 覆盖列举/踢人清 token/撤权/重置码。
+  - 监控告警+备份 cron (REQ-OPS-004/002, `0c14d79`+`fc4dbb3`): host 侧 `monitor.sh`(5xx 比例/磁盘/备份新鲜度→钉钉飞书 webhook) + `install-monitoring.sh`(配 cron: 监控每15分钟/备份每日03:30)。已部署: smoke `OK (5xx 0/6=0%, disk 18%, backup 0h)`，首个备份已种。
+- 发布证据:
+  - 后端 deploy 两轮(Pro jar 15:09 → 邀请 jar 17:19)，拆 jar 确认 R0.5 类 + `family/members`/`invite-code/reset` 路由进包，启动 0 error。
+  - OTA `0.1.0-20260605164158`(error boundary+Pro UI) → `0.1.0-20260605171919`(邀请 UI)，均 base URL 零 localhost、check+checksum 逐字节匹配。
+  - 全量后端测试 261+ 全过(每次后端改动后跑)。
+- 待办 / 风险:
+  - 监控 webhook 待用户提供钉钉/飞书 URL(现空 URL 只写 `/var/log/baby-monitor.log`)，拿到后重跑 `install-monitoring.sh` 即接上。
+  - ⚠️ 真实家庭 `eb3f4751` Pro entitlement **2026-06-15 到期**，需续期(`pro_trial_entitlement.expires_at`)。
+  - 第二波: Pro 图片/视频额度 gate(task #9, 动 `AgentRuntime` 视觉链路 `analyzeVisualInputsInBatches`/visualInputs，必须单独跑 `npm run test:agent-benchmark` + 超限优雅降级、不中断流)。
+  - 真机验证: error boundary 降级页 / Pro 申请入口 / 家庭成员管理 UI 待真机 OTA 后确认。
+
+### Session 2026-06-05 项目文件盘点、归档与低风险清理
+
+- Goal: 梳理项目下大量文件，分清核心入口、历史归档、生成物和本地杂物；更新明显过时的入口文档，删除低风险冗余文件，保护当前未提交 R0.5 改动和本地/生产数据。
+- Completed:
+  - 新增 `docs/project-file-inventory-2026-06-05.md`，记录当前文件分类、应优先读取的入口、可再生成目录、不可随手删除的数据目录、已清理项和后续候选清理项。
+  - 新增 `docs/archive/README.md` 与 `docs/archive/completed-2026-06-05/README.md`，将完成态历史材料从 `docs/` 根目录移入 `docs/archive/completed-2026-06-05/`。
+  - 归档完成态 OpenSpec changes 到 `openspec/changes/archive/2026-06-05/`，当前 `openspec/changes/` 下不再暴露已完成变更作为 active work。
+  - 更新 `README.md`、`docs/aliyun-ecs-deploy.md`、`harness/quality-document.md`，把当前入口切到 roadmap / release-hardening spec / feature inventory，并补上 OTA base URL 事故、`SYNC_DATA=0` 部署准则和当前安全风险摘要。
+  - 新增 `harness/project-index.md` 作为项目总索引，并更新 `AGENTS.md`、`README.md`、`harness/README.md` 指向该入口，避免后续 agent 通过扫全目录决定上下文。
+  - 按用户确认继续归档非红框候选项：`docs/superpowers/plans/2026-05-26-cross-domain-daily-summary.md`、`docs/superpowers/plans/2026-06-01-daily-summary-ai-hub.md`、`docs/product-requirements.md`、`docs/security-risks.md` 已移入 `docs/archive/completed-2026-06-05/`。
+  - `.gitignore` 增加 `.claude/`；删除 `.claude/launch.json`、所有 `.DS_Store`、`frontend.log`、`backend/backend.log`、`backend/backend.pid`、`.verification/`。
+- Known risks:
+  - 本轮不删除 `backend/data/`、`backend/backend/data/`、`backups/` 或任何生产/本地数据；按用户截图要求，`backend/backend/data/` 明确保持原样。
+  - 当前工作区已有 R0.5 代码改动，本轮只保护和记录，不回滚也不重写。
+
+### Session 2026-06-05 R0.5 后端 + 首登页配色 OTA 生产发布
+
+- Goal: 把本会话累积的 R0.5 后端改动 + 首登知情同意页配色 sage 化，发布到生产 (120.55.188.242:8300)，使生产前后端一致。
+- 关键避坑 (记入经验):
+  - 生产后端 R0.5 接口返回 401 一度被误判为“已部署”；实际 401 是 Spring Security 对所有未鉴权请求的通杀 (连不存在路径也 401)。拆生产 jar (`python3 zipfile`) 确认 DataRights/ClientError/CapabilityManifest 类全缺，才定位到后端 00:00 版本根本不含 R0.5。教训: 401≠404≠存在，结构性证据靠拆 jar，不靠 HTTP code。
+  - 发布前真实状态: 前端 OTA 122812 含全部 R0.5 前端、后端不含 → 数据权利 404、手机号不脱敏、agent 用旧能力 prompt 的不一致态。
+- Completed:
+  - 后端: `SSH_KEY=~/.ssh/ai_baby_aliyun SYNC_DATA=0 SYNC_MOBILE_UPDATES=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun` 部署 HEAD JAR；生产 jar (15:09) 含 R0.5 全部类 + capability-manifest.json，启动 0 error，health ok。
+  - 前端 OTA: `VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update` → `app-0.1.0-20260605151046.zip`；scp bundle + manifest 到 `/var/lib/.../mobile-updates/` 并 restart；旧 122812 保留回滚。
+  - 按 AGENTS.md OTA 准则验证: bundle base URL 仅生产 IP、零 localhost；check API 返回 151046 + url + checksum；生产实际下载 checksum 逐字节匹配 `d44fe3f4…`；enabled=true。
+- Known risks / 待办:
+  - R0.5 隐私合规 (知情同意/脱敏/数据权利) 现已对生产用户暴露；如需暂缓可单独回退后端 JAR。
+  - 端到端 agent smoke / 图片显示 (query token 媒体白名单) 未在真机验证，待用户 OTA 后确认。
+  - 生产 `bundles/` 堆积约 100 个历史包，已 spawn 后台任务清理 + 加最近-N 保留策略。
+  - 工作区未提交: `docs/agent-benchmark-results.md`、`harness/claude-progress.md`、`.claude/`。
+
+### Session 2026-06-05 发布硬化改进方案详细 Spec
+
+- Goal: 基于正式发布上架评估，把当前 App 需要改进和补充的点细化成单一 spec，继续保持“记录和陪伴”主线，不扩张电商、专家、知识付费或开放社区。
+- Completed:
+  - 新增 `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`，作为发布硬化改进方案 spec。
+  - 将发布路径拆成 R0 内部开发态、R1 受控真实家庭内测、R2 渠道灰度/TestFlight、R3 公开上架和公开收费四个 gate。
+  - 细化 P0 需求：短信验证码、登录风控、手机号和日志脱敏、query token 收敛、隐私/儿童信息/AI 数据说明、删除导出注销、真实 Pro entitlement、家庭级额度、HTTPS 域名、备份恢复、深度健康、监控告警、压测、真机验证和产品信任入口。
+  - 明确 P1/P2：支付订阅、DB/Redis/队列/OSS/CDN 扩容、0-3 岁长期陪跑沉淀；这些不进入当前 P0。
+- Verification run:
+  - `bash harness/init.sh` 通过：`git diff --check`、`npm run build`、`npm run test:agent-benchmark`。
+- Known risks:
+  - 本轮只新增 spec 和 harness 记录，不包含代码实现、法务审查、真实支付、压测或真机验证。
+
+### Session 2026-06-04 正式发布上架评估与补齐 Spec
+
+- Goal: 基于当前“记录和陪伴”发展脉络，评估如果要正式发布上架，产品设计和技术层面还缺什么，重点覆盖账号体系、Free/Pro 分层、ECS 承载能力，并校准国内母婴 App 常见路线。
+- Completed:
+  - 新增 `docs/release-readiness-review-2026-06-04.md`，作为单一发布前评估文档。
+  - 文档结论：当前适合继续邀请码/小范围真实家庭内测，不建议直接公开上架；正式上架前应先补短信验证码、手机号和日志脱敏、query token 收敛、隐私/儿童信息/删除导出、真实 Pro gating 和额度、HTTPS/备案/备份监控/压测、真机验证。
+  - 竞品校准：国内头部普遍走记录工具 + 内容/社区/专家/电商/会员；小宝记只借鉴账号合规、会员说明、隐私和基础记录可靠性，不跟随电商、专家和开放社区。
+  - ECS 判断：当前单 ECS + Spring Boot + SQLite WAL + local/OSS + OTA 适合 5-10 家庭内测和受控灰度；没有压测前不承诺公开流量承载。
+- Verification run:
+  - `bash harness/init.sh` 通过：`git diff --check`、`npm run build`、`npm run test:agent-benchmark`。
+- Known risks:
+  - 本轮是文档和策略评估，不包含代码实现、真实法务审查或压测。
+  - `docs/agent-benchmark-results.md` 可能会因 harness 运行刷新时间戳；本轮发布评估不依赖该生成差异。
+
 ### Session 2026-06-04 AI Agent Benchmark 产品功能覆盖补缺
 
 - Goal: 按用户反馈把 agent benchmark 的重点收敛为“覆盖产品功能”，补上成长数据维护、数据关联陪伴等近期新增能力的覆盖视角，而不是只测 agent 能不能返回结构化结果。
@@ -156,7 +246,7 @@
 
 ### Session 2026-06-04 生产问题修复：聊天照片自动收藏 + OTA 瘦身 + 相册数据修复
 
-- Goal: 修复用户反馈的 3 个生产问题（聊天发的照片没进相册、上传后等 AI 很久才进相册、最新 OTA 包太大下载慢），并修复用户 13777892890 已丢失的相册数据。
+- Goal: 修复用户反馈的 3 个生产问题（聊天发的照片没进相册、上传后等 AI 很久才进相册、最新 OTA 包太大下载慢），并修复用户 137****2890 已丢失的相册数据。
 - 根因（systematic-debugging Phase 1，生产数据确认）:
   - 问题 1+2 同源：聊天发的生活照走 `ask` 模式生成「点击保存」卡片，且卡片挂在 AI 响应消息上要等豆包视觉分析；后端 AI 回复「已经为你记录下成长瞬间」擦边误导用户以为已存。用户没点保存 → 没进相册。5/29 该用户发的照片里只有手动点了保存的 1 张进相册。
   - 问题 3：mobile bundle 3.2M 里 alarm-scene.png(1.6M) + hero-records-today.png(524K) 两张未压缩 PNG 占 60%。
@@ -263,7 +353,7 @@
   - 将历史调研与草稿集中归档到 `docs/research-archive/mother-baby-strategy-2026-06-02/`，并新增 `README.md` 索引和读取规则。
   - 归档范围包括 Claude market/cross-app research、Codex 竞品调研与 slide、未跟踪战略草稿、以及含市场/竞品调研的成长指标旧未来设计。
   - 更新 `harness/README.md` 与 `harness/feature_list.json`，声明 `app-development-roadmap.md` 是当前产品方向 source of truth。
-  - 更新 `docs/superpowers/plans/2026-06-01-daily-summary-ai-hub.md`，要求执行前按当前 roadmap Phase 0 校准。
+  - 更新历史 AI hub 计划，要求执行前按当前 roadmap Phase 0 校准；该计划现已归档到 `docs/archive/completed-2026-06-05/2026-06-01-daily-summary-ai-hub.md`。
 - Verification run:
   - `bash harness/init.sh`（通过 `git diff --check`、`npm run build`、`npm run test:agent-benchmark`）
   - `git diff --check`
@@ -450,7 +540,7 @@
   - 新建 `frontend/src/views/DailySummaryView.tsx`（4 模块 + 6 类 finding 渲染 + action 跳转）+ `frontend/src/utils/dailySummary.ts`（`parseActionTarget`, `FINDING_TYPE_LABEL/COLOR`）+ `frontend/src/styles/daily-summary.css`。
   - `App.tsx` 挂载 `<DailySummaryView />` 在「记录」Tab today 页顶部，`handleFindingActionClick` 处理 ledger/album/milestone/reminder 跳转（milestone 同时切到「我的」Tab，否则 view 不渲染）。「申请 Pro 内测」按钮以 `{false && (...)}` 隐藏。
   - smoke fixture 注入 3 类 sample findings；新建 `scripts/probe-daily-summary-view.mjs` 跨 3 viewport 拍 DailySummaryView + Pro 按钮隐藏 + action 跳转截图。
-  - 落地 spec `docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md` + plan `docs/superpowers/plans/2026-05-26-cross-domain-daily-summary.md`。
+  - 落地 spec `docs/superpowers/specs/2026-05-26-cross-domain-daily-summary-design.md` + plan；该 plan 现已归档到 `docs/archive/completed-2026-06-05/2026-05-26-cross-domain-daily-summary.md`。
   - 共 20 个 session commits（含 2 个 Task 8 中途修复 + 1 个 milestone tab 跳转 bug 修复，由 probe 视觉验证抓到）。
 - Verification run:
   - `bash harness/init.sh`
@@ -570,7 +660,7 @@
 
 ### Session 2026-05-16 Cloud AI Temporary Unavailable Root Cause Fix
 
-- Goal: 排查云端为什么在 13777892890 多图支出识别后提示“AI服务暂时不可用”，并修复真实线上故障点。
+- Goal: 排查云端为什么在 137****2890 多图支出识别后提示“AI服务暂时不可用”，并修复真实线上故障点。
 - Completed:
   - 查云端日志确认 2026-05-16 19:52:16 的失败不是模型厂商、API Key、额度或上传问题；上传链路和 `/api/health` 都正常。
   - 根因定位为新加的支出自动入账持久化在 `agent-stream-*` 异步线程里调用 `CurrentUser.requirePrincipal()`，线程内没有请求登录上下文，抛出 `AUTH_REQUIRED`，随后被前端展示成通用“AI服务暂时不可用”。
@@ -635,9 +725,9 @@
 
 ### Session 2026-05-16 Expense Ledger Id Collision Fix
 
-- Goal: Investigate user `13777892890`'s latest Agent expense recording flow, explain why the prior hospitalization expense was overwritten, and ship guards against repeat ledger overwrites.
+- Goal: Investigate user `137****2890`'s latest Agent expense recording flow, explain why the prior hospitalization expense was overwritten, and ship guards against repeat ledger overwrites.
 - Completed:
-  - Inspected production chat, Agent trace, skill trace, pending-effect confirmation requests, and expense rows for family `family-eb3f4751-2df9-46b4-920e-6634c4013d50`.
+  - Inspected production chat, Agent trace, skill trace, pending-effect confirmation requests, and expense rows for family `family-eb3f4751-****`.
   - Confirmed the 2026-05-16 17:20 expense image run produced 4 complete expense-recognition candidates, but the final composer also returned the same 4 model expenses, creating 8 pending expense items.
   - Confirmed the previous hospitalization expense was recoverable from 2026-05-12 chat payloads as `芊宝出生住院生产花费` amount `8887.24`, but it is no longer present in `expense_item` because pending expense payloads with fallback ids like `expense-0` were confirmed with `saveOrUpdate`.
   - Fixed frontend expense normalization to generate durable unique ids instead of `expense-${index}` for AI pending expense payloads.
@@ -706,7 +796,7 @@
 
 ### Session 2026-05-16 Previous Expense Retry And Postprocess Copy
 
-- Goal: Fix user `13777892890`'s follow-up request to "record the above expenses again" and stop rule postprocessing from wiping out useful model text.
+- Goal: Fix user `137****2890`'s follow-up request to "record the above expenses again" and stop rule postprocessing from wiping out useful model text.
 - Completed:
   - Confirmed production data showed the latest parent message had no new attachments and the AI reply was generated by a rule `ask` decision for a missing expense amount.
   - Added frontend retry forwarding: when the user references prior expense images (`刚才/上面/之前...花费...再记录`), the chat request reuses the most recent visual attachments for Agent analysis without showing duplicate attachments on the new message.
@@ -769,9 +859,9 @@
 
 ### Session 2026-05-16 Multi Image Agent Availability
 
-- Goal: Investigate user `13777892890`'s latest 8-image expense recognition failure and remove misleading in-chat status copy while improving AI vision availability.
+- Goal: Investigate user `137****2890`'s latest 8-image expense recognition failure and remove misleading in-chat status copy while improving AI vision availability.
 - Completed:
-  - Checked production logs for `13777892890` and confirmed the 8 image uploads completed successfully; the failure was a Doubao model stream timeout while analyzing image input, not upload failure.
+  - Checked production logs for `137****2890` and confirmed the 8 image uploads completed successfully; the failure was a Doubao model stream timeout while analyzing image input, not upload failure.
   - Confirmed the UI stayed on `查找相关记录` because no later SSE status was emitted before the long model stream call.
   - Added backend model-work status events so clients see `正在分析 N 张图片` / `正在生成回复`; kept a compatible `retrieving_context` update so older clients still see truthful text.
   - Added frontend stream status handling for `analyzing_media` and `generating`, with chips `分析中` / `生成中`.
@@ -1105,13 +1195,13 @@
 
 ### Session 2026-05-15 Shared Contributor And Ledger Attachments
 
-- Goal: Show a unified contributor label for records, ledger entries, and album media; hydrate and preview ledger attachments; verify the existing cloud expense `8887.24` for user `18915618653`.
+- Goal: Show a unified contributor label for records, ledger entries, and album media; hydrate and preview ledger attachments; verify the existing cloud expense `8887.24` for user `189****8653`.
 - Completed:
   - Added runtime `recordedBy` metadata for family-shared state rows and care-log timeline events, using the family member role as the user-facing label.
   - Hydrated `attachmentId` and `attachmentIds` references into full attachment metadata so ledger entries can show clickable image/video/audio attachments.
   - Added frontend display for `记录人` in records, ledger, and album, plus ledger attachment preview buttons.
   - Preserved original creator attribution when existing shared rows are updated.
-  - Confirmed cloud user `18915618653` belongs to family `family-eb3f4751-2df9-46b4-920e-6634c4013d50`; expense `expense-1` amount `8887.24` already has attachment `attachment-mp2lomag-chc0xt`, so no production DB mutation was needed.
+  - Confirmed cloud user `189****8653` belongs to family `family-eb3f4751-****`; expense `expense-1` amount `8887.24` already has attachment `attachment-mp2lomag-chc0xt`, so no production DB mutation was needed.
   - Deployed code and OTA assets to Aliyun `120.55.188.242` with production data sync disabled.
 - Verification run:
   - `npm run build`
@@ -1151,7 +1241,7 @@
 
 ### Session 2026-05-16 Expense Image Chat Reliability
 
-- Goal: Fix user `13777892890` chat expense-recognition issues: multi-image sends were capped too low, expense screenshot recognition triggered meaningless web search, and recognized amounts could still be followed by an amount clarification.
+- Goal: Fix user `137****2890` chat expense-recognition issues: multi-image sends were capped too low, expense screenshot recognition triggered meaningless web search, and recognized amounts could still be followed by an amount clarification.
 - Completed:
   - Raised chat visual attachment handling from 4 to 8 to match backend request validation, including model visual input forwarding, and added a clear notice when a browser selection exceeds the chat cap.
   - Suppressed `web_search` planning/tool routing for order, receipt, invoice, payment, or expense image recognition tasks while preserving web search for policy and reference-price questions.
@@ -1170,7 +1260,7 @@
 
 ### Session 2026-05-16 Agent Stream Timeout And Progress Detail
 
-- Goal: Explain and fix why user `13777892890` saw `AI 流式响应缺少最终结果` after an 8-image expense retry, and make long-running backend work visible as concrete frontend progress.
+- Goal: Explain and fix why user `137****2890` saw `AI 流式响应缺少最终结果` after an 8-image expense retry, and make long-running backend work visible as concrete frontend progress.
 - Completed:
   - Confirmed the failed stream timed out before the expense-recognition skill completed: 8 prior screenshots were processed as 2 sequential vision batches, the skill took about 171 seconds, while the previous SSE budget was about 165 seconds.
   - Changed stream timeout budgeting to account for planner time, expense-recognition batch count, final response generation, and a 12 minute upper cap for visual requests.
@@ -1200,7 +1290,7 @@
 
 - Goal: Explain and reduce why a follow-up message asking to recognize previously uploaded images was much slower than sending images directly in the same message.
 - Completed:
-  - Confirmed user `13777892890` latest trace `agent-1ff31579-9370-4820-ba58-be2bfa6ed1fa` started at 20:58:48, expense recognition completed at 21:01:51, and final agent response completed at 21:02:27.
+  - Confirmed user `137****2890` latest trace `agent-1ff31579-9370-4820-ba58-be2bfa6ed1fa` started at 20:58:48, expense recognition completed at 21:01:51, and final agent response completed at 21:02:27.
   - Confirmed the two expense-recognition batches took about 86 seconds and 93 seconds respectively; the UI appeared stuck on the second batch because each batch was a blocking vision-model call with no inner progress.
   - Found the direct-image path was faster because the frontend sends agent-optimized compressed images, while previous-image retry reloaded persisted attachment originals from storage.
   - Changed historical attachment hydration for Agent input to generate an agent-sized JPEG data URL with max edge 1800px, instead of sending the original stored image bytes to the vision model.
@@ -1220,6 +1310,38 @@
   - Cloud `/api/health` returned `ok` after backend-only deploy.
 - Known risks:
   - Historical screenshot OCR now uses a compressed 1800px JPEG instead of the original file; this is intended to match the direct-send path and should preserve enough resolution for order screenshots, but extremely tiny text could still depend on upstream model quality.
+
+### Session 2026-06-05 Real User Record And Companion UX Fixes
+
+- Goal: Fix user `189****8653` real test-path issues around chat progress clutter, deterministic feeding records, daily record nudges, voice cancellation, quick-action icon size, and care-log timeline persistence.
+- Completed:
+  - Changed embedded question handling so concrete records inside questions, such as `今天发生了什么？刚才9点多喝了100ml奶粉...`, still produce care-log signals and automatic record decisions.
+  - Changed care-log merge semantics so daily cumulative fields (`milkMl`, `milkTimes`, `sleepHours`, `wakes`) are additive for merge patches while notes/events remain deduped; frontend optimistic merge now matches backend behavior.
+  - Fixed automatic care-log persistence to send incremental patches, not already-merged full logs, preventing double counting after the additive backend change.
+  - Allowed explicit milk-type clarification replies (for mixed feeding) to auto-record when the care payload already contains complete milk amount/event data.
+  - Added final-copy guard so pending care-log decisions no longer say they have already been recorded.
+  - Hid completed backend progress rows after final AI messages; running/failed rows remain visible while useful.
+  - Added voice hold drag-to-cancel with an `上滑取消` / `松开取消` state and cancellation that restores the pre-press composer text.
+  - Moved weak toast placement away from the top overlap area and enlarged quick-action icons while keeping smoke-safe mobile bounds.
+  - Removed `今日交接`, missing-record prompts, unfinished-reminder prompts, and pending-confirmation nudges from the primary records view; server daily-summary read/generate now strips old missing prompt copy and returns empty missing/account-missing lists.
+  - Updated frontend smoke mocks for consent gate and family member API so the UI gate reflects current app startup.
+- Verification run:
+  - `node scripts/test-care-log-helpers.mjs`
+  - `JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home" "/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn" -f backend/pom.xml -Dtest=AgentBenchmarkTests#benchmarkEmbeddedQuestionWithConcreteMilkRecordStillAutoWritesCareLog test -q`
+  - `JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home" "/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn" -f backend/pom.xml -Dtest=AppStateControllerTests#mergesCareLogPatchByAddingDailyTotalsAndKeepingTimelineEvents test -q`
+  - `JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home" "/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn" -f backend/pom.xml -Dtest=ProTrialControllerTests#dailySummaryGenerationPersistsSharedDataAndStripsAccountPrivateItems test -q`
+  - `JAVA_HOME="/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home" "/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn" -f backend/pom.xml -Dtest=AgentBenchmarkTests test -q`
+  - `npm run test:agent-l2:unit`
+  - `npm run test:agent-benchmark`
+  - `npm run verify:frontend`
+- Evidence:
+  - Frontend smoke passed across desktop and six mobile viewports; screenshots are under `.verification/frontend-smoke/`.
+  - Agent benchmark passed with the new embedded-question record and no daily-summary nudge coverage.
+  - Targeted backend tests passed for additive care-log merge, daily-summary missing/account prompt stripping, and agent record extraction.
+  - Read-only production inspection showed the reported cloud state had `milkMl=100` while a pending effect contained the second 100ml patch; no production data was mutated in this session.
+- Known risks:
+  - This session did not deploy to ECS or publish OTA; cloud users will see the fix only after a separate production release.
+  - Browser smoke proves layout and web interaction, but real-device ASR drag-cancel feel still needs native-device confirmation.
 
 ## Operational Notes
 

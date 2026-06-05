@@ -407,7 +407,7 @@ Codex 调研里强调 Baby Tracker PDF 导出、小豆苗疫苗/儿保工具和�
 
 1. `Phase 0: 小宝今日观察与反疲劳记录体验设计`
    - 范围：品牌化、stat cards、成长最新值、记录成功反馈、文案体系。
-   - 可复用 `docs/superpowers/plans/2026-06-01-daily-summary-ai-hub.md` 的战术计划，但需要加入反疲劳文案和记录成功反馈。
+   - 可参考已归档的 `docs/archive/completed-2026-06-05/2026-06-01-daily-summary-ai-hub.md`，但执行时以当前 roadmap 和 release-hardening spec 为准。
 
 2. `Phase 1: 数据关联的中文 AI 陪伴设计`
    - 范围：疲惫/焦虑信号识别、非诊疗边界、陪伴一句话、高风险转介、隐私说明。

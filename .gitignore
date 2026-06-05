@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-.DS_Store
 
 # Frontend build output
 dist/
@@ -52,4 +51,5 @@ ios/App/App.xcworkspace/xcuserdata/
 .DS_Store
 .idea/
 .vscode/
+.claude/
 *.log
