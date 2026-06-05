@@ -77,6 +77,7 @@ SYNC_DATA=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun
   - 发布后**必须验证 base URL**：解压 bundle 用 `grep` 确认编译进去的是 `120.55.188.242:8300` 而非 `localhost:8080`，再确认 OTA check API 返回正确 url+checksum，且下载的 bundle checksum 匹配。
   - OTA 只升不降：发了坏包要回滚，必须构建一个**版本号更高**的正确包覆盖，不能简单把 manifest 指回旧版本（已更新的设备不会降级）。
   - 紧急止扩散：第一时间把生产 `mobile-updates/manifest.json` 的 `enabled` 置 false，阻止未中招设备继续更新到坏包。
+  - **native app 内置包同理**：`build:ios:debug` / `build:android:debug` / `mobile:sync` 内部的 `npm run build` 同样会 fallback 到 localhost。这些脚本已改为默认注入生产 base URL（可被 `VITE_AGENT_API_BASE_URL` override，本地联调时设 localhost）。Xcode / Android Studio 直接 build 前，务必先用注入了生产 URL 的命令 `npm run build && npx cap sync` 刷新内置包，并确认 `ios/App/App/public/assets/*.js`（或 android assets）里的 base URL 是生产地址，否则真机装上去也是 `load failed`。
 
 ## Definition Of Done
 
