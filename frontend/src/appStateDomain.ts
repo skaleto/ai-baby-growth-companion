@@ -309,7 +309,7 @@ export const normalizeChatMessage = (value: Partial<ChatMessage> | null | undefi
 export const normalizeCareLogEventType = (value: unknown): CareLogEventType =>
   stringMember(CARE_EVENT_TYPE_VALUES, value) ? value : "note";
 
-export const normalizeClockText = (value: unknown) => {
+export const normalizeClockText = (value: unknown, referenceDate = new Date()) => {
   if (typeof value !== "string") return undefined;
   const raw = value.trim();
   if (!raw) return undefined;
@@ -324,11 +324,31 @@ export const normalizeClockText = (value: unknown) => {
   if (parsedMinute === undefined) return undefined;
   const minute = parsedMinute;
   if ((period === "下午" || period === "晚上") && hour < 12) hour += 12;
+  if (period === "中午" && hour < 11) hour += 12;
   if (period === "凌晨" && hour === 12) hour = 0;
+  if (!period && hour >= 1 && hour <= 12) {
+    hour = inferAmbiguousHourForToday(hour, minute, referenceDate);
+  }
   if (!Number.isFinite(hour) || hour < 0 || hour > 23 || !Number.isFinite(minute) || minute < 0 || minute > 59) {
     return undefined;
   }
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+};
+
+const inferAmbiguousHourForToday = (hour: number, minute: number, referenceDate: Date) => {
+  const nowMinutes = referenceDate.getHours() * 60 + referenceDate.getMinutes();
+  if (hour === 12) {
+    const midnightMinutes = minute;
+    const noonMinutes = 12 * 60 + minute;
+    if (noonMinutes <= nowMinutes) return 12;
+    if (midnightMinutes <= nowMinutes) return 0;
+    return 0;
+  }
+  const morningMinutes = hour * 60 + minute;
+  const afternoonMinutes = (hour + 12) * 60 + minute;
+  if (afternoonMinutes <= nowMinutes) return hour + 12;
+  if (morningMinutes <= nowMinutes) return hour;
+  return hour;
 };
 
 export const localDateKey = (date: Date) =>

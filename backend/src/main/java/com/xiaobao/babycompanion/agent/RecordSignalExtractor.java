@@ -1,5 +1,6 @@
 package com.xiaobao.babycompanion.agent;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -17,6 +18,7 @@ import java.util.regex.Pattern;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.xiaobao.babycompanion.dto.agent.AgentChatMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -26,15 +28,16 @@ public class RecordSignalExtractor {
 
     private static final Pattern ISO_DATE = Pattern.compile("(20\\d{2})[-/.年](\\d{1,2})[-/.月](\\d{1,2})日?");
     private static final Pattern MONTH_DAY = Pattern.compile("(\\d{1,2})月(\\d{1,2})[日号]?");
+    private static final Pattern WEEKDAY = Pattern.compile("(?<!每)(上|下|这|本)?(?:周|星期|礼拜)([一二三四五六日天1-7])");
     private static final Pattern TIME = Pattern.compile("(凌晨|早上|上午|中午|下午|晚上)?\\s*(\\d{1,2}|[一二两三四五六七八九十]{1,3})\\s*(?:点\\s*(半|\\d{1,2}|[一二两三四五六七八九十]{1,3})?|[:：]\\s*(\\d{1,2}))");
     private static final Pattern ML = Pattern.compile("(?:每次)?\\s*(\\d{2,4})\\s*(?:ml|mL|毫升)");
     private static final Pattern TIMES = Pattern.compile("(?:喝奶|吃奶|喂奶|奶)?\\s*(\\d{1,2})\\s*次");
     private static final Pattern SLEEP = Pattern.compile("(?:睡了|睡眠|睡觉)\\s*(\\d+(?:\\.\\d+)?)\\s*(?:个)?(?:小时|h)");
     private static final Pattern WAKES = Pattern.compile("(?:夜醒|醒了|醒来)\\s*(\\d{1,2})\\s*次");
     private static final Pattern TEMPERATURE = Pattern.compile("(3[5-9](?:\\.\\d)?)\\s*(?:度|℃)");
-    private static final Pattern HEIGHT = Pattern.compile("(?:身高|身长)\\s*(?:还是|仍是|依然是)?\\s*(\\d{2,3}(?:\\.\\d+)?)\\s*(?:cm|厘米|公分)?");
-    private static final Pattern WEIGHT = Pattern.compile("(?:体重|重量)\\s*(?:还是|仍是|依然是)?\\s*(\\d{1,2}(?:\\.\\d+)?)\\s*(kg|KG|公斤|千克|斤)?");
-    private static final Pattern HEAD_CIRCUMFERENCE = Pattern.compile("头围\\s*(?:还是|仍是|依然是)?\\s*(\\d{2,3}(?:\\.\\d+)?)\\s*(?:cm|厘米|公分)?");
+    private static final Pattern HEIGHT = Pattern.compile("(?:身高|身长)\\s*(?:是|为|有|约|大约|大概|还是|仍是|依然是)?\\s*(\\d{2,3}(?:\\.\\d+)?)\\s*(?:cm|厘米|公分)?");
+    private static final Pattern WEIGHT = Pattern.compile("(?:体重|重量)\\s*(?:是|为|有|约|大约|大概|还是|仍是|依然是)?\\s*(\\d{1,2}(?:\\.\\d+)?)\\s*(kg|KG|公斤|千克|斤)?");
+    private static final Pattern HEAD_CIRCUMFERENCE = Pattern.compile("头围\\s*(?:是|为|有|约|大约|大概|还是|仍是|依然是)?\\s*(\\d{2,3}(?:\\.\\d+)?)\\s*(?:cm|厘米|公分)?");
     private static final Pattern INTERVAL_REMINDER = Pattern.compile("(?:每隔|每)\\s*(半|\\d+(?:\\.\\d+)?|[一二两三四五六七八九十]+)\\s*(?:个)?\\s*(分钟|分|小时)");
     private static final Pattern MONEY = Pattern.compile("(?:¥|￥)?\\s*(\\d+(?:\\.\\d{1,2})?)\\s*(?:元|块|rmb|RMB)?");
     private static final Pattern PART_SEPARATOR = Pattern.compile("[。；;\\n，,]");
@@ -53,9 +56,19 @@ public class RecordSignalExtractor {
     }
 
     public RecordSignals extract(String message) {
+        return extract(message, List.of());
+    }
+
+    public RecordSignals extract(String message, List<AgentChatMessage> recentMessages) {
         String text = message == null ? "" : message.trim();
         LocalDate today = LocalDate.now(clock);
         List<String> dates = targetDates(text, today);
+        if (dates.isEmpty() && mayBorrowGrowthMeasurementDate(text)) {
+            String contextDate = recentGrowthMeasurementDate(recentMessages, today);
+            if (StringUtils.hasText(contextDate)) {
+                dates = List.of(contextDate);
+            }
+        }
         String date = dates.isEmpty() ? today.toString() : dates.get(0);
         Set<String> topics = new LinkedHashSet<>();
         Set<String> risks = new LinkedHashSet<>();
@@ -69,6 +82,17 @@ public class RecordSignalExtractor {
         ReminderSignal reminderSignal = reminderSignal(text);
         ExpenseSignal expenseSignal = expenseSignal(text, date);
         List<GrowthMeasurementSignal> growthMeasurements = growthMeasurementSignals(text, date);
+        if (growthMeasurements.isEmpty() && replayRecentGrowthMeasurementRequest(text)) {
+            growthMeasurements = recentGrowthMeasurementSignals(recentMessages, today);
+            if (!growthMeasurements.isEmpty() && dates.isEmpty()) {
+                dates = growthMeasurements.stream()
+                        .map(GrowthMeasurementSignal::date)
+                        .filter(StringUtils::hasText)
+                        .distinct()
+                        .toList();
+                date = dates.get(0);
+            }
+        }
         boolean explicitMemoryRequest = explicitMemoryRequest(text);
         boolean questionOnly = questionOnly(text);
         List<MemorySignal> memorySignals = memorySignals(text, explicitMemoryRequest);
@@ -288,7 +312,7 @@ public class RecordSignalExtractor {
         if (weight && "斤".equals(unit)) {
             value = value * 0.5;
         }
-        value = roundOneDecimal(value);
+        value = roundMeasurementValue(type, value);
         if (outOfRangeMeasurement(type, value)) {
             signals.add(new GrowthMeasurementSignal(
                     type,
@@ -302,6 +326,13 @@ public class RecordSignalExtractor {
             return;
         }
         signals.add(new GrowthMeasurementSignal(type, value, date, compact(text), needsClarification));
+    }
+
+    private double roundMeasurementValue(String type, double value) {
+        if ("weight".equals(type)) {
+            return Math.round(value * 100.0) / 100.0;
+        }
+        return roundOneDecimal(value);
     }
 
     private boolean outOfRangeMeasurement(String type, double value) {
@@ -527,7 +558,81 @@ public class RecordSignalExtractor {
             LocalDate date = LocalDate.of(today.getYear(), Integer.parseInt(monthDay.group(1)), Integer.parseInt(monthDay.group(2)));
             dates.add(date.toString());
         }
+        Matcher weekday = WEEKDAY.matcher(text);
+        while (weekday.find()) {
+            dates.add(resolveWeekdayDate(today, weekday.group(1), weekday.group(2)).toString());
+        }
         return dates.stream().toList();
+    }
+
+    private boolean mayBorrowGrowthMeasurementDate(String text) {
+        return matches(text, "身高|身长|体重|重量|头围");
+    }
+
+    private boolean replayRecentGrowthMeasurementRequest(String text) {
+        if (!StringUtils.hasText(text)) return false;
+        boolean recentReference = matches(text, "刚才|前面|之前|上面|前文|这些|那几条|前几条");
+        boolean growthObject = matches(text, "成长|测量|身高|身长|体重|重量|头围");
+        boolean recordAgain = matches(text, "再.*(记|记录|维护|保存|整理)|重新.*(记|记录|维护|保存|整理)|帮我.*(记|记录|维护|保存|整理)|补记|记一遍");
+        return recentReference && growthObject && recordAgain;
+    }
+
+    private List<GrowthMeasurementSignal> recentGrowthMeasurementSignals(List<AgentChatMessage> recentMessages, LocalDate today) {
+        if (recentMessages == null || recentMessages.isEmpty()) return List.of();
+        List<GrowthMeasurementSignal> measurements = new ArrayList<>();
+        String contextDate = "";
+        for (AgentChatMessage message : recentMessages) {
+            if (message == null || !StringUtils.hasText(message.text())) continue;
+            String role = message.role() == null ? "" : message.role().trim();
+            if (!"parent".equals(role) && !"user".equals(role)) continue;
+            String messageText = message.text();
+            List<String> messageDates = targetDates(messageText, today);
+            if (!messageDates.isEmpty()) {
+                contextDate = messageDates.get(0);
+            }
+            String measurementDate = !messageDates.isEmpty()
+                    ? messageDates.get(0)
+                    : StringUtils.hasText(contextDate) && mayBorrowGrowthMeasurementDate(messageText) ? contextDate : today.toString();
+            List<GrowthMeasurementSignal> extracted = growthMeasurementSignals(messageText, measurementDate);
+            if (!extracted.isEmpty()) {
+                measurements.addAll(extracted);
+                contextDate = measurementDate;
+            }
+        }
+        return measurements;
+    }
+
+    private String recentGrowthMeasurementDate(List<AgentChatMessage> recentMessages, LocalDate today) {
+        if (recentMessages == null || recentMessages.isEmpty()) return "";
+        for (int index = recentMessages.size() - 1; index >= 0; index--) {
+            AgentChatMessage message = recentMessages.get(index);
+            if (message == null || !StringUtils.hasText(message.text())) continue;
+            String role = message.role() == null ? "" : message.role().trim();
+            if (!"parent".equals(role) && !"user".equals(role)) continue;
+            if (!mayBorrowGrowthMeasurementDate(message.text())) continue;
+            List<String> dates = targetDates(message.text(), today);
+            if (!dates.isEmpty()) return dates.get(0);
+        }
+        return "";
+    }
+
+    private LocalDate resolveWeekdayDate(LocalDate today, String prefix, String weekdayText) {
+        int weekday = weekdayIndex(weekdayText);
+        int weekOffset = "上".equals(prefix) ? -7 : "下".equals(prefix) ? 7 : 0;
+        return today.with(DayOfWeek.MONDAY).plusDays(weekOffset + weekday - 1L);
+    }
+
+    private int weekdayIndex(String value) {
+        return switch (value) {
+            case "一", "1" -> 1;
+            case "二", "2" -> 2;
+            case "三", "3" -> 3;
+            case "四", "4" -> 4;
+            case "五", "5" -> 5;
+            case "六", "6" -> 6;
+            case "日", "天", "7" -> 7;
+            default -> 1;
+        };
     }
 
     private boolean incompleteFeeding(String text) {
@@ -558,7 +663,7 @@ public class RecordSignalExtractor {
         if (("下午".equals(period) || "晚上".equals(period)) && hour < 12) hour += 12;
         if ("中午".equals(period) && hour < 11) hour += 12;
         if ("凌晨".equals(period) && hour == 12) hour = 0;
-        if (!StringUtils.hasText(period) && hour >= 1 && hour <= 11 && today.toString().equals(targetDate)) {
+        if (!StringUtils.hasText(period) && hour >= 1 && hour <= 12 && today.toString().equals(targetDate)) {
             hour = inferAmbiguousHourForToday(hour, minute);
         }
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
@@ -598,6 +703,13 @@ public class RecordSignalExtractor {
 
     private int inferAmbiguousHourForToday(int hour, int minute) {
         LocalTime now = LocalDateTime.now(clock).toLocalTime();
+        if (hour == 12) {
+            LocalTime midnight = LocalTime.of(0, minute);
+            LocalTime noon = LocalTime.of(12, minute);
+            if (!noon.isAfter(now)) return 12;
+            if (!midnight.isAfter(now)) return 0;
+            return 0;
+        }
         LocalTime morning = LocalTime.of(hour, minute);
         LocalTime afternoon = LocalTime.of(hour + 12, minute);
         if (!afternoon.isAfter(now)) return hour + 12;

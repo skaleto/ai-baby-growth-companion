@@ -409,6 +409,20 @@ h3 {
   cursor: wait;
 }
 
+.icon-button.visual-tool-gated,
+.tool-button.visual-tool-gated {
+  color: rgba(38, 48, 57, 0.42);
+  border-color: rgba(196, 204, 197, 0.72);
+  background: #f3f5f1;
+}
+
+.icon-button.visual-tool-gated:hover,
+.tool-button.visual-tool-gated:hover {
+  border-color: rgba(196, 204, 197, 0.82);
+  box-shadow: none;
+  transform: none;
+}
+
 .composer textarea:disabled {
   color: rgba(38, 48, 57, 0.6);
   background: #f7f8f5;
@@ -554,10 +568,33 @@ h3 {
   white-space: nowrap;
 }
 
-.quick-row button svg {
-  width: 22px;
-  height: 22px;
+.quick-row .quick-action {
+  min-height: 38px;
+  gap: 7px;
+  padding: 0 11px 0 8px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.quick-action__icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.quick-action__icon svg {
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
+}
+
+.quick-action__label {
+  line-height: 1;
 }
 
 .quick-row button:hover,

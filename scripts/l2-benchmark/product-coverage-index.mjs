@@ -1,8 +1,8 @@
-// Product-function coverage index for the benchmark program.
+// Product-feature coverage ownership for the current 2026-06-06 direction.
 //
-// This file bridges the repo harness feature list with the agent-specific L2
-// scenario matrix. Not every app feature belongs in the agent chat benchmark;
-// every feature must still have an explicit gate or a visible known gap.
+// This index intentionally follows the compact harness/feature_list.json. Old
+// May commercialization, DailySummaryView, and independent reminder/chat-tab
+// decisions are not current product direction.
 
 export const productCoverageIndex = [
   {
@@ -16,65 +16,49 @@ export const productCoverageIndex = [
     ],
   },
   {
-    featureId: "agent-001",
-    status: "covered",
+    featureId: "product-ia-2026-06-06",
+    status: "covered_by_non_agent_gate",
     coverage: [
       {
-        layer: "l0_l1",
-        evidence: "npm run test:agent-benchmark covers deterministic policy, planner, runtime, and prompt boundary behavior.",
+        layer: "frontend",
+        evidence: "npm run verify:frontend is the release gate for Records-first navigation, Records/Album/Ledger/My layout, mobile overflow, and app-shell changes.",
       },
       {
-        layer: "l2",
-        scenarioIds: [
-          "feed-complete",
-          "feed-mixed-missing-type",
-          "sleep-complete",
-          "sleep-start-boundary",
-          "multi-care-events",
-          "reminder-once",
-          "vague-reminder-ask",
-          "medicine-reminder-pending",
-          "vaccine-reminder-pending",
-          "expense-record",
-          "growth-milestone",
-          "growth-measurement-complete",
-          "growth-measurement-ambiguous-unit",
-          "growth-measurement-out-of-range",
-          "growth-measurement-update-boundary",
-          "growth-measurement-delete-boundary",
-          "growth-measurement-duplicate-boundary",
-          "memory-health-pending",
-          "memory-preference-pending",
-          "memory-caregiver-pending",
-          "qa-care-no-memory-pollution",
-          "qa-care-allergy-context",
-          "daily-observation-context",
-          "caregiver-fatigue-context",
-          "read-only-daily-summary-context",
-          "read-only-weekly-summary-context",
-          "private-reminder-share-boundary",
-          "photo-album",
-          "screenshot-ignore",
-        ],
-        evidence: "L2 scenarios exercise real /api/agent/chat/stream plus simulated frontend effect application and app_state diff.",
+        layer: "docs",
+        evidence: "docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md defines the target IA and module-native AI boundary.",
       },
     ],
+    nextAction: "After implementation, refresh Playwright smoke assertions so bottom navigation and default tab match 记录 / 相册 / 账本 / 我的.",
   },
   {
-    featureId: "agent-002",
+    featureId: "agent-tool-first-2026-06-06",
+    status: "known_gap",
+    coverage: [
+      {
+        layer: "docs",
+        evidence: "docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md defines the target tool-first write path.",
+      },
+      {
+        layer: "l2",
+        scenarioIds: ["feed-complete", "growth-measurement-complete", "expense-record"],
+        evidence: "Existing L2 scenarios represent the P0 record/ledger behaviors that must be re-backed by controlled action tools.",
+      },
+    ],
+    nextAction: "Implement backend Agent action tools and update L0/L1 plus L2 assertions so final replies are grounded in tool results.",
+  },
+  {
+    featureId: "agent-context-harness-2026-06-06",
     status: "covered",
     coverage: [
       {
         layer: "l0_l1",
-        evidence: "AgentBenchmarkTests, SkillRouterTests, ExpenseRecognitionSkillTests, AgentRuntimeTests, and EffectPolicyTests cover executable expense recognition, batching, previous-image hydration, duplicate handling, and saved-expense fallbacks.",
+        evidence: "npm run test:agent-benchmark covers the Chinese model-context harness injection and deterministic bad-case regressions.",
       },
       {
-        layer: "l2",
-        scenarioIds: ["expense-record"],
-        evidence: "expense-record verifies a text ledger draft enters pendingEffects.expenses without directly mutating final expenses.",
+        layer: "docs",
+        evidence: "harness/agent-model-context-harness.md is the current human-maintained harness.",
       },
     ],
-    nextAction: "Add a real L2 image-expense scenario after fixture/upload preparation can represent receipts deterministically.",
   },
   {
     featureId: "frontend-001",
@@ -82,41 +66,11 @@ export const productCoverageIndex = [
     coverage: [
       {
         layer: "frontend",
-        evidence: "npm run verify:frontend runs frontend build and Playwright smoke across desktop plus mobile viewports.",
+        evidence: "npm run verify:frontend runs product simplification tests, voice capture panel checks, care-log stats checks, build, and Playwright smoke across desktop plus mobile viewports.",
       },
       {
         layer: "docs",
         evidence: "docs/frontend-verification.md defines the viewport matrix and waiver discipline for UI work.",
-      },
-    ],
-  },
-  {
-    featureId: "recording-companion-p0",
-    status: "covered_by_non_agent_gate",
-    coverage: [
-      {
-        layer: "frontend",
-        evidence: "scripts/test-daily-summary-utils.mjs and scripts/probe-daily-summary-view.mjs cover daily observation stats, missing prompts, and record feedback.",
-      },
-      {
-        layer: "l2",
-        scenarioIds: ["daily-observation-context", "read-only-daily-summary-context"],
-        evidence: "L2 verifies agent read-only/data-linked daily observation behavior does not write accidental records.",
-      },
-    ],
-  },
-  {
-    featureId: "recording-companion-p1",
-    status: "covered_by_non_agent_gate",
-    coverage: [
-      {
-        layer: "frontend",
-        evidence: "scripts/test-daily-summary-utils.mjs and scripts/probe-daily-summary-view.mjs cover caregiver line, explanation disclosure, and verify handoff/missing prompts stay out of the primary records view.",
-      },
-      {
-        layer: "l2",
-        scenarioIds: ["caregiver-fatigue-context", "read-only-weekly-summary-context"],
-        evidence: "L2 verifies low-anxiety caregiver support and weekly summary use existing data without generating new records.",
       },
     ],
   },
@@ -146,74 +100,31 @@ export const productCoverageIndex = [
           "ota-updater",
           "safe-area-keyboard",
         ],
-        evidence: "scripts/native-capability-audit.mjs tracks native-capability-audit evidence for asr-voice-input, local-notifications, full-screen-ringing, haptics, native-media-picker, ota-updater, and safe-area-keyboard. Static evidence is covered; real delivery/input behavior remains device-gated.",
+        evidence: "scripts/native-capability-audit.mjs tracks static evidence for native capabilities. Real device delivery/input/apply behavior remains device-gated.",
       },
     ],
-    nextAction: "Add dedicated native/device probes for ASR voice input, notification delivery, full-screen ringing, haptics, native media picker, OTA apply, and WebView keyboard/safe-area behavior; browser/L2 cannot prove these.",
+    nextAction: "Add real iOS/Android device probes before claiming OS-level behavior is complete.",
   },
   {
-    featureId: "growth-001",
-    status: "covered",
-    coverage: [
-      {
-        layer: "frontend",
-        evidence: "npm run verify:frontend smoke covers growth MVP entry, invalid height rejection, valid height note entry, and absence of premature growth charts.",
-      },
-      {
-        layer: "backend",
-        evidence: "AppStateControllerTests cover pending growthMeasurements confirmation plus manual growthMeasurements upsert/delete maintenance.",
-      },
-      {
-        layer: "l2",
-        scenarioIds: [
-          "growth-measurement-complete",
-          "growth-measurement-ambiguous-unit",
-          "growth-measurement-out-of-range",
-          "growth-measurement-update-boundary",
-          "growth-measurement-delete-boundary",
-          "growth-measurement-duplicate-boundary",
-          "read-only-growth-trend-context",
-        ],
-        evidence: "L2 verifies AI-created pending growth measurements, unsafe/boundary no-writes, duplicate no-write behavior, and read-only growth trend queries.",
-      },
-    ],
-  },
-  {
-    featureId: "shared-records-001",
+    featureId: "release-hardening-2026-06-05",
     status: "covered_by_non_agent_gate",
     coverage: [
       {
-        layer: "backend",
-        evidence: "AppStateControllerTests cover contributor enrichment and attachment hydration for shared records, ledger, and album state.",
-      },
-      {
-        layer: "cloud",
-        evidence: "npm run test:cloud-e2e covers live timeline recordedBy display and ledger attachment preview for shared family records.",
-      },
-      {
-        layer: "l2",
-        scenarioIds: ["private-reminder-share-boundary", "photo-album"],
-        evidence: "L2 covers private state sharing boundaries and album state mutation shape, but contributor/attachment UI remains a cloud/frontend gate.",
+        layer: "docs",
+        evidence: "docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md and harness/quality-document.md track release blockers and evidence expectations.",
       },
     ],
+    nextAction: "Execute the release-hardening checklist before broader beta or public release.",
   },
   {
-    featureId: "commercialization-001",
+    featureId: "legal-data-2026-06-06",
     status: "covered_by_non_agent_gate",
     coverage: [
       {
-        layer: "backend",
-        evidence: "ProTrialControllerTests cover trial application, Pro entitlement, summary permissions, private-data exclusion, and usage logging.",
-      },
-      {
-        layer: "frontend",
-        evidence: "npm run verify:frontend covers the Pro trial / daily summary UI states used by the smoke fixture.",
-      },
-      {
-        layer: "native",
-        evidence: "mobile:sync and native debug builds are required when notification scheduling changes.",
+        layer: "docs",
+        evidence: "docs/legal/ keeps privacy, terms, and third-party data-processing drafts separate from deleted May product decisions.",
       },
     ],
-    nextAction: "If Pro summary behavior is changed, add or refresh cloud/account-level probes because this is entitlement and role-sensitive.",
+    nextAction: "Refresh legal drafts before broader beta after the actual data flow, Pro entitlement, and provider list settle.",
   },
 ];

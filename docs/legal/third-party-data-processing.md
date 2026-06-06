@@ -3,7 +3,7 @@
 - 创建日期：2026-06-05
 - 状态：R0.5 上架硬化合规材料（Claude×Codex 交叉 review 补入的漏项）
 - 用途：明确"哪些用户数据、为什么目的、发给哪些第三方、如何处理"，供隐私政策正文、App Store 隐私营养标签、国内安卓隐私合规自查引用
-- 关联：`privacy-policy-draft.md`、`docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`（REQ-PRIV-001/003）
+- 关联：`docs/legal/privacy-policy-draft.md`、`docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`（REQ-PRIV-001/003）
 
 > 本清单只描述**当前代码与配置实际接入**的第三方。标注「待接入」的在对应发布阶段补充并同步更新本表，未接入前不得在隐私政策中声明。
 

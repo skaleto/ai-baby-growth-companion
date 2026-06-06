@@ -1,4 +1,4 @@
-import { AiUsageSummary, AppStateSnapshot, Attachment, AttachmentKind, DailySummary, DailySummarySettings, ProTrialStatus } from "./types";
+import { AiUsageSummary, AppStateSnapshot, Attachment, AttachmentKind, ProTrialStatus } from "./types";
 import { apiBaseUrl, apiFetch, authHeaders, parseError, withAuthQuery } from "./authApi";
 
 export type AppStateCollection =
@@ -147,26 +147,6 @@ export async function submitProTrialApplication(source: string): Promise<ProTria
   });
   if (!response.ok) throw new Error(await parseError(response, `申请 Pro 内测失败（${response.status}）`));
   return (await response.json()) as ProTrialStatus;
-}
-
-export async function generateDailySummary(date: string): Promise<DailySummary> {
-  const response = await apiFetch(`${apiBaseUrl}/api/pro/daily-summary/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ date }),
-  });
-  if (!response.ok) throw new Error(await parseError(response, `整理今日观察失败（${response.status}）`));
-  return (await response.json()) as DailySummary;
-}
-
-export async function updateDailySummarySettings(settings: DailySummarySettings): Promise<DailySummarySettings> {
-  const response = await apiFetch(`${apiBaseUrl}/api/pro/daily-summary/settings`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(settings),
-  });
-  if (!response.ok) throw new Error(await parseError(response, `保存小结提醒设置失败（${response.status}）`));
-  return (await response.json()) as DailySummarySettings;
 }
 
 export async function readAiUsageSummary(days = 30): Promise<AiUsageSummary> {

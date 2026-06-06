@@ -1,6 +1,6 @@
 // 内测阶段的精简版静态法律/说明文本。
-// 这里只放“要点摘要”，正式完整文本以 docs/commercialization/privacy-policy-draft.md
-// 和 terms-draft.md 为准；正式上架前需替换为审阅过的完整法律文本。
+// 这里只放“要点摘要”，正式完整文本以 docs/legal/privacy-policy-draft.md
+// 和 docs/legal/terms-draft.md 为准；正式上架前需替换为审阅过的完整法律文本。
 // TODO(legal): 替换为正式隐私政策 / 用户协议 / 儿童信息说明完整文本。
 
 export type LegalDocId = "privacy" | "terms" | "children";

@@ -84,7 +84,6 @@ body {
 .message-companion img,
 .record-event-icon img,
 .summary-metric-icon,
-.quick-icon-img,
 .care-tile-icon,
 .empty-sticker img {
   display: block;
@@ -348,10 +347,16 @@ body {
   color: #527064;
 }
 
-.quick-icon-img {
-  width: 28px;
-  height: 28px;
-  margin: -5px -2px -5px -1px;
+.quick-row .quick-action {
+  border-color: rgba(219, 205, 186, 0.92);
+  background: rgba(255, 252, 246, 0.94);
+  color: #48685b;
+}
+
+.quick-action__icon {
+  color: #5e7f70;
+  background: rgba(91, 127, 109, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(91, 127, 109, 0.08);
 }
 
 .quick-row button:hover,
@@ -363,6 +368,17 @@ body {
   border-color: rgba(236, 143, 125, 0.45);
   box-shadow: var(--shadow-soft);
   transform: translateY(-1px);
+}
+
+.icon-button.visual-tool-gated,
+.tool-button.visual-tool-gated,
+.icon-button.visual-tool-gated:hover,
+.tool-button.visual-tool-gated:hover {
+  color: rgba(74, 84, 89, 0.46);
+  border-color: rgba(218, 218, 210, 0.86);
+  background: #f3f5f1;
+  box-shadow: none;
+  transform: none;
 }
 
 .quick-row button:active,

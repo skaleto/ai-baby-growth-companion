@@ -125,8 +125,7 @@
 
   .mobile-tab-today .left-rail,
   .mobile-tab-today .right-rail,
-  .mobile-tab-growth .right-rail,
-  .mobile-tab-reminders .right-rail {
+  .mobile-tab-growth .right-rail {
     display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
@@ -136,13 +135,10 @@
   .mobile-tab-today .reminder-panel,
   .mobile-tab-growth .insight-panel,
   .mobile-tab-growth .reminder-panel,
-  .mobile-tab-growth .assistant-panel,
-  .mobile-tab-reminders .insight-panel,
-  .mobile-tab-reminders .timeline-panel {
+  .mobile-tab-growth .assistant-panel {
     display: none;
   }
 
-  .mobile-tab-reminders .assistant-panel .assistant-card,
   .mobile-tab-today .assistant-panel .assistant-actions {
     display: none;
   }

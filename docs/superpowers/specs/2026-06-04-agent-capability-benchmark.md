@@ -3,7 +3,9 @@
 - 创建日期：2026-06-04
 - 状态：设计 + 框架 + 核心场景 + 产品补缺（本轮）
 - 触发：用户要求建立场景化 agent 能力 benchmark，防止迭代后性能劣化；评测维度含耗时、结果准确度、系统执行准确度
-- 关联：`docs/agent-benchmark-plan.md`（现有 L0/L1）、`docs/superpowers/specs/2026-06-04-agent-latency-audit.md`（耗时审计 + lite/pro 分流）
+- 关联：`docs/agent-benchmark-results.md`、`docs/agent-l2-benchmark-results.md`、`docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`
+
+> 本文档保留为 L2 benchmark 场景来源和覆盖记录，不再作为当前产品或 Agent 架构决策来源。当前 Agent 写入架构以 2026-06-06 tool-first spec 为准。
 
 ## 背景：现状与缺口
 

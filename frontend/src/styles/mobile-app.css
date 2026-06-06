@@ -53,7 +53,7 @@ body.ledger-modal-open .mobile-tab-ledger .ledger-screen {
   transform: none;
 }
 
-body.reminder-modal-open .mobile-tab-reminders .reminders-screen {
+body.reminder-modal-open .mobile-tab-profile.profile-reminders-open .reminders-screen {
   animation: none;
   transform: none;
 }
@@ -515,16 +515,29 @@ canvas {
 .mobile-tab-records .records-screen,
 .mobile-tab-ledger .ledger-screen,
 .mobile-tab-album .album-screen,
-.mobile-tab-reminders .reminders-screen,
 .mobile-tab-profile .profile-screen {
   display: block;
+}
+
+.mobile-tab-profile.profile-reminders-open .profile-screen {
+  display: none;
+}
+
+.mobile-tab-profile.profile-reminders-open .reminders-screen {
+  display: block;
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: min(560px, 100%);
+  max-width: 100%;
+  padding: 0 10px 18px;
+  overflow-y: auto;
 }
 
 .mobile-tab-chat .chat-panel,
 .mobile-tab-records .records-screen,
 .mobile-tab-ledger .ledger-screen,
 .mobile-tab-album .album-screen,
-.mobile-tab-reminders .reminders-screen,
+.mobile-tab-profile.profile-reminders-open .reminders-screen,
 .mobile-tab-profile .profile-screen {
   animation: pageSoftIn 240ms ease both;
 }
@@ -667,6 +680,26 @@ canvas {
   white-space: nowrap;
 }
 
+.quick-row .quick-action {
+  min-height: 36px;
+  gap: 6px;
+  padding: 0 9px 0 7px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.quick-action__icon {
+  width: 22px;
+  height: 22px;
+  flex-basis: 22px;
+  border-radius: 7px;
+}
+
+.quick-action__icon svg {
+  width: 15px;
+  height: 15px;
+}
+
 .message-list {
   min-height: 0;
   margin: 0 -2px;
@@ -739,6 +772,16 @@ canvas {
   background: rgba(255, 253, 250, 0.98);
 }
 
+.composer.voice-recording-hidden {
+  opacity: 0;
+}
+
+.app-shell.voice-recording-active .mobile-tabbar {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .pending-attachment-summary {
   min-height: 46px;
 }
@@ -755,7 +798,7 @@ canvas {
 
 .composer-tools {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(4, 44px);
+  grid-template-columns: repeat(2, 44px);
   gap: 8px;
   min-width: 0;
 }
@@ -772,30 +815,6 @@ canvas {
   color: rgba(72, 89, 101, 0.72);
   font-size: 12px;
   line-height: 18px;
-}
-
-.voice-cancel-hint {
-  display: inline-flex;
-  align-items: center;
-  justify-self: center;
-  gap: 5px;
-  width: fit-content;
-  margin: -2px auto 0;
-  padding: 5px 10px;
-  border: 1px solid rgba(124, 146, 166, 0.22);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  color: rgba(72, 89, 101, 0.76);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 16px;
-  box-shadow: 0 8px 20px rgba(42, 56, 66, 0.08);
-}
-
-.voice-cancel-hint.armed {
-  border-color: rgba(169, 85, 104, 0.38);
-  background: #fff7f8;
-  color: #9b344a;
 }
 
 .model-select,
@@ -936,6 +955,138 @@ canvas {
   color: rgba(38, 48, 57, 0.45);
   border-color: rgba(196, 204, 197, 0.72);
   background: #f3f5f1;
+}
+
+.voice-recording-panel {
+  --voice-level: 0;
+  --voice-orb-size: max(720px, 150vw);
+  position: fixed;
+  inset: 0;
+  z-index: 360;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 26px calc(74px + env(safe-area-inset-bottom));
+  overflow: hidden;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+.voice-recording-panel::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(36vh - var(--voice-orb-size));
+  z-index: 0;
+  width: var(--voice-orb-size);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 54%,
+    #2f73ff 0%,
+    #3f8dff 34%,
+    rgba(91, 174, 255, 0.72) 48%,
+    rgba(132, 205, 255, 0.22) 62%,
+    rgba(230, 248, 255, 0.06) 74%,
+    rgba(255, 255, 255, 0) 84%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  opacity: calc(0.66 + var(--voice-level) * 0.3);
+  filter: blur(10px) brightness(calc(0.96 + var(--voice-level) * 0.28));
+  transform: translateX(-50%) scale(calc(0.94 + var(--voice-level) * 0.18));
+  transition: opacity 90ms linear, transform 90ms linear, filter 90ms linear;
+}
+
+.voice-recording-panel.canceling {
+  color: #ff3b30;
+}
+
+.voice-recording-panel.canceling::before {
+  background: radial-gradient(
+    circle at 50% 54%,
+    #ff3b30 0%,
+    #ff6a63 34%,
+    rgba(255, 117, 110, 0.72) 48%,
+    rgba(255, 179, 176, 0.24) 62%,
+    rgba(255, 242, 242, 0.07) 74%,
+    rgba(255, 255, 255, 0) 84%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+.voice-recording-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: 30px;
+  margin-bottom: 36px;
+  text-align: center;
+}
+
+.voice-recording-copy strong {
+  color: currentColor;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-shadow: 0 1px 18px rgba(255, 255, 255, 0.34);
+}
+
+.voice-wave-bars {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: min(75vw, 330px);
+  height: 24px;
+  opacity: calc(0.8 + var(--voice-level) * 0.2);
+}
+
+.voice-wave-bar {
+  display: block;
+  width: 4px;
+  height: calc(12px * var(--bar-scale) + var(--voice-level) * 10px);
+  min-height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.28);
+  animation: voiceWaveBar 860ms ease-in-out infinite;
+  animation-delay: -160ms;
+}
+
+.voice-recording-panel.canceling .voice-wave-bar {
+  background: rgba(255, 59, 48, 0.9);
+  box-shadow: 0 0 10px rgba(255, 59, 48, 0.16);
+}
+
+.voice-wave-bar:first-child,
+.voice-wave-bar:nth-child(2),
+.voice-wave-bar:nth-last-child(1),
+.voice-wave-bar:nth-last-child(2) {
+  opacity: 0.26;
+}
+
+.voice-wave-bar:nth-child(3),
+.voice-wave-bar:nth-child(4),
+.voice-wave-bar:nth-last-child(3),
+.voice-wave-bar:nth-last-child(4) {
+  opacity: 0.52;
+}
+
+@keyframes voiceWaveBar {
+  0%,
+  100% {
+    transform: scaleY(0.72);
+  }
+
+  50% {
+    transform: scaleY(calc(1 + var(--voice-level) * 0.7));
+  }
 }
 
 @keyframes voiceBreath {
@@ -2571,6 +2722,49 @@ body.keyboard-open .expense-optional-fields {
   background: rgba(91, 127, 109, 0.08);
   color: var(--sage-dark);
   font-size: 13px;
+}
+
+.profile-reminder-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(91, 127, 109, 0.18);
+  border-radius: 12px;
+  background: rgba(248, 253, 249, 0.92);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-reminder-card__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(91, 127, 109, 0.1);
+  color: var(--sage-dark);
+}
+
+.profile-reminder-card__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.profile-reminder-card__copy strong {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.profile-reminder-card__copy small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .profile-form {
@@ -4279,6 +4473,53 @@ body.keyboard-open .expense-optional-fields {
   margin: 0;
   text-align: center;
   padding: 8px 0;
+}
+
+.growth-trend-card {
+  display: grid;
+  gap: 12px;
+}
+
+.growth-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.growth-trend-item {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 11px 10px;
+  border: 1px solid rgba(83, 143, 121, 0.16);
+  border-radius: 8px;
+  background: rgba(246, 251, 247, 0.78);
+}
+
+.growth-trend-item span,
+.growth-trend-item em {
+  color: #73817b;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.growth-trend-item strong {
+  overflow-wrap: anywhere;
+  color: #273532;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.growth-trend-item small {
+  color: #4f806b;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.growth-trend-item.empty small {
+  color: #8a948f;
 }
 
 /* 家庭成员管理（REQ-AUTH, R1）。配色对齐产品:暖白卡 + sage 强调 + 柔珊瑚移除。 */

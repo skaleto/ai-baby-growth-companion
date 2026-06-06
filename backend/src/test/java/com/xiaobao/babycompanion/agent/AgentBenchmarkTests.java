@@ -67,6 +67,60 @@ class AgentBenchmarkTests {
     }
 
     @Test
+    void benchmarkPlainTwelveNearMidnightUsesMidnightInsteadOfNoon() {
+        RecordSignalExtractor midnightExtractor = new RecordSignalExtractor(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-06-05T16:21:00Z"), APP_ZONE)
+        );
+
+        RecordSignals plainTwelve = midnightExtractor.extract("十二点喝了100毫升奶粉");
+        RecordSignals explicitNoon = midnightExtractor.extract("中午十二点喝了100毫升奶粉");
+
+        assertThat(plainTwelve.careLogPatch().path("events").get(0).path("time").asText()).isEqualTo("00:00");
+        assertThat(explicitNoon.careLogPatch().path("events").get(0).path("time").asText()).isEqualTo("12:00");
+    }
+
+    @Test
+    void benchmarkModelContextHarnessCoversRecentMilkAndMidnightBadCases() {
+        String harness = AgentModelContextHarness.promptBlock();
+
+        assertThat(harness).contains("刚才/刚刚/现在/这次");
+        assertThat(harness).contains("currentTime");
+        assertThat(harness).contains("时间线事件");
+        assertThat(harness).contains("当天奶量总计");
+        assertThat(harness).contains("十二点/12点");
+        assertThat(harness).contains("00:00");
+        assertThat(harness).contains("混合喂养仍要确认奶类");
+        assertThat(harness).contains("不要把一次母乳/奶粉确认永久当成未来默认奶类");
+    }
+
+    @Test
+    void benchmarkModelContextHarnessCoversSystemicRuleFamilies() {
+        String harness = AgentModelContextHarness.promptBlock();
+
+        assertThat(harness).contains("已持久化事实");
+        assertThat(harness).contains("提醒请求不是喂养记录");
+        assertThat(harness).contains("真实已支付金额");
+        assertThat(harness).contains("成长测量");
+        assertThat(harness).contains("待确认草稿");
+        assertThat(harness).contains("先追问单位");
+        assertThat(harness).contains("不要把普通问答保存成记忆");
+        assertThat(harness).contains("明确记忆请求应成为待确认记忆草稿");
+        assertThat(harness).contains("只读回答不能以新增记录邀请结尾");
+        assertThat(harness).contains("只看今天已有记录");
+        assertThat(harness).contains("recordContext.recentGrowthMeasurements");
+        assertThat(harness).contains("照护人疲惫或崩溃表达");
+        assertThat(harness).contains("截图或 UI 截图");
+        assertThat(harness).contains("模糊提醒时间");
+        assertThat(harness).contains("医生开的维生素D");
+        assertThat(harness).contains("私密提醒");
+        assertThat(harness).contains("不要建议创建副本");
+        assertThat(harness).contains("手动添加");
+        assertThat(harness).contains("设置类似提醒");
+        assertThat(harness).contains("另一份副本");
+    }
+
+    @Test
     void benchmarkCompleteMixedFeedingRecordAutoWritesCareLog() {
         String message = "今天18:30配方奶120ml";
         var decisions = policy.decide(
@@ -182,6 +236,75 @@ class AgentBenchmarkTests {
         assertThat(decisions).allMatch((decision) -> "growthMeasurement".equals(decision.type()));
         assertThat(decisions).extracting((decision) -> decision.payload().path("value").asDouble())
                 .containsExactly(68.2, 7.4, 42.0);
+    }
+
+    @Test
+    void benchmarkNaturalGrowthMeasurementsWithContextDateBecomePendingDrafts() {
+        RecordSignalExtractor saturdayExtractor = new RecordSignalExtractor(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-06-06T12:20:00Z"), APP_ZONE)
+        );
+        String weightMessage = "这周二量了一下小宝的体重是5.54公斤。";
+        RecordSignals weightSignals = saturdayExtractor.extract(weightMessage);
+
+        var weightDecisions = policy.decide(response(null, List.of(), List.of(), List.of(), List.of()), weightSignals);
+
+        assertThat(weightDecisions).hasSize(1);
+        assertThat(weightDecisions.get(0).mode()).isEqualTo("pending");
+        assertThat(weightDecisions.get(0).type()).isEqualTo("growthMeasurement");
+        assertThat(weightDecisions.get(0).payload().path("type").asText()).isEqualTo("weight");
+        assertThat(weightDecisions.get(0).payload().path("value").asDouble()).isEqualTo(5.54);
+        assertThat(weightDecisions.get(0).payload().path("date").asText()).isEqualTo("2026-06-02");
+
+        RecordSignals heightSignals = saturdayExtractor.extract(
+                "身高是64厘米。",
+                List.of(new AgentChatMessage(
+                        "msg-prev",
+                        "parent",
+                        weightMessage,
+                        "2026-06-06T12:15:37.584Z",
+                        List.of(),
+                        List.of()
+                ))
+        );
+
+        var heightDecisions = policy.decide(response(null, List.of(), List.of(), List.of(), List.of()), heightSignals);
+
+        assertThat(heightDecisions).hasSize(1);
+        assertThat(heightDecisions.get(0).mode()).isEqualTo("pending");
+        assertThat(heightDecisions.get(0).type()).isEqualTo("growthMeasurement");
+        assertThat(heightDecisions.get(0).payload().path("type").asText()).isEqualTo("height");
+        assertThat(heightDecisions.get(0).payload().path("value").asDouble()).isEqualTo(64.0);
+        assertThat(heightDecisions.get(0).payload().path("date").asText()).isEqualTo("2026-06-02");
+    }
+
+    @Test
+    void benchmarkReplayRecentGrowthMeasurementsBecomePendingDrafts() {
+        RecordSignalExtractor saturdayExtractor = new RecordSignalExtractor(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-06-06T13:30:00Z"), APP_ZONE)
+        );
+        RecordSignals signals = saturdayExtractor.extract(
+                "刚才的这些成长记录再帮我记一遍。喂喂喂。",
+                List.of(
+                        new AgentChatMessage("msg-weight", "parent", "这周二量了一下小宝的体重是5.54公斤。", "2026-06-06T12:15:37.584Z", List.of(), List.of()),
+                        new AgentChatMessage("msg-weight-ai", "ai", "好的，爸爸。芊宝这周二（6月2日）的体重是5.54公斤，我帮你整理成待确认的成长测量草稿了。", "2026-06-06T12:15:44.379Z", List.of(), List.of("成长", "体重")),
+                        new AgentChatMessage("msg-height", "parent", "身高是64厘米。", "2026-06-06T12:16:06.864Z", List.of(), List.of()),
+                        new AgentChatMessage("msg-height-ai", "ai", "好的，爸爸。芊宝这周二（6月2日）的身高是64厘米，我帮你整理成待确认的成长测量草稿了。", "2026-06-06T12:16:13.907Z", List.of(), List.of("成长", "身高"))
+                )
+        );
+
+        var decisions = policy.decide(response(null, List.of(), List.of(), List.of(), List.of()), signals);
+
+        assertThat(decisions).hasSize(2);
+        assertThat(decisions).allMatch((decision) -> "pending".equals(decision.mode()));
+        assertThat(decisions).allMatch((decision) -> "growthMeasurement".equals(decision.type()));
+        assertThat(decisions).extracting((decision) -> decision.payload().path("type").asText())
+                .containsExactly("weight", "height");
+        assertThat(decisions).extracting((decision) -> decision.payload().path("value").asDouble())
+                .containsExactly(5.54, 64.0);
+        assertThat(decisions).extracting((decision) -> decision.payload().path("date").asText())
+                .containsExactly("2026-06-02", "2026-06-02");
     }
 
     @Test

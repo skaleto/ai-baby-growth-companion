@@ -14,28 +14,12 @@ button:active:not(:disabled) {
   }
 }
 
-/* Daily summary finding action — slightly more visible */
-.daily-summary__finding-action {
-  transition: background 120ms ease-out, transform 100ms ease-out, box-shadow 120ms ease-out;
-}
-
-@media (hover: hover) {
-  .daily-summary__finding-action:hover {
-    background: #ebe7e0;
-    box-shadow: 0 2px 6px rgba(180, 140, 80, 0.15);
-  }
-}
-
-.daily-summary__finding-action:active {
-  transform: scale(0.96);
-}
-
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  button, .daily-summary__finding-action {
+  button {
     transition: none !important;
   }
-  button:active, .daily-summary__finding-action:active {
+  button:active {
     transform: none !important;
   }
 }

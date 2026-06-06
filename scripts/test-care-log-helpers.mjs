@@ -10,6 +10,7 @@ import { build } from "esbuild";
 const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const tempDir = await mkdtemp(path.join(tmpdir(), "xiaobao-care-log-helpers-"));
 const bundlePath = path.join(tempDir, "careLogHelpers.mjs");
+const appStateDomainBundlePath = path.join(tempDir, "appStateDomain.mjs");
 
 try {
   await build({
@@ -20,9 +21,19 @@ try {
     outfile: bundlePath,
     logLevel: "silent",
   });
+  await build({
+    entryPoints: [path.join(rootDir, "frontend/src/appStateDomain.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    outfile: appStateDomainBundlePath,
+    logLevel: "silent",
+  });
 
   const utils = await import(pathToFileURL(bundlePath).href);
+  const appStateDomain = await import(pathToFileURL(appStateDomainBundlePath).href);
   assert.equal(typeof utils.mergeCareLog, "function", "mergeCareLog should be exported");
+  assert.equal(typeof appStateDomain.normalizeClockText, "function", "normalizeClockText should be exported");
 
   const merged = utils.mergeCareLog([
     {
@@ -52,6 +63,19 @@ try {
   assert.equal(merged[0].events.length, 2);
   assert.ok(merged[0].events.some((event) => event.time === "21:00" && event.amountMl === 100));
   assert.ok(merged[0].notes.includes("今天9点多喝了100ml奶粉，喝完吐了"));
+
+  assert.equal(
+    appStateDomain.normalizeClockText("十二点喝了100毫升奶粉", new Date("2026-06-06T00:21:00+08:00")),
+    "00:00",
+  );
+  assert.equal(
+    appStateDomain.normalizeClockText("中午十二点喝了100毫升奶粉", new Date("2026-06-06T00:21:00+08:00")),
+    "12:00",
+  );
+  assert.equal(
+    appStateDomain.normalizeClockText("6点半配方奶120ml", new Date("2026-06-06T20:00:00+08:00")),
+    "18:30",
+  );
 
   console.log("care log helper tests passed");
 } finally {

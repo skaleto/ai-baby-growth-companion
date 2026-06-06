@@ -23,7 +23,7 @@ const viewports = [
   { name: "android-large-432x960", width: 432, height: 960, mobile: true },
 ];
 
-const tabLabels = ["聊天", "记录", "账本", "相册", "提醒", "我的"];
+const tabLabels = ["聊天", "记录", "账本", "相册", "我的"];
 const smokeFutureReminderAt = futureDateTimeParts(7 * 24 * 60);
 
 const smokeState = {
@@ -1062,8 +1062,12 @@ async function exerciseLedgerKeyboardFlow(page, viewport) {
 async function exerciseReminderFlow(page, viewport) {
   if (authMode !== "mock") return null;
 
-  await page.getByRole("button", { name: "提醒" }).last().click();
+  await page.getByRole("button", { name: "我的" }).last().click();
+  await page.locator(".profile-reminder-card").click();
   await page.waitForTimeout(160);
+  await page.getByText("未来安排").waitFor({ timeout: 5000 });
+  await page.locator(".reminder-group-upcoming .reminder-item", { hasText: "体检疫苗" }).first().waitFor({ timeout: 5000 });
+  await page.locator(".reminders-screen .screen-pill", { hasText: /未完成待办/ }).waitFor({ timeout: 5000 });
 
   await page.getByRole("button", { name: /延后提醒 体检疫苗/ }).click();
   const postponeDialog = page.getByRole("dialog", { name: "延后到什么时候？" });
@@ -1155,11 +1159,6 @@ async function exerciseAppShell(page, viewport) {
     const tab = page.getByRole("button", { name: label }).last();
     await tab.click({ timeout: 5000 });
     await page.waitForTimeout(120);
-    if (label === "提醒") {
-      await page.getByText("未来安排").waitFor({ timeout: 5000 });
-      await page.locator(".reminder-group-upcoming .reminder-item", { hasText: "体检疫苗" }).first().waitFor({ timeout: 5000 });
-      await page.getByText(/未完成待办/).waitFor({ timeout: 5000 });
-    }
     checkedTabs.push(label);
   }
 

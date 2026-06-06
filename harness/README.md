@@ -12,6 +12,7 @@ It follows the Learn Harness Engineering template shape while keeping repository
 | `feature_list.json` | Machine-readable feature state, priority, validation steps, and evidence. |
 | `claude-progress.md` | Human-readable current state and session log. |
 | `app-development-roadmap.md` | Current product development trajectory and strategic source of truth for app direction. |
+| `agent-model-context-harness.md` | Model-facing context and bad-case harness injected into agent planner/tool/final prompts. |
 | `init.sh` | Standard initialization and smoke verification entrypoint. |
 | `quality-document.md` | Quality snapshot across product areas and architecture layers. |
 | `clean-state-checklist.md` | Checklist before ending a session or handing work off. |
@@ -35,3 +36,12 @@ Do not mark work as complete just because code was edited. Completion requires e
 ## Strategy Rule
 
 Use `app-development-roadmap.md` as the current source of truth for product direction. Historical market research, competitor research, draft strategy files, and slide decks are archived under `docs/research-archive/` and must be treated as reference evidence only.
+
+## Agent Harness Rule
+
+Use `agent-model-context-harness.md` as structured Markdown for model behavior. Use JSON or JS fixtures only for benchmark cases and assertions. Current supporting docs:
+
+- `docs/agent-harness-case-audit-2026-06-06.md`
+- `docs/agent-harness-live-benchmark-results.md`
+- `docs/agent-harness-live-benchmark-results-doubao.md`
+- `docs/agent-harness-model-comparison-2026-06-06.md`

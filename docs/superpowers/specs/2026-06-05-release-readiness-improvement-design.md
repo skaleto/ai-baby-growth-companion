@@ -2,10 +2,10 @@
 
 - 创建日期：2026-06-05
 - 状态：产品/技术改进 spec，进入 implementation plan 前需评审
-- 输入评估：`docs/archive/completed-2026-06-05/release-readiness-review-2026-06-04.md`（已归档）
+- 输入评估：历史 release readiness review 已删除；当前发布门槛以本文和 `harness/quality-document.md` 为准。
 - 战略源：`harness/app-development-roadmap.md`
-- 商业化参考：`docs/commercialization/version-strategy.md`、`docs/commercialization/pro-trial-policy.md`、`docs/commercialization/privacy-policy-draft.md`
-- 适用范围：正式发布上架前的账号、安全、隐私、Free/Pro、云端、真机和产品信任补齐
+- 法律与数据处理参考：`docs/legal/privacy-policy-draft.md`、`docs/legal/terms-draft.md`、`docs/legal/third-party-data-processing.md`
+- 适用范围：正式发布上架前的账号、安全、隐私、可控权益、云端、真机和产品信任补齐
 
 > 本 spec 延续“记录为基线、低焦虑反疲劳设计、中文 AI 情感陪伴与 baby 数据关联”的主线。它不新增电商、专家、知识付费、开放社区，也不把成长数据维护单独扩大成新主线。
 
@@ -54,7 +54,7 @@
 进入条件：
 
 - `bash harness/init.sh` 通过。
-- `docs/archive/completed-2026-06-05/release-readiness-review-2026-06-04.md`（已归档）和本文档已存在，后续 agent 有统一方向。
+- 本文档、`harness/quality-document.md` 和当前 2026-06-06 产品/Agent specs 已存在，后续 agent 有统一方向。
 
 退出条件：
 
@@ -1046,7 +1046,7 @@ REQ-LONG-003：月度小故事：照片、里程碑、照护事实整理，不�
 
 ## 15. Claude×Codex 交叉 review 共识（2026-06-05）
 
-经与 Claude 两轮交叉 review，本 spec 与 agent 架构优化 spec（`2026-06-05-agent-architecture-optimization.md`）协调到一条统一发布路线。以下修正叠加在前述 R0-R3 / REQ 之上。
+经与 Claude 两轮交叉 review，本 spec 曾与旧 agent 架构优化方向协调。旧文档已删除；Agent 当前执行路线以 `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md` 为准。以下修正叠加在前述 R0-R3 / REQ 之上。
 
 ### 15.1 R0.5「最小可内测」子集（R0 与 R1 之间）
 

@@ -2,11 +2,15 @@ package com.xiaobao.babycompanion.controller;
 
 import com.xiaobao.babycompanion.agent.AgentRequestGuard;
 import com.xiaobao.babycompanion.agent.AgentRuntime;
+import com.xiaobao.babycompanion.agent.AgentModelContextHarness;
 import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.ConversationSummaryResponse;
 import jakarta.validation.Valid;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,6 +44,18 @@ public class AgentController {
         currentUser.requireCaregiver();
         requestGuard.checkAllowed(currentUser.requireFamilyId());
         return agentRuntime.stream(request);
+    }
+
+    @GetMapping("/harness")
+    public Map<String, Object> harnessInfo() {
+        currentUser.requireCaregiver();
+        requestGuard.checkAllowed(currentUser.requireFamilyId());
+        Map<String, Object> info = new LinkedHashMap<>();
+        info.put("resource", AgentModelContextHarness.resourcePath());
+        info.put("version", AgentModelContextHarness.version());
+        info.put("sha256", AgentModelContextHarness.sha256());
+        info.put("length", AgentModelContextHarness.length());
+        return info;
     }
 
     @PostMapping("/conversation-summary/compress")

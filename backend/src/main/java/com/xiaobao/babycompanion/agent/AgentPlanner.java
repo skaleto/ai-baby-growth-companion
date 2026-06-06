@@ -140,6 +140,8 @@ public class AgentPlanner {
         context.put("today", now.toLocalDate().toString());
         context.put("currentDateTime", now.truncatedTo(ChronoUnit.MINUTES).toString());
         context.put("currentTime", now.toLocalTime().truncatedTo(ChronoUnit.MINUTES).toString());
+        context.put("timeZone", clock.getZone().getId());
+        context.put("modelContextHarness", AgentModelContextHarness.promptBlock());
         context.put("capabilities", AgentCapabilityContract.promptContext());
         context.put("imageBoundaryPolicy", AgentCapabilityContract.imageBoundaryPolicy());
         context.put("selectedSkills", selectedSkills);

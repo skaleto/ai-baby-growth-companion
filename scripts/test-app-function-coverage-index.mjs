@@ -37,7 +37,7 @@ function parseInventoryRows(markdown) {
 }
 
 const inventoryRows = parseInventoryRows(inventoryMarkdown);
-assert.ok(inventoryRows.length > 70, `expected detailed inventory rows, got ${inventoryRows.length}`);
+assert.ok(inventoryRows.length > 35, `expected detailed current inventory rows, got ${inventoryRows.length}`);
 
 const indexKeys = new Set();
 const indexByKey = new Map();
@@ -73,22 +73,23 @@ for (const entry of appFunctionCoverageIndex) {
 }
 
 for (const required of [
-  "P0:喂奶完整记录",
-  "P0:睡眠完整记录",
+  "P0:记录默认首页",
+  "P0:底部四 Tab 导航",
+  "P0:记录页轻量 AI 输入",
+  "P0:喂养手动记录",
+  "P0:睡眠手动记录",
   "P0:成长入口与最新值",
   "P0:手动新增成长测量",
-  "P1:手动删除成长测量",
-  "P1:成长测量编辑能力",
-  "P0:AI 成长数据待确认",
-  "P1:成长数据边界",
-  "P1:成长趋势只读查询",
+  "P0:相册上传",
+  "P0:按天分组",
   "P0:AI 记账待确认",
-  "P1:后续保存指令",
-  "P0:按住说话",
+  "P0:提醒管理入口",
+  "P0:Tool-first 喂养写入",
+  "P0:Tool-first 成长待确认",
+  "P0:Tool-first 账本待确认",
+  "P0:不提供 AI 提醒工具",
+  "P0:语音输入",
   "P0:写权限拦截",
-  "P0:编辑小宝资料",
-  "P0:提醒列表",
-  "P0:Android 原生闹铃",
 ]) {
   assert.ok(indexByKey.has(required), `coverage index should explicitly mention ${required}`);
 }

@@ -15,7 +15,9 @@ import {
   Keyboard as KeyboardIcon,
   LineChart,
   Mic,
+  Milk,
   Music2,
+  PartyPopper,
   PencilLine,
   ReceiptText,
   RefreshCw,
@@ -31,7 +33,7 @@ import {
   Video,
   WalletCards,
   X,
-  Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
@@ -77,11 +79,9 @@ import {
   importAppState,
   readAppState,
   readAiUsageSummary,
-  generateDailySummary,
   submitProTrialApplication,
   type AppStateCollection,
   type AppStateResponse,
-  updateDailySummarySettings,
   upsertAppRecord,
   uploadFileAttachment,
 } from "./appStateApi";
@@ -124,7 +124,7 @@ import {
 import { isNativeMediaPickerAvailable, isNativeMediaPickerCancel, pickNativeMediaFiles } from "./nativeMediaPicker";
 import { MOBILE_UPDATE_NOTICE_EVENT, type MobileUpdateNoticeDetail, type MobileUpdateNoticeTone } from "./mobileUpdates";
 import { useStoredState } from "./storage";
-import { summarizeCareLogEffect } from "./utils/dailySummary";
+import { summarizeCareLogEffect } from "./utils/careLogEffectSummary";
 import { useStableViewport } from "./hooks/useStableViewport";
 import {
   CARE_EVENT_TYPE_OPTIONS,
@@ -139,8 +139,6 @@ import {
   MAX_INTERVAL_MINUTES,
   MOBILE_TABS,
   MIN_INTERVAL_MINUTES,
-  MODEL_OPTIONS,
-  MODEL_SELECT_OPTIONS,
   RECORD_VIEWS,
   REGION_SELECT_OPTIONS,
   REMINDER_ALERT_MODE_OPTIONS,
@@ -152,7 +150,6 @@ import {
   ROLE_SELECT_OPTIONS,
   STAGE_SELECT_OPTIONS,
   UNIQUE_ROLE_OPTIONS,
-  isVisualModel,
   type LedgerView as LedgerViewId,
   type MobileTab,
   type RecordView,
@@ -315,21 +312,20 @@ import {
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import { MilestonesView } from "./views/MilestonesView";
 import { GrowthEntryView } from "./views/GrowthEntryView";
-import { DailySummaryView } from "./views/DailySummaryView";
-import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
+import { GROWTH_MILESTONES, type GrowthMilestone, milestoneIdFromTags, milestoneTag } from "./data/growthMilestones";
 import {
   careAlbumCategory,
   careAlbumTitle,
   careEventBody,
   careEventTitleMap,
   careEventsForLog,
-  dedupeCareEventsForMerge,
   inferCareEventType,
   mergeCareLog,
   parseTimeSort,
   recordTimeLabel,
   soothingText,
 } from "./utils/careLogHelpers";
+import { careLogWithEventStats, careLogsWithEventStats } from "./utils/careLogStats";
 import {
   formatIntervalText,
   reminderAlertLabel,
@@ -342,6 +338,7 @@ import {
   reminderStatusLabel,
   reminderTimeText,
 } from "./utils/reminderLabels";
+import { monthsBetween } from "./utils/babyAge";
 
 const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
 
@@ -517,6 +514,15 @@ type CareTrendDefinition = {
   getValue: (log?: CareLog) => number | undefined;
 };
 
+type GrowthTrendMetric = {
+  key: GrowthMeasurementType;
+  label: string;
+  valueLabel: string;
+  deltaLabel: string;
+  dateLabel: string;
+  hasData: boolean;
+};
+
 type DailyCareSegment = {
   id: string;
   time?: string;
@@ -562,17 +568,13 @@ type WeeklyCareComparison = {
   sleepAverageLabel: string;
 };
 
-type AutoRecordUndo = {
+type AutoRecordFeedback = {
   id: string;
   messageId: string;
   label: string;
   summary: string[];
   destination: string;
   date: string;
-  collection: "careLogs";
-  recordId: string;
-  previous?: CareLog;
-  created: boolean;
 };
 
 const extractCareEventsFromText = (text: string, date: string) =>
@@ -844,6 +846,48 @@ const compactValue = (value: number | undefined, unit: string, decimals = 0) => 
   return `${text}${unit}`;
 };
 
+const formatGrowthMeasurementValue = (value: number, type: GrowthMeasurementType) => {
+  const meta = GROWTH_MEASUREMENT_META[type];
+  const decimals = meta.step === "0.01" ? 2 : 1;
+  return `${value.toFixed(decimals).replace(/\.?0+$/, "")}${meta.unit}`;
+};
+
+const buildGrowthTrendMetrics = (measurements: GrowthMeasurement[]): GrowthTrendMetric[] =>
+  GROWTH_MEASUREMENT_TYPES.map((type) => {
+    const meta = GROWTH_MEASUREMENT_META[type];
+    const items = measurements
+      .filter((measurement) => measurement.type === type)
+      .sort((left, right) => left.date.localeCompare(right.date));
+    const latest = items[items.length - 1];
+    const previous = items[items.length - 2];
+    if (!latest) {
+      return {
+        key: type,
+        label: meta.label,
+        valueLabel: "未记录",
+        deltaLabel: "记录后可回看变化",
+        dateLabel: "暂无",
+        hasData: false,
+      };
+    }
+    const delta = previous ? latest.value - previous.value : undefined;
+    const deltaLabel =
+      delta === undefined
+        ? "第一笔记录"
+        : delta === 0
+          ? "较上次持平"
+          : `较上次 ${delta > 0 ? "+" : ""}${formatGrowthMeasurementValue(delta, type)}`;
+
+    return {
+      key: type,
+      label: meta.label,
+      valueLabel: formatGrowthMeasurementValue(latest.value, type),
+      deltaLabel,
+      dateLabel: latest.date === todayISO() ? "今天" : formatDate(latest.date),
+      hasData: true,
+    };
+  });
+
 const careEventValue = (event: CareLogEvent, kind: "milk" | "sleep") =>
   kind === "milk" ? positiveNumber(event.amountMl) : positiveNumber(event.durationHours);
 
@@ -853,32 +897,6 @@ const careEventsByKind = (log: CareLog | undefined, kind: "milk" | "sleep") =>
     .map((event) => ({ event, value: careEventValue(event, kind) }))
     .filter((item): item is { event: CareLogEvent; value: number } => item.value !== undefined)
     .sort((left, right) => parseTimeSort(left.event.time, 0) - parseTimeSort(right.event.time, 0));
-
-const careLogWithEventStats = (log: CareLog): CareLog => {
-  const events = dedupeCareEventsForMerge(log.events ?? [], log.date);
-  const allMilkEvents = events.filter((event) => event.type === "milk");
-  const milkEvents = allMilkEvents.filter((event) => positiveNumber(event.amountMl) !== undefined);
-  const allSleepEvents = events.filter((event) => event.type === "sleep");
-  const sleepEvents = allSleepEvents.filter((event) => positiveNumber(event.durationHours) !== undefined);
-  const wakeEvents = events.filter((event) => event.type === "wake");
-  const solidEvents = events.filter((event) => event.type === "solid" && event.note);
-  const poopEvent = [...events].reverse().find((event) => event.type === "poop" && event.note);
-  const temperatureEvent = [...events].reverse().find((event) => event.type === "temperature" && positiveNumber(event.temperature) !== undefined);
-  const soothingEvent = [...events].reverse().find((event) => event.type === "soothing");
-
-  return {
-    ...log,
-    events,
-    milkMl: allMilkEvents.length ? (milkEvents.length ? Math.round(sumValues(milkEvents.map((event) => event.amountMl ?? 0))) : undefined) : log.milkMl,
-    milkTimes: allMilkEvents.length ? (milkEvents.length || undefined) : log.milkTimes,
-    sleepHours: allSleepEvents.length ? (sleepEvents.length ? Number(sumValues(sleepEvents.map((event) => event.durationHours ?? 0)).toFixed(1)) : undefined) : log.sleepHours,
-    wakes: wakeEvents.length ? wakeEvents.length : log.wakes,
-    soothing: soothingEvent ? "normal" : log.soothing,
-    solids: solidEvents.length ? Array.from(new Set([...log.solids, ...solidEvents.map((event) => event.note!).filter(Boolean)])) : log.solids,
-    poop: poopEvent?.note ?? log.poop,
-    temperature: temperatureEvent?.temperature ?? log.temperature,
-  };
-};
 
 const splitEvenSegments = (total: number | undefined, count: number | undefined) => {
   if (!total || total <= 0) return [];
@@ -1147,16 +1165,6 @@ const ensureReminderChannels = async () => {
   }
 };
 
-const nextDailySummaryReminderAt = (reminderTime: string) => {
-  const match = reminderTime.match(/^(\d{2}):(\d{2})$/);
-  const hours = match ? Number(match[1]) : 21;
-  const minutes = match ? Number(match[2]) : 30;
-  const next = new Date();
-  next.setHours(Number.isFinite(hours) ? hours : 21, Number.isFinite(minutes) ? minutes : 30, 0, 0);
-  if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
-  return next;
-};
-
 const cancelDailySummaryNotification = async () => {
   if (!Capacitor.isNativePlatform()) return;
   try {
@@ -1164,34 +1172,6 @@ const cancelDailySummaryNotification = async () => {
   } catch {
     // The setting remains valid even if the OS had no matching notification to cancel.
   }
-};
-
-const scheduleDailySummaryNotification = async (settings: DailySummarySettings) => {
-  if (!Capacitor.isNativePlatform()) return "in_app_only" as const;
-  await cancelDailySummaryNotification();
-  if (!settings.enabled) return "cancelled" as const;
-  const permission = await LocalNotifications.requestPermissions();
-  if (permission.display !== "granted") return "permission_denied" as const;
-  await ensureReminderChannels();
-  await LocalNotifications.schedule({
-    notifications: [
-      {
-        id: DAILY_SUMMARY_NOTIFICATION_ID,
-        title: "要不要整理一下小宝今天的一天？",
-        body: "我可以先帮你看看有没有可能漏掉的记录。",
-        channelId: REMINDER_CHANNELS.schedule,
-        schedule: {
-          at: nextDailySummaryReminderAt(settings.reminderTime),
-          repeats: true,
-        },
-        extra: {
-          dailySummaryReminder: true,
-          target: "record-today",
-        },
-      },
-    ],
-  });
-  return "scheduled" as const;
 };
 
 const canScheduleExactAlarm = async () => {
@@ -1998,6 +1978,30 @@ const formatAgentFailureMessage = (error: unknown, attachments: Attachment[]) =>
 
 const isVisualAttachment = (attachment: Attachment) => attachment.kind === "image" || attachment.kind === "video";
 
+const VISUAL_AGENT_MODEL: AgentModelId = "doubao-seed-2.0-pro";
+
+const simpleCareRecordPattern =
+  /(喝|奶|母乳|配方奶|睡|醒|拉|尿|便便|辅食|体温|发烧|身高|体重|头围|ml|毫升|cm|kg|记一下|记录|提醒|花了|买了|记账)/i;
+
+const thinkingIntentPattern =
+  /(为什么|怎么|怎么办|原因|分析|评估|对比|规划|计划|方案|建议|趋势|复盘|总结|是否|要不要|可不可以|需不需要|如何)/;
+
+const resolveAgentModelForMessage = (text: string, messageAttachments: Attachment[]): AgentModelId => {
+  if (messageAttachments.some(isVisualAttachment)) return VISUAL_AGENT_MODEL;
+  return DEFAULT_MODEL;
+};
+
+const resolveThinkingForMessage = (text: string, messageAttachments: Attachment[]) => {
+  if (messageAttachments.some(isVisualAttachment)) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (simpleCareRecordPattern.test(trimmed) && trimmed.length < 80) return false;
+  return trimmed.length >= 120 || thinkingIntentPattern.test(trimmed);
+};
+
+const resolveLowLatencyForMessage = (model: AgentModelId, messageAttachments: Attachment[]) =>
+  model.startsWith("doubao-") && messageAttachments.some(isVisualAttachment);
+
 const mergeVoiceText = (baseText: string, transcript: string) => {
   const base = baseText.trim();
   const text = transcript.trim();
@@ -2088,9 +2092,6 @@ function App() {
     "baby-companion-conversation-summary",
     null,
   );
-  const [thinkingEnabled, setThinkingEnabled] = useStoredState("baby-companion-thinking-enabled", false);
-  const [selectedModel, setSelectedModel] = useStoredState<AgentModelId>("baby-companion-model", DEFAULT_MODEL);
-  const [lowLatencyEnabled, setLowLatencyEnabled] = useState(false);
   // 首登知情同意：勾选一次后记住，不再弹。
   const [consentGiven, setConsentGiven] = useStoredState("baby-companion-consent-v1", false);
   // 设置页里点开的隐私/协议/儿童信息静态页。
@@ -2099,7 +2100,7 @@ function App() {
   const messages = useMemo(() => storedMessages.map(normalizeChatMessage), [storedMessages]);
   const growthEvents = useMemo(() => storedGrowthEvents.map(normalizeGrowthEvent), [storedGrowthEvents]);
   const growthMeasurements = useMemo(() => storedGrowthMeasurements.map(normalizeGrowthMeasurement), [storedGrowthMeasurements]);
-  const careLogs = useMemo(() => dedupeCareLogs(storedCareLogs.map(normalizeCareLog)), [storedCareLogs]);
+  const careLogs = useMemo(() => careLogsWithEventStats(dedupeCareLogs(storedCareLogs.map(normalizeCareLog))), [storedCareLogs]);
   const reminders = useMemo(() => storedReminders.map(normalizeReminder), [storedReminders]);
   const memories = useMemo(() => storedMemories.map(normalizeMemoryItem), [storedMemories]);
   const pendingEffects = useMemo(() => storedPendingEffects.map(normalizePendingEffect), [storedPendingEffects]);
@@ -2149,7 +2150,6 @@ function App() {
   const [familyMemberBusyUserId, setFamilyMemberBusyUserId] = useState<string | null>(null);
   const [resetInviteCodeValue, setResetInviteCodeValue] = useState<string | null>(null);
   const [isApplyingProTrial, setIsApplyingProTrial] = useState(false);
-  const [isGeneratingDailySummary, setIsGeneratingDailySummary] = useState(false);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
   const [loginPhone, setLoginPhone] = useState("");
   const [loginInviteCode, setLoginInviteCode] = useState("");
@@ -2184,6 +2184,7 @@ function App() {
   const [bulkDeleteExpensesOpen, setBulkDeleteExpensesOpen] = useState(false);
   const [milestonesViewOpen, setMilestonesViewOpen] = useState(false);
   const [growthEntryOpen, setGrowthEntryOpen] = useState(false);
+  const [reminderManagementOpen, setReminderManagementOpen] = useState(false);
   const [albumCategory, setAlbumCategory] = useState<AlbumItemCategory | "all">("all");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
@@ -2220,7 +2221,7 @@ function App() {
   const [editingPendingId, setEditingPendingId] = useState("");
   const [pendingDraft, setPendingDraft] = useState<PendingEffectDraft | null>(null);
   const [confirmingPendingEffectIds, setConfirmingPendingEffectIds] = useState<string[]>([]);
-  const [autoRecordUndos, setAutoRecordUndos] = useState<AutoRecordUndo[]>([]);
+  const [autoRecordFeedbacks, setAutoRecordFeedbacks] = useState<AutoRecordFeedback[]>([]);
   const [isCareLogEditing, setIsCareLogEditing] = useState(false);
   const [careLogDraft, setCareLogDraft] = useState({
     milkMl: "",
@@ -2300,7 +2301,6 @@ function App() {
   const compressionInFlightRef = useRef(false);
   const compressionResetTimerRef = useRef<number | null>(null);
   const intervalReminderRescheduleRef = useRef("");
-  const dailySummaryNotificationSignatureRef = useRef("");
   const remindersRef = useRef<Reminder[]>([]);
   const handledNativeNotificationKeysRef = useRef<Set<string>>(new Set());
   const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -2328,24 +2328,6 @@ function App() {
   const previewCloseTimerRef = useRef<number | null>(null);
   const previewVideoCleanupRef = useRef<(() => void) | null>(null);
   const appPlatform = platformLabel();
-  const selectedModelOption = MODEL_OPTIONS.find((model) => model.id === selectedModel) ?? MODEL_OPTIONS[0];
-  const visualModelsEnabled = proTrial.enabled;
-  const currentModel = !visualModelsEnabled && isVisualModel(selectedModelOption)
-    ? MODEL_OPTIONS.find((model) => model.id === DEFAULT_MODEL) ?? MODEL_OPTIONS[0]
-    : selectedModelOption;
-  const modelSelectOptions = useMemo(
-    () =>
-      MODEL_SELECT_OPTIONS.map((option) => {
-        const model = MODEL_OPTIONS.find((item) => item.id === option.value);
-        if (!model || !isVisualModel(model) || visualModelsEnabled) return option;
-        return {
-          ...option,
-          disabled: true,
-          hint: "Pro 内测开通后可选 · 支持图片/视频理解",
-        };
-      }),
-    [visualModelsEnabled],
-  );
   const babyNickname = profile.nickname.trim() || "小宝";
   const familySpeakerName = `${babyNickname}家`;
   const withBabyNickname = useCallback(
@@ -2374,9 +2356,7 @@ function App() {
   }, []);
   const canCaregive = authMember?.caregiver ?? true;
   const visibleTabs = canCaregive ? MOBILE_TABS : MOBILE_TABS.filter((tab) => tab.id !== "chat");
-  const currentModelSupportsVisuals = currentModel.supportsImageInput || currentModel.supportsVideoInput;
-  const canAttachVisuals = canCaregive && currentModelSupportsVisuals && proTrial.enabled;
-  const canUseLowLatency = canCaregive && currentModel.supportsLowLatency;
+  const canAttachVisuals = canCaregive && proTrial.enabled;
   const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
   const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
   const albumUploadItems = mediaUploadItems.filter((item) => item.target === "album");
@@ -2403,11 +2383,10 @@ function App() {
   const attachmentTrayOverflowCount = Math.max(0, attachments.length - attachmentTrayPreviewItems.length);
   const visualToolTitle = isUploadingChatMedia
     ? "素材正在上传"
-    : currentModelSupportsVisuals
-      ? proTrial.enabled ? "照片或视频" : "申请 Pro 后可用图片和视频 AI 整理"
-      : "当前模型不支持视觉理解";
-  const visualToolDisabled = !canCaregive || !currentModelSupportsVisuals || isSubmitting || isUploadingChatMedia;
-  const effectiveLowLatencyEnabled = canUseLowLatency && lowLatencyEnabled;
+    : proTrial.enabled ? "照片或视频" : "申请 Pro 后可用图片和视频 AI 整理";
+  const visualToolGated = !proTrial.enabled;
+  const visualToolDisabled = !canCaregive || isSubmitting || isUploadingChatMedia;
+  const visualToolClassName = visualToolGated ? "visual-tool-gated" : "";
   const proApplicationPending = proTrial.application?.status === "pending";
   const proStatusText = proTrial.enabled ? "Pro 内测已开通" : proApplicationPending ? "Pro 内测申请中" : "可申请 Pro 内测";
   const aiUsageTopFeatures = Array.isArray(aiUsageSummary?.byFeature) ? aiUsageSummary.byFeature.slice(0, 3) : [];
@@ -2433,6 +2412,9 @@ function App() {
   const switchMobileTab = (tab: MobileTab) => {
     if (tab === "album" && activeMobileTab !== "album") {
       setAlbumAnimationSeed((seed) => seed + 1);
+    }
+    if (tab !== "profile") {
+      setReminderManagementOpen(false);
     }
     setActiveMobileTab(tab);
   };
@@ -3146,7 +3128,6 @@ function App() {
     }
     return formatFullDate(selectedDate);
   })();
-  const selectedDailySummary = dailySummary?.date === selectedDate ? dailySummary : null;
   const milkTrend = useMemo(() => {
     const recent = careLogs.slice(-3).map((item) => item.milkMl ?? 0).filter(Boolean);
     if (recent.length < 2) return "继续收集中";
@@ -3155,6 +3136,15 @@ function App() {
   }, [careLogs]);
   const weeklyCareComparison = useMemo(() => buildWeeklyCareComparison(careLogs, selectedDate), [careLogs, selectedDate]);
   const dailyCareBreakdowns = useMemo(() => buildDailyCareBreakdowns(selectedCareLog), [selectedCareLog]);
+  const growthTrendMetrics = useMemo(() => buildGrowthTrendMetrics(growthMeasurements), [growthMeasurements]);
+  const milestoneStats = useMemo(() => {
+    const achievedIds = new Set(growthEvents.map((event) => milestoneIdFromTags(event.tags)).filter(Boolean));
+    const ageMonths = monthsBetween(profile.birthDate);
+    const current = GROWTH_MILESTONES.filter((milestone) =>
+      ageMonths === null || (ageMonths >= milestone.ageMonthMin && ageMonths <= milestone.ageMonthMax),
+    ).length;
+    return { achieved: achievedIds.size, current, total: GROWTH_MILESTONES.length };
+  }, [growthEvents, profile.birthDate]);
   const buildAgentPageContext = () => ({
     activeTab: activeMobileTab,
     selectedDate,
@@ -3308,8 +3298,6 @@ function App() {
     })),
     expenses,
     conversationSummary,
-    thinkingEnabled,
-    selectedModel,
     proTrial,
     dailySummary,
     dailySummarySettings,
@@ -3341,8 +3329,6 @@ function App() {
     if ("conversationSummary" in state) {
       setConversationSummary((state.conversationSummary ?? null) as ConversationSummary | null);
     }
-    if (state.thinkingEnabled !== undefined) setThinkingEnabled(state.thinkingEnabled);
-    if (state.selectedModel) setSelectedModel(state.selectedModel);
     if ("proTrial" in state) setProTrial(normalizeProTrialStatus(state.proTrial ?? null));
     if ("dailySummary" in state) setDailySummary(normalizeDailySummary(state.dailySummary ?? null));
     if ("dailySummarySettings" in state) {
@@ -3363,8 +3349,6 @@ function App() {
       conversationSummary: null,
       albumItems: [],
       expenses: [],
-      thinkingEnabled,
-      selectedModel,
       proTrial: normalizeProTrialStatus(null),
       dailySummary: null,
       dailySummarySettings: normalizeDailySummarySettings(null),
@@ -3452,39 +3436,6 @@ function App() {
     }
   };
 
-  const requestGenerateDailySummary = async () => {
-    if (!canCaregive) return;
-    setIsGeneratingDailySummary(true);
-    try {
-      const summary = await generateDailySummary(selectedDate);
-      setDailySummary(normalizeDailySummary(summary));
-      void refreshAiUsageSummary({ quiet: true });
-      showSystemWeakNotice("小宝今日观察已整理好。", "success");
-    } catch (error) {
-      showSystemWeakNotice(error instanceof Error ? error.message : "今日观察整理失败，请稍后再试。", "warning");
-    } finally {
-      setIsGeneratingDailySummary(false);
-    }
-  };
-
-  const saveDailySummarySettings = async (next: DailySummarySettings) => {
-    const normalized = normalizeDailySummarySettings(next);
-    setDailySummarySettings(normalized);
-    try {
-      const saved = await updateDailySummarySettings(normalized);
-      const savedSettings = normalizeDailySummarySettings(saved);
-      setDailySummarySettings(savedSettings);
-      const scheduleStatus = proTrial.enabled ? await scheduleDailySummaryNotification(savedSettings) : "in_app_only";
-      if (scheduleStatus === "permission_denied") {
-        showSystemWeakNotice("设置已保存。手机通知权限未开启，暂时不会弹出每日小结提醒。", "warning");
-      } else {
-        showSystemWeakNotice("小结提醒设置已保存。", "success");
-      }
-    } catch (error) {
-      showSystemWeakNotice(error instanceof Error ? error.message : "小结提醒设置保存失败。", "warning");
-    }
-  };
-
   const applyNativeAlarmEvents = async (events: NativeAlarmEvent[]) => {
     const updates = events.flatMap((event) => {
       const target = remindersRef.current.find(
@@ -3564,29 +3515,7 @@ function App() {
 
   useEffect(() => {
     if (authStatus !== "authenticated" || !Capacitor.isNativePlatform()) return;
-    const signature = `${proTrial.enabled}:${dailySummarySettings.enabled}:${dailySummarySettings.reminderTime}`;
-    if (dailySummaryNotificationSignatureRef.current === signature) return;
-    dailySummaryNotificationSignatureRef.current = signature;
-    if (!proTrial.enabled) {
-      void cancelDailySummaryNotification();
-      return;
-    }
-    void scheduleDailySummaryNotification(dailySummarySettings).catch(() => undefined);
-  }, [authStatus, proTrial.enabled, dailySummarySettings.enabled, dailySummarySettings.reminderTime]);
-
-  useEffect(() => {
-    if (authStatus !== "authenticated" || !Capacitor.isNativePlatform()) return undefined;
-    const actionListener = LocalNotifications.addListener("localNotificationActionPerformed", (action: ActionPerformed) => {
-      const extra = action.notification.extra as Record<string, unknown> | undefined;
-      if (!extra?.dailySummaryReminder) return;
-      setActiveMobileTab("records");
-      setRecordView("today");
-      setSelectedDate(todayISO());
-      showSystemWeakNotice("可以先看看今天已有的记录，没记全也能整理。", "info");
-    });
-    return () => {
-      void actionListener.then((handle) => handle.remove());
-    };
+    void cancelDailySummaryNotification();
   }, [authStatus]);
 
   useEffect(() => {
@@ -4126,10 +4055,6 @@ function App() {
 
   const openMediaPicker = async () => {
     if (!canCaregive || isUploadingChatMedia) return;
-    if (!currentModelSupportsVisuals) {
-      showSystemWeakNotice("当前模型不支持图片或视频理解。", "info");
-      return;
-    }
     if (!proTrial.enabled) {
       showSystemWeakNotice("图片和视频 AI 整理属于 Pro 内测能力，可以先申请体验。", "info");
       void applyForProTrial("visual-ai-trigger");
@@ -4656,6 +4581,9 @@ function App() {
     hapticLight();
 
     const submittedAttachments = attachments;
+    const agentModel = resolveAgentModelForMessage(text, submittedAttachments);
+    const agentThinkingEnabled = resolveThinkingForMessage(text, submittedAttachments);
+    const agentLowLatencyEnabled = resolveLowLatencyForMessage(agentModel, submittedAttachments);
     const parentMessage: ChatMessage = {
       id: makeId("msg"),
       role: "parent",
@@ -4688,7 +4616,7 @@ function App() {
       role: "ai",
       text: "思考中",
       createdAt: new Date().toISOString(),
-      tags: [thinkingEnabled ? "深度思考" : "处理中"],
+      tags: [agentThinkingEnabled ? "深度思考" : "处理中"],
       reasoning: "",
       isStreaming: true,
       toolActivities: [],
@@ -4722,7 +4650,7 @@ function App() {
       const agentResponse = await runAgentChatStream(
         {
           message: parentMessage.text,
-          model: currentModel.id,
+          model: agentModel,
           babyProfile: babyProfileForAgent(profile),
           recentMessages: messages.slice(-12).map((message) => ({
             ...message,
@@ -4735,8 +4663,8 @@ function App() {
           careLogs: careLogs.slice(-10),
           memories: memories.slice(0, 10),
           pageContext: buildAgentPageContext(),
-          thinkingEnabled,
-          lowLatencyEnabled: effectiveLowLatencyEnabled,
+          thinkingEnabled: agentThinkingEnabled,
+          lowLatencyEnabled: agentLowLatencyEnabled,
           attachments: agentAttachments,
         },
         {
@@ -4891,33 +4819,28 @@ function App() {
 
       const autoRecordedCareLogs: CareLog[] = [];
       const autoRecordedCareLogPatches: Array<{ id: string; patch: Partial<CareLog> }> = [];
-      const autoUndos: AutoRecordUndo[] = [];
+      const autoFeedbacks: AutoRecordFeedback[] = [];
       if (autoCareLogPatches.length) {
         let nextLogs = careLogs;
         autoCareLogPatches.forEach((patch) => {
           const targetDate = patch.date ?? todayISO();
-          const previous = nextLogs.find((item) => item.date === targetDate);
           nextLogs = mergeCareLog(nextLogs, patch);
           const nextLog = nextLogs.find((item) => item.date === targetDate);
           if (nextLog) {
             autoRecordedCareLogs.push(nextLog);
             autoRecordedCareLogPatches.push({ id: nextLog.id, patch: { ...patch, id: nextLog.id, date: targetDate } });
-            autoUndos.push({
-              id: makeId("undo"),
+            autoFeedbacks.push({
+              id: makeId("auto-feedback"),
               messageId: aiMessage.id,
               label: decisionSummary({ id: "", mode: "auto", type: "careLog", payload: patch }),
               summary: summarizeCareLogEffect(patch),
               destination: "会放进今天的观察里",
               date: targetDate,
-              collection: "careLogs",
-              recordId: nextLog.id,
-              previous,
-              created: !previous,
             });
           }
         });
         setCareLogs(nextLogs);
-        setAutoRecordUndos((current) => [...autoUndos, ...current]);
+        setAutoRecordFeedbacks((current) => [...autoFeedbacks, ...current]);
       }
       const autoScheduledReminders = autoReminderCandidates.length
         ? await scheduleNativeReminders(autoReminderCandidates, { careLogs })
@@ -4936,7 +4859,7 @@ function App() {
           return Array.from(byId.values()).sort((left, right) => left.date.localeCompare(right.date) || left.createdAt.localeCompare(right.createdAt));
         });
       }
-      if (autoUndos.length || autoScheduledReminders.length || autoSavedExpenses.length) hapticSuccess();
+      if (autoFeedbacks.length || autoScheduledReminders.length || autoSavedExpenses.length) hapticSuccess();
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
       );
@@ -5330,9 +5253,17 @@ function App() {
     }
   }, [canCaregive, selectedExpenseIds]);
 
-  const openMilestones = useCallback(() => setMilestonesViewOpen(true), []);
+  const openMilestones = useCallback(() => {
+    setActiveMobileTab("records");
+    setMilestonesViewOpen(true);
+  }, []);
   const closeMilestones = useCallback(() => setMilestonesViewOpen(false), []);
   const openGrowthEntry = useCallback(() => setGrowthEntryOpen(true), []);
+  const openReminderManagement = useCallback(() => {
+    setActiveMobileTab("profile");
+    setReminderManagementOpen(true);
+  }, []);
+  const closeReminderManagement = useCallback(() => setReminderManagementOpen(false), []);
   const resetGrowthMeasurementDraft = useCallback(() => {
     setEditingGrowthMeasurementId("");
     setGrowthMeasurementDraft({
@@ -5346,26 +5277,6 @@ function App() {
     setGrowthEntryOpen(false);
     resetGrowthMeasurementDraft();
   }, [resetGrowthMeasurementDraft]);
-
-  const handleFindingActionClick = useCallback((domain: string, _id: string) => {
-    switch (domain) {
-      case "ledger":
-        switchMobileTab("ledger");
-        break;
-      case "album":
-        switchMobileTab("album");
-        break;
-      case "milestone":
-        switchMobileTab("profile");
-        setMilestonesViewOpen(true);
-        break;
-      case "reminder":
-        switchMobileTab("reminders");
-        break;
-      default:
-        break;
-    }
-  }, []);
 
   const achieveMilestone = useCallback((milestone: GrowthMilestone) => {
     if (!canCaregive) return;
@@ -5581,30 +5492,6 @@ function App() {
       setPendingDraft(null);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "丢弃记录失败，请稍后再试。");
-    }
-  };
-
-  const undoAutoRecord = async (undo: AutoRecordUndo) => {
-    if (!canCaregive) return;
-    setAutoRecordUndos((current) => current.filter((item) => item.id !== undo.id));
-    if (undo.collection === "careLogs") {
-      if (undo.created) {
-        setCareLogs((current) => current.filter((item) => item.id !== undo.recordId));
-        try {
-          await deleteAppRecord("careLogs", undo.recordId);
-        } catch {
-          setStorageStatus("offline");
-        }
-        return;
-      }
-      if (undo.previous) {
-        setCareLogs((current) => current.map((item) => (item.id === undo.recordId ? undo.previous! : item)));
-        try {
-          await persistRecord("careLogs", undo.previous.id, undo.previous, { applyResponse: true, mode: "replace" });
-        } catch {
-          setStorageStatus("offline");
-        }
-      }
     }
   };
 
@@ -5921,6 +5808,16 @@ function App() {
     setInput(text);
     setActiveMobileTab("chat");
   };
+  const quickActions = useMemo<Array<{ label: string; prompt: string; Icon: LucideIcon }>>(
+    () => [
+      { label: "喂奶", prompt: "刚才喝了 120ml 奶", Icon: Milk },
+      { label: "提醒", prompt: `晚上 8 点提醒我给${babyNickname}洗澡`, Icon: Bell },
+      { label: "成长", prompt: `今天${babyNickname}第一次自己扶着沙发站起来了`, Icon: PartyPopper },
+      { label: "记账", prompt: `帮我记一笔${babyNickname}支出：`, Icon: ReceiptText },
+      { label: "问 AI", prompt: `为什么这两天${babyNickname}更难哄睡？`, Icon: CircleHelp },
+    ],
+    [babyNickname],
+  );
 
   const voiceHoldLabel =
     voiceCancelArmed
@@ -5935,6 +5832,10 @@ function App() {
             ? voiceTranscript || "正在整理文字..."
             : voiceTranscript || input.trim() || "按住说话";
   const voiceButtonStyle = { "--voice-level": voiceLevel.toFixed(3) } as CSSProperties;
+  const voiceRecordingActive =
+    composerMode === "voice" &&
+    (isListening || voiceStatus === "connecting" || voiceStatus === "processing" || voiceCancelArmed);
+  const voicePanelLabel = voiceCancelArmed ? "松手取消" : "松手发送，上移取消";
   const compressionMessage =
     compressionStatus === "checking"
       ? "正在检查是否需要整理较早聊天记录..."
@@ -6427,7 +6328,7 @@ function App() {
   }
 
   return (
-    <main className={`app-shell mobile-tab-${activeMobileTab}`}>
+    <main className={`app-shell mobile-tab-${activeMobileTab}${activeMobileTab === "profile" && reminderManagementOpen ? " profile-reminders-open" : ""}${voiceRecordingActive ? " voice-recording-active" : ""}`}>
       {systemWeakNoticeView}
       <section className="topbar" aria-label="今日概览">
         <div className="brand-block">
@@ -6450,7 +6351,7 @@ function App() {
           </div>
           <div className="metric status">
             <Sparkles size={18} />
-            <span>今日已整理 {messages.filter((item) => item.role === "parent").length} 条</span>
+            <span>今日记录 {messages.filter((item) => item.role === "parent").length} 条</span>
           </div>
           <div className="metric">
             <Smartphone size={18} />
@@ -6521,15 +6422,16 @@ function App() {
               </div>
               <div>
                 <p className="eyebrow">陪你记录{babyNickname}</p>
-                <h2>今天和{babyNickname}发生了什么</h2>
+                <h2>今天想记点什么？</h2>
               </div>
             </div>
             <div className="head-actions">
               <AiDataNotice />
               <button
                 type="button"
-                className="icon-button"
+                className={`icon-button ${visualToolClassName}`.trim()}
                 title={visualToolTitle}
+                aria-disabled={visualToolGated}
                 disabled={visualToolDisabled}
                 onClick={openMediaPicker}
               >
@@ -6555,26 +6457,14 @@ function App() {
             ) : null}
 
             <div className="quick-row">
-              <button type="button" onClick={() => quickFill("今天喝奶 5 次，每次大概 120ml，晚上醒了 3 次")}>
-                <img className="quick-icon-img" src={milkIcon} alt="" />
-                喂奶
-              </button>
-              <button type="button" onClick={() => quickFill(`晚上 8 点提醒我给${babyNickname}洗澡`)}>
-                <img className="quick-icon-img" src={reminderIcon} alt="" />
-                提醒
-              </button>
-              <button type="button" onClick={() => quickFill(`今天${babyNickname}第一次自己扶着沙发站起来了`)}>
-                <img className="quick-icon-img" src={growthIcon} alt="" />
-                里程碑
-              </button>
-              <button type="button" onClick={() => quickFill(`帮我记一笔${babyNickname}支出：`)}>
-                <ReceiptText size={16} />
-                记账
-              </button>
-              <button type="button" onClick={() => quickFill(`为什么这两天${babyNickname}更难哄睡？`)}>
-                <CircleHelp size={16} />
-                问问AI
-              </button>
+              {quickActions.map(({ label, prompt, Icon }) => (
+                <button type="button" className="quick-action" key={label} onClick={() => quickFill(prompt)}>
+                  <span className="quick-action__icon" aria-hidden="true">
+                    <Icon size={18} strokeWidth={2.2} />
+                  </span>
+                  <span className="quick-action__label">{label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -6722,31 +6612,28 @@ function App() {
                     ))}
                   </div>
                 ) : null}
-                {message.role === "ai" && autoRecordUndos.some((undo) => undo.messageId === message.id) ? (
+                {message.role === "ai" && autoRecordFeedbacks.some((feedback) => feedback.messageId === message.id) ? (
                   <div className="auto-effect-list">
-                    {autoRecordUndos
-                      .filter((undo) => undo.messageId === message.id)
-                      .map((undo) => (
-                        <section className="auto-effect-card" key={undo.id}>
+                    {autoRecordFeedbacks
+                      .filter((feedback) => feedback.messageId === message.id)
+                      .map((feedback) => (
+                        <section className="auto-effect-card" key={feedback.id}>
                           <CheckCircle2 size={16} />
                           <div className="auto-effect-copy">
                             <strong>已记好</strong>
-                            <span>{undo.summary.length ? undo.summary.join(" · ") : undo.label}</span>
-                            <small>{storageStatus === "offline" ? "本地先记着，云端同步待恢复" : undo.destination}</small>
+                            <span>{feedback.summary.length ? feedback.summary.join(" · ") : feedback.label}</span>
+                            <small>{storageStatus === "offline" ? "本地先记着，云端同步待恢复" : feedback.destination}</small>
                           </div>
                           <div className="auto-effect-actions">
                             <button
                               type="button"
                               onClick={() => {
-                                selectRecordDate(undo.date);
+                                selectRecordDate(feedback.date);
                                 setRecordView("today");
                                 switchMobileTab("records");
                               }}
                             >
                               查看今天
-                            </button>
-                            <button type="button" className="quiet" onClick={() => void undoAutoRecord(undo)}>
-                              撤销
                             </button>
                           </div>
                         </section>
@@ -7158,7 +7045,7 @@ function App() {
             ))}
           </div>
 
-          <form className="composer" onSubmit={handleSubmit}>
+          <form className={`composer ${voiceRecordingActive ? "voice-recording-hidden" : ""}`.trim()} onSubmit={handleSubmit}>
             {chatUploadItems.length || attachments.length ? (
               <div className={`pending-attachments ${isAttachmentTrayOpen ? "expanded" : "collapsed"}`}>
                 <button
@@ -7262,19 +7149,11 @@ function App() {
                   disabled={!canAttachVisuals || isSubmitting || isUploadingChatMedia}
                   onChange={handleFiles}
                 />
-                <StorySelect
-                  className="model-select"
-                  title="模型"
-                  ariaLabel="模型"
-                  value={currentModel.id}
-                  disabled={isSubmitting}
-                  options={modelSelectOptions}
-                  onChange={setSelectedModel}
-                />
                 <button
                   type="button"
-                  className="tool-button"
+                  className={`tool-button ${visualToolClassName}`.trim()}
                   title={visualToolTitle}
+                  aria-disabled={visualToolGated}
                   disabled={visualToolDisabled}
                   onClick={openMediaPicker}
                 >
@@ -7291,44 +7170,7 @@ function App() {
                 >
                   {composerMode === "voice" ? <KeyboardIcon size={19} /> : <Mic size={19} />}
                 </button>
-                <button
-                  type="button"
-                  className={`tool-button thinking-button ${thinkingEnabled ? "active" : ""}`}
-                  title={thinkingEnabled ? "深度思考已开启" : "开启深度思考"}
-                  aria-label="深度思考"
-                  aria-pressed={thinkingEnabled}
-                  disabled={isSubmitting}
-                  onClick={() => setThinkingEnabled((enabled) => !enabled)}
-                >
-                  <Brain size={19} />
-                </button>
-                <button
-                  type="button"
-                  className={`tool-button latency-button ${effectiveLowLatencyEnabled ? "active" : ""}`}
-                  title={
-                    canUseLowLatency
-                      ? effectiveLowLatencyEnabled
-                        ? "低延迟模式已开启，会在请求中使用 fast 服务档位，费用更高"
-                        : "开启低延迟模式，会在请求中使用 fast 服务档位，费用更高"
-                      : "当前模型不支持低延迟模式"
-                  }
-                  aria-label="低延迟模式"
-                  aria-pressed={effectiveLowLatencyEnabled}
-                  disabled={!canUseLowLatency || isSubmitting}
-                  onClick={() => setLowLatencyEnabled((enabled) => !enabled)}
-                >
-                  <Zap size={18} />
-                </button>
               </div>
-              {effectiveLowLatencyEnabled ? (
-                <p className="composer-mode-note">低延迟模式已开启，会在请求中使用 fast 服务档位。</p>
-              ) : null}
-              {composerMode === "voice" && (isListening || voiceStatus === "connecting" || voiceCancelArmed) ? (
-                <div className={`voice-cancel-hint ${voiceCancelArmed ? "armed" : ""}`} role="status">
-                  <X size={14} />
-                  <span>{voiceCancelArmed ? "松开取消" : "上滑取消"}</span>
-                </div>
-              ) : null}
               <div className="composer-input-line">
                 {composerMode === "voice" ? (
                   <button
@@ -7380,6 +7222,14 @@ function App() {
               onDelete={handleDeleteGrowthMeasurement}
               onClose={closeGrowthEntry}
             />
+          ) : milestonesViewOpen ? (
+            <MilestonesView
+              profile={profile}
+              growthEvents={growthEvents}
+              canCaregive={canCaregive}
+              onClose={closeMilestones}
+              onAchieve={achieveMilestone}
+            />
           ) : (
           <>
           <div className="screen-head">
@@ -7414,18 +7264,48 @@ function App() {
           </div>
 
           {recordView === "today" ? (
-            <DailySummaryView
-              summary={selectedDailySummary}
-              onActionClick={handleFindingActionClick}
-              loading={isGeneratingDailySummary}
-              careLog={selectedCareLog}
-              growthMeasurements={growthMeasurements}
-              date={selectedDate}
-              babyNickname={babyNickname}
-              canCaregive={canCaregive}
-              onGenerate={() => void requestGenerateDailySummary()}
-              onOpenGrowth={openGrowthEntry}
-            />
+            <section className="growth-entry-card" aria-label="宝宝成长">
+              <div className="growth-entry-card-head">
+                <h3>成长数据</h3>
+                <button type="button" className="growth-entry-card-open" onClick={openGrowthEntry}>
+                  {growthMeasurements.length ? "记录 / 查看" : "记一笔"}
+                </button>
+              </div>
+              {growthMeasurements.length > 0 ? (
+                <div className="growth-entry-card-stats">
+                  {GROWTH_MEASUREMENT_TYPES.map((type) => {
+                    const items = growthMeasurements
+                      .filter((m) => m.type === type)
+                      .sort((a, b) => a.date.localeCompare(b.date));
+                    const latest = items[items.length - 1];
+                    const meta = GROWTH_MEASUREMENT_META[type];
+                    return (
+                      <div className="growth-entry-card-stat" key={type}>
+                        <span className="growth-entry-card-stat-label">{meta.label}</span>
+                        <span className="growth-entry-card-stat-value">
+                          {latest ? `${latest.value}${meta.unit}` : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="growth-entry-card-empty">还没有记录身高/体重/头围。点上方添加第一笔。</p>
+              )}
+            </section>
+          ) : null}
+
+          {recordView === "today" ? (
+            <button type="button" className="milestone-nav-card record-milestone-card" onClick={openMilestones}>
+              <div className="milestone-nav-card__icon" aria-hidden="true">
+                <Sparkles size={18} />
+              </div>
+              <div className="milestone-nav-card__copy">
+                <strong>发育里程碑</strong>
+                <small>已记录 {milestoneStats.achieved}/{milestoneStats.total} · 现阶段 {milestoneStats.current} 项可观察</small>
+              </div>
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
           ) : null}
 
           {recordView === "today" ? (
@@ -7495,38 +7375,6 @@ function App() {
           </section>
           ) : null}
 
-          {recordView === "today" ? (
-            <section className="growth-entry-card" aria-label="宝宝成长">
-              <div className="growth-entry-card-head">
-                <h3>宝宝成长</h3>
-                <button type="button" className="growth-entry-card-open" onClick={openGrowthEntry}>
-                  {growthMeasurements.length ? "记录 / 查看" : "记一笔"}
-                </button>
-              </div>
-              {growthMeasurements.length > 0 ? (
-                <div className="growth-entry-card-stats">
-                  {GROWTH_MEASUREMENT_TYPES.map((type) => {
-                    const items = growthMeasurements
-                      .filter((m) => m.type === type)
-                      .sort((a, b) => a.date.localeCompare(b.date));
-                    const latest = items[items.length - 1];
-                    const meta = GROWTH_MEASUREMENT_META[type];
-                    return (
-                      <div className="growth-entry-card-stat" key={type}>
-                        <span className="growth-entry-card-stat-label">{meta.label}</span>
-                        <span className="growth-entry-card-stat-value">
-                          {latest ? `${latest.value}${meta.unit}` : "—"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="growth-entry-card-empty">还没有记录身高/体重/头围。点上方添加第一笔。</p>
-              )}
-            </section>
-          ) : null}
-
           {recordView === "trend" ? (
           <section className="trend-card">
             <div className="section-title">
@@ -7593,6 +7441,25 @@ function App() {
             ) : (
               <p className="trend-empty">连续记录几天后，我会在这里汇总对比。</p>
             )}
+          </section>
+          ) : null}
+
+          {recordView === "trend" ? (
+          <section className="trend-card growth-trend-card">
+            <div className="section-title">
+              <LineChart size={18} />
+              <h2>成长趋势</h2>
+            </div>
+            <div className="growth-trend-grid">
+              {growthTrendMetrics.map((metric) => (
+                <article className={`growth-trend-item ${metric.hasData ? "has-data" : "empty"}`} key={metric.key}>
+                  <span>{metric.label}</span>
+                  <strong>{metric.valueLabel}</strong>
+                  <small>{metric.deltaLabel}</small>
+                  <em>{metric.dateLabel}</em>
+                </article>
+              ))}
+            </div>
           </section>
           ) : null}
 
@@ -7925,9 +7792,16 @@ function App() {
 
         <section className="reminders-screen tab-content-enter" aria-label="提醒">
           <div className="screen-head">
-            <div>
-              <p className="eyebrow">提醒</p>
-              <h2>照护任务中心</h2>
+            <div className="screen-heading-with-icon">
+              {reminderManagementOpen ? (
+                <button type="button" className="milestone-back" onClick={closeReminderManagement} aria-label="返回我的">
+                  <ChevronLeft size={20} />
+                </button>
+              ) : null}
+              <div>
+                <p className="eyebrow">我的</p>
+                <h2>提醒管理</h2>
+              </div>
             </div>
             <div className="screen-head-actions">
               <span className="screen-pill">{actionableReminderCount} 个未完成待办</span>
@@ -8256,15 +8130,6 @@ function App() {
         </section>
 
         <section className="profile-screen tab-content-enter" aria-label="我的">
-          {milestonesViewOpen ? (
-            <MilestonesView
-              profile={profile}
-              growthEvents={growthEvents}
-              canCaregive={canCaregive}
-              onClose={closeMilestones}
-              onAchieve={achieveMilestone}
-            />
-          ) : (
           <>
           <div className="screen-head">
             <div className="screen-heading-with-icon">
@@ -8310,17 +8175,6 @@ function App() {
               </div>
             </div>
           </section>
-
-          <button type="button" className="milestone-nav-card" onClick={openMilestones}>
-            <div className="milestone-nav-card__icon" aria-hidden="true">
-              <Sparkles size={18} />
-            </div>
-            <div className="milestone-nav-card__copy">
-              <strong>发育里程碑</strong>
-              <small>看看小宝走到哪一步了</small>
-            </div>
-            <ChevronRight size={16} aria-hidden="true" />
-          </button>
 
           {!isProfileEditing ? (
             <section className="profile-detail-card">
@@ -8380,6 +8234,20 @@ function App() {
                   ))}
                 </div>
               </div>
+              <button type="button" className="profile-reminder-card" onClick={openReminderManagement}>
+                <span className="profile-reminder-card__icon" aria-hidden="true">
+                  <Bell size={18} />
+                </span>
+                <span className="profile-reminder-card__copy">
+                  <strong>提醒管理</strong>
+                  <small>
+                    {actionableReminderCount > 0
+                      ? `${actionableReminderCount} 个未完成待办，到点会提醒`
+                      : "暂无未完成待办，可以管理疫苗、喂药和照护事项"}
+                  </small>
+                </span>
+                <ChevronRight size={17} aria-hidden="true" />
+              </button>
               <section className="profile-pro-card">
                 <div className="daily-summary-head">
                   <div>
@@ -8390,7 +8258,7 @@ function App() {
                     {proTrial.enabled ? "家庭共享" : proApplicationPending ? "等待开通" : "可申请"}
                   </span>
                 </div>
-                <p>Pro 会先开放“少输入、少遗漏、自动整理”：今日小结、漏项轻提醒，以及语音/图片/视频辅助整理。当前为小范围免费内测。</p>
+                <p>Pro 内测会优先支持语音、图片和视频辅助记录，以及家庭数据备份等高成本能力。当前为小范围免费内测。</p>
                 <div className="ai-usage-panel" aria-label="AI 用量">
                   <div className="ai-usage-head">
                     <div>
@@ -8442,22 +8310,6 @@ function App() {
                   ) : (
                     <p className="ai-usage-note">{aiUsageStatus === "error" ? "用量暂时读取失败，可以稍后刷新。" : "正在读取家庭 AI 用量。"}</p>
                   )}
-                </div>
-                <div className="summary-settings-row">
-                  <label className="summary-reminder-toggle">
-                    <input
-                      type="checkbox"
-                      checked={dailySummarySettings.enabled}
-                      onChange={(event) => void saveDailySummarySettings({ ...dailySummarySettings, enabled: event.target.checked })}
-                    />
-                    接收每日小结提醒
-                  </label>
-                  <input
-                    type="time"
-                    value={dailySummarySettings.reminderTime}
-                    onChange={(event) => void saveDailySummarySettings({ ...dailySummarySettings, reminderTime: event.target.value })}
-                    aria-label="每日小结提醒时间"
-                  />
                 </div>
                 {/* R1 (REQ-PRO-001): Pro gating 已启用，非 Pro 家庭展示申请入口 */}
                 {!proTrial.enabled ? (
@@ -8684,7 +8536,6 @@ function App() {
             </form>
           )}
           </>
-          )}
         </section>
 
         <aside className="right-rail">
@@ -8807,6 +8658,27 @@ function App() {
           );
         })}
       </nav>
+      {voiceRecordingActive ? (
+        <div
+          className={`voice-recording-panel ${voiceCancelArmed ? "canceling" : ""}`.trim()}
+          style={voiceButtonStyle}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="voice-recording-copy">
+            <strong>{voicePanelLabel}</strong>
+          </div>
+          <div className="voice-wave-bars" aria-hidden="true">
+            {Array.from({ length: 56 }, (_, index) => (
+              <span
+                className="voice-wave-bar"
+                key={index}
+                style={{ "--bar-scale": (0.62 + ((index * 7) % 11) / 20).toFixed(2) } as CSSProperties}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
       {expenseEditorDialog}
       {deleteExpenseDialog}
       {bulkDeleteExpensesDialog}

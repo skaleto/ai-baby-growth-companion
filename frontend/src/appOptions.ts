@@ -1,5 +1,4 @@
 import {
-  Bell,
   CalendarDays,
   Image as ImageIcon,
   MessageCircle,
@@ -58,7 +57,6 @@ export const MOBILE_TABS = [
   { id: "records", label: "记录", icon: CalendarDays },
   { id: "ledger", label: "账本", icon: ReceiptText },
   { id: "album", label: "相册", icon: ImageIcon },
-  { id: "reminders", label: "提醒", icon: Bell },
   { id: "profile", label: "我的", icon: UserRound },
 ] as const;
 

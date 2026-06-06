@@ -65,7 +65,7 @@ const overrides = new Map([
   ["喂奶开始意图不记录", { status: "covered", coverage: [l2(["feed-mixed-missing-type"], "Current L2 covers feeding ask/no-write boundaries; start-only feeding remains under deterministic AgentBenchmarkTests."), layer("l0_l1", "AgentBenchmarkTests cover start-only feeding boundary behavior.")] }],
   ["睡眠完整记录", { status: "covered", coverage: [l2(["sleep-complete", "sleep-start-boundary"], "L2 covers complete sleep and start-only sleep ask/no-write behavior.")] }],
   ["聊天内撤销/删除边界", { status: "covered", coverage: [l2(["growth-measurement-update-boundary", "growth-measurement-delete-boundary"], "Growth mutation boundaries prove chat does not directly edit/delete history."), layer("l0_l1", "AgentBenchmarkTests cover unsupported mutation copy.")] }],
-  ["自动记录撤销卡片", { status: "covered_by_layer", coverage: [layer("frontend", "Recording Companion P0 frontend work and verify:frontend cover record feedback cards and undo surface.")] }],
+  ["自动记录反馈卡片", { status: "covered_by_layer", coverage: [layer("frontend", "Recording Companion P0 frontend work and verify:frontend cover record feedback cards with 查看今天 and no undo action.")] }],
   ["待确认编辑表单", { status: "covered_by_layer", coverage: [layer("frontend", "npm run verify:frontend covered editable pending growth measurement drafts and confirmation UI."), layer("backend", "AppStateControllerTests cover pending confirm persistence.")] }],
   ["多事件拆分与去重", { status: "covered", coverage: [l2(["multi-care-events"], "L2 verifies a single utterance can produce multiple care events without duplicate app_state growth.")] }],
 
@@ -81,7 +81,7 @@ const overrides = new Map([
   ["家庭附件权限", { status: "covered_by_layer", coverage: [layer("cloud", "npm run test:cloud-e2e covers family-scoped attachment preview and shared ledger attachment behavior.")] }],
   ["上传限制", { status: "known_gap", coverage: [layer("api", "Upload limits are documented in feature-inventory but lack a dedicated small API negative test.")], nextAction: "Add API tests for unsupported MIME and over-limit payload rejection." }],
 
-  ["今日视图", { status: "covered_by_layer", coverage: [layer("frontend", "scripts/probe-daily-summary-view.mjs and verify:frontend cover 小宝今日观察 stats and timeline entry.")] }],
+  ["今日视图", { status: "covered_by_layer", coverage: [layer("frontend", "scripts/frontend-smoke.mjs and scripts/test-product-simplification.mjs cover the current Records today view, including growth entry, milestone entry, event-detail care stats, and removal of DailySummaryView/AI sorting prompts.")] }],
   ["趋势视图", { status: "covered_by_layer", coverage: [layer("frontend", "verify:frontend covers Records navigation; exact 7-day chart values need a focused probe.")], nextAction: "Add records trend probe with seeded 7-day careLogs." }],
   ["日历视图", { status: "known_gap", coverage: [layer("frontend", "Calendar view is documented but not isolated in the current smoke assertions.")], nextAction: "Add records calendar probe with seeded month data and date switching." }],
   ["时间线编辑", { status: "known_gap", coverage: [layer("frontend", "Timeline editing is product-critical but not yet a focused frontend/API benchmark case.")], nextAction: "Add a Playwright probe that edits milk amount and verifies today/trend stats update." }],

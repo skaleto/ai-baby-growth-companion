@@ -2,6 +2,9 @@ package com.xiaobao.babycompanion.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +18,35 @@ class AgentPlannerTests {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AgentPlanner planner = new AgentPlanner(objectMapper);
     private final RecordSignalExtractor extractor = new RecordSignalExtractor(objectMapper);
+
+    @Test
+    void buildRequestIncludesModelContextHarnessAndLocalClock() {
+        AgentPlanner midnightPlanner = new AgentPlanner(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-06-05T16:21:00Z"), ZoneId.of("Asia/Shanghai"))
+        );
+        RecordSignalExtractor midnightExtractor = new RecordSignalExtractor(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-06-05T16:21:00Z"), ZoneId.of("Asia/Shanghai"))
+        );
+        AgentChatRequest request = new AgentChatRequest("十二点喝了100毫升奶粉", null, null, List.of(), List.of(), List.of(), List.of(), null, false);
+
+        String prompt = midnightPlanner
+                .buildRequest("planner-test", request, List.of(), midnightExtractor.extract(request.message()), true)
+                .messages()
+                .get(1)
+                .contentAsText();
+
+        assertThat(prompt).contains("\"currentDateTime\":\"2026-06-06T00:21\"");
+        assertThat(prompt).contains("\"currentTime\":\"00:21\"");
+        assertThat(prompt).contains("\"timeZone\":\"Asia/Shanghai\"");
+        assertThat(prompt).contains("\"modelContextHarness\"");
+        assertThat(prompt).contains("刚才/刚刚/现在/这次");
+        assertThat(prompt).contains("十二点/12点");
+        assertThat(prompt).contains("00:00");
+        assertThat(prompt).contains("当天汇总字段和时间线事件必须同步");
+        assertThat(prompt).contains("不要把一次母乳/奶粉确认永久当成未来默认奶类");
+    }
 
     @Test
     void parsesPlannerJsonAndNormalizesFields() {

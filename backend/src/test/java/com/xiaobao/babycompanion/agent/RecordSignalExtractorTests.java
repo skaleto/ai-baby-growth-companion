@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xiaobao.babycompanion.dto.agent.AgentChatMessage;
 import org.junit.jupiter.api.Test;
 
 class RecordSignalExtractorTests {
@@ -209,5 +211,72 @@ class RecordSignalExtractorTests {
         assertThat(signals.topics()).contains("expense");
         assertThat(signals.expenseSignal()).isNull();
         assertThat(signals.concreteCareLog()).isFalse();
+    }
+
+    @Test
+    void extractsGrowthMeasurementWithCopulaWeekdayAndPreciseWeight() {
+        RecordSignalExtractor saturdayExtractor = new RecordSignalExtractor(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-06-06T12:20:00Z"), ZoneId.of("Asia/Shanghai"))
+        );
+
+        RecordSignals signals = saturdayExtractor.extract("这周二量了一下小宝的体重是5.54公斤。");
+
+        assertThat(signals.topics()).contains("growth");
+        assertThat(signals.targetDates()).containsExactly("2026-06-02");
+        assertThat(signals.growthMeasurements()).hasSize(1);
+        GrowthMeasurementSignal measurement = signals.growthMeasurements().get(0);
+        assertThat(measurement.type()).isEqualTo("weight");
+        assertThat(measurement.value()).isEqualTo(5.54);
+        assertThat(measurement.date()).isEqualTo("2026-06-02");
+        assertThat(measurement.needsClarification()).isFalse();
+    }
+
+    @Test
+    void borrowsRecentGrowthMeasurementDateForShortFollowUpMeasurement() {
+        RecordSignalExtractor saturdayExtractor = new RecordSignalExtractor(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-06-06T12:20:00Z"), ZoneId.of("Asia/Shanghai"))
+        );
+        List<AgentChatMessage> recentMessages = List.of(
+                new AgentChatMessage("msg-prev", "parent", "这周二量了一下小宝的体重是5.54公斤。", "2026-06-06T12:15:37.584Z", List.of(), List.of()),
+                new AgentChatMessage("msg-ai", "ai", "好的，爸爸。芊宝这周二（6月2日）的体重是5.54公斤，我帮你整理成待确认的成长测量草稿了。", "2026-06-06T12:15:44.379Z", List.of(), List.of("成长", "体重"))
+        );
+
+        RecordSignals signals = saturdayExtractor.extract("身高是64厘米。", recentMessages);
+
+        assertThat(signals.topics()).contains("growth");
+        assertThat(signals.targetDates()).containsExactly("2026-06-02");
+        assertThat(signals.growthMeasurements()).hasSize(1);
+        GrowthMeasurementSignal measurement = signals.growthMeasurements().get(0);
+        assertThat(measurement.type()).isEqualTo("height");
+        assertThat(measurement.value()).isEqualTo(64.0);
+        assertThat(measurement.date()).isEqualTo("2026-06-02");
+    }
+
+    @Test
+    void replaysRecentGrowthMeasurementsWhenUserAsksToRecordThemAgain() {
+        RecordSignalExtractor saturdayExtractor = new RecordSignalExtractor(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-06-06T13:30:00Z"), ZoneId.of("Asia/Shanghai"))
+        );
+        List<AgentChatMessage> recentMessages = List.of(
+                new AgentChatMessage("msg-weight", "parent", "这周二量了一下小宝的体重是5.54公斤。", "2026-06-06T12:15:37.584Z", List.of(), List.of()),
+                new AgentChatMessage("msg-weight-ai", "ai", "好的，爸爸。芊宝这周二（6月2日）的体重是5.54公斤，我帮你整理成待确认的成长测量草稿了。", "2026-06-06T12:15:44.379Z", List.of(), List.of("成长", "体重")),
+                new AgentChatMessage("msg-height", "parent", "身高是64厘米。", "2026-06-06T12:16:06.864Z", List.of(), List.of()),
+                new AgentChatMessage("msg-height-ai", "ai", "好的，爸爸。芊宝这周二（6月2日）的身高是64厘米，我帮你整理成待确认的成长测量草稿了。", "2026-06-06T12:16:13.907Z", List.of(), List.of("成长", "身高"))
+        );
+
+        RecordSignals signals = saturdayExtractor.extract("刚才的这些成长记录再帮我记一遍。喂喂喂。", recentMessages);
+
+        assertThat(signals.topics()).contains("growth");
+        assertThat(signals.targetDates()).containsExactly("2026-06-02");
+        assertThat(signals.growthMeasurements()).hasSize(2);
+        assertThat(signals.growthMeasurements()).extracting(GrowthMeasurementSignal::type)
+                .containsExactly("weight", "height");
+        assertThat(signals.growthMeasurements()).extracting(GrowthMeasurementSignal::value)
+                .containsExactly(5.54, 64.0);
+        assertThat(signals.growthMeasurements()).extracting(GrowthMeasurementSignal::date)
+                .containsExactly("2026-06-02", "2026-06-02");
     }
 }

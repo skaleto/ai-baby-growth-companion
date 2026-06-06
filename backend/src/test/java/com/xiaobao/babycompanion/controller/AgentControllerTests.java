@@ -1,5 +1,6 @@
 package com.xiaobao.babycompanion.controller;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -67,6 +68,17 @@ class AgentControllerTests {
                                 """))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
+    }
+
+    @Test
+    void harnessInfoExposesClasspathVersionForOnlineVerification() throws Exception {
+        mockMvc.perform(get("/api/agent/harness")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resource").value("/agent/model-context-harness.md"))
+                .andExpect(jsonPath("$.version").value("2026-06-06"))
+                .andExpect(jsonPath("$.sha256").isString())
+                .andExpect(jsonPath("$.length").isNumber());
     }
 
     @Test

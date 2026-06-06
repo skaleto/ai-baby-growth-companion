@@ -229,7 +229,7 @@ public class AgentRuntime {
         String traceId = "agent-" + UUID.randomUUID();
         AgentRunRecord agentRun = startAgentRunTrace(traceId, familyId, principal.userId(), request, plannerRuntimeModel, runtimeModel);
         List<Skill> selectedSkills = skillRegistry.selectSkills(request);
-        RecordSignals signals = recordSignalExtractor.extract(request.message());
+        RecordSignals signals = recordSignalExtractor.extract(request.message(), request.recentMessages());
         AgentChatResponse immediate = immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills);
         if (immediate != null) {
             completeAgentRunTrace(agentRun, immediate.effectDecisions());
@@ -672,7 +672,7 @@ public class AgentRuntime {
             BooleanSupplier cancelled
     ) {
         try {
-            RecordSignals signals = recordSignalExtractor.extract(request.message());
+            RecordSignals signals = recordSignalExtractor.extract(request.message(), request.recentMessages());
             AgentChatResponse immediate = immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills);
             if (immediate != null) {
                 completeAfterFinalSent(emitter, agentRun, immediate);
@@ -1879,7 +1879,7 @@ public class AgentRuntime {
     private boolean containsBoundaryExplanation(String text) {
         if (!StringUtils.hasText(text)) return false;
         return text.matches(".*(不能|暂不支持|不支持|无法).*(撤销|删除|修改|回滚|改历史|历史记录).*")
-                || text.matches(".*(记录页|撤销按钮|重新记录|重新添加).*");
+                || text.matches(".*(记录页|成长页|重新记录|重新添加).*");
     }
 
     private String mergeFollowUpQuestion(String aiText, String question) {
@@ -2309,6 +2309,7 @@ public class AgentRuntime {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("traceId", traceId);
         putCurrentTime(context);
+        putModelContextHarness(context);
         context.put("capabilities", AgentCapabilityContract.promptContext());
         context.put("imageBoundaryPolicy", AgentCapabilityContract.imageBoundaryPolicy());
         context.put("selectedSkills", selectedSkills);
@@ -2345,6 +2346,7 @@ public class AgentRuntime {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("traceId", traceId);
         putCurrentTime(context);
+        putModelContextHarness(context);
         context.put("capabilities", AgentCapabilityContract.promptContext());
         context.put("imageBoundaryPolicy", AgentCapabilityContract.imageBoundaryPolicy());
         context.put("selectedSkills", selectedSkills);
@@ -2462,7 +2464,11 @@ public class AgentRuntime {
         context.put("today", now.toLocalDate().toString());
         context.put("currentDateTime", now.truncatedTo(ChronoUnit.MINUTES).toString());
         context.put("currentTime", now.toLocalTime().truncatedTo(ChronoUnit.MINUTES).toString());
-        context.put("timeInferenceRule", "用户没有说上午/下午时，按 currentTime 判断今天最近已经发生过的 12 小时制候选时间。");
+        context.put("timeZone", clock.getZone().getId());
+    }
+
+    private void putModelContextHarness(Map<String, Object> context) {
+        context.put("modelContextHarness", AgentModelContextHarness.promptBlock());
     }
 
     private List<Map<String, String>> attachmentSummaries(List<AgentAttachment> attachments) {

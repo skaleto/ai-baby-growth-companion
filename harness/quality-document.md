@@ -1,6 +1,6 @@
 # Quality Document
 
-Updated: 2026-06-05
+Updated: 2026-06-06
 
 This file is the quality snapshot for agent and human handoffs. Ratings are intentionally conservative.
 
@@ -15,23 +15,23 @@ This file is the quality snapshot for agent and human handoffs. Ratings are inte
 
 | Area | Rating | Verification Status | Agent Readability | Test Stability | Key Gap | Last Updated |
 | --- | --- | --- | --- | --- | --- | --- |
-| Authentication and families | B | Backend logic exists; role and sharing behavior need regression coverage when touched | Medium | Medium | Cloud/user-state regressions require live evidence | 2026-05-13 |
-| Agent records and reminders | B | Agent benchmark covers core deterministic cases | High | High for L0/L1 | Real model regression remains environment-dependent | 2026-05-13 |
-| Ledger | B | Feature implemented with docs and commits; E2E depends on UI/cloud state | Medium | Medium | Barcode/provider live coverage depends on external APIs | 2026-05-13 |
-| Album and media | C | Core behavior exists | Medium | Medium | Media performance, thumbnails, OSS, and device preview need platform evidence | 2026-05-13 |
-| OTA mobile updates | C | Update path exists | Medium | Medium | Progress fidelity and real-device update evidence should be recorded per release | 2026-05-13 |
-| Frontend mobile UI | B | `docs/frontend-verification.md` defines gate | Medium | Medium | Mark A only after current `npm run verify:frontend` evidence | 2026-05-13 |
-| Native Android/iOS | C | Build scripts and plugins exist | Medium | Low to Medium | Real-device notification, ringing, ASR, haptics, and safe-area behavior are device-sensitive | 2026-05-13 |
+| Authentication and families | B | Backend logic exists; role and sharing behavior need regression coverage when touched | Medium | Medium | Cloud/user-state regressions require live evidence | 2026-06-06 |
+| Agent records and ledger | B- | Current direction is tool-first; old deterministic write path still exists until migration | High | High for L0/L1 | Tool-first P0 needs implementation and L2 app-state evidence | 2026-06-06 |
+| Ledger | B | Manual ledger exists; text/image AI ledger direction now lives in current specs | Medium | Medium | Pending expense source of truth must be backend-persisted | 2026-06-06 |
+| Album and media | C | Core behavior exists; new direction requires by-day timeline | Medium | Medium | Media performance, thumbnails, OSS, and device preview need platform evidence | 2026-06-06 |
+| OTA mobile updates | B | Recent releases verified checksum and production API base URL | Medium | Medium | Real-device Capgo apply proof still needed per release | 2026-06-06 |
+| Frontend mobile UI | B | `docs/frontend-verification.md` defines gate; recent simplification passed smoke | Medium | Medium | Module-native navigation/default-home changes still need fresh `verify:frontend` | 2026-06-06 |
+| Native Android/iOS | C | Build scripts and plugins exist | Medium | Low to Medium | Real-device notification, ringing, ASR, haptics, and safe-area behavior are device-sensitive | 2026-06-06 |
 
 ## Architecture Layers
 
 | Layer | Rating | Boundary Discipline | Agent Readability | Key Gap | Last Updated |
 | --- | --- | --- | --- | --- | --- |
-| React app shell | B | Mostly clear, but large `frontend/src/App.tsx` remains dense | Medium | Future refactor could split feature panels and modal logic | 2026-05-13 |
-| Mobile/native bridge | C | Platform code exists but must be validated on device | Medium | Native notification/ringing parity is hard to prove in browser | 2026-05-13 |
-| Spring backend services | B | Services are reasonably separated | Medium | App state merge and family/private boundaries are high-risk when changed | 2026-05-13 |
-| Agent harness/runtime | B | Runtime/config/test harness is improving | High | Add live model regression layer when stable credentials and test data are available | 2026-05-13 |
-| Cloud deployment | B | Scripted deploy path exists with data-safety flags | Medium | Always distinguish code deploy, OTA deploy, data sync, and reset | 2026-05-13 |
+| React app shell | B- | `frontend/src/App.tsx` remains dense and owns much of navigation/UI state | Medium | Module-native navigation should avoid adding more tangled state | 2026-06-06 |
+| Mobile/native bridge | C | Platform code exists but must be validated on device | Medium | Native notification/ringing parity is hard to prove in browser | 2026-06-06 |
+| Spring backend services | B | Services are reasonably separated | Medium | App state merge and family/private boundaries are high-risk when changed | 2026-06-06 |
+| Agent harness/runtime | B- | Harness exists, but current implementation still relies on old write path | High | Implement backend Agent action tools and app-state-backed pending effects | 2026-06-06 |
+| Cloud deployment | B | Scripted deploy path exists with data-safety flags | Medium | Always distinguish code deploy, OTA deploy, data sync, and reset | 2026-06-06 |
 
 ## Quality Gates By Change Type
 
@@ -46,7 +46,7 @@ This file is the quality snapshot for agent and human handoffs. Ratings are inte
 
 ## Current Security And Release Risks
 
-Current release blockers are tracked in `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`. The historical risk log is archived at `docs/archive/completed-2026-06-05/security-risks.md`.
+Current release blockers are tracked in `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`. The old May risk log and archived decision docs were deleted from the workspace on 2026-06-06; current release risk should be read from this file and the release-hardening spec only.
 
 | Risk | Current Gate / Owner |
 | --- | --- |
@@ -60,14 +60,18 @@ Current release blockers are tracked in `docs/superpowers/specs/2026-06-05-relea
 
 ## Change History
 
+### 2026-06-06
+
+- Deleted stale May/old decision docs from the workspace and compressed `harness/claude-progress.md`.
+- Current implementation should be anchored to the 2026-06-06 module-native AI spec and Agent tool-first spec.
+- Reframed Agent quality around the new records/ledger-only tool migration.
+
 ### 2026-06-05
 
 - Recorded real-user path fixes for record-and-companion UX: additive care-log writes, no final completed tool-status rows, no missing-prompt nudges on records view, toast/quick-action layout cleanup, and voice drag-to-cancel. Verified with targeted backend tests, `npm run test:agent-benchmark`, `npm run test:agent-l2:unit`, and `npm run verify:frontend`.
-- Archived the historical `docs/security-risks.md` into `docs/archive/completed-2026-06-05/security-risks.md`.
 - Merged the still-current security and release risks into this live harness quality snapshot.
 
-### 2026-05-13
+### Historical Harness Note
 
-- Added repo-local harness under `harness/`.
-- Root `AGENTS.md` now points future sessions to harness files and project verification rules.
-- Added `bash harness/init.sh` as the standard smoke entrypoint.
+- Root `AGENTS.md` points future sessions to harness files and project verification rules.
+- Older May decision logs were intentionally removed from required-read docs; use git history only when old release evidence is explicitly needed.

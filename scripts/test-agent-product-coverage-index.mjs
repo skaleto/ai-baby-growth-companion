@@ -34,22 +34,19 @@ for (const entry of productCoverageIndex) {
   }
 }
 
-const agentCoverage = coverageByFeatureId.get("agent-001");
+const agentCoverage = coverageByFeatureId.get("agent-tool-first-2026-06-06");
 for (const requiredScenario of [
   "feed-complete",
   "expense-record",
   "growth-measurement-complete",
-  "read-only-daily-summary-context",
-  "photo-album",
-  "screenshot-ignore",
 ]) {
   assert.ok(
     agentCoverage.coverage.some((coverage) => coverage.scenarioIds?.includes(requiredScenario)),
-    `agent-001 should reference representative scenario ${requiredScenario}`,
+    `agent-tool-first-2026-06-06 should reference representative scenario ${requiredScenario}`,
   );
 }
 
-for (const nonAgentFeature of ["frontend-001", "cloud-001", "mobile-001", "commercialization-001"]) {
+for (const nonAgentFeature of ["product-ia-2026-06-06", "frontend-001", "cloud-001", "mobile-001", "release-hardening-2026-06-05", "legal-data-2026-06-06"]) {
   const entry = coverageByFeatureId.get(nonAgentFeature);
   assert.ok(entry.status !== "covered", `${nonAgentFeature} should be explicit that it is covered by non-agent gates or has known gaps`);
   assert.ok(entry.coverage.some((coverage) => coverage.layer !== "l2"), `${nonAgentFeature} needs a non-L2 gate`);

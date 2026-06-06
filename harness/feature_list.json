@@ -1,12 +1,13 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-05",
+  "lastUpdated": "2026-06-06",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
     "progressLog": "harness/claude-progress.md",
     "qualityDocument": "harness/quality-document.md",
     "appDevelopmentRoadmap": "harness/app-development-roadmap.md",
+    "currentImplementationContext": "harness/session-handoff.md",
     "researchArchive": "docs/research-archive"
   },
   "rules": {
@@ -28,353 +29,153 @@
       "priority": 1,
       "area": "harness",
       "title": "Repository harness baseline",
-      "userVisibleBehavior": "Future agent sessions can restart from AGENTS.md, run one standard init command, and know the current verification contract.",
+      "userVisibleBehavior": "Future agent sessions can restart from AGENTS.md, read the harness files, and run the standard baseline without guessing current direction.",
       "status": "passing",
       "verification": [
-        "Read root AGENTS.md and harness/README.md.",
-        "Run bash harness/init.sh.",
-        "Confirm npm run build and npm run test:agent-benchmark complete in the smoke gate."
+        "bash harness/init.sh",
+        "git diff --check",
+        "npm run build",
+        "npm run test:agent-benchmark"
       ],
       "evidence": [
-        "2026-05-13 bash harness/init.sh passed: git diff --check, npm run build, npm run test:agent-benchmark."
+        "2026-06-06 bash harness/init.sh passed before the current cleanup: git diff --check, npm run build, npm run test:agent-benchmark."
       ],
-      "notes": "Created from the Learn Harness Engineering template structure with project-specific commands and safety rules."
+      "notes": "Historical May evidence has been removed from this required-read file to prevent old decisions from steering new work. Use git history if old release evidence is needed."
     },
     {
-      "id": "agent-001",
-      "priority": 2,
-      "area": "agent",
-      "title": "Agent deterministic benchmark gate",
-      "userVisibleBehavior": "Core Agent behaviors such as feeding records, reminder parsing, expense extraction, skill disclosure, and unsafe mutation boundaries are protected by repeatable tests.",
-      "status": "passing",
+      "id": "product-ia-2026-06-06",
+      "priority": 1,
+      "area": "product",
+      "title": "Module-native AI and records-first information architecture",
+      "userVisibleBehavior": "The app should center on Records as the default home, with bottom navigation targeting 记录 / 相册 / 账本 / 我的 and AI presented inside modules instead of as an independent chat center.",
+      "status": "in_progress",
       "verification": [
-        "Run npm run test:agent-benchmark.",
-        "Run npm run test:agent-l2:unit after changing the L2 runner, scenario matrix, effect-application infrastructure, or album-domain product coverage."
+        "npm run verify:frontend",
+        "Manual screenshot review for mobile bottom navigation and Records first screen"
       ],
       "evidence": [
-        "2026-05-14 docs/agent-benchmark-results.md reports PASS, 15 tests, 0 failures, including daily summary gentle-copy and private-content boundary cases.",
-        "2026-05-16 npm run test:agent-benchmark passed after adding expense-image no-web-search coverage.",
-        "2026-05-16 npm run test:agent-benchmark passed after multi-image status and timeout handling; expense-image no-web-search coverage remained passing.",
-        "2026-05-16 npm run test:agent-benchmark passed after adding automatic multi-image batching; expense-image no-web-search coverage remained passing.",
-        "2026-05-16 npm run test:agent-benchmark passed after preserving model text during rule clarifications and deferring previous-expense retry asks.",
-        "2026-05-16 npm run test:agent-benchmark passed with 20 tests after adding executable expense-recognition skill worker coverage.",
-        "2026-05-16 npm run test:agent-benchmark passed with 20 tests after fixing pending expense id collisions, duplicate expense candidates, and redundant amount questions.",
-        "2026-05-16 npm run test:agent-benchmark passed with 21 tests after adding saved expense no-confirm-again coverage.",
-        "2026-05-16 npm run test:agent-benchmark passed with 21 tests after fixing async expense persistence to use explicit family/user identity instead of CurrentUser in the stream thread.",
-        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after adding visual stream timeout budgeting, cancellation guards, and detailed backend progress events.",
-        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after previous-image retry was optimized to use agent-sized JPEG hydration, concurrent expense-recognition batches, and planner-backed persistence intent.",
-        "2026-06-02 npm run test:agent-benchmark passed with 26 tests after adding caregiver-support and high-risk boundary prompt coverage.",
-        "2026-06-04 npm run test:agent-l2:unit passed after adding L2 effect application and product-function coverage checks for growth milestone, growth measurement, and data-linked companion scenarios.",
-        "2026-06-04 npm run test:agent-benchmark passed with 27 tests after adding growth measurement extraction and pending growthMeasurement decision coverage.",
-        "2026-06-04 npm run test:agent-benchmark passed with 28 tests after adding vague reminder rule fallback coverage when the model omits reminder DTOs.",
-        "2026-06-04 AgentBenchmarkTests and AppStateControllerTests passed after wiring height/weight/headCircumference into pendingEffects.growthMeasurements and confirm-to-growthMeasurements persistence.",
-        "2026-06-04 npm run verify:frontend passed after adding editable pending growth measurement drafts in the Agent confirmation UI.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 8/8 scenarios passing: feed-complete, feed-mixed-missing-type, sleep-start-boundary, multi-care-events, vague-reminder-ask, growth-milestone, growth-measurement-complete, daily-observation-context.",
-        "2026-06-04 npm run test:agent-l2:unit passed after adding album domain coverage for chat photo auto-save, screenshot ignore, and duplicate attachment de-dupe.",
-        "2026-06-04 npm run test:agent-benchmark passed with 31 tests after adding explicit health memory, medicine/vaccine reminder pending, and ambiguous growth weight unit boundary coverage.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 5/5 new scenarios passing: medicine-reminder-pending, vaccine-reminder-pending, growth-measurement-ambiguous-unit, expense-record, memory-health-pending. The first run exposed and then fixed a growth-measurement pendingEffects red-line.",
-        "2026-06-04 bash harness/init.sh passed after the health memory, health reminder, and growth weight unit boundary additions: git diff --check, npm run build, npm run test:agent-benchmark.",
-        "2026-06-04 npm run test:agent-benchmark passed with 33 tests after adding preference/caregiver memory pending coverage and profile-update chat boundary coverage.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 5/5 newest product-gap scenarios passing: memory-preference-pending, memory-caregiver-pending, qa-care-allergy-context, caregiver-fatigue-context, profile-update-boundary.",
-        "2026-06-04 npm run test:agent-benchmark passed with 35 tests after adding out-of-range growth measurement ask/no-pending coverage and generic care Q&A no-memory/no-careLog coverage.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 2/2 newest runnable growth/Q&A boundary scenarios passing: growth-measurement-out-of-range and qa-care-no-memory-pollution; growth-measurement-duplicate-known-gap was reported as a known gap.",
-        "2026-06-04 npm run test:agent-benchmark passed with 37 tests after adding growth measurement history update/delete chat boundary coverage.",
-        "2026-06-04 targeted AgentBenchmarkTests passed after adding growth measurement history update/delete chat boundaries; chat requests to change/delete existing growth data now return non-mutating boundary decisions instead of new pending growthMeasurement drafts.",
-        "2026-06-04 targeted AppStateControllerTests passed for growthMeasurements manual maintenance: same id upsert updates the shared record and delete removes it.",
-        "2026-06-04 node scripts/test-l2-coverage-matrix.mjs passed after adding growth-measurement-update-boundary and growth-measurement-delete-boundary runnable scenarios to the product-function matrix.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 2/2 growth maintenance boundary scenarios passing: growth-measurement-update-boundary and growth-measurement-delete-boundary. Both kept growthMeasurements and pendingEffects unchanged after seeding existing growth data.",
-        "2026-06-04 npm run test:agent-benchmark passed with 39 tests after wiring existing growthMeasurements into duplicate growth measurement detection and ensuring duplicate-growth final copy does not invite another record.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with growth-measurement-duplicate-boundary passing; the scenario seeded existing weight 7.4kg and verified growthMeasurements stayed 1->1 while pendingEffects stayed 0->0.",
-        "2026-06-04 npm run test:agent-benchmark passed with 41 tests after adding read-only reminder query and private reminder sharing boundary coverage.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 3/3 read-only/private-state scenarios passing: read-only-reminder-list-context, read-only-growth-trend-context, private-reminder-share-boundary; aiText hard assertions prevented accidental setup-time asks or sync promises.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 2/2 read-only daily/weekly summary scenarios passing: read-only-daily-summary-context and read-only-weekly-summary-context; the first run exposed a careLog ask tail, then readOnlySummaryQuery fixed it.",
-        "2026-06-04 npm run test:agent-benchmark passed with 43 tests after adding read-only daily/weekly summary coverage and preventing careLog ask tails on summary queries.",
-        "2026-06-04 bash harness/init.sh passed after read-only daily/weekly summary benchmark additions: git diff --check, npm run build, npm run test:agent-benchmark.",
-        "2026-06-04 bash harness/init.sh passed after L2 benchmark infrastructure and growth maintenance boundary changes: git diff --check, npm run build, npm run test:agent-benchmark.",
-        "2026-06-04 npm run test:agent-l2:unit passed after unskipping backend visual/album scenarios and enforcing dataUrl fixtures for photo-album and screenshot-ignore in the coverage matrix.",
-        "2026-06-04 npm run test:agent-l2 passed against local http://localhost:8080 with 8/8 growth maintenance plus visual/album scenarios passing: growth-measurement-complete, growth-measurement-ambiguous-unit, growth-measurement-out-of-range, growth-measurement-update-boundary, growth-measurement-delete-boundary, growth-measurement-duplicate-boundary, photo-album, screenshot-ignore.",
-        "2026-06-04 node scripts/test-agent-product-coverage-index.mjs passed after adding scripts/l2-benchmark/product-coverage-index.mjs and docs/agent-product-coverage-index.md; every feature_list feature now has explicit coverage ownership or a known gap.",
-        "2026-06-04 node scripts/test-native-capability-audit.mjs passed after adding scripts/native-capability-audit.mjs and docs/native-capability-benchmark.md; mobile-001 is now split into explicit ASR, notification, full-screen ringing, haptics, media picker, OTA, and safe-area/keyboard capability contracts.",
-        "2026-06-04 node scripts/test-app-function-coverage-index.mjs passed after adding scripts/l2-benchmark/app-function-coverage-index.mjs and docs/app-function-coverage-index.md; all 90 docs/feature-inventory.md function rows now have coverage ownership or a known gap.",
-        "2026-06-04 npm run test:agent-l2:unit passed with product coverage index, native capability audit, and app-function coverage index included in the fast L2 infrastructure gate.",
-        "2026-06-04 bash harness/init.sh passed after native capability audit integration: git diff --check, npm run build, npm run test:agent-benchmark.",
-        "2026-06-04 bash harness/init.sh passed after app function coverage index integration: git diff --check, npm run build, npm run test:agent-benchmark.",
-        "2026-06-04 node scripts/test-app-function-coverage-index.mjs passed after splitting docs/feature-inventory.md growth data maintenance into explicit rows; all 97 function rows now have coverage ownership or a known gap.",
-        "2026-06-04 npm run test:agent-l2:unit passed with the 97-row app-function coverage index included in the fast benchmark infrastructure gate.",
-        "2026-06-05 npm run test:agent-benchmark passed after adding embedded-question care record auto-write coverage, daily-summary no-nudge copy coverage, and care-log additive merge tests.",
-        "2026-06-05 npm run test:agent-l2:unit passed after adding frontend care-log merge helper coverage and refreshing product coverage ownership."
+        "Current spec: docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md",
+        "Previous simplification spec: docs/superpowers/specs/2026-06-06-product-simplification-records-trust-spec.md"
       ],
-      "notes": "New Agent work should add at least one positive and one boundary benchmark case. Product-function L2 coverage is tracked in docs/superpowers/plans/2026-06-04-agent-product-benchmark-coverage.md; known gaps should be explicit scenarios, not omitted."
+      "notes": "Independent chat and reminder tabs are not target IA. Model selection and deep/fast mode should not be user-facing settings."
     },
     {
-      "id": "agent-002",
-      "priority": 2,
+      "id": "agent-tool-first-2026-06-06",
+      "priority": 1,
       "area": "agent",
-      "title": "Executable expense-recognition skill worker",
-      "userVisibleBehavior": "Expense screenshots and prior-image retry requests are handled by an executable expense-recognition skill that batches images, avoids web search, produces pending ledger candidates, records agent/skill traces, and does not ask for an amount that was already recognized.",
-      "status": "passing",
+      "title": "Tool-first Agent write path for records and ledger",
+      "userVisibleBehavior": "When AI says something was recorded or created as pending, the matching backend state must already exist. Records and ledger writes should come from model-selected controlled tools, not from post-hoc regex/effect fallback.",
+      "status": "not_started",
       "verification": [
-        "Run targeted backend tests for skill router, expense skill, runtime, effect policy, trace persistence, and benchmark cases.",
-        "Run full backend mvn test.",
-        "Run npm run test:agent-benchmark.",
-        "Run npm run verify:frontend for chat status display compatibility.",
-        "Deploy backend with SYNC_DATA=0 and verify cloud health plus trace table migration."
+        "npm run test:agent-benchmark",
+        "npm run test:agent-l2:unit",
+        "Targeted backend tests for Agent action tools and AppState persistence"
       ],
       "evidence": [
-        "2026-05-16 mvn -Dtest=SkillRouterTests,ExpenseRecognitionSkillTests,AgentTraceServiceTests,AgentRuntimeTests,EffectPolicyTests,AgentBenchmarkTests test passed: 69 tests, 0 failures.",
-        "2026-05-16 mvn test passed: 161 tests, 0 failures.",
-        "2026-05-16 npm run test:agent-benchmark passed: 20 tests, 0 failures; docs/agent-benchmark-results.md updated.",
-        "2026-05-16 npm run verify:frontend passed across desktop and six mobile viewports.",
-        "2026-05-16 SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/yaoyibin/.ssh/ai_baby_aliyun npm run deploy:aliyun completed; cloud /api/health returned ok.",
-        "2026-05-16 production SQLite /var/lib/ai-baby-growth-companion/baby-companion.sqlite contains agent_run and skill_run tables after deploy.",
-        "2026-05-16 mvn -Dtest=AgentRuntimeTests,EffectPolicyTests,AppStateControllerTests test passed: 65 tests, 0 failures after ledger id collision regression coverage.",
-        "2026-05-16 mvn test passed: 164 tests, 0 failures after preventing pending expense fallback ids like expense-0 from overwriting existing ledger rows.",
-        "2026-05-16 OTA 0.1.0-20260516173716 published after duplicate expense suppression and ledger id collision fixes; cloud health and OTA checksum probes passed.",
-        "2026-05-16 mvn -f backend/pom.xml -Dtest=AgentBenchmarkTests,AgentRuntimeTests,EffectPolicyTests,AppStateControllerTests,ExpenseRecognitionSkillTests test passed: 95 tests, 0 failures after auto-save expense persistence, read-only recognition, duplicate skipping, idempotent pending confirmation, category inference, and persisted-expense final-model-failure fallback coverage.",
-        "2026-05-16 OTA 0.1.0-20260516194139 published after expense Agent auto-save interaction contract; cloud health, OTA check, signed OSS checksum, and up-to-date probes passed.",
-        "2026-05-16 backend-only Aliyun redeploy completed with SYNC_DATA=0 after deterministic persisted-expense fallback handling; /api/health returned ok and OTA up-to-date probe for 0.1.0-20260516194139 returned updateAvailable=false.",
-        "2026-05-16 mvn -f backend/pom.xml -Dtest=AgentRuntimeTests,AppStateControllerTests,AgentBenchmarkTests test passed: 65 tests, 0 failures after fixing stream-thread AUTH_REQUIRED during auto-saved expense persistence.",
-        "2026-05-16 backend-only Aliyun redeploy completed with SYNC_DATA=0 after fixing stream-thread explicit principal handling; /api/health returned ok and post-start journal probe showed no AUTH_REQUIRED / Agent stream failed before model stream entries.",
-        "2026-05-16 mvn -f backend/pom.xml test passed: 179 tests, 0 failures after standardizing planner-selected skillRequests, backend previous-attachment hydration, and category-only non-blocking expense recognition.",
-        "2026-05-16 npm run test:agent-benchmark passed with 23 tests after adding previous-image retry without frontend forwarding and category-only clarification coverage.",
-        "2026-05-16 OTA 0.1.0-20260516203136 published after standardizing Agent Skill Runtime; cloud health, OTA check, signed OSS checksum, and up-to-date probes passed.",
-        "2026-05-16 mvn -f backend/pom.xml -Dtest=AgentRuntimeTests test passed with 23 tests after expanding visual stream timeout budgets and preventing cancelled streams from reaching expense persistence/final delivery.",
-        "2026-05-16 OTA 0.1.0-20260516205323 published after adding detailed Agent stream progress rows and final-delivery trace handling; cloud health, OTA check, and checksum probes passed.",
-        "2026-05-16 mvn -f backend/pom.xml test passed with 183 tests after optimizing previous-image retry latency and ASR-typo expense persistence intent.",
-        "2026-05-16 backend-only Aliyun redeploy completed with SYNC_DATA=0 after previous-image retry optimization; /api/health returned ok."
+        "Current spec: docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md",
+        "Current design note: docs/agent-detailed-design.md"
       ],
-      "notes": "The skill uses the configured expense-recognition model profile, or falls back to Doubao Pro when the final composer model has no vision support. Latest runtime contract standardization includes both backend changes and OTA because frontend attachment forwarding was removed."
+      "notes": "P0 scope is records and ledger only: feeding direct write, growth measurement pending, expense pending. AI reminder/todo tools are out of scope."
+    },
+    {
+      "id": "agent-context-harness-2026-06-06",
+      "priority": 1,
+      "area": "agent",
+      "title": "Chinese model-context harness and bad-case benchmark",
+      "userVisibleBehavior": "The model receives current time, baby/family context, recent records, recent messages, available capabilities, and Chinese bad-case guidance before it decides how to respond.",
+      "status": "passing",
+      "verification": [
+        "npm run test:agent-benchmark",
+        "Bounded live model checks when changing harness behavior"
+      ],
+      "evidence": [
+        "harness/agent-model-context-harness.md is the current human-readable harness.",
+        "docs/agent-harness-model-comparison-2026-06-06.md records DeepSeek, Doubao, and Codex comparison evidence."
+      ],
+      "notes": "Harness may be Markdown/Chinese; only machine tool parameter schemas need JSON Schema."
     },
     {
       "id": "frontend-001",
-      "priority": 3,
+      "priority": 2,
       "area": "frontend",
       "title": "Mobile frontend verification gate",
-      "userVisibleBehavior": "UI changes are checked across phone-sized viewports and common mobile interaction failure modes instead of relying on build success only.",
+      "userVisibleBehavior": "UI and interaction changes are verified across desktop and mobile viewports, not only by build success.",
       "status": "passing",
       "verification": [
-        "Run npm run verify:frontend for UI or layout changes.",
-        "Inspect generated artifacts under .verification/frontend-smoke when failures occur."
+        "npm run verify:frontend"
       ],
       "evidence": [
-        "docs/frontend-verification.md defines the viewport matrix and waiver rule.",
-        "2026-05-14 npm run verify:frontend passed after OTA progress notice rendering was covered in frontend smoke.",
-        "2026-05-14 release-flow check: frontend build passed through frontend/vite.config.ts after moving frontend source/config under frontend/.",
-        "2026-05-14 npm run verify:frontend passed after Pro daily summary and reminder setting UI changes.",
-        "2026-05-14 npm run verify:frontend passed after official-site port-80 deployment.",
-        "2026-05-14 official-site cloud smoke: Playwright opened http://120.55.188.242/official, verified title 小宝记官网, H1 小宝记, and mobile scroll changed 0 -> 900.",
-        "2026-05-16 npm run verify:frontend passed after raising chat attachment cap and adding over-limit notice.",
-        "2026-05-16 npm run verify:frontend passed after AI stream status tags and frontend image downscaling changes.",
-        "2026-05-16 npm run verify:frontend passed after adding agent_visual_analysis usage label and batched-analysis timeout copy.",
-        "2026-05-16 npm run verify:frontend passed after adding previous expense image retry forwarding.",
-        "2026-05-16 npm run verify:frontend passed after backend expense skill status integration; no frontend bundle changes were required.",
-        "2026-05-16 npm run verify:frontend passed after making AI pending expense fallback ids unique in frontend state normalization.",
-        "2026-05-16 npm run verify:frontend passed after adding auto-saved expense ledger refresh and pending-effect confirm saving state.",
-        "2026-05-16 npm run verify:frontend passed after removing frontend regex-based previous expense attachment forwarding and relying on backend skill runtime hydration.",
-        "2026-05-16 npm run verify:frontend passed after rendering backend Agent progress events as running/completed/failed activity rows in chat.",
-        "2026-05-16 npm run verify:frontend passed after replacing the crowded chat attachment strip with a collapsible attachment tray and aligned remove buttons; a local 8-image Playwright probe on 390x844 found no horizontal overflow.",
-        "2026-05-16 npm run verify:frontend passed after stabilizing the voice hold button pointer lifecycle; a local pointer-drift probe stayed connecting after pointerleave and returned idle after pointerup.",
-        "2026-05-31 npm run verify:frontend passed after simplifying growth metrics to the MVP recording flow, including profile sex/birth size, invalid height rejection, valid height note entry, and no growth chart rendering across desktop plus six mobile viewports.",
-        "2026-06-01 npm run verify:frontend passed on merged main after resolving growth MVP style conflicts with the latest visual refresh work.",
-        "2026-06-02 npm run verify:frontend passed after Recording Companion P0 updated 小宝今日观察, stat cards, and chat record feedback.",
-        "2026-06-02 npm run verify:frontend passed after Recording Companion P1 added caregiver note, AI explanation disclosure, and 今日交接; smoke fixture future-reminder date drift was fixed.",
-        "2026-06-04 npm run verify:frontend passed after extending the growth measurement smoke flow to delete the newly added 68.2cm history row and verify it disappears across desktop plus six mobile viewports.",
-        "2026-06-04 npm run smoke:frontend passed after adding the growth measurement inline-edit smoke path: edit seeded 66.5cm to 67.1cm, update the note, verify the old row disappears, then continue add/delete checks.",
-        "2026-06-04 npm run verify:frontend passed after growth measurement inline-edit UI and smoke coverage were added.",
-        "2026-06-05 npm run verify:frontend passed after moving weak toasts, enlarging quick-action icons within mobile bounds, adding voice drag-to-cancel, hiding completed agent progress rows, removing 今日交接/missing prompts, and updating smoke mocks for consent and family members."
+        "docs/frontend-verification.md defines the current UI verification contract."
       ],
-      "notes": "Mark passing only after a current verify:frontend run is recorded for the UI change being shipped."
-    },
-    {
-      "id": "recording-companion-p0",
-      "priority": 4,
-      "area": "records",
-      "title": "Recording companion P0: daily observation and record feedback",
-      "userVisibleBehavior": "Records/today now uses a single 小宝今日观察 entry with low-pressure feeding/sleep/care/growth stat cards and integrated整理 action without missing-prompt nudges, while chat auto-record cards show 已记好, structured fields, destination copy, 查看今天, and 撤销.",
-      "status": "passing",
-      "verification": [
-        "Run node scripts/test-daily-summary-utils.mjs.",
-        "Run node scripts/probe-daily-summary-view.mjs.",
-        "Run npm run verify:frontend.",
-        "Run npm run test:agent-benchmark.",
-        "Run git diff --check."
-      ],
-      "evidence": [
-        "2026-06-02 node scripts/test-daily-summary-utils.mjs passed after RED verified missing helper exports.",
-        "2026-06-02 node scripts/probe-daily-summary-view.mjs passed across iphone-13, iphone-pro-max, and desktop; assertions covered 小宝今日观察, stat cards, and absence of Pro 今日小结 / 生成今日小结 / 漏掉了吗.",
-        "2026-06-02 npm run verify:frontend passed across desktop and six mobile viewports.",
-        "2026-06-02 npm run test:agent-benchmark passed after frontend changes.",
-        "2026-06-02 git diff --check passed; harness/feature_list.json parsed successfully."
-      ],
-      "notes": "P1 companion sentence, handoff summary, and AI explanation are covered by recording-companion-p1."
-    },
-    {
-      "id": "recording-companion-p1",
-      "priority": 4,
-      "area": "records",
-      "title": "Recording companion P1: caregiver note and explanation disclosure",
-      "userVisibleBehavior": "Records/today keeps the data-linked low-pressure caregiver line and explainable observation disclosure, while 今日交接, missing-record nudges, unfinished-reminder nudges, and pending-confirmation nudges are intentionally absent from the primary records view.",
-      "status": "passing",
-      "verification": [
-        "Run node scripts/test-daily-summary-utils.mjs.",
-        "Run node scripts/probe-daily-summary-view.mjs.",
-        "Run npm run verify:frontend.",
-        "Run npm run test:agent-benchmark.",
-        "Build and deploy OTA with production data sync disabled.",
-        "Verify cloud /api/health and /api/mobile-updates/check."
-      ],
-      "evidence": [
-        "2026-06-02 node scripts/test-daily-summary-utils.mjs passed after RED verified missing P1 helper exports.",
-        "2026-06-02 node scripts/probe-daily-summary-view.mjs passed across iphone-13, iphone-pro-max, and desktop; screenshots include first-screen and handoff scroll positions.",
-        "2026-06-02 npm run verify:frontend passed across desktop and six mobile viewports after fixing smoke future-reminder date drift.",
-        "2026-06-02 npm run test:agent-benchmark passed with 26 tests after adding caregiver-support and high-risk prompt boundary coverage.",
-        "2026-06-02 OTA 0.1.0-20260602232444 deployed to ECS with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; /api/health returned ok, OTA check returned updateAvailable=true for old bundle and false for current bundle, and bundle checksum matched 087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2.",
-        "2026-06-05 npm run verify:frontend passed after removing 今日交接 and missing prompt sections from DailySummaryView and updating probe-daily-summary-view to assert those prompts stay absent."
-      ],
-      "notes": "This remains non-diagnostic emotional support. It uses recorded baby data and high-risk guidance; expert, knowledge-paid, ecommerce, and community features remain out of scope. Handoff-copy UI was removed after user testing because it increased clutter in the primary records path."
+      "notes": "Any navigation, Records, Album, Ledger, My, voice input, composer, modal, keyboard, or safe-area change needs this gate."
     },
     {
       "id": "cloud-001",
-      "priority": 4,
+      "priority": 2,
       "area": "cloud",
       "title": "Aliyun deployment and live smoke discipline",
-      "userVisibleBehavior": "Cloud releases update code and OTA assets without accidentally overwriting production SQLite data or uploads.",
+      "userVisibleBehavior": "Cloud deployments keep production data intact and include behavior-specific probes beyond /api/health.",
       "status": "in_progress",
       "verification": [
-        "Run SYNC_DATA=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun for code-only deploys.",
-        "Verify http://120.55.188.242:8300/api/health returns ok.",
-        "When behavior changed, run a live probe or documented test account flow."
+        "SYNC_DATA=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun",
+        "curl /api/health",
+        "Behavior-specific probe for the changed feature"
       ],
       "evidence": [
-        "2026-05-14 release-flow check: curl -fsS http://120.55.188.242:8300/api/health returned ok. Live deploy was not executed because the script has no dry-run mode.",
-        "2026-05-14 code-only Aliyun deployment completed with SYNC_DATA=0 and health returned ok at http://120.55.188.242:8300/api/health.",
-        "2026-05-14 official-site port-80 deployment: Nginx active on 120.55.188.242, /official returned 200 OK, and /api/health returned ok through same-origin reverse proxy.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516140358.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for multi-image AI availability; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516144004.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for automatic multi-image batching; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516145942.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for previous expense retry and postprocess copy; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516152314.",
-        "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for executable expense-recognition skill worker; /api/health returned ok and production SQLite has agent_run / skill_run trace tables.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for ledger id collision and duplicate expense fixes; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516173716.",
-        "2026-05-16 after explicit user approval, production DB was backed up and hospitalization expense expense-restored-hospital-mp2lqef1 was restored with original note and attachmentIds[0]=attachment-mp2lomag-chc0xt.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for expense Agent auto-save interaction contract; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516194139.",
-        "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for stream-thread AUTH_REQUIRED fix in expense auto-save persistence; /api/health returned ok and post-start journal probe showed no same-class AUTH_REQUIRED entries.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent Skill Runtime contract standardization; /api/health returned ok and OTA check returned signed OSS version 0.1.0-20260516203136.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for Agent stream timeout/progress handling; /api/health returned ok and OTA check returned version 0.1.0-20260516205323.",
-        "2026-05-16 backend-only Aliyun deployment completed with SYNC_DATA=0 for previous-image retry latency optimization; /api/health returned ok.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for collapsible chat attachment tray layout; /api/health returned ok, OTA check returned 0.1.0-20260516220400, and up-to-date probe returned updateAvailable=false.",
-        "2026-05-16 code plus OTA manifest-only Aliyun deployment completed with SYNC_DATA=0 for voice hold pointer drift; /api/health returned ok, OTA check returned 0.1.0-20260516223427, and up-to-date probe returned updateAvailable=false.",
-      "2026-06-02 code plus OTA bundle deployment completed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1 for Recording Companion P1; /api/health returned ok and OTA check returned version 0.1.0-20260602232444.",
-      "2026-06-05 code plus OTA bundle deployment completed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1 for real-user record UX fixes; /api/health returned ok, OTA check returned version 0.1.0-20260605223856 for stale bundles and updateAvailable=false for current bundle, checksum 4b00053a4cf3484a5328117d6d6557da1397835e27bd7d3fcb252d86831eec88 matched production download."
+        "Deployment safety and OTA rules are documented in AGENTS.md, docs/aliyun-ecs-deploy.md, and docs/mobile-updates.md."
       ],
-      "notes": "Health alone is not enough for Agent or persistence issues; use DB/journal/probe evidence when the request is about behavior."
+      "notes": "Do not sync or reset production data unless explicitly requested."
     },
     {
       "id": "mobile-001",
-      "priority": 5,
+      "priority": 2,
       "area": "mobile",
       "title": "Native Android and iOS parity gate",
-      "userVisibleBehavior": "Native media, reminders, haptics, ASR, OTA, and safe-area behavior are verified on the platform they affect.",
+      "userVisibleBehavior": "Native-sensitive features such as camera, media, ASR, notification, haptics, keyboard, safe area, and OTA are validated with the appropriate sync/build/device evidence.",
       "status": "in_progress",
       "verification": [
-        "Run node scripts/test-native-capability-audit.mjs to verify static evidence and known-gap ownership for native capabilities.",
-        "Run npm run mobile:sync after native-risk changes.",
-        "Run npm run build:android:debug for Android package changes.",
-        "Run npm run build:ios:debug for iOS package changes when Xcode signing/build environment is ready."
+        "npm run mobile:sync",
+        "npm run build:ios:debug",
+        "npm run build:android:debug",
+        "Device probe when OS behavior is part of the claim"
       ],
       "evidence": [
-        "2026-05-14 release-flow check: VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:android:debug passed.",
-        "2026-05-14 release-flow check: VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:ios:debug passed for iPhone 17 simulator.",
-        "2026-05-14 npm run mobile:sync passed after daily summary local notification scheduling changes.",
-        "2026-05-14 npm run build:android:debug passed; debug APK built at android/app/build/outputs/apk/debug/app-debug.apk.",
-        "2026-05-14 npm run build:ios:debug passed for iPhone 17 simulator.",
-        "2026-05-14 OTA timeout fix: raised CapacitorUpdater responseTimeout to 120 seconds, npm run mobile:sync passed, Android debug APK passed, and iOS simulator build passed.",
-        "2026-05-16 OTA 0.1.0-20260516140358 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2638963 bytes and checksum 4a98ea216826e56cdde2115d8a721b9a6fb8b7a9463d73ed319fbaf9b093dde2.",
-        "2026-05-16 OTA 0.1.0-20260516144004 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2639867 bytes and checksum c677fb3cd5fcc5eac4eeae5492f15113670b528335cad9dc06cb0618c0b433bf.",
-        "2026-05-16 OTA 0.1.0-20260516145942 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2639905 bytes and checksum 9f4e5454bd1d9c5e842a69e8981f975b5e757a7d5b339a0678b36a45815d9a98.",
-        "2026-05-16 OTA 0.1.0-20260516152314 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640317 bytes and checksum 455a69da31438dc9f37aa6866ab7e8574d668b7b4540ee6e061ef15c41502d44.",
-        "2026-05-16 OTA 0.1.0-20260516173716 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640325 bytes and checksum c8440860c0dc6a45c20b61737a647efd77a89a6e21d3fca3ad941adcfa4ad329.",
-        "2026-05-16 OTA 0.1.0-20260516194139 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640408 bytes and checksum 2999bfa53dc6806f5262b9fcadd39aefeb4406e6055c876552d0b75bb16c08d2.",
-        "2026-05-16 OTA 0.1.0-20260516203136 uploaded to OSS under baby-companion/mobile-updates; signed download returned 2640023 bytes and checksum 6a2ca6559f1441ad8444de3e084b2fe0c802abb97a289fa4d2a559644862bcfc.",
-        "2026-05-16 OTA 0.1.0-20260516205323 uploaded under baby-companion/mobile-updates; downloaded bundle returned 2640140 bytes and checksum 6e95d4eb7de4776d9782648940d83f63b9d1ea62524925f4a718b1f1f968ec14.",
-        "2026-05-16 OTA 0.1.0-20260516220400 uploaded under baby-companion/mobile-updates; signed download returned 2640958 bytes and checksum 7b504315d9aa9db266035dcd6636d4509120be6b0e990baccd49253502e340f6.",
-        "2026-05-16 npm run mobile:sync and npm run build:ios:debug passed after voice hold pointer drift fix.",
-        "2026-05-16 OTA 0.1.0-20260516223427 uploaded under baby-companion/mobile-updates; signed download returned 2641156 bytes and checksum c2bb9c56a60b404f2a8ed967996697c2b02fe2da52cb0ee08f70a34e4c9f6592.",
-        "2026-05-31 npm run mobile:sync passed, npm run build:ios:debug succeeded for iPhone 17 simulator, and npm run build:android:debug produced android/app/build/outputs/apk/debug/app-debug.apk after growth metrics MVP changes.",
-        "2026-06-02 OTA 0.1.0-20260602232444 deployed from ECS mobile-updates; downloaded bundle returned 3321376 bytes and checksum 087927a33177c969182f89e5c551769b2dd75a11ec68d839147e4d415b4460b2.",
-        "2026-06-04 node scripts/test-native-capability-audit.mjs passed and docs/native-capability-benchmark.md now tracks asr-voice-input, local-notifications, full-screen-ringing, haptics, native-media-picker, ota-updater, and safe-area-keyboard static evidence plus manual probe requirements.",
-        "2026-06-04 bash harness/init.sh passed after native capability audit integration; no native sync/build was required because only benchmark scripts, package scripts, and docs/harness evidence changed."
+        "docs/native-capability-benchmark.md tracks native capability evidence and known gaps."
       ],
-      "notes": "Browser preview cannot prove local notifications, full-screen ringing, microphone permissions, haptics, native media picker, OTA apply, or WebView-only behavior. The native capability audit is a static contract; real iOS/Android device probes are still required."
+      "notes": "Browser smoke cannot prove OS notification delivery, full-screen ringing, native camera/media picker behavior, or OTA apply."
     },
     {
-      "id": "growth-001",
-      "priority": 6,
-      "area": "growth",
-      "title": "Growth measurement MVP",
-      "userVisibleBehavior": "Families can record sex, birth weight, birth height, and manual height/weight/head-circumference measurements in a simple history view without premature percentile or reference-curve logic.",
-      "status": "passing",
+      "id": "release-hardening-2026-06-05",
+      "priority": 3,
+      "area": "release",
+      "title": "Release hardening and trust readiness",
+      "userVisibleBehavior": "Before broader beta or app-store release, account, security, privacy, backup, HTTPS, real-device, and trust disclosure gaps are explicitly closed.",
+      "status": "in_progress",
       "verification": [
-        "Run npm run verify:frontend for the growth UI and mobile layout.",
-        "Run mvn -f backend/pom.xml test for persisted app-state ordering.",
-        "Run npm run mobile:sync and native debug builds before handing off client packaging."
+        "Release-specific checklist from docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md"
       ],
       "evidence": [
-        "2026-05-31 npm run verify:frontend passed across desktop and six mobile viewports; the smoke flow verifies sex/birth size seed data, rejects 999cm height, records 68.2cm with a note, and asserts no growth chart is rendered.",
-        "2026-05-31 mvn -f backend/pom.xml test passed with 204 tests, 0 failures after adding growthMeasurement date sorting.",
-        "2026-05-31 bash harness/init.sh passed after the growth MVP simplification; npm run test:agent-benchmark passed with 23 tests.",
-        "2026-05-31 npm run mobile:sync, npm run build:ios:debug, and npm run build:android:debug all passed.",
-        "2026-06-01 merged main gate passed: bash harness/init.sh, npm run verify:frontend, and mvn -f backend/pom.xml test with 222 tests, 0 failures, 1 skipped.",
-        "2026-06-04 docs/feature-inventory.md and docs/app-function-coverage-index.md now expose growth data maintenance as a dedicated domain: entry/latest values, manual add/delete, AI pending confirmation, boundary handling, read-only trend query, and the remaining inline-edit UI gap.",
-        "2026-06-04 npm run verify:frontend passed after the growth smoke flow verified out-of-range rejection, valid measurement add, note rendering, and delete of the newly added row.",
-        "2026-06-04 growth measurement inline edit shipped in GrowthEntryView and npm run smoke:frontend passed after changing seeded 66.5cm to 67.1cm with an updated note.",
-        "2026-06-04 npm run verify:frontend passed for growth measurement manual add/edit/delete coverage across desktop and six mobile viewports."
+        "docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md",
+        "harness/quality-document.md"
       ],
-      "notes": "Percentiles, WHO/WS reference data, preterm correction, AI interpretation, and reminder logic are intentionally out of the MVP scope and documented as future work. Growth measurement manual add/edit/delete is now covered by frontend smoke plus backend same-id upsert/delete tests."
+      "notes": "This is release infrastructure, not a reason to reintroduce May commercialization or daily-summary decisions."
     },
     {
-      "id": "shared-records-001",
-      "priority": 7,
-      "area": "state",
-      "title": "Shared record contributor labels and ledger attachments",
-      "userVisibleBehavior": "Records, ledger entries, and album media show who recorded or uploaded them, and ledger entries can display and preview linked image/video/audio attachments.",
-      "status": "passing",
+      "id": "legal-data-2026-06-06",
+      "priority": 3,
+      "area": "legal",
+      "title": "Legal and third-party data-processing drafts",
+      "userVisibleBehavior": "Privacy, user agreement, children information, and third-party data handling drafts match the current recording and companionship boundary.",
+      "status": "in_progress",
       "verification": [
-        "Run backend state tests covering contributor enrichment and attachment hydration.",
-        "Run npm run verify:frontend for record, ledger, and album rendering.",
-        "Run live cloud E2E against the Aliyun environment with real test accounts."
+        "Review docs/legal/ before public release or broader beta"
       ],
       "evidence": [
-        "2026-05-15 AppStateControllerTests passed with shared records returning recordedBy labels and hydrated expense attachments.",
-        "2026-05-15 npm run verify:frontend passed across desktop and configured mobile viewports.",
-        "2026-05-15 npm run test:cloud-e2e passed 10/10 cases, including timeline 记录人 display and ledger attachment preview.",
-        "2026-05-15 cloud inspection confirmed user 189****8653 family expense 8887.24 already links attachment-mp2lomag-chc0xt; backend hydration and frontend preview now surface it.",
-        "2026-05-15 album gallery metadata placement update: npm run verify:frontend passed, and OTA 0.1.0-20260515153705 was published.",
-        "2026-05-16 production restoration confirmed expense-restored-hospital-mp2lqef1 links attachment-mp2lomag-chc0xt and preserves the original hospitalization reimbursement/self-paid note."
+        "docs/legal/privacy-policy-draft.md",
+        "docs/legal/terms-draft.md",
+        "docs/legal/third-party-data-processing.md"
       ],
-      "notes": "User-facing label is unified as 记录人; creator metadata is runtime-enriched and stripped before storage to avoid stale payload copies. Album gallery tiles stay media-only, while title/date/category/记录人 are shown in preview details."
-    },
-    {
-      "id": "commercialization-001",
-      "priority": 8,
-      "area": "commercialization",
-      "title": "Pro trial daily summary and usage telemetry",
-      "userVisibleBehavior": "Families can apply for a small Pro trial, Pro-enabled caregiver accounts can generate a shared daily summary, all family members can read it, and daily summary reminders nudge users without background AI generation.",
-      "status": "passing",
-      "verification": [
-        "Read openspec/changes/add-pro-trial-daily-summary proposal, design, spec, and tasks.",
-        "Run backend tests for Pro application, entitlement, summary permissions, private-data exclusion, and usage logging.",
-        "Run npm run test:agent-benchmark.",
-        "Run npm run verify:frontend.",
-        "Run npm run mobile:sync and native debug builds because notification scheduling was touched."
-      ],
-      "evidence": [
-        "2026-05-14 backend mvn test passed with ProTrialControllerTests covering idempotent application, Pro-only caregiver generation, read-only denial, account-private reminder exclusion, and daily_summary usage logging.",
-        "2026-05-14 npm run test:agent-benchmark passed with 15 tests and 0 failures.",
-        "2026-05-14 npm run verify:frontend passed across desktop and configured mobile viewports.",
-        "2026-05-14 npm run mobile:sync, npm run build:android:debug, and npm run build:ios:debug passed.",
-        "2026-05-14 deployed code-only backend update to Aliyun 120.55.188.242:8300 with SYNC_DATA=0; cloud health returned ok."
-      ],
-      "notes": "OpenSpec change add-pro-trial-daily-summary remains unarchived. Real-device notification delivery still needs device validation before broad beta."
+      "notes": "Commercialization, Pro-trial, and May decision docs were deleted on 2026-06-06."
     }
   ]
 }
