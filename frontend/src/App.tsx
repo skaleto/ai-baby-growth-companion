@@ -64,10 +64,12 @@ import {
   albumItemFromStandaloneAttachment,
   albumPromptFromDecision,
   albumPromptFromEffectDecision,
+  attachmentAspectRatio,
   attachmentListSrc,
   buildDerivedAlbumItems,
   decideAlbumMedia,
   dedupeAlbumItems,
+  distributeIntoColumns,
   isVisibleAlbumMedia,
   resolveAlbumEffectTarget,
   type AlbumMediaDecision,
@@ -2985,6 +2987,21 @@ function App() {
   const albumPreviewItems = useMemo(
     () => filteredAlbumItems.filter((item) => item.attachment?.url),
     [filteredAlbumItems],
+  );
+  const [albumRatioOverrides, setAlbumRatioOverrides] = useState<Record<string, number>>({});
+  const recordAlbumRatio = useCallback((attachmentId: string, ratio: number) => {
+    if (!attachmentId || !Number.isFinite(ratio) || ratio <= 0) return;
+    setAlbumRatioOverrides((current) =>
+      current[attachmentId] ? current : { ...current, [attachmentId]: ratio },
+    );
+  }, []);
+  const albumTileAspect = useCallback(
+    (item: AlbumItem) => {
+      if (!item.attachment) return 1; // category-icon placeholder → square
+      const measured = albumRatioOverrides[item.attachment.id];
+      return attachmentAspectRatio(item.attachment, measured);
+    },
+    [albumRatioOverrides],
   );
   const previewAlbumIndex = previewAlbumItem
     ? albumPreviewItems.findIndex((item) => item.id === previewAlbumItem.id)
@@ -8422,40 +8439,58 @@ function App() {
                     <span>{group.items.length} 项</span>
                   </div>
                   <div className="album-photo-grid">
-                    {group.items.map((item, itemIndex) => {
-                      const attachment = item.attachment;
-                      return (
-                        <article
-                          className={`album-photo-tile album-${item.category}`}
-                          key={item.id}
-                          style={{ "--tile-index": (groupIndex * 7 + itemIndex) % 18 } as CSSProperties}
-                        >
-                          <button
-                            type="button"
-                            className="album-photo-thumb"
-                            onClick={() => {
-                              if (!attachment?.url) return;
-                              openPreviewAttachment(attachment, item);
-                            }}
-                            aria-label={`预览 ${item.title}`}
-                            disabled={!attachment?.url}
-                          >
-                            {attachment?.kind === "video" ? (
-                              <AlbumVideoThumbnail attachment={attachment} title={item.title} />
-                            ) : attachment ? (
-                              <img src={attachmentListSrc(attachment)} alt={item.title} loading="lazy" decoding="async" />
-                            ) : (
-                              <img src={albumCategoryIconSrc(item.category)} alt="" loading="lazy" decoding="async" />
-                            )}
-                            {attachment?.kind === "video" ? (
-                              <span className="album-video-badge" aria-hidden="true">
-                                <Video size={13} />
-                              </span>
-                            ) : null}
-                          </button>
-                        </article>
-                      );
-                    })}
+                    {distributeIntoColumns(group.items, 2, albumTileAspect).map((column, columnIndex) => (
+                      <div className="album-photo-column" key={columnIndex}>
+                        {column.map((item, itemIndex) => {
+                          const attachment = item.attachment;
+                          return (
+                            <article
+                              className={`album-photo-tile album-${item.category}`}
+                              key={item.id}
+                              style={
+                                {
+                                  "--aspect": albumTileAspect(item),
+                                  "--tile-index": (groupIndex * 7 + columnIndex * 3 + itemIndex) % 18,
+                                } as CSSProperties
+                              }
+                            >
+                              <button
+                                type="button"
+                                className="album-photo-thumb"
+                                onClick={() => {
+                                  if (!attachment?.url) return;
+                                  openPreviewAttachment(attachment, item);
+                                }}
+                                aria-label={`预览 ${item.title}`}
+                                disabled={!attachment?.url}
+                              >
+                                {attachment?.kind === "video" ? (
+                                  <AlbumVideoThumbnail
+                                    attachment={attachment}
+                                    title={item.title}
+                                    onRatio={(ratio) => recordAlbumRatio(attachment.id, ratio)}
+                                  />
+                                ) : attachment ? (
+                                  <img
+                                    src={attachmentListSrc(attachment)}
+                                    alt={item.title}
+                                    loading="lazy"
+                                    decoding="async"
+                                    onLoad={(event) => {
+                                      const el = event.currentTarget;
+                                      if (el.naturalWidth && el.naturalHeight)
+                                        recordAlbumRatio(attachment.id, el.naturalWidth / el.naturalHeight);
+                                    }}
+                                  />
+                                ) : (
+                                  <img src={albumCategoryIconSrc(item.category)} alt="" loading="lazy" decoding="async" />
+                                )}
+                              </button>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ))}
                   </div>
                 </section>
               ))}
