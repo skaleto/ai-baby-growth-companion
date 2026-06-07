@@ -108,6 +108,40 @@ try {
   };
   assert.equal(album.isVisibleAlbumMedia(hiddenScreenshotItem), false);
 
+  // --- masonry layout helpers ---
+  assert.equal(typeof album.clampTileRatio, "function", "clampTileRatio should be exported");
+  assert.equal(typeof album.attachmentAspectRatio, "function", "attachmentAspectRatio should be exported");
+  assert.equal(typeof album.distributeIntoColumns, "function", "distributeIntoColumns should be exported");
+
+  // clampTileRatio bounds extreme width/height ratios into [0.5, 1.8]
+  assert.equal(album.clampTileRatio(0.1), 0.5, "very tall ratio clamps to 0.5");
+  assert.equal(album.clampTileRatio(5), 1.8, "very wide ratio clamps to 1.8");
+  assert.equal(album.clampTileRatio(1), 1, "in-range ratio unchanged");
+
+  // attachmentAspectRatio: width/height when present, else fallback; always clamped
+  assert.equal(album.attachmentAspectRatio(imageAttachment({ width: 1000, height: 1000 })), 1);
+  assert.equal(album.attachmentAspectRatio(imageAttachment({ width: 900, height: 1200 })), 0.75, "portrait 3:4 → 0.75");
+  assert.equal(album.attachmentAspectRatio(imageAttachment({ width: 100, height: 1000 })), 0.5, "extreme tall clamps to 0.5");
+  assert.equal(album.attachmentAspectRatio(undefined, 1.2), 1.2, "missing attachment uses provided fallback");
+  assert.equal(album.attachmentAspectRatio(imageAttachment({ width: undefined, height: undefined })), 0.75, "missing dims use default 3:4");
+
+  // distributeIntoColumns: greedy shortest-column, order preserved within each column
+  const layoutItems = [
+    { id: "a", ratio: 1 }, // height contribution 1.0
+    { id: "b", ratio: 1 }, // 1.0
+    { id: "c", ratio: 0.5 }, // 2.0 (tall)
+    { id: "d", ratio: 1 }, // 1.0
+  ];
+  const cols = album.distributeIntoColumns(layoutItems, 2, (it) => it.ratio);
+  assert.equal(cols.length, 2, "two columns");
+  assert.deepEqual(cols[0].map((it) => it.id), ["a", "c"], "col0 greedy order");
+  assert.deepEqual(cols[1].map((it) => it.id), ["b", "d"], "col1 greedy order");
+  assert.deepEqual(cols.flat().map((it) => it.id).sort(), ["a", "b", "c", "d"], "no items lost");
+
+  const single = album.distributeIntoColumns([{ id: "x", ratio: 1 }], 2, () => 1);
+  assert.deepEqual(single[0].map((it) => it.id), ["x"], "single item goes to first column");
+  assert.deepEqual(single[1], [], "second column empty");
+
   console.log("album domain tests passed");
 } finally {
   await rm(tempDir, { recursive: true, force: true });

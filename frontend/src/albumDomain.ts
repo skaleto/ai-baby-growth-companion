@@ -123,6 +123,47 @@ export const mediaKindLabel = (attachment: Attachment) => (attachment.kind === "
 
 export const attachmentListSrc = (attachment: Attachment) => attachment.thumbnailUrl || attachment.url;
 
+// Album tile aspect ratios are expressed as width / height.
+// Clamp extremes so a panorama or a long screenshot can't produce a monster tile.
+export const ALBUM_TILE_MIN_RATIO = 0.5; // tallest allowed (portrait)
+export const ALBUM_TILE_MAX_RATIO = 1.8; // widest allowed (landscape)
+export const ALBUM_TILE_DEFAULT_RATIO = 3 / 4; // 0.75, used when dimensions are unknown
+
+export const clampTileRatio = (ratio: number) =>
+  Math.min(ALBUM_TILE_MAX_RATIO, Math.max(ALBUM_TILE_MIN_RATIO, ratio));
+
+export const attachmentAspectRatio = (
+  attachment: Attachment | undefined,
+  fallback: number = ALBUM_TILE_DEFAULT_RATIO,
+): number => {
+  const raw =
+    attachment?.width && attachment?.height ? attachment.width / attachment.height : fallback;
+  return clampTileRatio(raw);
+};
+
+// Distribute items (caller pre-sorts, e.g. newest first) into `columnCount` columns,
+// greedily appending each item to the currently shortest column. Order within each
+// column is preserved. Height contribution of an item is 1 / ratio (fixed column width).
+export const distributeIntoColumns = <T>(
+  items: T[],
+  columnCount: number,
+  ratioOf: (item: T) => number,
+): T[][] => {
+  const count = Math.max(1, columnCount);
+  const columns: T[][] = Array.from({ length: count }, () => []);
+  const heights = new Array<number>(count).fill(0);
+  items.forEach((item) => {
+    let target = 0;
+    for (let index = 1; index < heights.length; index += 1) {
+      if (heights[index] < heights[target]) target = index;
+    }
+    columns[target].push(item);
+    const ratio = ratioOf(item) || 1;
+    heights[target] += 1 / ratio;
+  });
+  return columns;
+};
+
 const compactDateLabel = (dateText?: string) => {
   const parsed = dateText ? new Date(dateText) : new Date();
   if (Number.isNaN(parsed.getTime())) return "";
