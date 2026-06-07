@@ -18,6 +18,11 @@ export function AlbumVideoThumbnail({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [canAutoplay] = useState(() => !prefersReducedMotion());
+  // The poster overlay stays on top of the <video> until the video has actually
+  // painted a real frame. Without it, the native poster is dismissed the moment
+  // play() is called but before the first frame decodes (preload="metadata" did
+  // not buffer frames), leaving a brief blank/white flash.
+  const [framesReady, setFramesReady] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -42,20 +47,37 @@ export function AlbumVideoThumbnail({
     return <Video size={24} />;
   }
 
+  const poster = attachment.thumbnailUrl;
+
   return (
-    <video
-      ref={videoRef}
-      src={attachment.url}
-      poster={attachment.thumbnailUrl}
-      muted
-      loop
-      playsInline
-      preload="metadata"
-      aria-label={title}
-      onLoadedMetadata={(event) => {
-        const el = event.currentTarget;
-        if (el.videoWidth && el.videoHeight) onRatio?.(el.videoWidth / el.videoHeight);
-      }}
-    />
+    <>
+      <video
+        ref={videoRef}
+        src={attachment.url}
+        poster={poster}
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        aria-label={title}
+        onTimeUpdate={(event) => {
+          if (event.currentTarget.currentTime > 0) setFramesReady(true);
+        }}
+        onLoadedMetadata={(event) => {
+          const el = event.currentTarget;
+          if (el.videoWidth && el.videoHeight) onRatio?.(el.videoWidth / el.videoHeight);
+        }}
+      />
+      {poster ? (
+        <img
+          className={`album-video-poster${framesReady ? " is-hidden" : ""}`}
+          src={poster}
+          alt={title}
+          loading="lazy"
+          decoding="async"
+          aria-hidden="true"
+        />
+      ) : null}
+    </>
   );
 }
