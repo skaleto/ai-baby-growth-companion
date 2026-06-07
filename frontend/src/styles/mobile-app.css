@@ -3519,7 +3519,7 @@ body.keyboard-open .expense-optional-fields {
 .album-photo-grid {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 4px;
 }
 
 .album-photo-column {
@@ -3527,7 +3527,7 @@ body.keyboard-open .expense-optional-fields {
   flex: 1 1 0;
   min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .album-photo-tile {
