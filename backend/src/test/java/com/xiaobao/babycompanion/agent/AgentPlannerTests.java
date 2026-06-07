@@ -17,7 +17,6 @@ class AgentPlannerTests {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AgentPlanner planner = new AgentPlanner(objectMapper);
-    private final RecordSignalExtractor extractor = new RecordSignalExtractor(objectMapper);
 
     @Test
     void buildRequestIncludesModelContextHarnessAndLocalClock() {
@@ -25,14 +24,10 @@ class AgentPlannerTests {
                 objectMapper,
                 Clock.fixed(Instant.parse("2026-06-05T16:21:00Z"), ZoneId.of("Asia/Shanghai"))
         );
-        RecordSignalExtractor midnightExtractor = new RecordSignalExtractor(
-                objectMapper,
-                Clock.fixed(Instant.parse("2026-06-05T16:21:00Z"), ZoneId.of("Asia/Shanghai"))
-        );
         AgentChatRequest request = new AgentChatRequest("十二点喝了100毫升奶粉", null, null, List.of(), List.of(), List.of(), List.of(), null, false);
 
         String prompt = midnightPlanner
-                .buildRequest("planner-test", request, List.of(), midnightExtractor.extract(request.message()), true)
+                .buildRequest("planner-test", request, List.of(), RecordSignals.empty(), true)
                 .messages()
                 .get(1)
                 .contentAsText();
@@ -51,14 +46,13 @@ class AgentPlannerTests {
     @Test
     void parsesPlannerJsonAndNormalizesFields() {
         AgentChatRequest request = new AgentChatRequest("今天8点喝奶120ml", null, null, List.of(), List.of(), List.of(), List.of(), null, false);
-        RecordSignals signals = extractor.extract(request.message());
 
         AgentPlan plan = planner.parse(
                 """
                         {"intent":"record","topics":["feeding"],"targetDates":["2026-05-01"],"contextNeeds":["profile","careHistory"],"toolRequests":[],"riskHints":["none"]}
                         """,
                 request,
-                signals
+                signals("feeding")
         );
 
         assertThat(plan.intent()).isEqualTo("record");
@@ -87,14 +81,13 @@ class AgentPlannerTests {
                 null,
                 false
         );
-        RecordSignals signals = extractor.extract(request.message());
 
         AgentPlan plan = planner.parse(
                 """
                         {"intent":"question","topics":["growth"],"targetDates":[],"contextNeeds":["profile"],"toolRequests":[],"riskHints":["none"],"mediaAction":{"intent":"save_to_album","targetScope":"previous","targetKind":"video","refHint":"刚才的视频","category":"growth","confidence":0.86,"reason":"用户要求保存上一条视频"}}
                         """,
                 request,
-                signals
+                signals("growth")
         );
 
         assertThat(plan.mediaAction()).isNotNull();
@@ -107,7 +100,7 @@ class AgentPlannerTests {
     void heuristicRequestsWebForPolicyQuestion() {
         AgentChatRequest request = new AgentChatRequest("查一下杭州新生儿疫苗政策", null, null, List.of(), List.of(), List.of(), List.of(), null, false);
 
-        AgentPlan plan = planner.heuristic(request, extractor.extract(request.message()));
+        AgentPlan plan = planner.heuristic(request, RecordSignals.empty());
 
         assertThat(plan.intent()).isIn("question", "record");
         assertThat(plan.toolRequests()).hasSize(1);
@@ -118,7 +111,7 @@ class AgentPlannerTests {
     void heuristicDoesNotRequestWebForExpenseImageRecognition() {
         AgentChatRequest request = expenseImageRequest("帮我识别这几张小票花费并记到账本");
 
-        AgentPlan plan = planner.heuristic(request, extractor.extract(request.message()));
+        AgentPlan plan = planner.heuristic(request, signals("expense"));
 
         assertThat(plan.intent()).isEqualTo("record");
         assertThat(plan.topics()).contains("expense");
@@ -129,14 +122,13 @@ class AgentPlannerTests {
     @Test
     void parseFiltersPlannerWebSearchForExpenseImageRecognition() {
         AgentChatRequest request = expenseImageRequest("帮我识别这几张小票花费并记到账本");
-        RecordSignals signals = extractor.extract(request.message());
 
         AgentPlan plan = planner.parse(
                 """
                         {"intent":"record","topics":["expense"],"targetDates":["2026-05-01"],"contextNeeds":["profile","web"],"toolRequests":[{"toolId":"web_search","query":"小票花费","reason":"查询价格"}],"riskHints":["none"]}
                         """,
                 request,
-                signals
+                signals("expense")
         );
 
         assertThat(plan.contextNeeds()).doesNotContain("web");
@@ -146,14 +138,13 @@ class AgentPlannerTests {
     @Test
     void parsesPlannerSelectedExpenseSkillForPreviousImageRetry() {
         AgentChatRequest request = previousImageRetryRequest("把刚才我上传的图片对应的花费再记录一下");
-        RecordSignals signals = extractor.extract(request.message());
 
         AgentPlan plan = planner.parse(
                 """
                         {"intent":"record","topics":["expense"],"targetDates":[],"contextNeeds":["profile","careHistory"],"toolRequests":[],"riskHints":["none"],"skillRequests":[{"skillId":"expense-recognition","mode":"execute","reason":"用户引用上一轮支出图片并要求入账"}]}
                         """,
                 request,
-                signals
+                signals("expense")
         );
 
         assertThat(plan.skillRequests()).hasSize(1);
@@ -166,7 +157,7 @@ class AgentPlannerTests {
     void heuristicFallbackCanRequestExpenseSkillForRecentImageRetryWithoutCurrentAttachments() {
         AgentChatRequest request = previousImageRetryRequest("把刚才我上传的图片对应的花费再记录一下");
 
-        AgentPlan plan = planner.heuristic(request, extractor.extract(request.message()));
+        AgentPlan plan = planner.heuristic(request, signals("expense"));
 
         assertThat(plan.skillRequests()).anySatisfy((entry) -> {
             assertThat(entry.skillId()).isEqualTo("expense-recognition");
@@ -208,5 +199,9 @@ class AgentPlannerTests {
                 null,
                 false
         );
+    }
+
+    private RecordSignals signals(String... topics) {
+        return new RecordSignals(List.of("2026-05-01"), List.of(topics), List.of(), null, false, false, List.of(), false);
     }
 }

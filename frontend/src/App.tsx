@@ -16,6 +16,7 @@ import {
   LineChart,
   Mic,
   Milk,
+  Moon,
   Music2,
   PartyPopper,
   PencilLine,
@@ -52,14 +53,15 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { compressConversationSummary, runAgentChatStream, type AgentStreamStatusType } from "./agentApi";
 import {
   ALBUM_CATEGORIES,
   albumCategoryFromTags,
   albumCategoryLabel,
+  albumDayLabel,
   albumItemFromDecision,
   albumItemFromStandaloneAttachment,
-  albumMonthLabel,
   albumPromptFromDecision,
   albumPromptFromEffectDecision,
   attachmentListSrc,
@@ -121,10 +123,10 @@ import {
   scheduleAlarmReminder,
   type NativeAlarmEvent,
 } from "./nativeAlarm";
+import { resolveMediaCaptureDate } from "./mediaCaptureDate";
 import { isNativeMediaPickerAvailable, isNativeMediaPickerCancel, pickNativeMediaFiles } from "./nativeMediaPicker";
 import { MOBILE_UPDATE_NOTICE_EVENT, type MobileUpdateNoticeDetail, type MobileUpdateNoticeTone } from "./mobileUpdates";
 import { useStoredState } from "./storage";
-import { summarizeCareLogEffect } from "./utils/careLogEffectSummary";
 import { useStableViewport } from "./hooks/useStableViewport";
 import {
   CARE_EVENT_TYPE_OPTIONS,
@@ -312,7 +314,7 @@ import {
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import { MilestonesView } from "./views/MilestonesView";
 import { GrowthEntryView } from "./views/GrowthEntryView";
-import { GROWTH_MILESTONES, type GrowthMilestone, milestoneIdFromTags, milestoneTag } from "./data/growthMilestones";
+import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
 import {
   careAlbumCategory,
   careAlbumTitle,
@@ -320,7 +322,6 @@ import {
   careEventTitleMap,
   careEventsForLog,
   inferCareEventType,
-  mergeCareLog,
   parseTimeSort,
   recordTimeLabel,
   soothingText,
@@ -338,7 +339,6 @@ import {
   reminderStatusLabel,
   reminderTimeText,
 } from "./utils/reminderLabels";
-import { monthsBetween } from "./utils/babyAge";
 
 const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
 
@@ -412,6 +412,17 @@ type CareEventDraft = {
   durationHours: string;
   temperature: string;
   note: string;
+};
+
+type RecordsEntryDrawer = "ai" | "manual" | null;
+
+type ManualRecordKind = Extract<CareLogEventType, "milk" | "sleep" | "poop" | "temperature" | "solid">;
+type ManualNumericDraftKey = "amountMl" | "durationHours" | "temperature";
+
+type ManualRecordTypeOption = {
+  type: ManualRecordKind;
+  label: string;
+  hint: string;
 };
 
 type ReminderDraft = {
@@ -523,6 +534,23 @@ type GrowthTrendMetric = {
   hasData: boolean;
 };
 
+type GrowthCurvePoint = {
+  id: string;
+  date: string;
+  label: string;
+  valueLabel: string;
+  x: number;
+  y: number;
+};
+
+type GrowthCurveData = {
+  points: GrowthCurvePoint[];
+  polyline: string;
+  minLabel: string;
+  maxLabel: string;
+  latestLabel: string;
+};
+
 type DailyCareSegment = {
   id: string;
   time?: string;
@@ -566,15 +594,6 @@ type WeeklyCareComparison = {
   hasData: boolean;
   milkAverageLabel: string;
   sleepAverageLabel: string;
-};
-
-type AutoRecordFeedback = {
-  id: string;
-  messageId: string;
-  label: string;
-  summary: string[];
-  destination: string;
-  date: string;
 };
 
 const extractCareEventsFromText = (text: string, date: string) =>
@@ -852,6 +871,64 @@ const formatGrowthMeasurementValue = (value: number, type: GrowthMeasurementType
   return `${value.toFixed(decimals).replace(/\.?0+$/, "")}${meta.unit}`;
 };
 
+const MANUAL_RECORD_TYPES: ManualRecordTypeOption[] = [
+  { type: "milk", label: "喂奶", hint: "奶量、亲喂或配方奶" },
+  { type: "sleep", label: "睡眠", hint: "睡了多久、醒来情况" },
+  { type: "poop", label: "便便尿布", hint: "便便、尿布状态" },
+  { type: "temperature", label: "体温", hint: "测量温度" },
+  { type: "solid", label: "辅食", hint: "辅食品类和接受度" },
+];
+
+const MANUAL_TIME_PRESETS = [
+  { label: "现在", offsetMinutes: 0 },
+  { label: "15 分钟前", offsetMinutes: 15 },
+  { label: "30 分钟前", offsetMinutes: 30 },
+  { label: "1 小时前", offsetMinutes: 60 },
+];
+
+const MANUAL_MILK_AMOUNTS = [60, 90, 120, 150, 180];
+const MANUAL_MILK_NOTES = ["母乳", "配方奶", "亲喂", "混合喂养"];
+const MANUAL_SLEEP_DURATIONS = [
+  { label: "20 分钟", value: "0.33" },
+  { label: "30 分钟", value: "0.5" },
+  { label: "45 分钟", value: "0.75" },
+  { label: "1 小时", value: "1" },
+  { label: "1.5 小时", value: "1.5" },
+  { label: "2 小时", value: "2" },
+];
+const MANUAL_TEMPERATURE_OPTIONS = [36.5, 36.8, 37.0, 37.3, 37.5, 38.0];
+const MANUAL_POOP_NOTES = ["尿布偏湿", "尿布很满", "黄色软便", "绿色便便", "干硬便便"];
+const MANUAL_SOLID_NOTES = ["米粉少量", "南瓜泥", "苹果泥", "胡萝卜泥", "接受度不错", "少量尝试"];
+
+const createCareEventDraft = (type: CareLogEventType = "milk"): CareEventDraft => ({
+  type,
+  time: currentClockText(),
+  amountMl: "",
+  durationHours: "",
+  temperature: "",
+  note: type === "poop" ? MANUAL_POOP_NOTES[0] : type === "solid" ? MANUAL_SOLID_NOTES[0] : "",
+});
+
+const timePresetValue = (offsetMinutes: number) => {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - offsetMinutes);
+  date.setSeconds(0, 0);
+  return localTimeKey(date);
+};
+
+const numericDraftText = (value: number, decimals = 0) =>
+  decimals > 0 ? value.toFixed(decimals).replace(/\.0$/, "") : String(Math.round(value));
+
+const sleepDurationText = (value: string) => {
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours <= 0) return "未选择";
+  const totalMinutes = Math.round(hours * 60);
+  if (totalMinutes < 60) return `${totalMinutes} 分钟`;
+  const hourPart = Math.floor(totalMinutes / 60);
+  const minutePart = totalMinutes % 60;
+  return minutePart ? `${hourPart} 小时 ${minutePart} 分钟` : `${hourPart} 小时`;
+};
+
 const buildGrowthTrendMetrics = (measurements: GrowthMeasurement[]): GrowthTrendMetric[] =>
   GROWTH_MEASUREMENT_TYPES.map((type) => {
     const meta = GROWTH_MEASUREMENT_META[type];
@@ -887,6 +964,56 @@ const buildGrowthTrendMetrics = (measurements: GrowthMeasurement[]): GrowthTrend
       hasData: true,
     };
   });
+
+const buildGrowthCurveData = (measurements: GrowthMeasurement[], type: GrowthMeasurementType): GrowthCurveData => {
+  const meta = GROWTH_MEASUREMENT_META[type];
+  const items = measurements
+    .filter((measurement) => measurement.type === type && Number.isFinite(measurement.value))
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(-8);
+
+  if (!items.length) {
+    return {
+      points: [],
+      polyline: "",
+      minLabel: `暂无${meta.label}`,
+      maxLabel: "记录后生成曲线",
+      latestLabel: "暂无记录",
+    };
+  }
+
+  const values = items.map((item) => item.value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
+  const left = 20;
+  const right = 284;
+  const top = 24;
+  const bottom = 118;
+  const width = right - left;
+  const height = bottom - top;
+  const points = items.map((item, index) => {
+    const x = items.length === 1 ? (left + right) / 2 : left + (width * index) / (items.length - 1);
+    const y = bottom - ((item.value - minValue) / range) * height;
+    return {
+      id: item.id,
+      date: item.date,
+      label: item.date === todayISO() ? "今天" : `${Number(item.date.slice(-2))}日`,
+      valueLabel: formatGrowthMeasurementValue(item.value, type),
+      x,
+      y,
+    };
+  });
+  const latest = items[items.length - 1];
+
+  return {
+    points,
+    polyline: points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "),
+    minLabel: formatGrowthMeasurementValue(minValue, type),
+    maxLabel: formatGrowthMeasurementValue(maxValue, type),
+    latestLabel: `${latest.date === todayISO() ? "今天" : formatDate(latest.date)} ${formatGrowthMeasurementValue(latest.value, type)}`,
+  };
+};
 
 const careEventValue = (event: CareLogEvent, kind: "milk" | "sleep") =>
   kind === "milk" ? positiveNumber(event.amountMl) : positiveNumber(event.durationHours);
@@ -1481,11 +1608,11 @@ const pendingDraftFromEffect = (effect: PendingEffect): PendingEffectDraft => ({
         notes: effect.careLogPatch.notes?.join("、") ?? "",
       }
     : undefined,
-  reminders: effect.reminders.map((reminder) => ({
+  reminders: (effect.reminders ?? []).map((reminder) => ({
     id: reminder.id,
     draft: reminderDraftFromReminder(reminder),
   })),
-  memories: effect.memories.map((memory) => ({
+  memories: (effect.memories ?? []).map((memory) => ({
     id: memory.id,
     text: memory.text,
   })),
@@ -1535,13 +1662,13 @@ const careLogPatchFromPendingDraft = (effect: PendingEffect, draft: PendingCareD
     : undefined;
 
 const remindersFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
-  effect.reminders.map((reminder) => {
+  (effect.reminders ?? []).map((reminder) => {
     const nextDraft = draft.reminders.find((item) => item.id === reminder.id)?.draft;
     return nextDraft ? reminderFromDraft(nextDraft, reminder) : reminder;
   });
 
 const memoriesFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
-  effect.memories.map((memory) => {
+  (effect.memories ?? []).map((memory) => {
     const nextDraft = draft.memories.find((item) => item.id === memory.id);
     return nextDraft ? { ...memory, text: nextDraft.text.trim() || memory.text } : memory;
   });
@@ -1761,50 +1888,12 @@ const normalizeSafetyAlerts = (alerts: SafetyAlert[] | null | undefined): Safety
     })
     .slice(0, 3);
 
-const careLogPatchFromDecision = (decision: EffectDecision, parentText: string): Partial<CareLog> | undefined => {
-  if (decision.type !== "careLog" || !decision.payload || typeof decision.payload !== "object") return undefined;
-  const raw = decision.payload as Partial<CareLog>;
-  if (!hasCareLogContent(raw)) return undefined;
-  const date = raw.date ?? todayISO();
-  const modelEvents = (raw.events ?? []).map((item, index) => ({
-    ...normalizeCareLogEvent(item, index, date),
-    id: item.id || makeId("care-event"),
-  }));
-  const inferredEvents = extractCareEventsFromText(parentText, date);
-  return {
-    ...raw,
-    date,
-    soothing: normalizeSoothing(raw.soothing),
-    solids: raw.solids ?? [],
-    events: mergeCareEventsWithInferred(modelEvents, inferredEvents),
-    notes: raw.notes?.length ? raw.notes : [parentText],
-  };
-};
-
-const decisionSummary = (decision: EffectDecision) => {
-  if (decision.type === "careLog") return "照护日志";
-  if (decision.type === "reminder") return "提醒";
-  if (decision.type === "growthEvent") return "成长事件";
-  if (decision.type === "expenseItem") return "账本支出";
-  return "长期记忆";
-};
-
-const hasPendingEffectContent = (effect: Pick<PendingEffect, "growthEvent" | "growthMeasurements" | "careLogPatch" | "reminders" | "memories" | "expenses">) =>
-  Boolean(
-    effect.growthEvent ||
-      (effect.growthMeasurements?.length ?? 0) > 0 ||
-      (effect.careLogPatch && hasCareLogContent(effect.careLogPatch)) ||
-      effect.reminders.length ||
-      effect.memories.length ||
-      (effect.expenses?.length ?? 0) > 0,
-  );
-
 const pendingEffectSummary = (effect: PendingEffect) => [
   effect.growthEvent ? `成长：${effect.growthEvent.title}` : "",
   effect.growthMeasurements?.length ? `成长数据 ${effect.growthMeasurements.length} 条` : "",
   effect.careLogPatch && hasCareLogContent(effect.careLogPatch) ? "照护日志" : "",
-  effect.reminders.length ? `提醒 ${effect.reminders.length} 条` : "",
-  effect.memories.length ? `记忆 ${effect.memories.length} 条` : "",
+  effect.reminders?.length ? `提醒 ${effect.reminders.length} 条` : "",
+  effect.memories?.length ? `记忆 ${effect.memories.length} 条` : "",
   effect.expenses?.length ? `支出 ${effect.expenses.length} 笔` : "",
 ].filter(Boolean);
 
@@ -2171,8 +2260,11 @@ function App() {
   const [onboardingFamilyName, setOnboardingFamilyName] = useState(suggestedFamilyName(initialProfile.nickname));
   const onboardingFamilyNameTouchedRef = useRef(false);
   const [onboardingAllergiesText, setOnboardingAllergiesText] = useState("暂未发现");
-  const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("chat");
+  const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("records");
   const [recordView, setRecordView] = useState<RecordView>("today");
+  const [recordsEntryDrawer, setRecordsEntryDrawer] = useState<RecordsEntryDrawer>(null);
+  const [recordsEntryDrawerClosing, setRecordsEntryDrawerClosing] = useState(false);
+  const [recordsAssistantOpen, setRecordsAssistantOpen] = useState(false);
   const [ledgerView, setLedgerView] = useState<LedgerViewId>("month");
   const [expenseEditorOpen, setExpenseEditorOpen] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState("");
@@ -2221,28 +2313,12 @@ function App() {
   const [editingPendingId, setEditingPendingId] = useState("");
   const [pendingDraft, setPendingDraft] = useState<PendingEffectDraft | null>(null);
   const [confirmingPendingEffectIds, setConfirmingPendingEffectIds] = useState<string[]>([]);
-  const [autoRecordFeedbacks, setAutoRecordFeedbacks] = useState<AutoRecordFeedback[]>([]);
-  const [isCareLogEditing, setIsCareLogEditing] = useState(false);
-  const [careLogDraft, setCareLogDraft] = useState({
-    milkMl: "",
-    milkTimes: "",
-    sleepHours: "",
-    wakes: "",
-    soothing: "",
-    solids: "",
-    poop: "",
-    temperature: "",
-    notes: "",
-  });
+  const [manualRecordKind, setManualRecordKind] = useState<ManualRecordKind>("milk");
   const [editingCareEventId, setEditingCareEventId] = useState("");
-  const [careEventDraft, setCareEventDraft] = useState<CareEventDraft>({
-    type: "milk",
-    time: "",
-    amountMl: "",
-    durationHours: "",
-    temperature: "",
-    note: "",
-  });
+  const [swipedTimelineEventId, setSwipedTimelineEventId] = useState("");
+  const [deleteCareEventTarget, setDeleteCareEventTarget] = useState<RecordEvent | null>(null);
+  const [careEventDraft, setCareEventDraft] = useState<CareEventDraft>(() => createCareEventDraft("milk"));
+  const [growthCurveType, setGrowthCurveType] = useState<GrowthMeasurementType>("height");
   const [growthMeasurementDraft, setGrowthMeasurementDraft] = useState<{
     type: GrowthMeasurementType;
     value: string;
@@ -2289,6 +2365,8 @@ function App() {
   const voicePointerCleanupRef = useRef<(() => void) | null>(null);
   const voiceAutoSubmitTimerRef = useRef<number | null>(null);
   const inputValueRef = useRef(input);
+  const recordsEntryDrawerCloseTimerRef = useRef<number | null>(null);
+  const timelineSwipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const isSubmittingRef = useRef(isSubmitting);
   const submitComposerMessageRef = useRef<((textOverride?: string, options?: { skipVoiceStop?: boolean }) => Promise<void>) | null>(null);
   const hasPositionedMessageListRef = useRef(false);
@@ -2355,7 +2433,7 @@ function App() {
     window.setTimeout(alignTarget, 240);
   }, []);
   const canCaregive = authMember?.caregiver ?? true;
-  const visibleTabs = canCaregive ? MOBILE_TABS : MOBILE_TABS.filter((tab) => tab.id !== "chat");
+  const visibleTabs = MOBILE_TABS;
   const canAttachVisuals = canCaregive && proTrial.enabled;
   const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
   const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
@@ -2387,13 +2465,14 @@ function App() {
   const visualToolGated = !proTrial.enabled;
   const visualToolDisabled = !canCaregive || isSubmitting || isUploadingChatMedia;
   const visualToolClassName = visualToolGated ? "visual-tool-gated" : "";
+  const canUseComposerInput = !isSubmitting || recordsEntryDrawer === "ai";
   const proApplicationPending = proTrial.application?.status === "pending";
   const proStatusText = proTrial.enabled ? "Pro 内测已开通" : proApplicationPending ? "Pro 内测申请中" : "可申请 Pro 内测";
   const aiUsageTopFeatures = Array.isArray(aiUsageSummary?.byFeature) ? aiUsageSummary.byFeature.slice(0, 3) : [];
   const aiUsageTopModel = Array.isArray(aiUsageSummary?.byModel) ? aiUsageSummary.byModel[0] : undefined;
   const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget) || bulkDeleteExpensesOpen;
   const reminderModalOpen = reminderEditorOpen || Boolean(completeReminderTarget) || Boolean(postponeReminderTarget) || Boolean(deleteReminderTarget);
-  const appModalOpen = Boolean(deleteExpenseTarget) || bulkDeleteExpensesOpen;
+  const appModalOpen = Boolean(recordsEntryDrawer) || Boolean(deleteCareEventTarget) || Boolean(deleteExpenseTarget) || bulkDeleteExpensesOpen;
   const loginRoleOptions = useMemo(
     () =>
       ROLE_SELECT_OPTIONS.map((option) => {
@@ -2413,6 +2492,7 @@ function App() {
     if (tab === "album" && activeMobileTab !== "album") {
       setAlbumAnimationSeed((seed) => seed + 1);
     }
+    setRecordsAssistantOpen(false);
     if (tab !== "profile") {
       setReminderManagementOpen(false);
     }
@@ -2893,12 +2973,12 @@ function App() {
   const albumGroups = useMemo(() => {
     const groups = new Map<string, AlbumItem[]>();
     filteredAlbumItems.forEach((item) => {
-      const key = (item.occurredAt ?? item.date).slice(0, 7) || "unknown";
+      const key = (item.occurredAt ?? item.date).slice(0, 10) || "unknown";
       groups.set(key, [...(groups.get(key) ?? []), item]);
     });
     return Array.from(groups.entries()).map(([key, items]) => ({
       key,
-      label: albumMonthLabel(key),
+      label: albumDayLabel(key),
       items,
     }));
   }, [filteredAlbumItems]);
@@ -2978,12 +3058,24 @@ function App() {
     document.body.classList.toggle("app-modal-open", appModalOpen);
     document.body.classList.toggle("ledger-modal-open", ledgerModalOpen);
     document.body.classList.toggle("reminder-modal-open", reminderModalOpen);
+    document.body.classList.toggle("records-drawer-open", Boolean(recordsEntryDrawer));
     return () => {
       document.body.classList.remove("app-modal-open");
       document.body.classList.remove("ledger-modal-open");
       document.body.classList.remove("reminder-modal-open");
+      document.body.classList.remove("records-drawer-open");
     };
-  }, [appModalOpen, ledgerModalOpen, reminderModalOpen]);
+  }, [appModalOpen, ledgerModalOpen, recordsEntryDrawer, reminderModalOpen]);
+
+  useEffect(
+    () => () => {
+      if (recordsEntryDrawerCloseTimerRef.current !== null) {
+        window.clearTimeout(recordsEntryDrawerCloseTimerRef.current);
+        recordsEntryDrawerCloseTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     previewAlbumItemRef.current = previewAlbumItem;
@@ -3115,6 +3207,7 @@ function App() {
   const selectedDateIsToday = selectedDate === todayDate;
   const recordHeading = (() => {
     if (recordView === "trend") return "近 7 天对比";
+    if (recordView === "growth") return "成长记录";
     if (recordView === "calendar") {
       const month = (selectedDate || todayDate).slice(0, 7);
       const [year, m] = month.split("-");
@@ -3137,14 +3230,10 @@ function App() {
   const weeklyCareComparison = useMemo(() => buildWeeklyCareComparison(careLogs, selectedDate), [careLogs, selectedDate]);
   const dailyCareBreakdowns = useMemo(() => buildDailyCareBreakdowns(selectedCareLog), [selectedCareLog]);
   const growthTrendMetrics = useMemo(() => buildGrowthTrendMetrics(growthMeasurements), [growthMeasurements]);
-  const milestoneStats = useMemo(() => {
-    const achievedIds = new Set(growthEvents.map((event) => milestoneIdFromTags(event.tags)).filter(Boolean));
-    const ageMonths = monthsBetween(profile.birthDate);
-    const current = GROWTH_MILESTONES.filter((milestone) =>
-      ageMonths === null || (ageMonths >= milestone.ageMonthMin && ageMonths <= milestone.ageMonthMax),
-    ).length;
-    return { achieved: achievedIds.size, current, total: GROWTH_MILESTONES.length };
-  }, [growthEvents, profile.birthDate]);
+  const growthCurveData = useMemo(
+    () => buildGrowthCurveData(growthMeasurements, growthCurveType),
+    [growthMeasurements, growthCurveType],
+  );
   const buildAgentPageContext = () => ({
     activeTab: activeMobileTab,
     selectedDate,
@@ -3166,7 +3255,7 @@ function App() {
     pendingEffectSummaries: pendingEffects.slice(0, 6).map((effect) => ({
       id: effect.id,
       createdAt: effect.createdAt,
-      tags: effect.tags,
+      tags: effect.tags ?? [],
       summary: pendingEffectSummary(effect),
     })),
   });
@@ -3383,9 +3472,6 @@ function App() {
     backendReadyRef.current = true;
     setStorageStatus("ready");
   };
-
-  const isAppStateResponse = (value: unknown): value is AppStateResponse =>
-    Boolean(value && typeof value === "object" && "state" in value);
 
   const persistRecord = async <T,>(
     collection: AppStateCollection,
@@ -3630,6 +3716,7 @@ function App() {
       width: attachment.width,
       height: attachment.height,
       createdAt: attachment.createdAt,
+      capturedAt: attachment.capturedAt,
     };
   };
 
@@ -3710,7 +3797,7 @@ function App() {
 
   useLayoutEffect(() => {
     const list = messageListRef.current;
-    if (!list || activeMobileTab !== "chat") return;
+    if (!list || activeMobileTab !== "records" || !recordsAssistantOpen) return;
 
     const lastMessage = messages[messages.length - 1];
     const signature = [
@@ -3732,13 +3819,7 @@ function App() {
       list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
     }
     hasPositionedMessageListRef.current = true;
-  }, [messages, isSubmitting, activeMobileTab]);
-
-  useEffect(() => {
-    if (!canCaregive && activeMobileTab === "chat") {
-      setActiveMobileTab("records");
-    }
-  }, [activeMobileTab, canCaregive]);
+  }, [messages, isSubmitting, activeMobileTab, recordsAssistantOpen]);
 
   useEffect(() => {
     if (canAttachVisuals) return;
@@ -3787,21 +3868,6 @@ function App() {
     setProfileDraft(profile);
     setAllergiesText(profile.allergies.join("、"));
   }, [profile]);
-
-  useEffect(() => {
-    setCareLogDraft({
-      milkMl: selectedCareLog?.milkMl ? String(selectedCareLog.milkMl) : "",
-      milkTimes: selectedCareLog?.milkTimes ? String(selectedCareLog.milkTimes) : "",
-      sleepHours: selectedCareLog?.sleepHours ? String(selectedCareLog.sleepHours) : "",
-      wakes: selectedCareLog?.wakes ? String(selectedCareLog.wakes) : "",
-      soothing: selectedCareLog?.soothing ?? "",
-      solids: selectedCareLog?.solids?.join("、") ?? "",
-      poop: selectedCareLog?.poop ?? "",
-      temperature: selectedCareLog?.temperature ? String(selectedCareLog.temperature) : "",
-      notes: selectedCareLog?.notes?.join("、") ?? "",
-    });
-    setIsCareLogEditing(false);
-  }, [selectedCareLog?.id, selectedDate]);
 
   const readImageDimensionsFromFile = (file: File): Promise<Pick<Attachment, "width" | "height">> =>
     new Promise((resolve) => {
@@ -3928,6 +3994,7 @@ function App() {
       onProgress: (progress) => updateMediaUploadItem(id, { status: "uploading", progress: Math.max(1, Math.min(99, progress)), message: `上传 ${progress}%` }),
     });
     updateMediaUploadItem(id, { status: "processing", progress: 100, message: "整理中" });
+    const capturedAt = await resolveMediaCaptureDate(file, uploaded.createdAt);
     const attachment: Attachment = {
       id: uploaded.id,
       name: uploaded.name,
@@ -3941,6 +4008,7 @@ function App() {
       width: dimensions?.width,
       height: dimensions?.height,
       createdAt: uploaded.createdAt,
+      capturedAt,
     };
     return attachment;
   };
@@ -4475,7 +4543,7 @@ function App() {
   };
 
   const startVoicePress = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (isSubmitting || voicePointerRef.current) return;
+    if (!canUseComposerInput || voicePointerRef.current) return;
     event.preventDefault();
     const button = event.currentTarget;
     const pointerId = event.pointerId;
@@ -4556,7 +4624,7 @@ function App() {
   );
 
   const toggleComposerMode = () => {
-    if (!canCaregive || isSubmitting) return;
+    if (!canCaregive || !canUseComposerInput) return;
     if (composerMode === "voice") {
       stopVoiceCapture(false, false);
       stopVoiceStandbyStream();
@@ -4724,13 +4792,14 @@ function App() {
         ignoredScreenshotDecision && !/不会保存到.*相册|不.*保存.*相册/.test(result.aiText)
           ? `${result.aiText}\n\n这看起来是 App、网页或聊天截图，不会保存到成长相册。`
           : result.aiText;
-      const hasServerDecisions = result.effectDecisions.length > 0;
+      const serverAlbumDecisions = result.effectDecisions.filter((decision) => decision.type === "albumItem");
+      const hasServerDecisions = serverAlbumDecisions.length > 0;
       let albumEffectMissingTarget = false;
 
       if (hasServerDecisions) {
         const albumEffectCandidates = [...messages, parentMessage];
-        result.effectDecisions.forEach((decision) => {
-          if (decision.type !== "albumItem" || decision.mode === "ignore") return;
+        serverAlbumDecisions.forEach((decision) => {
+          if (decision.mode === "ignore") return;
           const target = resolveAlbumEffectTarget(decision, albumEffectCandidates);
           if (!target) {
             albumEffectMissingTarget = true;
@@ -4768,142 +4837,19 @@ function App() {
         albumPrompts,
       };
 
-      let pendingGrowthEvent: GrowthEvent | undefined = hasServerDecisions ? undefined : result.growthEvent;
-      let pendingGrowthMeasurements: GrowthMeasurement[] = [];
-      let pendingCareLogPatch: Partial<CareLog> | undefined = hasServerDecisions ? undefined : result.careLogPatch;
-      let pendingReminders: Reminder[] = hasServerDecisions ? [] : result.reminders;
-      let pendingMemories: MemoryItem[] = hasServerDecisions ? [] : result.memories;
-      let pendingExpenses: ExpenseItem[] = [];
-      const autoCareLogPatches: Partial<CareLog>[] = [];
-      let autoReminderCandidates: Reminder[] = [];
-      let autoSavedExpenses: ExpenseItem[] = [];
-
-      if (hasServerDecisions) {
-        result.effectDecisions.forEach((decision, index) => {
-          if (decision.mode === "ignore") return;
-          if (decision.type === "careLog") {
-            const patch = careLogPatchFromDecision(decision, parentMessage.text);
-            if (!patch) return;
-            if (decision.mode === "auto") autoCareLogPatches.push(patch);
-            else pendingCareLogPatch = patch;
-            return;
-          }
-          if (!decision.payload || typeof decision.payload !== "object") return;
-          if (decision.type === "growthEvent") {
-            const growth = normalizeGrowthEvent(decision.payload as Partial<GrowthEvent>, index);
-            if (decision.mode === "pending") pendingGrowthEvent = growth;
-          }
-          if (decision.type === "growthMeasurement") {
-            const measurement = normalizeGrowthMeasurement(decision.payload as Partial<GrowthMeasurement>, index);
-            if (decision.mode === "pending") pendingGrowthMeasurements = [...pendingGrowthMeasurements, measurement];
-          }
-          if (decision.type === "reminder") {
-            const reminder = normalizeReminder(decision.payload as Partial<Reminder>, index);
-            if (decision.mode === "auto") autoReminderCandidates = [...autoReminderCandidates, reminder];
-            if (decision.mode === "pending") pendingReminders = [...pendingReminders, reminder];
-          }
-          if (decision.type === "memory") {
-            const memory = normalizeMemoryItem(decision.payload as Partial<MemoryItem>, index);
-            if (decision.mode === "pending") pendingMemories = [...pendingMemories, memory];
-          }
-          if (decision.type === "expenseItem") {
-            const expense = normalizeExpenseItem(decision.payload as Partial<ExpenseItem>, index);
-            if (decision.mode === "auto") autoSavedExpenses = [...autoSavedExpenses, expense];
-            if (decision.mode === "pending") pendingExpenses = [...pendingExpenses, expense];
-          }
-        });
-      } else if (isAutoRecordableCareLog(result.careLogPatch, result.safetyAlerts) && result.careLogPatch) {
-        autoCareLogPatches.push(result.careLogPatch);
-        pendingCareLogPatch = undefined;
-      }
-
-      const autoRecordedCareLogs: CareLog[] = [];
-      const autoRecordedCareLogPatches: Array<{ id: string; patch: Partial<CareLog> }> = [];
-      const autoFeedbacks: AutoRecordFeedback[] = [];
-      if (autoCareLogPatches.length) {
-        let nextLogs = careLogs;
-        autoCareLogPatches.forEach((patch) => {
-          const targetDate = patch.date ?? todayISO();
-          nextLogs = mergeCareLog(nextLogs, patch);
-          const nextLog = nextLogs.find((item) => item.date === targetDate);
-          if (nextLog) {
-            autoRecordedCareLogs.push(nextLog);
-            autoRecordedCareLogPatches.push({ id: nextLog.id, patch: { ...patch, id: nextLog.id, date: targetDate } });
-            autoFeedbacks.push({
-              id: makeId("auto-feedback"),
-              messageId: aiMessage.id,
-              label: decisionSummary({ id: "", mode: "auto", type: "careLog", payload: patch }),
-              summary: summarizeCareLogEffect(patch),
-              destination: "会放进今天的观察里",
-              date: targetDate,
-            });
-          }
-        });
-        setCareLogs(nextLogs);
-        setAutoRecordFeedbacks((current) => [...autoFeedbacks, ...current]);
-      }
-      const autoScheduledReminders = autoReminderCandidates.length
-        ? await scheduleNativeReminders(autoReminderCandidates, { careLogs })
-        : [];
-      if (autoScheduledReminders.length) {
-        setReminders((current) => {
-          const byId = new Map(current.map((reminder) => [reminder.id, reminder]));
-          autoScheduledReminders.forEach((reminder) => byId.set(reminder.id, reminder));
-          return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
-        });
-      }
-      if (autoSavedExpenses.length) {
-        setExpenses((current) => {
-          const byId = new Map(current.map((expense) => [expense.id, expense]));
-          autoSavedExpenses.forEach((expense) => byId.set(expense.id, expense));
-          return Array.from(byId.values()).sort((left, right) => left.date.localeCompare(right.date) || left.createdAt.localeCompare(right.createdAt));
-        });
-      }
-      if (autoFeedbacks.length || autoScheduledReminders.length || autoSavedExpenses.length) hapticSuccess();
       setMessages((current) =>
         current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
       );
-      const pendingEffect: PendingEffect = {
-        id: makeId("effect"),
-        messageId: aiMessage.id,
-        createdAt: new Date().toISOString(),
-        status: "pending",
-        tags: result.tags,
-        growthEvent: pendingGrowthEvent,
-        growthMeasurements: pendingGrowthMeasurements,
-        careLogPatch: pendingCareLogPatch,
-        reminders: pendingReminders,
-        memories: pendingMemories,
-        expenses: pendingExpenses,
-        safetyAlerts: result.safetyAlerts,
-      };
       const persistenceTasks: Array<() => Promise<unknown>> = [
         () => persistRecord("messages", parentMessage.id, messageForStorage(parentMessage)),
         () => persistRecord("messages", aiMessage.id, messageForStorage(aiMessage)),
       ];
-      if (autoRecordedCareLogPatches.length) {
-        autoRecordedCareLogPatches.forEach(({ id, patch }) => {
-          persistenceTasks.push(() => persistRecord("careLogs", id, patch));
-        });
-      }
-      if (autoScheduledReminders.length) {
-        autoScheduledReminders.forEach((reminder) => {
-          persistenceTasks.push(() => persistRecord("reminders", reminder.id, reminder));
-        });
-      }
-      if (hasPendingEffectContent(pendingEffect)) {
-        setPendingEffects((current) => [pendingEffect, ...current]);
-        persistenceTasks.push(() => persistRecord("pendingEffects", pendingEffect.id, pendingEffect));
-      }
       try {
-        let lastStateResponse: AppStateResponse | undefined;
         for (const task of persistenceTasks) {
-          const response = await task();
-          if (isAppStateResponse(response)) lastStateResponse = response;
+          await task();
         }
-        if (autoRecordedCareLogs.length && lastStateResponse) {
-          applyStateResponse(lastStateResponse);
-        }
+        const refreshedState = await readAppState();
+        applyStateResponse(refreshedState);
         void runConversationCompression();
       } catch {
         // Local state stays usable; the status chip tells the parent that the backend sync needs attention.
@@ -4952,6 +4898,47 @@ function App() {
     if (!canCaregive) return;
     setEditingReminderId("");
     setReminderDraft(createReminderDraft());
+    setReminderEditorOpen(true);
+  };
+
+  const openReminderQuickDraft = (action: (typeof REMINDER_QUICK_ACTIONS)[number]) => {
+    if (!canCaregive) return;
+    const draft = createReminderDraft();
+    const nextDraft: ReminderDraft = {
+      ...draft,
+      title: withBabyNickname(action.prompt)
+        .replace(/提醒我|帮我设置一个|：/g, "")
+        .trim()
+        .slice(0, 24) || action.label,
+    };
+    if (action.label === "疫苗") {
+      nextDraft.title = `带${babyNickname}去社区医院打疫苗`;
+      nextDraft.category = "vaccine";
+    } else if (action.label === "体检") {
+      nextDraft.title = `带${babyNickname}去做体检`;
+      nextDraft.category = "routine";
+    } else if (action.label === "洗澡") {
+      nextDraft.title = `给${babyNickname}洗澡`;
+      nextDraft.category = "care";
+      nextDraft.dueTime = "20:00";
+    } else if (action.label === "喂奶闹钟") {
+      nextDraft.title = "喂奶提醒";
+      nextDraft.category = "care";
+      nextDraft.scheduleMode = "interval";
+      nextDraft.alertMode = "ringing";
+      nextDraft.intervalMinutes = "180";
+    } else if (action.label === "喂药") {
+      nextDraft.title = `给${babyNickname}喂药`;
+      nextDraft.category = "care";
+    } else if (action.label === "复诊") {
+      nextDraft.title = `带${babyNickname}去复诊`;
+      nextDraft.category = "routine";
+    } else if (action.label === "自定义") {
+      nextDraft.title = "";
+      nextDraft.category = "custom";
+    }
+    setEditingReminderId("");
+    setReminderDraft(nextDraft);
     setReminderEditorOpen(true);
   };
 
@@ -5255,10 +5242,15 @@ function App() {
 
   const openMilestones = useCallback(() => {
     setActiveMobileTab("records");
+    setRecordsAssistantOpen(false);
     setMilestonesViewOpen(true);
   }, []);
   const closeMilestones = useCallback(() => setMilestonesViewOpen(false), []);
-  const openGrowthEntry = useCallback(() => setGrowthEntryOpen(true), []);
+  const openGrowthEntry = useCallback(() => {
+    setRecordsEntryDrawer(null);
+    setRecordsAssistantOpen(false);
+    setGrowthEntryOpen(true);
+  }, []);
   const openReminderManagement = useCallback(() => {
     setActiveMobileTab("profile");
     setReminderManagementOpen(true);
@@ -5468,8 +5460,9 @@ function App() {
     try {
       const response = await confirmPendingEffectOnServer(effect.id);
       applyAppSnapshot(response.state);
-      if (effect.reminders.length) {
-        const scheduledReminders = await scheduleNativeReminders(effect.reminders, { careLogs });
+      const reminders = effect.reminders ?? [];
+      if (reminders.length) {
+        const scheduledReminders = await scheduleNativeReminders(reminders, { careLogs });
         for (const reminder of scheduledReminders) {
           await persistRecord("reminders", reminder.id, reminder, { applyResponse: true });
         }
@@ -5586,29 +5579,118 @@ function App() {
     );
   };
 
-  const saveCareLogDraft = (event: FormEvent) => {
+  const selectManualRecordKind = (type: ManualRecordKind) => {
+    setManualRecordKind(type);
+    setCareEventDraft(createCareEventDraft(type));
+  };
+
+  const clearRecordsEntryDrawerCloseTimer = () => {
+    if (recordsEntryDrawerCloseTimerRef.current === null) return;
+    window.clearTimeout(recordsEntryDrawerCloseTimerRef.current);
+    recordsEntryDrawerCloseTimerRef.current = null;
+  };
+
+  const closeRecordsEntryDrawer = () => {
+    if (!recordsEntryDrawer) return;
+    if (recordsEntryDrawerClosing) return;
+    if (voiceRecordingActive) cancelVoiceCapture();
+    setRecordsEntryDrawerClosing(true);
+    clearRecordsEntryDrawerCloseTimer();
+    recordsEntryDrawerCloseTimerRef.current = window.setTimeout(() => {
+      setRecordsEntryDrawer(null);
+      setRecordsEntryDrawerClosing(false);
+      setRecordsAssistantOpen(false);
+      recordsEntryDrawerCloseTimerRef.current = null;
+    }, 220);
+  };
+
+  const openManualRecordDrawer = () => {
+    if (!canCaregive) return;
+    clearRecordsEntryDrawerCloseTimer();
+    setRecordsEntryDrawerClosing(false);
+    setRecordsAssistantOpen(false);
+    setRecordsEntryDrawer("manual");
+    setActiveMobileTab("records");
+    setCareEventDraft(createCareEventDraft(manualRecordKind));
+  };
+
+  const updateManualCareDraft = (patch: Partial<CareEventDraft>) => {
+    setCareEventDraft((current) => ({ ...current, ...patch }));
+  };
+
+  const adjustManualNumericDraft = (
+    field: ManualNumericDraftKey,
+    delta: number,
+    fallback: number,
+    min: number,
+    max: number,
+    decimals = 0,
+  ) => {
+    const currentValue = Number(careEventDraft[field]);
+    const baseValue = Number.isFinite(currentValue) && currentValue > 0 ? currentValue : fallback;
+    const nextValue = Math.min(max, Math.max(min, baseValue + delta));
+    updateManualCareDraft({ [field]: numericDraftText(nextValue, decimals) });
+  };
+
+  const saveManualCareEvent = (event: FormEvent) => {
     event.preventDefault();
     if (!canCaregive) return;
-    const patch: Partial<CareLog> = {
-      id: selectedCareLog?.id ?? makeId("care"),
-      date: selectedDate,
-      milkMl: careLogDraft.milkMl ? Number(careLogDraft.milkMl) : undefined,
-      milkTimes: careLogDraft.milkTimes ? Number(careLogDraft.milkTimes) : undefined,
-      sleepHours: careLogDraft.sleepHours ? Number(careLogDraft.sleepHours) : undefined,
-      wakes: careLogDraft.wakes ? Number(careLogDraft.wakes) : undefined,
-      soothing: careLogDraft.soothing ? (careLogDraft.soothing as CareLog["soothing"]) : undefined,
-      solids: splitListText(careLogDraft.solids),
-      poop: careLogDraft.poop.trim() || undefined,
-      temperature: careLogDraft.temperature ? Number(careLogDraft.temperature) : undefined,
-      notes: splitListText(careLogDraft.notes),
-    };
-    const nextLogs = mergeCareLog(careLogs, patch);
-    const nextLog = nextLogs.find((item) => item.date === selectedDate);
-    setCareLogs(nextLogs);
-    if (nextLog) {
-      void persistRecord("careLogs", nextLog.id, nextLog, { applyResponse: true, mode: "replace" }).catch(() => undefined);
+    const note = careEventDraft.note.trim();
+    const amountMl = manualRecordKind === "milk" && careEventDraft.amountMl ? Number(careEventDraft.amountMl) : undefined;
+    const durationHours = manualRecordKind === "sleep" && careEventDraft.durationHours ? Number(careEventDraft.durationHours) : undefined;
+    const temperature = manualRecordKind === "temperature" && careEventDraft.temperature ? Number(careEventDraft.temperature) : undefined;
+
+    if (manualRecordKind === "milk" && (typeof amountMl !== "number" || !Number.isFinite(amountMl) || amountMl <= 0)) {
+      showSystemWeakNotice("请输入这次喂奶的奶量。", "warning");
+      return;
     }
-    setIsCareLogEditing(false);
+    if (manualRecordKind === "sleep" && (typeof durationHours !== "number" || !Number.isFinite(durationHours) || durationHours <= 0)) {
+      showSystemWeakNotice("请输入这段睡眠的时长。", "warning");
+      return;
+    }
+    if (
+      manualRecordKind === "temperature" &&
+      (typeof temperature !== "number" || !Number.isFinite(temperature) || temperature < 34 || temperature > 42)
+    ) {
+      showSystemWeakNotice("请输入 34-42°C 之间的体温。", "warning");
+      return;
+    }
+    if ((manualRecordKind === "poop" || manualRecordKind === "solid") && !note) {
+      showSystemWeakNotice("请选择这次记录的状态。", "warning");
+      return;
+    }
+
+    const baseLog = selectedCareLog ?? normalizeCareLog({ id: makeId("care"), date: selectedDate, solids: [], notes: [], events: [] }, 0);
+    const nextCareEvent = normalizeCareLogEvent(
+      {
+        id: makeId("care-event"),
+        type: manualRecordKind,
+        date: selectedDate,
+        time: careEventDraft.time || currentClockText(),
+        title: canonicalCareEventTitle(manualRecordKind),
+        amountMl,
+        durationHours,
+        temperature,
+        note: note || undefined,
+      },
+      (baseLog.events ?? []).length,
+      selectedDate,
+    );
+    const nextLog = careLogWithEventStats({
+      ...baseLog,
+      events: [...(baseLog.events ?? []), nextCareEvent],
+    });
+
+    setCareLogs((current) => {
+      const hasExistingLog = current.some((item) => item.id === nextLog.id);
+      return hasExistingLog ? current.map((item) => (item.id === nextLog.id ? nextLog : item)) : [...current, nextLog];
+    });
+    void persistRecord("careLogs", nextLog.id, nextLog, { applyResponse: true, mode: "replace" }).catch(() => {
+      setStorageStatus("offline");
+    });
+    setCareEventDraft(createCareEventDraft(manualRecordKind));
+    closeRecordsEntryDrawer();
+    hapticSuccess();
   };
 
   const careEventForRecord = (record: RecordEvent) => {
@@ -5623,6 +5705,7 @@ function App() {
   const beginEditCareTimelineEvent = (record: RecordEvent) => {
     if (!canCaregive || record.type !== "care" || !record.careLogId) return;
     const event = careEventForRecord(record);
+    setSwipedTimelineEventId("");
     setEditingCareEventId(record.id);
     setCareEventDraft({
       type: event?.type ?? (record.kind === "growth" || record.kind === "reminder" ? "note" : record.kind),
@@ -5667,12 +5750,96 @@ function App() {
       setStorageStatus("offline");
     });
     setEditingCareEventId("");
+    setSwipedTimelineEventId("");
+  };
+
+  const canEditTimelineEvent = (record: RecordEvent) =>
+    canCaregive && record.type === "care" && Boolean(record.careLogId && record.careEventId);
+
+  const beginTimelineEventSwipe = (event: React.PointerEvent<HTMLElement>, record: RecordEvent) => {
+    if (!canEditTimelineEvent(record)) return;
+    timelineSwipeStartRef.current = { id: record.id, x: event.clientX, y: event.clientY };
+  };
+
+  const finishTimelineEventSwipe = (event: React.PointerEvent<HTMLElement>, record: RecordEvent) => {
+    const start = timelineSwipeStartRef.current;
+    timelineSwipeStartRef.current = null;
+    if (!start || start.id !== record.id || !canEditTimelineEvent(record)) return;
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) < 28 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
+    setSwipedTimelineEventId(deltaX < 0 ? record.id : "");
+  };
+
+  const cancelTimelineEventSwipe = () => {
+    timelineSwipeStartRef.current = null;
+  };
+
+  const requestDeleteCareTimelineEvent = (record: RecordEvent) => {
+    if (!canEditTimelineEvent(record)) return;
+    setDeleteCareEventTarget(record);
+    setSwipedTimelineEventId("");
+    hapticWarning();
+  };
+
+  const closeDeleteCareEventConfirm = () => {
+    setDeleteCareEventTarget(null);
+  };
+
+  const confirmDeleteCareTimelineEvent = () => {
+    const record = deleteCareEventTarget;
+    if (!canCaregive || !record?.careLogId || !record.careEventId) {
+      setDeleteCareEventTarget(null);
+      return;
+    }
+    const currentLog = careLogs.find((item) => item.id === record.careLogId);
+    if (!currentLog) {
+      setDeleteCareEventTarget(null);
+      return;
+    }
+
+    let didChange = false;
+    const nextEvents = currentLog.events.filter((item) => {
+      const keep = item.id !== record.careEventId;
+      if (!keep) didChange = true;
+      return keep;
+    });
+    const noteMatch = record.careEventId.match(new RegExp(`^${currentLog.id}-note-(\\d+)$`));
+    const noteIndex = noteMatch ? Number(noteMatch[1]) : -1;
+    const nextNotes = noteIndex >= 0
+      ? currentLog.notes.filter((_, index) => {
+          const keep = index !== noteIndex;
+          if (!keep) didChange = true;
+          return keep;
+        })
+      : currentLog.notes;
+
+    if (!didChange) {
+      setDeleteCareEventTarget(null);
+      return;
+    }
+
+    const nextLog = careLogWithEventStats({
+      ...currentLog,
+      events: nextEvents,
+      notes: nextNotes,
+    });
+
+    setCareLogs((current) => current.map((item) => (item.id === nextLog.id ? nextLog : item)));
+    void persistRecord("careLogs", nextLog.id, nextLog, { applyResponse: true, mode: "replace" }).catch(() => {
+      setStorageStatus("offline");
+    });
+    if (editingCareEventId === record.id) setEditingCareEventId("");
+    setDeleteCareEventTarget(null);
+    hapticSuccess();
   };
 
   const selectRecordDate = (date: string) => {
     setSelectedDate(date);
     setCalendarMonth(date.slice(0, 7));
     setEditingCareEventId("");
+    setSwipedTimelineEventId("");
+    setDeleteCareEventTarget(null);
   };
 
   const handleProfileSubmit = (event: FormEvent) => {
@@ -5720,7 +5887,7 @@ function App() {
         onboardingRequired: response.onboardingRequired,
       });
       setAuthStatus("authenticated");
-      setActiveMobileTab(response.member.caregiver ? "chat" : "records");
+      setActiveMobileTab("records");
       legacyLocalStateRef.current = false;
     } catch (error) {
       clearAuthToken();
@@ -5742,8 +5909,9 @@ function App() {
     setOnboardingRequired(false);
     setStorageStatus("loading");
     setIsProfileEditing(false);
-    setIsCareLogEditing(false);
-    setActiveMobileTab("chat");
+    setRecordsEntryDrawer(null);
+    setRecordsAssistantOpen(false);
+    setActiveMobileTab("records");
     setInviteFamilyName("");
     setLoginExistingMember(null);
     setOnboardingFamilyName(suggestedFamilyName(initialProfile.nickname));
@@ -5779,7 +5947,7 @@ function App() {
       await persistRecord("profile", "default", completedProfile, { applyResponse: true });
       setAuthFamily(updatedFamily);
       setOnboardingRequired(false);
-      setActiveMobileTab("chat");
+      setActiveMobileTab("records");
       backendReadyRef.current = true;
       setStorageStatus("ready");
     } catch (error) {
@@ -5803,15 +5971,47 @@ function App() {
     setIsProfileEditing(false);
   };
 
-  const quickFill = (text: string) => {
+  const openRecordsAssistant = (
+    text?: string,
+    options: { mode?: ComposerMode; attachMedia?: boolean } = {},
+  ) => {
     if (!canCaregive) return;
-    setInput(text);
-    setActiveMobileTab("chat");
+    clearRecordsEntryDrawerCloseTimer();
+    setRecordsEntryDrawerClosing(false);
+    setRecordsEntryDrawer("ai");
+    setRecordsAssistantOpen(true);
+    setActiveMobileTab("records");
+    if (typeof text === "string") {
+      inputValueRef.current = text;
+      setInput(text);
+    }
+    if (options.mode === "voice" && composerMode !== "voice") {
+      toggleComposerMode();
+    } else if (options.mode === "keyboard" && composerMode === "voice") {
+      toggleComposerMode();
+    }
+    if (options.attachMedia) {
+      window.setTimeout(() => {
+        void openMediaPicker();
+      }, 80);
+    }
+  };
+
+  const openLedgerAssistant = (mode: "text" | "voice" | "photo") => {
+    const prompt = `帮我记一笔${babyNickname}支出：`;
+    openRecordsAssistant(prompt, {
+      mode: mode === "voice" ? "voice" : "keyboard",
+      attachMedia: mode === "photo",
+    });
+  };
+
+  const quickFill = (text: string) => {
+    openRecordsAssistant(text, { mode: "keyboard" });
   };
   const quickActions = useMemo<Array<{ label: string; prompt: string; Icon: LucideIcon }>>(
     () => [
       { label: "喂奶", prompt: "刚才喝了 120ml 奶", Icon: Milk },
-      { label: "提醒", prompt: `晚上 8 点提醒我给${babyNickname}洗澡`, Icon: Bell },
+      { label: "睡眠", prompt: `${babyNickname}刚睡了 1 小时`, Icon: Moon },
       { label: "成长", prompt: `今天${babyNickname}第一次自己扶着沙发站起来了`, Icon: PartyPopper },
       { label: "记账", prompt: `帮我记一笔${babyNickname}支出：`, Icon: ReceiptText },
       { label: "问 AI", prompt: `为什么这两天${babyNickname}更难哄睡？`, Icon: CircleHelp },
@@ -6004,6 +6204,36 @@ function App() {
             先保留
           </button>
           <button type="button" className="screen-action-button danger" onClick={() => void confirmDeleteExpense()}>
+            <Trash2 size={16} />
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const deleteCareEventDialog = deleteCareEventTarget ? (
+    <div className="story-modal-backdrop" role="presentation" onMouseDown={closeDeleteCareEventConfirm}>
+      <div
+        className="story-modal delete-confirm-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-care-event-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="delete-confirm-badge" aria-hidden="true">
+          <Trash2 size={22} />
+        </div>
+        <div className="delete-confirm-copy">
+          <p className="eyebrow">删除记录</p>
+          <h3 id="delete-care-event-title">确定删除这条时间线记录吗？</h3>
+          <p>“{deleteCareEventTarget.title} · {deleteCareEventTarget.body}”会从当天记录和统计里移除。</p>
+        </div>
+        <div className="story-modal-actions delete-confirm-actions">
+          <button type="button" className="screen-action-button quiet" onClick={closeDeleteCareEventConfirm}>
+            先保留
+          </button>
+          <button type="button" className="screen-action-button danger" onClick={confirmDeleteCareTimelineEvent}>
             <Trash2 size={16} />
             删除
           </button>
@@ -6328,7 +6558,7 @@ function App() {
   }
 
   return (
-    <main className={`app-shell mobile-tab-${activeMobileTab}${activeMobileTab === "profile" && reminderManagementOpen ? " profile-reminders-open" : ""}${voiceRecordingActive ? " voice-recording-active" : ""}`}>
+    <main className={`app-shell mobile-tab-${activeMobileTab}${activeMobileTab === "profile" && reminderManagementOpen ? " profile-reminders-open" : ""}${recordsAssistantOpen ? " records-assistant-expanded" : ""}${voiceRecordingActive ? " voice-recording-active" : ""}`}>
       {systemWeakNoticeView}
       <section className="topbar" aria-label="今日概览">
         <div className="brand-block">
@@ -6446,6 +6676,15 @@ function App() {
                 {composerMode === "voice" ? <KeyboardIcon size={18} /> : <Mic size={18} />}
               </button>
             </div>
+            <button
+              type="button"
+              className="icon-button records-assistant-close"
+              title="收起记录助手"
+              aria-label="收起记录助手"
+              onClick={() => setRecordsAssistantOpen(false)}
+            >
+              <ChevronDown size={18} />
+            </button>
           </div>
 
           <div className="chat-prelude">
@@ -6610,34 +6849,6 @@ function App() {
                         ) : null}
                       </section>
                     ))}
-                  </div>
-                ) : null}
-                {message.role === "ai" && autoRecordFeedbacks.some((feedback) => feedback.messageId === message.id) ? (
-                  <div className="auto-effect-list">
-                    {autoRecordFeedbacks
-                      .filter((feedback) => feedback.messageId === message.id)
-                      .map((feedback) => (
-                        <section className="auto-effect-card" key={feedback.id}>
-                          <CheckCircle2 size={16} />
-                          <div className="auto-effect-copy">
-                            <strong>已记好</strong>
-                            <span>{feedback.summary.length ? feedback.summary.join(" · ") : feedback.label}</span>
-                            <small>{storageStatus === "offline" ? "本地先记着，云端同步待恢复" : feedback.destination}</small>
-                          </div>
-                          <div className="auto-effect-actions">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                selectRecordDate(feedback.date);
-                                setRecordView("today");
-                                switchMobileTab("records");
-                              }}
-                            >
-                              查看今天
-                            </button>
-                          </div>
-                        </section>
-                      ))}
                   </div>
                 ) : null}
                 {message.role === "ai" &&
@@ -6992,10 +7203,10 @@ function App() {
                                 );
                               })}
                               {effect.careLogPatch ? <p>照护：{effect.careLogPatch.notes?.join("、") || "已识别照护日志"}</p> : null}
-                              {effect.reminders.map((reminder) => (
+                              {(effect.reminders ?? []).map((reminder) => (
                                 <p key={reminder.id}>提醒：{reminder.dueText} {reminder.title}</p>
                               ))}
-                              {effect.memories.map((memory) => (
+                              {(effect.memories ?? []).map((memory) => (
                                 <p key={memory.id}>记忆：{memory.text}</p>
                               ))}
                               {(effect.expenses ?? []).map((expense) => (
@@ -7263,50 +7474,402 @@ function App() {
             ))}
           </div>
 
-          {recordView === "today" ? (
-            <section className="growth-entry-card" aria-label="宝宝成长">
-              <div className="growth-entry-card-head">
-                <h3>成长数据</h3>
-                <button type="button" className="growth-entry-card-open" onClick={openGrowthEntry}>
-                  {growthMeasurements.length ? "记录 / 查看" : "记一笔"}
+          {canCaregive ? (
+          <section className="records-assistant-entry" aria-label="快速记录入口">
+            <div className="records-assistant-head">
+              <div>
+                <strong>快速记录</strong>
+                <small>AI 可以帮你整理成记录，也可以手动记录当天数据</small>
+              </div>
+              <div className="records-assistant-actions">
+                <button
+                  type="button"
+                  onClick={() => openRecordsAssistant(undefined, { mode: composerMode })}
+                >
+                  {recordsEntryDrawer === "ai" ? "正在记录" : "AI 自动记录"}
+                </button>
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={openManualRecordDrawer}
+                >
+                  手动记录
                 </button>
               </div>
-              {growthMeasurements.length > 0 ? (
-                <div className="growth-entry-card-stats">
-                  {GROWTH_MEASUREMENT_TYPES.map((type) => {
-                    const items = growthMeasurements
-                      .filter((m) => m.type === type)
-                      .sort((a, b) => a.date.localeCompare(b.date));
-                    const latest = items[items.length - 1];
-                    const meta = GROWTH_MEASUREMENT_META[type];
-                    return (
-                      <div className="growth-entry-card-stat" key={type}>
-                        <span className="growth-entry-card-stat-label">{meta.label}</span>
-                        <span className="growth-entry-card-stat-value">
-                          {latest ? `${latest.value}${meta.unit}` : "—"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="growth-entry-card-empty">还没有记录身高/体重/头围。点上方添加第一笔。</p>
-              )}
-            </section>
+            </div>
+            <div className="quick-row records-quick-row">
+              {quickActions.map(({ label, prompt }) => (
+                <button type="button" className="records-prompt-link" key={label} onClick={() => quickFill(prompt)}>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
           ) : null}
 
-          {recordView === "today" ? (
-            <button type="button" className="milestone-nav-card record-milestone-card" onClick={openMilestones}>
-              <div className="milestone-nav-card__icon" aria-hidden="true">
-                <Sparkles size={18} />
-              </div>
-              <div className="milestone-nav-card__copy">
-                <strong>发育里程碑</strong>
-                <small>已记录 {milestoneStats.achieved}/{milestoneStats.total} · 现阶段 {milestoneStats.current} 项可观察</small>
-              </div>
-              <ChevronRight size={16} aria-hidden="true" />
-            </button>
-          ) : null}
+          {canCaregive && recordsEntryDrawer
+            ? createPortal(
+                <div
+                  className={`records-entry-scrim ${recordsEntryDrawerClosing ? "is-closing" : "is-open"}`}
+                  role="presentation"
+                  onClick={closeRecordsEntryDrawer}
+                >
+                  <section
+                    className={`records-entry-drawer ${
+                      recordsEntryDrawer === "ai" ? "records-assistant-drawer" : "records-manual-drawer"
+                    } ${recordsEntryDrawerClosing ? "is-closing" : "is-open"}`}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={recordsEntryDrawer === "ai" ? "AI 自动记录" : "手动记录"}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="records-drawer-head">
+                      <div>
+                        <strong>{recordsEntryDrawer === "ai" ? "AI 自动记录" : "手动记录"}</strong>
+                        <small>
+                          {recordsEntryDrawer === "ai"
+                            ? "说一句或上传照片，我会整理成当天记录"
+                            : `保存到${selectedDateIsToday ? "今天" : formatDate(selectedDate)}的时间线`}
+                        </small>
+                      </div>
+                      <button type="button" aria-label="关闭" onClick={closeRecordsEntryDrawer}>
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className={`records-drawer-body ${recordsEntryDrawer === "ai" ? "records-drawer-body--assistant" : "records-drawer-body--manual"}`}>
+                      {recordsEntryDrawer === "ai" ? (
+                        <>
+                          <div className="records-assistant-main">
+                            <div className="records-assistant-body">
+                              <Sparkles size={16} />
+                              <span>直接描述今天发生了什么，我会整理成记录并同步到今日、趋势和时间线。</span>
+                            </div>
+                            {pendingEffects.length ? (
+                              <div className="records-assistant-pending-list">
+                                {pendingEffects.slice(0, 2).map((effect) => {
+                                  const isConfirmingEffect = confirmingPendingEffectIds.includes(effect.id);
+                                  return (
+                                    <section className="records-assistant-pending-card" key={effect.id}>
+                                      <Clock3 size={14} />
+                                      <div>
+                                        <strong>{pendingEffectSummary(effect).join(" / ")}</strong>
+                                        <small>待确认记录</small>
+                                      </div>
+                                      <button type="button" disabled={isConfirmingEffect} onClick={() => void confirmPendingEffect(effect)}>
+                                        {isConfirmingEffect ? "保存中" : "确认"}
+                                      </button>
+                                      <button type="button" className="quiet" disabled={isConfirmingEffect} onClick={() => void discardPendingEffect(effect)}>
+                                        丢弃
+                                      </button>
+                                    </section>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                            <div className="records-assistant-thread" aria-label="最近对话">
+                              <span className="records-assistant-section-label">最近相关内容</span>
+                              {messages.slice(-3).map((message) => (
+                                <article className={`records-assistant-message ${message.role}`} key={message.id}>
+                                  <time>{formatTime(message.createdAt)}</time>
+                                  <p>{message.text}</p>
+                                </article>
+                              ))}
+                              {isSubmitting ? (
+                                <article className="records-assistant-message ai records-assistant-message--processing" role="status" aria-live="polite">
+                                  <time>处理中</time>
+                                  <p className="records-assistant-processing">
+                                    <span className="loading-stars records-assistant-loading-dots" aria-hidden="true">
+                                      <i />
+                                      <i />
+                                      <i />
+                                    </span>
+                                    <span>正在整理</span>
+                                  </p>
+                                </article>
+                              ) : null}
+                            </div>
+                            {chatUploadItems.length || attachments.length ? (
+                              <div className="records-assistant-attachments">
+                                {chatUploadItems.map((item) => (
+                                  <span className={`records-assistant-attachment ${item.status}`} key={item.id}>
+                                    {item.kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}
+                                    {item.status === "uploading" ? `上传 ${item.progress}%` : item.name}
+                                  </span>
+                                ))}
+                                {attachments.map((item) => (
+                                  <span className="records-assistant-attachment" key={item.id}>
+                                    {item.kind === "video" ? <Video size={13} /> : item.kind === "audio" ? <Mic size={13} /> : <ImageIcon size={13} />}
+                                    {item.name}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                          <form className={`records-assistant-composer ${voiceRecordingActive ? "voice-recording-hidden" : ""}`.trim()} onSubmit={handleSubmit}>
+                            <div className="records-assistant-tool-row">
+                              <button
+                                type="button"
+                                className={`records-assistant-tool ${visualToolClassName}`.trim()}
+                                title={visualToolTitle}
+                                aria-disabled={visualToolGated}
+                                disabled={visualToolDisabled}
+                                onClick={openMediaPicker}
+                              >
+                                <CameraIcon size={18} />
+                                <span>照片</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={`records-assistant-tool voice-toggle ${composerMode === "voice" ? "active" : ""}`}
+                                title={composerMode === "voice" ? "切换键盘输入" : "切换语音输入"}
+                                aria-label={composerMode === "voice" ? "键盘输入" : "语音输入"}
+                                aria-pressed={composerMode === "voice"}
+                                disabled={!canUseComposerInput}
+                                onClick={toggleComposerMode}
+                              >
+                                {composerMode === "voice" ? <KeyboardIcon size={18} /> : <Mic size={18} />}
+                                <span>{composerMode === "voice" ? "键盘" : "语音"}</span>
+                              </button>
+                            </div>
+                            <div className="records-assistant-input-line">
+                              {composerMode === "voice" ? (
+                                <button
+                                  type="button"
+                                  className={`voice-hold-button ${isListening ? "listening" : ""} ${voiceStatus} ${voiceCancelArmed ? "canceling" : ""}`}
+                                  style={voiceButtonStyle}
+                                  disabled={!canUseComposerInput}
+                                  aria-label="按住说话"
+                                  onPointerDown={startVoicePress}
+                                  onPointerUp={releaseVoicePress}
+                                  onPointerCancel={cancelVoicePointer}
+                                  onContextMenu={(event) => event.preventDefault()}
+                                >
+                                  <span>{voiceHoldLabel}</span>
+                                </button>
+                              ) : (
+                                <textarea
+                                  value={input}
+                                  rows={1}
+                                  onChange={(event) => {
+                                    inputValueRef.current = event.target.value;
+                                    setInput(event.target.value);
+                                  }}
+                                  onKeyDown={handleComposerKeyDown}
+                                  placeholder={`记录${babyNickname}今天的新变化...`}
+                                  disabled={!canUseComposerInput}
+                                />
+                              )}
+                              <button className="send-button" type="submit" title={isUploadingChatMedia ? "素材上传中" : isSubmitting ? "处理中" : "发送"} disabled={isSubmitting || isUploadingChatMedia}>
+                                <Send size={18} />
+                              </button>
+                            </div>
+                          </form>
+                        </>
+                      ) : (
+                        <form className="manual-record-form" onSubmit={saveManualCareEvent}>
+                          <div className="manual-record-type-tabs" role="tablist" aria-label="手动记录类型">
+                            {MANUAL_RECORD_TYPES.map((option) => (
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={manualRecordKind === option.type}
+                                className={manualRecordKind === option.type ? "active" : ""}
+                                key={option.type}
+                                onClick={() => selectManualRecordKind(option.type)}
+                              >
+                                <span>{option.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <p className="manual-record-type-hint">
+                            {MANUAL_RECORD_TYPES.find((option) => option.type === manualRecordKind)?.hint}
+                          </p>
+                          <div className="manual-record-fields">
+                            <fieldset className="manual-picker-field wide">
+                              <legend>时间</legend>
+                              <div className="manual-choice-grid manual-time-presets">
+                                {MANUAL_TIME_PRESETS.map((option) => {
+                                  const value = timePresetValue(option.offsetMinutes);
+                                  return (
+                                    <button
+                                      type="button"
+                                      className={careEventDraft.time === value ? "active" : ""}
+                                      key={option.label}
+                                      onClick={() => updateManualCareDraft({ time: value })}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <label className="manual-native-picker">
+                                <span>精确时间</span>
+                                <input
+                                  type="time"
+                                  value={normalizeClockText(careEventDraft.time) ?? currentClockText()}
+                                  onChange={(inputEvent) => updateManualCareDraft({ time: inputEvent.target.value })}
+                                />
+                              </label>
+                            </fieldset>
+
+                            {manualRecordKind === "milk" ? (
+                              <>
+                                <fieldset className="manual-stepper-field">
+                                  <legend>奶量</legend>
+                                  <div className="manual-stepper">
+                                    <button type="button" aria-label="减少奶量" onClick={() => adjustManualNumericDraft("amountMl", -10, 120, 10, 300)}>
+                                      -
+                                    </button>
+                                    <strong>
+                                      {careEventDraft.amountMl || "--"}
+                                      <small>ml</small>
+                                    </strong>
+                                    <button type="button" aria-label="增加奶量" onClick={() => adjustManualNumericDraft("amountMl", 10, 120, 10, 300)}>
+                                      +
+                                    </button>
+                                  </div>
+                                  <div className="manual-choice-grid">
+                                    {MANUAL_MILK_AMOUNTS.map((amount) => (
+                                      <button
+                                        type="button"
+                                        className={careEventDraft.amountMl === String(amount) ? "active" : ""}
+                                        key={amount}
+                                        onClick={() => updateManualCareDraft({ amountMl: String(amount) })}
+                                      >
+                                        {amount}ml
+                                      </button>
+                                    ))}
+                                  </div>
+                                </fieldset>
+                                <fieldset className="manual-picker-field">
+                                  <legend>奶的类型</legend>
+                                  <div className="manual-choice-grid">
+                                    {MANUAL_MILK_NOTES.map((note) => (
+                                      <button
+                                        type="button"
+                                        className={careEventDraft.note === note ? "active" : ""}
+                                        key={note}
+                                        onClick={() => updateManualCareDraft({ note })}
+                                      >
+                                        {note}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </fieldset>
+                              </>
+                            ) : null}
+
+                            {manualRecordKind === "sleep" ? (
+                              <fieldset className="manual-stepper-field wide">
+                                <legend>睡眠时长</legend>
+                                <div className="manual-stepper">
+                                  <button type="button" aria-label="减少睡眠时长" onClick={() => adjustManualNumericDraft("durationHours", -0.25, 1, 0.25, 16, 2)}>
+                                    -
+                                  </button>
+                                  <strong>{sleepDurationText(careEventDraft.durationHours)}</strong>
+                                  <button type="button" aria-label="增加睡眠时长" onClick={() => adjustManualNumericDraft("durationHours", 0.25, 1, 0.25, 16, 2)}>
+                                    +
+                                  </button>
+                                </div>
+                                <div className="manual-choice-grid manual-choice-grid--wide">
+                                  {MANUAL_SLEEP_DURATIONS.map((duration) => (
+                                    <button
+                                      type="button"
+                                      className={careEventDraft.durationHours === duration.value ? "active" : ""}
+                                      key={duration.value}
+                                      onClick={() => updateManualCareDraft({ durationHours: duration.value })}
+                                    >
+                                      {duration.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </fieldset>
+                            ) : null}
+
+                            {manualRecordKind === "temperature" ? (
+                              <fieldset className="manual-stepper-field wide">
+                                <legend>体温</legend>
+                                <div className="manual-stepper">
+                                  <button type="button" aria-label="降低体温" onClick={() => adjustManualNumericDraft("temperature", -0.1, 36.8, 34, 42, 1)}>
+                                    -
+                                  </button>
+                                  <strong>
+                                    {careEventDraft.temperature || "未选择"}
+                                    <small>°C</small>
+                                  </strong>
+                                  <button type="button" aria-label="升高体温" onClick={() => adjustManualNumericDraft("temperature", 0.1, 36.8, 34, 42, 1)}>
+                                    +
+                                  </button>
+                                </div>
+                                <div className="manual-choice-grid manual-choice-grid--wide">
+                                  {MANUAL_TEMPERATURE_OPTIONS.map((temperature) => {
+                                    const value = numericDraftText(temperature, 1);
+                                    return (
+                                      <button
+                                        type="button"
+                                        className={careEventDraft.temperature === value ? "active" : ""}
+                                        key={value}
+                                        onClick={() => updateManualCareDraft({ temperature: value })}
+                                      >
+                                        {value}°C
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </fieldset>
+                            ) : null}
+
+                            {manualRecordKind === "poop" ? (
+                              <fieldset className="manual-picker-field wide">
+                                <legend>状态</legend>
+                                <div className="manual-choice-grid manual-choice-grid--wide">
+                                  {MANUAL_POOP_NOTES.map((note) => (
+                                    <button
+                                      type="button"
+                                      className={careEventDraft.note === note ? "active" : ""}
+                                      key={note}
+                                      onClick={() => updateManualCareDraft({ note })}
+                                    >
+                                      {note}
+                                    </button>
+                                  ))}
+                                </div>
+                              </fieldset>
+                            ) : null}
+
+                            {manualRecordKind === "solid" ? (
+                              <fieldset className="manual-picker-field wide">
+                                <legend>辅食</legend>
+                                <div className="manual-choice-grid manual-choice-grid--wide">
+                                  {MANUAL_SOLID_NOTES.map((note) => (
+                                    <button
+                                      type="button"
+                                      className={careEventDraft.note === note ? "active" : ""}
+                                      key={note}
+                                      onClick={() => updateManualCareDraft({ note })}
+                                    >
+                                      {note}
+                                    </button>
+                                  ))}
+                                </div>
+                              </fieldset>
+                            ) : null}
+                          </div>
+                          <div className="records-manual-actions">
+                            <button type="button" className="quiet" onClick={closeRecordsEntryDrawer}>
+                              取消
+                            </button>
+                            <button type="submit">保存记录</button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
+                  </section>
+                </div>,
+                document.body,
+              )
+            : null}
 
           {recordView === "today" ? (
           <section className="summary-card">
@@ -7513,92 +8076,121 @@ function App() {
             {selectedEvents.length ? (
               <div className="record-event-list">
                 {selectedEvents.map((event) => (
-                  <article className={`record-event ${event.type} event-${event.kind}`} key={event.id}>
-                    <time>{event.timeLabel}</time>
-                    <div>
-                      <span className="record-event-icon" aria-hidden="true">
-                        <img src={recordEventIconSrc(event)} alt="" />
-                      </span>
-                      <h3>{event.title}</h3>
-                      <p>{event.body}</p>
-                      <div className="tag-row">
-                        {event.tags.slice(0, 3).map((tag) => (
-                          <span key={tag}>{tag}</span>
-                        ))}
-                      </div>
-                      {event.recordedBy ? <small className="record-creator">{creatorMetaText(event.recordedBy)}</small> : null}
-                      {canCaregive && event.type === "care" ? (
-                        editingCareEventId === event.id ? (
-                          <form className="timeline-edit-form" onSubmit={(formEvent) => saveCareTimelineEvent(formEvent, event)}>
-                            <label>
-                              <span>类型</span>
-                              <StorySelect
-                                ariaLabel="时间线事件类型"
-                                value={careEventDraft.type}
-                                options={CARE_EVENT_TYPE_OPTIONS}
-                                onChange={(type) =>
-                                  setCareEventDraft((current) => ({ ...current, type }))
-                                }
-                              />
-                            </label>
-                            <label>
-                              <span>时间</span>
-                              <input
-                                value={careEventDraft.time}
-                                placeholder="例如 18:30"
-                                onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, time: inputEvent.target.value }))}
-                              />
-                            </label>
-                            {careEventDraft.type === "milk" ? (
-                              <label>
-                                <span>奶量 ml</span>
-                                <input
-                                  inputMode="decimal"
-                                  value={careEventDraft.amountMl}
-                                  onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, amountMl: inputEvent.target.value }))}
-                                />
-                              </label>
-                            ) : null}
-                            {careEventDraft.type === "sleep" ? (
-                              <label>
-                                <span>睡眠 h</span>
-                                <input
-                                  inputMode="decimal"
-                                  value={careEventDraft.durationHours}
-                                  onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, durationHours: inputEvent.target.value }))}
-                                />
-                              </label>
-                            ) : null}
-                            {careEventDraft.type === "temperature" ? (
-                              <label>
-                                <span>体温 °C</span>
-                                <input
-                                  inputMode="decimal"
-                                  value={careEventDraft.temperature}
-                                  onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, temperature: inputEvent.target.value }))}
-                                />
-                              </label>
-                            ) : null}
-                            <label className="wide">
-                              <span>备注</span>
-                              <input
-                                value={careEventDraft.note}
-                                onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, note: inputEvent.target.value }))}
-                              />
-                            </label>
-                            <div className="timeline-edit-actions">
-                              <button type="button" className="quiet" onClick={() => setEditingCareEventId("")}>
-                                取消
-                              </button>
-                              <button type="submit">保存</button>
+                  <article className={`record-event ${event.type} event-${event.kind} ${swipedTimelineEventId === event.id ? "is-swiped" : ""}`.trim()} key={event.id}>
+                    <div className="record-event-rail" aria-hidden="true">
+                      <span />
+                    </div>
+                    <div className="record-event-content">
+                      <time className="record-event-time">{event.timeLabel}</time>
+                      <div
+                        className="record-event-swipe"
+                        onPointerDown={(pointerEvent) => beginTimelineEventSwipe(pointerEvent, event)}
+                        onPointerUp={(pointerEvent) => finishTimelineEventSwipe(pointerEvent, event)}
+                        onPointerCancel={cancelTimelineEventSwipe}
+                      >
+                        {canEditTimelineEvent(event) && editingCareEventId !== event.id ? (
+                          <div className="record-event-actions" aria-hidden={swipedTimelineEventId !== event.id}>
+                            <button type="button" className="timeline-action-button edit" onClick={() => beginEditCareTimelineEvent(event)}>
+                              <PencilLine size={15} />
+                              <span>编辑</span>
+                            </button>
+                            <button type="button" className="timeline-action-button delete" onClick={() => requestDeleteCareTimelineEvent(event)}>
+                              <Trash2 size={15} />
+                              <span>删除</span>
+                            </button>
+                          </div>
+                        ) : null}
+                        <div
+                          className="record-event-card"
+                          onClick={() => {
+                            if (swipedTimelineEventId === event.id) setSwipedTimelineEventId("");
+                          }}
+                        >
+                          <span className="record-event-icon" aria-hidden="true">
+                            <img src={recordEventIconSrc(event)} alt="" />
+                          </span>
+                          <div className="record-event-copy">
+                            <div className="record-event-primary">
+                              <h3>{event.title}</h3>
+                              <p>{event.body}</p>
                             </div>
-                          </form>
-                        ) : (
-                          <button type="button" className="timeline-edit-button" onClick={() => beginEditCareTimelineEvent(event)}>
-                            编辑
-                          </button>
-                        )
-                      ) : null}
+                            <div className="record-event-secondary">
+                              <div className="tag-row">
+                                {event.tags.slice(0, 2).map((tag) => (
+                                  <span key={tag}>{tag}</span>
+                                ))}
+                              </div>
+                              {event.recordedBy ? <small className="record-creator">{creatorMetaText(event.recordedBy)}</small> : null}
+                            </div>
+                          </div>
+                          {canCaregive && event.type === "care" && editingCareEventId === event.id ? (
+                            <form className="timeline-edit-form" onSubmit={(formEvent) => saveCareTimelineEvent(formEvent, event)}>
+                              <label>
+                                <span>类型</span>
+                                <StorySelect
+                                  ariaLabel="时间线事件类型"
+                                  value={careEventDraft.type}
+                                  options={CARE_EVENT_TYPE_OPTIONS}
+                                  onChange={(type) =>
+                                    setCareEventDraft((current) => ({ ...current, type }))
+                                  }
+                                />
+                              </label>
+                              <label>
+                                <span>时间</span>
+                                <input
+                                  value={careEventDraft.time}
+                                  placeholder="例如 18:30"
+                                  onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, time: inputEvent.target.value }))}
+                                />
+                              </label>
+                              {careEventDraft.type === "milk" ? (
+                                <label>
+                                  <span>奶量 ml</span>
+                                  <input
+                                    inputMode="decimal"
+                                    value={careEventDraft.amountMl}
+                                    onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, amountMl: inputEvent.target.value }))}
+                                  />
+                                </label>
+                              ) : null}
+                              {careEventDraft.type === "sleep" ? (
+                                <label>
+                                  <span>睡眠 h</span>
+                                  <input
+                                    inputMode="decimal"
+                                    value={careEventDraft.durationHours}
+                                    onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, durationHours: inputEvent.target.value }))}
+                                  />
+                                </label>
+                              ) : null}
+                              {careEventDraft.type === "temperature" ? (
+                                <label>
+                                  <span>体温 °C</span>
+                                  <input
+                                    inputMode="decimal"
+                                    value={careEventDraft.temperature}
+                                    onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, temperature: inputEvent.target.value }))}
+                                  />
+                                </label>
+                              ) : null}
+                              <label className="wide">
+                                <span>备注</span>
+                                <input
+                                  value={careEventDraft.note}
+                                  onChange={(inputEvent) => setCareEventDraft((current) => ({ ...current, note: inputEvent.target.value }))}
+                                />
+                              </label>
+                              <div className="timeline-edit-actions">
+                                <button type="button" className="quiet" onClick={() => setEditingCareEventId("")}>
+                                  取消
+                                </button>
+                                <button type="submit">保存</button>
+                              </div>
+                            </form>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -7617,6 +8209,98 @@ function App() {
               </div>
             )}
           </section>
+          ) : null}
+
+          {recordView === "growth" ? (
+            <>
+            <section className="growth-curve-card" aria-label="成长曲线">
+              <div className="section-title">
+                <LineChart size={18} />
+                <h2>成长曲线</h2>
+              </div>
+              <div className="growth-curve-toolbar" role="tablist" aria-label="成长曲线指标">
+                {GROWTH_MEASUREMENT_TYPES.map((type) => {
+                  const meta = GROWTH_MEASUREMENT_META[type];
+                  return (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={growthCurveType === type}
+                      className={growthCurveType === type ? "active" : ""}
+                      key={type}
+                      onClick={() => setGrowthCurveType(type)}
+                    >
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {growthCurveData.points.length ? (
+                <div className="growth-curve-frame">
+                  <div className="growth-curve-scale" aria-hidden="true">
+                    <span>{growthCurveData.maxLabel}</span>
+                    <span>{growthCurveData.minLabel}</span>
+                  </div>
+                  <svg className="growth-curve-svg" viewBox="0 0 304 144" role="img" aria-label={`${GROWTH_MEASUREMENT_META[growthCurveType].label}变化曲线`}>
+                    <line x1="20" x2="284" y1="24" y2="24" />
+                    <line x1="20" x2="284" y1="71" y2="71" />
+                    <line x1="20" x2="284" y1="118" y2="118" />
+                    <polyline points={growthCurveData.polyline} />
+                    {growthCurveData.points.map((point) => (
+                      <g key={point.id}>
+                        <circle cx={point.x} cy={point.y} r="4.5" />
+                        <text x={point.x} y="136" textAnchor="middle">
+                          {point.label}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                  <p className="growth-curve-latest">最新：{growthCurveData.latestLabel}</p>
+                </div>
+              ) : (
+                <p className="growth-curve-empty">先记录一笔{GROWTH_MEASUREMENT_META[growthCurveType].label}，这里会自动生成曲线。</p>
+              )}
+            </section>
+            <section className="growth-entry-card" aria-label="宝宝成长">
+              <div className="growth-entry-card-head">
+                <h3>成长数据</h3>
+                <button type="button" className="growth-entry-card-open" onClick={openGrowthEntry}>
+                  {growthMeasurements.length ? "记录 / 查看" : "记一笔"}
+                </button>
+              </div>
+              {growthMeasurements.length > 0 ? (
+                <div className="growth-entry-card-stats">
+                  {GROWTH_MEASUREMENT_TYPES.map((type) => {
+                    const items = growthMeasurements
+                      .filter((m) => m.type === type)
+                      .sort((a, b) => a.date.localeCompare(b.date));
+                    const latest = items[items.length - 1];
+                    const meta = GROWTH_MEASUREMENT_META[type];
+                    return (
+                      <div className="growth-entry-card-stat" key={type}>
+                        <span className="growth-entry-card-stat-label">{meta.label}</span>
+                        <span className="growth-entry-card-stat-value">
+                          {latest ? `${latest.value}${meta.unit}` : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="growth-entry-card-empty">可以先记一笔身高、体重或头围，之后会更容易回看变化。</p>
+              )}
+              <button type="button" className="growth-observation-row" onClick={openMilestones}>
+                <span className="growth-observation-icon" aria-hidden="true">
+                  <Sparkles size={16} />
+                </span>
+                <span className="growth-observation-copy">
+                  <strong>成长观察</strong>
+                  <small>记录宝宝最近出现的新动作和第一次</small>
+                </span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
+            </section>
+            </>
           ) : null}
           </>
           )}
@@ -7637,6 +8321,7 @@ function App() {
           selectedExpenseIds={selectedExpenseIds}
           collapsedExpenseMonths={collapsedExpenseMonths}
           openNewExpenseEditor={openNewExpenseEditor}
+          openLedgerAssistant={openLedgerAssistant}
           openEditExpenseEditor={openEditExpenseEditor}
           toggleExpenseBulkMode={toggleExpenseBulkMode}
           toggleExpenseMonthCollapse={toggleExpenseMonthCollapse}
@@ -7817,7 +8502,7 @@ function App() {
           {canCaregive ? (
             <div className="assistant-actions reminder-actions">
               {REMINDER_QUICK_ACTIONS.map((action) => (
-                <button type="button" key={action.label} onClick={() => quickFill(withBabyNickname(action.prompt))}>
+                <button type="button" key={action.label} onClick={() => openReminderQuickDraft(action)}>
                   {action.label === "疫苗" || action.label === "喂药" ? <Syringe size={16} /> : <Bell size={16} />}
                   {action.label}
                 </button>
@@ -8658,28 +9343,32 @@ function App() {
           );
         })}
       </nav>
-      {voiceRecordingActive ? (
-        <div
-          className={`voice-recording-panel ${voiceCancelArmed ? "canceling" : ""}`.trim()}
-          style={voiceButtonStyle}
-          role="status"
-          aria-live="polite"
-        >
-          <div className="voice-recording-copy">
-            <strong>{voicePanelLabel}</strong>
-          </div>
-          <div className="voice-wave-bars" aria-hidden="true">
-            {Array.from({ length: 56 }, (_, index) => (
-              <span
-                className="voice-wave-bar"
-                key={index}
-                style={{ "--bar-scale": (0.62 + ((index * 7) % 11) / 20).toFixed(2) } as CSSProperties}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {voiceRecordingActive
+        ? createPortal(
+            <div
+              className={`voice-recording-panel ${voiceCancelArmed ? "canceling" : ""}`.trim()}
+              style={voiceButtonStyle}
+              role="status"
+              aria-live="polite"
+            >
+              <div className="voice-recording-copy">
+                <strong>{voicePanelLabel}</strong>
+              </div>
+              <div className="voice-wave-bars" aria-hidden="true">
+                {Array.from({ length: 56 }, (_, index) => (
+                  <span
+                    className="voice-wave-bar"
+                    key={index}
+                    style={{ "--bar-scale": (0.62 + ((index * 7) % 11) / 20).toFixed(2) } as CSSProperties}
+                  />
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
       {expenseEditorDialog}
+      {deleteCareEventDialog}
       {deleteExpenseDialog}
       {bulkDeleteExpensesDialog}
       {settingsLegalDoc ? (

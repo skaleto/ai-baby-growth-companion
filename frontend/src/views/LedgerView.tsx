@@ -47,6 +47,7 @@ export type LedgerViewProps = {
   selectedExpenseIds: Set<string>;
   collapsedExpenseMonths: Set<string>;
   openNewExpenseEditor: () => void;
+  openLedgerAssistant: (mode: "text" | "voice" | "photo") => void;
   openEditExpenseEditor: (expense: ExpenseItem) => void;
   toggleExpenseBulkMode: () => void;
   toggleExpenseMonthCollapse: (monthKey: string) => void;
@@ -75,6 +76,7 @@ export function LedgerView(props: LedgerViewProps) {
     selectedExpenseIds,
     collapsedExpenseMonths,
     openNewExpenseEditor,
+    openLedgerAssistant,
     openEditExpenseEditor,
     toggleExpenseBulkMode,
     toggleExpenseMonthCollapse,
@@ -129,13 +131,31 @@ export function LedgerView(props: LedgerViewProps) {
       </section>
 
       {canCaregive ? (
-        <button type="button" className="ledger-manual-cta" onClick={openNewExpenseEditor}>
-          <span aria-hidden="true">
-            <ReceiptText size={20} />
-          </span>
-          <strong>记一笔支出</strong>
-          <small>手动补充宝宝相关花费</small>
-        </button>
+        <>
+          <button type="button" className="ledger-manual-cta" onClick={openNewExpenseEditor}>
+            <span aria-hidden="true">
+              <ReceiptText size={20} />
+            </span>
+            <strong>记一笔支出</strong>
+            <small>手动补充宝宝相关花费</small>
+          </button>
+          <section className="ledger-ai-entry-card" aria-label="AI 辅助记账">
+            <div>
+              <strong>AI 辅助记账</strong>
+              <small>说一句或拍小票，我来整理成待确认账本记录</small>
+            </div>
+            <div className="ledger-ai-actions">
+              <button type="button" onClick={() => openLedgerAssistant("voice")}>
+                <Mic size={16} />
+                语音记账
+              </button>
+              <button type="button" onClick={() => openLedgerAssistant("photo")}>
+                <ImageIcon size={16} />
+                拍照/上传小票
+              </button>
+            </div>
+          </section>
+        </>
       ) : null}
 
       {ledgerView === "month" ? (

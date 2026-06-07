@@ -4,8 +4,8 @@
 // Drives real `POST /api/agent/chat/stream` requests against a LOCAL backend
 // with a dedicated test account, scoring each scenario on three axes:
 //   1. latency            — TTFT (first content event) + total stream time, N runs median
-//   2. result accuracy    — structural hard-assertions on effectDecisions + LLM judge on aiText
-//   3. system execution   — app_state diff (records written / boundaries respected / tools fired)
+//   2. result accuracy    — structural hard-assertions on tools/app state + LLM judge on aiText
+//   3. system execution   — app_state diff from real backend action tools (no local effect simulation)
 //
 // Spec: docs/superpowers/specs/2026-06-04-agent-capability-benchmark.md
 // Companion modules: scripts/l2-benchmark/scenarios.mjs, scripts/l2-benchmark/judge.mjs
@@ -28,7 +28,6 @@ import { fileURLToPath } from "node:url";
 
 import { selectScenarios } from "./l2-benchmark/scenarios.mjs";
 import { assertOp, evaluateStructural, getPath } from "./l2-benchmark/assertions.mjs";
-import { applyEffectDecisions, upsertStateRecord } from "./l2-benchmark/effect-apply.mjs";
 import {
   judgeAiText,
   resolveJudgeApiKey,
@@ -157,6 +156,32 @@ async function getAppState(token) {
   return JSON.parse(text);
 }
 
+async function upsertStateRecord({
+  baseUrl,
+  token,
+  collection,
+  id,
+  item,
+  mode = "merge",
+  fetchImpl = fetch,
+}) {
+  const root = String(baseUrl || "").replace(/\/+$/, "");
+  const url = `${root}/api/app/state/${encodeURIComponent(collection)}/${encodeURIComponent(id)}?mode=${encodeURIComponent(mode)}`;
+  const res = await fetchImpl(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(item),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`PUT app/state/${collection}/${id} failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 /**
  * Reset the test family's app_state so diffs are repeatable. The backend has no
  * explicit reset endpoint, but `PUT /api/app/state` with `{}` replaces the
@@ -187,7 +212,7 @@ async function resetOrBaselineState(token) {
  *   - "content"  : { delta } — incremental aiText text chunks (NOT JSON).
  *   - "reasoning": { delta } — thinking trace (ignored for scoring).
  *   - "tool"     : { id, toolId, name, status, ... } — tool activity.
- *   - "final"    : full serialized AgentChatResponse (aiText/effectDecisions/...).
+ *   - "final"    : full serialized AgentChatResponse (aiText/safety/tool metadata/...).
  *                  THIS is the authoritative parsed response, not the content concat.
  *   - "error"    : { message }
  *   - misc status events (planning / generating / analyzing_media ...) — ignored.
@@ -530,7 +555,7 @@ async function runScenario(scenario, token, runs) {
   let lastRun = null;
 
   // Latency: N runs; for diff/structural we use the LAST run. Earlier runs do
-  // not apply effects, so they cannot consume the state growth we need to verify.
+  // not inspect state, so they cannot consume the state growth we need to verify.
   for (let i = 0; i < runs; i += 1) {
     let beforeState = {};
     if (i === runs - 1) {
@@ -541,20 +566,13 @@ async function runScenario(scenario, token, runs) {
     ttfts.push(result.ttftMs);
     totals.push(result.totalMs);
     if (i === runs - 1) {
-      const appliedEffects = await applyEffectDecisions({
-        baseUrl: CONFIG.baseUrl,
-        token,
-        scenarioId: scenario.id,
-        beforeState,
-        finalResponse: result.finalResponse,
-      });
       const afterSnap = await getAppState(token).catch(() => ({ state: {} }));
-      lastRun = { result, beforeState, afterState: afterSnap?.state || {}, appliedEffects };
+      lastRun = { result, beforeState, afterState: afterSnap?.state || {} };
     }
     log(`  run ${i + 1}/${runs}: TTFT=${result.ttftMs == null ? "n/a" : result.ttftMs.toFixed(0)}ms total=${result.totalMs.toFixed(0)}ms${result.errorEvent ? `  ⚠ ${JSON.stringify(result.errorEvent).slice(0, 120)}` : ""}`);
   }
 
-  const { result, beforeState, afterState, appliedEffects } = lastRun;
+  const { result, beforeState, afterState } = lastRun;
   const finalResponse = result.finalResponse;
   const aiText = finalResponse?.aiText || result.aiTextStream || "";
 
@@ -608,7 +626,6 @@ async function runScenario(scenario, token, runs) {
     judge,
     redlines,
     toolEvents: result.toolEvents,
-    appliedEffects,
     setupCount,
     aiTextPreview: aiText.slice(0, 200),
   };
@@ -711,10 +728,6 @@ function buildReport({ args, scenarioResults, baseline, regressionsById, overall
     lines.push("");
     if (r.aiTextPreview) {
       lines.push(`> aiText preview: ${r.aiTextPreview.replace(/\n/g, " ")}${r.aiTextPreview.length >= 200 ? "…" : ""}`);
-      lines.push("");
-    }
-    if (r.appliedEffects?.applied?.length) {
-      lines.push(`- Applied effects: ${r.appliedEffects.applied.map((item) => `${item.collection}/${item.id}`).join(", ")}`);
       lines.push("");
     }
   }

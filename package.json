@@ -13,7 +13,7 @@
     "test:cloud-e2e": "node scripts/cloud-feature-e2e.mjs",
     "test:agent-benchmark": "node scripts/agent-benchmark.mjs",
     "test:agent-harness-live": "node scripts/agent-harness-live-benchmark.mjs",
-    "test:agent-l2:unit": "node scripts/test-l2-effect-apply.mjs && node scripts/test-l2-assertions.mjs && node scripts/test-l2-coverage-matrix.mjs && node scripts/test-album-domain.mjs && node scripts/test-album-merge-guard.mjs && node scripts/test-care-log-helpers.mjs && node scripts/test-agent-product-coverage-index.mjs && node scripts/test-native-capability-audit.mjs && node scripts/test-app-function-coverage-index.mjs && node scripts/test-capability-manifest.mjs",
+    "test:agent-l2:unit": "node scripts/test-l2-assertions.mjs && node scripts/test-l2-coverage-matrix.mjs && node scripts/test-album-domain.mjs && node scripts/test-album-merge-guard.mjs && node scripts/test-media-capture-date.mjs && node scripts/test-care-log-helpers.mjs && node scripts/test-agent-product-coverage-index.mjs && node scripts/test-native-capability-audit.mjs && node scripts/test-app-function-coverage-index.mjs && node scripts/test-capability-manifest.mjs",
     "test:app-function-coverage-index": "node scripts/test-app-function-coverage-index.mjs",
     "test:native-capability-audit": "node scripts/test-native-capability-audit.mjs",
     "test:album-domain": "node scripts/test-album-domain.mjs",

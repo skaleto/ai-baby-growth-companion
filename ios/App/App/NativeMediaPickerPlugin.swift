@@ -128,6 +128,7 @@ class NativeMediaPickerPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControll
                 }
 
                 do {
+                    let capturedAt = self.captureDate(from: sourceUrl, kind: kindAndType.kind)
                     let copiedUrl = try self.copyToCache(sourceUrl, kind: kindAndType.kind, typeIdentifier: kindAndType.typeIdentifier)
                     var item: [String: Any] = [
                         "uri": copiedUrl.absoluteString,
@@ -137,6 +138,9 @@ class NativeMediaPickerPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControll
                         "kind": kindAndType.kind,
                         "size": self.fileSize(copiedUrl)
                     ]
+                    if let capturedAt {
+                        item["capturedAt"] = capturedAt
+                    }
                     if kindAndType.kind == "video" {
                         let metadata = self.videoMetadata(copiedUrl)
                         if let width = metadata.width { item["width"] = width }
@@ -237,6 +241,65 @@ class NativeMediaPickerPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControll
         if !CGImageDestinationFinalize(writer) {
             throw pluginError("Unable to normalize selected image")
         }
+    }
+
+    private func captureDate(from sourceUrl: URL, kind: String) -> String? {
+        if kind == "image" {
+            return imageCaptureDate(from: sourceUrl)
+        }
+        if kind == "video" {
+            return videoCaptureDate(from: sourceUrl)
+        }
+        return nil
+    }
+
+    private func imageCaptureDate(from sourceUrl: URL) -> String? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(sourceUrl as CFURL, sourceOptions),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+            return nil
+        }
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any]
+        let rawValue = exif?[kCGImagePropertyExifDateTimeOriginal] as? String
+            ?? exif?[kCGImagePropertyExifDateTimeDigitized] as? String
+            ?? tiff?[kCGImagePropertyTIFFDateTime] as? String
+        return normalizeExifDate(rawValue)
+    }
+
+    private func videoCaptureDate(from sourceUrl: URL) -> String? {
+        let asset = AVURLAsset(url: sourceUrl)
+        if let item = asset.metadata.first(where: { $0.commonKey?.rawValue == "creationDate" }) {
+            if let date = item.dateValue {
+                return localIsoString(date)
+            }
+            if let stringValue = item.stringValue {
+                let formatter = ISO8601DateFormatter()
+                if let date = formatter.date(from: stringValue) {
+                    return localIsoString(date)
+                }
+            }
+        }
+        return nil
+    }
+
+    private func normalizeExifDate(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 19 else { return nil }
+        let prefix = String(trimmed.prefix(19))
+        let parts = prefix.split(separator: " ")
+        guard parts.count == 2 else { return nil }
+        let dateParts = parts[0].split(separator: ":")
+        guard dateParts.count == 3 else { return nil }
+        return "\(dateParts[0])-\(dateParts[1])-\(dateParts[2])T\(parts[1])"
+    }
+
+    private func localIsoString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return formatter.string(from: date)
     }
 
     private func pluginError(_ message: String) -> NSError {

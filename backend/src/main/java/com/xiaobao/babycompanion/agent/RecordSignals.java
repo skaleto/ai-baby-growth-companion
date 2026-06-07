@@ -58,4 +58,25 @@ public record RecordSignals(
         growthMeasurements = growthMeasurements == null ? List.of() : growthMeasurements;
         memorySignals = memorySignals == null ? List.of() : memorySignals;
     }
+
+    public static RecordSignals empty() {
+        return new RecordSignals(
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false,
+                false,
+                List.of(),
+                false,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                false,
+                false,
+                false,
+                false
+        );
+    }
 }

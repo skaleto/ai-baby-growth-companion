@@ -11,6 +11,11 @@ export type NativePickedMediaItem = {
   width?: number;
   height?: number;
   durationMs?: number;
+  capturedAt?: string;
+};
+
+export type NativePickedMediaFile = File & {
+  capturedAt?: string;
 };
 
 type NativeMediaPickerResult = {
@@ -52,7 +57,19 @@ export async function nativePickedMediaToFile(item: NativePickedMediaItem, index
       const blob = await response.blob();
       const mimeType = item.mimeType || blob.type || "application/octet-stream";
       const name = item.name?.trim() || fallbackName({ ...item, mimeType }, index);
-      return new File([blob], name, { type: mimeType, lastModified: Date.now() });
+      const capturedAtMs = item.capturedAt ? Date.parse(item.capturedAt) : NaN;
+      const file = new File([blob], name, {
+        type: mimeType,
+        lastModified: Number.isNaN(capturedAtMs) ? Date.now() : capturedAtMs,
+      }) as NativePickedMediaFile;
+      if (item.capturedAt) {
+        Object.defineProperty(file, "capturedAt", {
+          configurable: true,
+          enumerable: false,
+          value: item.capturedAt,
+        });
+      }
+      return file;
     } catch (error) {
       lastError = error;
     }

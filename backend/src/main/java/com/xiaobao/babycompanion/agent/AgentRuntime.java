@@ -28,9 +28,15 @@ import java.util.stream.Stream;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xiaobao.babycompanion.auth.AuthPrincipal;
 import com.xiaobao.babycompanion.auth.CurrentUser;
+import com.xiaobao.babycompanion.agent.action.AgentActionContext;
+import com.xiaobao.babycompanion.agent.action.AgentActionExecutor;
+import com.xiaobao.babycompanion.agent.action.AgentActionResponseGuard;
+import com.xiaobao.babycompanion.agent.action.AgentActionResult;
+import com.xiaobao.babycompanion.agent.action.AgentActionTool;
 import com.xiaobao.babycompanion.config.AgentRuntimeProperties;
 import com.xiaobao.babycompanion.config.DeepSeekProperties;
 import com.xiaobao.babycompanion.config.DoubaoProperties;
@@ -49,7 +55,6 @@ import com.xiaobao.babycompanion.persistence.entity.AgentRunRecord;
 import com.xiaobao.babycompanion.service.AppStateService;
 import com.xiaobao.babycompanion.service.AttachmentStorageService;
 import com.xiaobao.babycompanion.service.AiUsageLogService;
-import com.xiaobao.babycompanion.service.ExpensePersistenceResult;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatResponse;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekFunctionCall;
@@ -91,8 +96,6 @@ public class AgentRuntime {
     private final AppStateService appStateService;
     private final AttachmentStorageService attachmentStorageService;
     private final AiUsageLogService aiUsageLogService;
-    private final RecordSignalExtractor recordSignalExtractor;
-    private final EffectPolicy effectPolicy;
     private final CurrentUser currentUser;
     private final SkillRegistry skillRegistry;
     private final SkillDisclosureService skillDisclosureService;
@@ -100,6 +103,8 @@ public class AgentRuntime {
     private final ExpenseRecognitionSkill expenseRecognitionSkill;
     private final AgentTraceService agentTraceService;
     private final ToolRegistry toolRegistry;
+    private final AgentActionExecutor agentActionExecutor;
+    private final AgentActionResponseGuard agentActionResponseGuard;
     private final SafetyGuard safetyGuard;
     private final Executor agentStreamExecutor;
     private final Clock clock;
@@ -115,8 +120,6 @@ public class AgentRuntime {
             AgentContextService agentContextService,
             AppStateService appStateService,
             AttachmentStorageService attachmentStorageService,
-            RecordSignalExtractor recordSignalExtractor,
-            EffectPolicy effectPolicy,
             CurrentUser currentUser,
             SkillRegistry skillRegistry,
             SkillDisclosureService skillDisclosureService,
@@ -131,8 +134,6 @@ public class AgentRuntime {
                 agentContextService,
                 appStateService,
                 attachmentStorageService,
-                recordSignalExtractor,
-                effectPolicy,
                 currentUser,
                 skillRegistry,
                 skillDisclosureService,
@@ -157,8 +158,6 @@ public class AgentRuntime {
             AgentContextService agentContextService,
             AppStateService appStateService,
             AttachmentStorageService attachmentStorageService,
-            RecordSignalExtractor recordSignalExtractor,
-            EffectPolicy effectPolicy,
             CurrentUser currentUser,
             SkillRegistry skillRegistry,
             SkillDisclosureService skillDisclosureService,
@@ -181,8 +180,6 @@ public class AgentRuntime {
         this.appStateService = appStateService;
         this.attachmentStorageService = attachmentStorageService;
         this.aiUsageLogService = aiUsageLogService;
-        this.recordSignalExtractor = recordSignalExtractor;
-        this.effectPolicy = effectPolicy;
         this.currentUser = currentUser;
         this.skillRegistry = skillRegistry;
         this.skillDisclosureService = skillDisclosureService;
@@ -190,6 +187,8 @@ public class AgentRuntime {
         this.expenseRecognitionSkill = expenseRecognitionSkill;
         this.agentTraceService = agentTraceService;
         this.toolRegistry = toolRegistry;
+        this.agentActionExecutor = new AgentActionExecutor(objectMapper);
+        this.agentActionResponseGuard = new AgentActionResponseGuard();
         this.safetyGuard = safetyGuard;
         this.agentStreamExecutor = agentStreamExecutor;
         this.clock = clock;
@@ -229,28 +228,11 @@ public class AgentRuntime {
         String traceId = "agent-" + UUID.randomUUID();
         AgentRunRecord agentRun = startAgentRunTrace(traceId, familyId, principal.userId(), request, plannerRuntimeModel, runtimeModel);
         List<Skill> selectedSkills = skillRegistry.selectSkills(request);
-        RecordSignals signals = recordSignalExtractor.extract(request.message(), request.recentMessages());
-        AgentChatResponse immediate = immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills);
-        if (immediate != null) {
-            completeAgentRunTrace(agentRun, immediate.effectDecisions());
-            return immediate;
-        }
+        RecordSignals signals = RecordSignals.empty();
         AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey, familyId, principal.userId());
         AgentContextSnapshot contextSnapshot = agentContextService.build(familyId, principal.userId(), request, plan, signals);
         SkillPlan skillPlan = skillRouter == null ? SkillPlan.empty() : skillRouter.plan(request, plan, signals);
         recordAgentPlanTrace(agentRun, plan, skillPlan);
-        AgentChatResponse profileBoundary = immediateBoundaryResponse(
-                signals,
-                traceId,
-                runtimeModel,
-                selectedSkills,
-                contextSnapshot.babyProfile(),
-                request.message()
-        );
-        if (profileBoundary != null) {
-            completeAgentRunTrace(agentRun, profileBoundary.effectDecisions());
-            return profileBoundary;
-        }
         RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
         List<VisualAttachmentInput> visualInputs = visualInputsForSkillExecution(
                 request,
@@ -270,7 +252,12 @@ public class AgentRuntime {
                 visualInputs,
                 null
         );
-        List<AgentToolResult> toolResults = executePlannedTools(plan, request, null);
+        AgentActionContext actionContext = new AgentActionContext(traceId, familyId, principal.userId(), clock, contextSnapshot.babyProfile());
+        List<AgentToolResult> toolResults = runModelSelectedTools(request, selectedSkills, traceId, runtimeModel, apiKey, actionContext, null);
+        if (toolResults.isEmpty()) {
+            toolResults = executePlannedTools(plan, request, null);
+        }
+        List<AgentActionResult> actionResults = agentActionExecutor.actionResults(toolResults);
         List<String> usedSkills = mergeSkillIds(usedSkillIds(selectedSkills, toolResults, plan, signals, request.message()), skillPlan);
         List<VisualAnalysisResult> visualAnalysisResults = expenseRecognitionResult == null
                 ? analyzeVisualInputsInBatches(
@@ -287,13 +274,15 @@ public class AgentRuntime {
         List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
                 ? List.of()
                 : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
-        boolean expenseRecordingIntent = shouldPersistExpenseRecognition(request.message(), plan, skillPlan);
-        ExpensePersistenceResult expensePersistenceResult = persistExpenseRecognitionResult(
+        boolean expensePendingIntent = shouldCreateExpensePending(request.message(), plan, skillPlan);
+        List<AgentActionResult> expenseActionResults = expenseRecognitionActionResults(
                 expenseRecognitionResult,
-                expenseRecordingIntent,
+                expensePendingIntent,
+                traceId,
                 familyId,
                 principal.userId()
         );
+        actionResults = mergeActionResults(actionResults, expenseActionResults);
 
         DeepSeekChatRequest chatRequest = buildDeepSeekRequest(
                 request,
@@ -310,7 +299,7 @@ public class AgentRuntime {
                 visualAnalysisResults,
                 skillPlan,
                 expenseRecognitionResult,
-                expensePersistenceResult
+                actionResults
         );
 
         try {
@@ -331,27 +320,18 @@ public class AgentRuntime {
                     .filter(StringUtils::hasText)
                     .orElseThrow(() -> new DeepSeekApiException(runtimeModel.id() + " response did not include message content"));
 
-            AgentChatResponse finalResponse = withSafetyAlertsAndDecisions(
+            AgentChatResponse finalResponse = withSafetyAlertsAndActionResults(
                     parseModelContent(content, traceId, response.model(), response.id(), usedSkills, collectSources(toolResults)),
                     request.message(),
-                    signals,
-                    plan,
-                    contextSnapshot.babyProfile(),
-                    skillEffectCandidates(expenseRecognitionResult, expensePersistenceResult, expenseRecordingIntent),
-                    expensePersistenceResult,
-                    contextSnapshot.growthMeasurements()
+                    actionResults
             );
             completeAgentRunTrace(agentRun, finalResponse.effectDecisions());
             return finalResponse;
         } catch (RestClientException exception) {
             recordUsage(runtimeModel, "agent_chat", inputType(request), familyId, principal.userId(), traceId, null, false, rootCauseMessage(exception), false, true);
-            AgentChatResponse fallbackResponse = expensePersistenceFallbackResponse(
+            AgentChatResponse fallbackResponse = actionResultFallbackResponse(
                     request.message(),
-                    signals,
-                    plan,
-                    contextSnapshot.babyProfile(),
-                    skillEffectCandidates(expenseRecognitionResult, expensePersistenceResult, expenseRecordingIntent),
-                    expensePersistenceResult,
+                    actionResults,
                     usedSkills,
                     traceId,
                     runtimeModel.apiModel(),
@@ -365,13 +345,9 @@ public class AgentRuntime {
             failAgentRunTrace(agentRun, rootCauseMessage(exception));
             throw new DeepSeekApiException("Failed to call " + runtimeModel.id() + " API", exception);
         } catch (RuntimeException exception) {
-            AgentChatResponse fallbackResponse = expensePersistenceFallbackResponse(
+            AgentChatResponse fallbackResponse = actionResultFallbackResponse(
                     request.message(),
-                    signals,
-                    plan,
-                    contextSnapshot.babyProfile(),
-                    skillEffectCandidates(expenseRecognitionResult, expensePersistenceResult, expenseRecordingIntent),
-                    expensePersistenceResult,
+                    actionResults,
                     usedSkills,
                     traceId,
                     runtimeModel.apiModel(),
@@ -672,13 +648,7 @@ public class AgentRuntime {
             BooleanSupplier cancelled
     ) {
         try {
-            RecordSignals signals = recordSignalExtractor.extract(request.message(), request.recentMessages());
-            AgentChatResponse immediate = immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills);
-            if (immediate != null) {
-                completeAfterFinalSent(emitter, agentRun, immediate);
-                emitter.complete();
-                return;
-            }
+            RecordSignals signals = RecordSignals.empty();
             sendProgressEvent(emitter, "planning", "running", "理解请求并选择处理能力");
             sendStatusEvent(emitter, "planning", "理解请求并选择处理能力");
             AgentPlan plan = runPlanner(request, selectedSkills, signals, plannerRuntimeModel, plannerApiKey, familyId, principal.userId());
@@ -689,19 +659,6 @@ public class AgentRuntime {
             SkillPlan skillPlan = skillRouter == null ? SkillPlan.empty() : skillRouter.plan(request, plan, signals);
             recordAgentPlanTrace(agentRun, plan, skillPlan);
             sendProgressEvent(emitter, "context", "completed", "上下文已准备好");
-            AgentChatResponse profileBoundary = immediateBoundaryResponse(
-                    signals,
-                    traceId,
-                    runtimeModel,
-                    selectedSkills,
-                    contextSnapshot.babyProfile(),
-                    request.message()
-            );
-            if (profileBoundary != null) {
-                completeAfterFinalSent(emitter, agentRun, profileBoundary);
-                emitter.complete();
-                return;
-            }
             RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
             List<VisualAttachmentInput> visualInputs = visualInputsForSkillExecution(
                     request,
@@ -730,7 +687,20 @@ public class AgentRuntime {
                     emitter
             );
             if (stopStreamIfCancelled(cancelled, agentRun, traceId, "expense_recognition")) return;
-            List<AgentToolResult> toolResults = executePlannedTools(plan, request, (event) -> sendEvent(emitter, "tool", event));
+            AgentActionContext actionContext = new AgentActionContext(traceId, familyId, principal.userId(), clock, contextSnapshot.babyProfile());
+            List<AgentToolResult> toolResults = runModelSelectedTools(
+                    request,
+                    selectedSkills,
+                    traceId,
+                    runtimeModel,
+                    apiKey,
+                    actionContext,
+                    (event) -> sendEvent(emitter, "tool", event)
+            );
+            if (toolResults.isEmpty()) {
+                toolResults = executePlannedTools(plan, request, (event) -> sendEvent(emitter, "tool", event));
+            }
+            List<AgentActionResult> actionResults = agentActionExecutor.actionResults(toolResults);
             if (stopStreamIfCancelled(cancelled, agentRun, traceId, "tools")) return;
             List<String> usedSkills = mergeSkillIds(usedSkillIds(selectedSkills, toolResults, plan, signals, request.message()), skillPlan);
             List<AgentSource> sources = collectSources(toolResults);
@@ -750,24 +720,26 @@ public class AgentRuntime {
             List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
                     ? List.of()
                     : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
-            boolean expenseRecordingIntent = shouldPersistExpenseRecognition(request.message(), plan, skillPlan);
-            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "before_expense_persistence")) return;
-            if (expenseRecognitionResult != null && expenseRecordingIntent && !expenseRecognitionResult.effectCandidates().isEmpty()) {
-                sendProgressEvent(emitter, "expense-persistence", "running", "把识别出的支出写入账本");
-                sendStatusEvent(emitter, "generating", "正在保存账本记录");
+            boolean expensePendingIntent = shouldCreateExpensePending(request.message(), plan, skillPlan);
+            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "before_expense_pending")) return;
+            if (expenseRecognitionResult != null && expensePendingIntent && !expenseRecognitionResult.effectCandidates().isEmpty()) {
+                sendProgressEvent(emitter, "expense-pending", "running", "整理账本待确认草稿");
+                sendStatusEvent(emitter, "generating", "正在整理账本草稿");
             }
-            ExpensePersistenceResult expensePersistenceResult = persistExpenseRecognitionResult(
+            List<AgentActionResult> expenseActionResults = expenseRecognitionActionResults(
                     expenseRecognitionResult,
-                    expenseRecordingIntent,
+                    expensePendingIntent,
+                    traceId,
                     familyId,
                     principal.userId()
             );
-            if (!expensePersistenceResult.saved().isEmpty()) {
-                sendProgressEvent(emitter, "expense-persistence", "completed", "已保存 " + expensePersistenceResult.saved().size() + " 条账本记录");
-            } else if (expenseRecognitionResult != null && expenseRecordingIntent && !expenseRecognitionResult.effectCandidates().isEmpty()) {
-                sendProgressEvent(emitter, "expense-persistence", "completed", "账本记录已由后续确认处理");
+            actionResults = mergeActionResults(actionResults, expenseActionResults);
+            if (expenseActionResults.stream().anyMatch((result) -> "pending_created".equals(result.status()))) {
+                sendProgressEvent(emitter, "expense-pending", "completed", "账本待确认草稿已整理");
+            } else if (expenseRecognitionResult != null && expensePendingIntent && !expenseRecognitionResult.effectCandidates().isEmpty()) {
+                sendProgressEvent(emitter, "expense-pending", "completed", "账本草稿已由后续确认处理");
             }
-            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "after_expense_persistence")) return;
+            if (stopStreamIfCancelled(cancelled, agentRun, traceId, "after_expense_pending")) return;
             sendModelWorkStatus(emitter, finalVisualInputs, visualAnalysisResults);
             sendProgressEvent(emitter, "final-composer", "running", "生成最终回复");
 
@@ -792,7 +764,7 @@ public class AgentRuntime {
                     visualAnalysisResults,
                     skillPlan,
                     expenseRecognitionResult,
-                    expensePersistenceResult
+                    actionResults
             ));
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create(endpointUrl(finalRuntimeModel)))
@@ -810,15 +782,10 @@ public class AgentRuntime {
                     usedSkills,
                     sources,
                     request.message(),
-                    signals,
-                    plan,
-                    contextSnapshot.babyProfile(),
-                    contextSnapshot.growthMeasurements(),
                     familyId,
                     principal.userId(),
                     inputType(request),
-                    skillEffectCandidates(expenseRecognitionResult, expensePersistenceResult, expenseRecordingIntent),
-                    expensePersistenceResult,
+                    actionResults,
                     agentRun,
                     cancelled
             );
@@ -886,7 +853,7 @@ public class AgentRuntime {
             List<VisualAnalysisResult> visualAnalysisResults,
             SkillPlan skillPlan,
             ExpenseRecognitionResult expenseRecognitionResult,
-            ExpensePersistenceResult expensePersistenceResult
+            List<AgentActionResult> actionResults
     ) {
         return new DeepSeekChatRequest(
                 runtimeModel.apiModel(),
@@ -905,7 +872,7 @@ public class AgentRuntime {
                                 visualAnalysisResults,
                                 skillPlan,
                                 expenseRecognitionResult,
-                                expensePersistenceResult
+                                actionResults
                         ), null, null)
                 ),
                 stream,
@@ -1280,6 +1247,7 @@ public class AgentRuntime {
             String traceId,
             RuntimeModel runtimeModel,
             String apiKey,
+            AgentActionContext actionContext,
             ToolEventSink eventSink
     ) {
         List<AgentTool> tools = toolRegistry.availableTools();
@@ -1302,7 +1270,7 @@ public class AgentRuntime {
                     .orElse(List.of());
 
             if (toolCalls.isEmpty()) return List.of();
-            return executeToolCalls(toolCalls, request, eventSink);
+            return executeToolCalls(toolCalls, request, actionContext, eventSink);
         } catch (RestClientException exception) {
             throw new DeepSeekApiException("Failed to call DeepSeek API for tool routing", exception);
         }
@@ -1327,19 +1295,28 @@ public class AgentRuntime {
                 null,
                 Map.of("type", "disabled"),
                 tools.stream().map(AgentTool::definition).toList(),
-                likelyNeedsExternalLookup(request.message()) ? "required" : "auto",
+                likelyNeedsExternalLookup(request.message()) || likelyNeedsAgentAction(request.message()) ? "required" : "auto",
                 serviceTier(runtimeModel)
         );
+    }
+
+    private boolean likelyNeedsAgentAction(String message) {
+        if (!StringUtils.hasText(message)) return false;
+        String text = message.trim();
+        return text.matches(".*(喝了|喝完|奶量|睡了|睡醒|便便|拉了|尿了|换尿布|体温|发烧|身高|体重|头围|里程碑|第一次).*")
+                || text.matches(".*(买|花了|支出|记账|账本).*(\\d+|[一二三四五六七八九十百]+).*")
+                || text.matches(".*(\\d+(\\.\\d+)?\\s*(ml|毫升|cm|厘米|kg|公斤|斤|元|块)).*");
     }
 
     private List<AgentToolResult> executeToolCalls(
             List<DeepSeekToolCall> toolCalls,
             AgentChatRequest request,
+            AgentActionContext actionContext,
             ToolEventSink eventSink
     ) {
         return toolCalls.stream()
                 .limit(3)
-                .map((toolCall) -> executeToolCall(toolCall, request, eventSink))
+                .map((toolCall) -> executeToolCall(toolCall, request, actionContext, eventSink))
                 .flatMap(Optional::stream)
                 .toList();
     }
@@ -1347,6 +1324,7 @@ public class AgentRuntime {
     private Optional<AgentToolResult> executeToolCall(
             DeepSeekToolCall toolCall,
             AgentChatRequest request,
+            AgentActionContext actionContext,
             ToolEventSink eventSink
     ) {
         DeepSeekFunctionCall function = toolCall.function();
@@ -1359,7 +1337,9 @@ public class AgentRuntime {
                     AgentToolCall call = new AgentToolCall(callId, tool.id(), function.arguments());
 
                     try {
-                        AgentToolResult result = tool.execute(call, request);
+                        AgentToolResult result = tool instanceof AgentActionTool actionTool
+                                ? agentActionExecutor.execute(actionTool, call, actionContext)
+                                : tool.execute(call, request);
                         sendToolEvent(eventSink, callId, tool, "completed", tool.displayName() + "完成", result.query());
                         return result;
                     } catch (Exception exception) {
@@ -1425,15 +1405,10 @@ public class AgentRuntime {
             List<String> usedSkills,
             List<AgentSource> sources,
             String userMessage,
-            RecordSignals signals,
-            AgentPlan plan,
-            JsonNode babyProfile,
-            List<JsonNode> existingGrowthMeasurements,
             String familyId,
             String userId,
             String inputType,
-            List<AgentEffectDecision> skillCandidates,
-            ExpensePersistenceResult expensePersistenceResult,
+            List<AgentActionResult> actionResults,
             AgentRunRecord agentRun,
             BooleanSupplier cancelled
     ) {
@@ -1455,13 +1430,9 @@ public class AgentRuntime {
                             abbreviate(errorBody, 1200)
                     );
                     recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, "HTTP_" + response.statusCode(), false, true);
-                    AgentChatResponse fallbackResponse = expensePersistenceFallbackResponse(
+                    AgentChatResponse fallbackResponse = actionResultFallbackResponse(
                             userMessage,
-                            signals,
-                            plan,
-                            babyProfile,
-                            skillCandidates,
-                            expensePersistenceResult,
+                            actionResults,
                             usedSkills,
                             traceId,
                             runtimeModel.apiModel(),
@@ -1493,7 +1464,7 @@ public class AgentRuntime {
                     sources
             );
             recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, requestId.get(), null, true, null, false, true);
-            AgentChatResponse finalResponse = withSafetyAlertsAndDecisions(parsed, userMessage, signals, plan, babyProfile, skillCandidates, expensePersistenceResult, existingGrowthMeasurements);
+            AgentChatResponse finalResponse = withSafetyAlertsAndActionResults(parsed, userMessage, actionResults);
             completeAfterFinalSent(emitter, agentRun, finalResponse);
             emitter.complete();
         } catch (Exception exception) {
@@ -1506,13 +1477,9 @@ public class AgentRuntime {
                     exception
             );
             recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, rootCauseMessage(exception), false, true);
-            AgentChatResponse fallbackResponse = expensePersistenceFallbackResponse(
+            AgentChatResponse fallbackResponse = actionResultFallbackResponse(
                     userMessage,
-                    signals,
-                    plan,
-                    babyProfile,
-                    skillCandidates,
-                    expensePersistenceResult,
+                    actionResults,
                     usedSkills,
                     traceId,
                     runtimeModel.apiModel(),
@@ -1531,23 +1498,25 @@ public class AgentRuntime {
         }
     }
 
-    AgentChatResponse expensePersistenceFallbackResponse(
+    AgentChatResponse actionResultFallbackResponse(
             String userMessage,
-            RecordSignals signals,
-            AgentPlan plan,
-            JsonNode babyProfile,
-            List<AgentEffectDecision> skillCandidates,
-            ExpensePersistenceResult expensePersistenceResult,
+            List<AgentActionResult> actionResults,
             List<String> usedSkills,
             String traceId,
             String model,
             String requestId,
             List<AgentSource> sources
     ) {
-        if (expensePersistenceResult == null || !expensePersistenceResult.hasFacts()) return null;
+        List<AgentActionResult> results = listOrEmpty(actionResults);
+        if (results.isEmpty()) return null;
+        String text = results.stream()
+                .map(AgentActionResult::userMessage)
+                .filter(StringUtils::hasText)
+                .findFirst()
+                .orElse("这次操作已经处理，但最终回复生成失败，可以稍后查看记录。");
         AgentChatResponse base = new AgentChatResponse(
-                "",
-                List.of("记账"),
+                text,
+                List.of("已处理"),
                 null,
                 null,
                 List.of(),
@@ -1561,348 +1530,32 @@ public class AgentRuntime {
                 model,
                 requestId
         );
-        return withSafetyAlertsAndDecisions(
-                base,
-                userMessage,
-                signals,
-                plan,
-                babyProfile,
-                listOrEmpty(skillCandidates),
-                expensePersistenceResult
-        );
+        return withSafetyAlertsAndActionResults(base, userMessage, results);
     }
 
-    AgentChatResponse withSafetyAlertsAndDecisions(
+    AgentChatResponse withSafetyAlertsAndActionResults(
             AgentChatResponse response,
             String userMessage,
-            RecordSignals signals,
-            AgentPlan plan,
-            JsonNode babyProfile
-    ) {
-        return withSafetyAlertsAndDecisions(response, userMessage, signals, plan, babyProfile, List.of(), ExpensePersistenceResult.empty());
-    }
-
-    AgentChatResponse withSafetyAlertsAndDecisions(
-            AgentChatResponse response,
-            String userMessage,
-            RecordSignals signals,
-            AgentPlan plan,
-            JsonNode babyProfile,
-            List<AgentEffectDecision> skillCandidates
-    ) {
-        return withSafetyAlertsAndDecisions(response, userMessage, signals, plan, babyProfile, skillCandidates, ExpensePersistenceResult.empty());
-    }
-
-    AgentChatResponse withSafetyAlertsAndDecisions(
-            AgentChatResponse response,
-            String userMessage,
-            RecordSignals signals,
-            AgentPlan plan,
-            JsonNode babyProfile,
-            List<AgentEffectDecision> skillCandidates,
-            ExpensePersistenceResult expensePersistenceResult
-    ) {
-        return withSafetyAlertsAndDecisions(response, userMessage, signals, plan, babyProfile, skillCandidates, expensePersistenceResult, List.of());
-    }
-
-    AgentChatResponse withSafetyAlertsAndDecisions(
-            AgentChatResponse response,
-            String userMessage,
-            RecordSignals signals,
-            AgentPlan plan,
-            JsonNode babyProfile,
-            List<AgentEffectDecision> skillCandidates,
-            ExpensePersistenceResult expensePersistenceResult,
-            List<JsonNode> existingGrowthMeasurements
+            List<AgentActionResult> actionResults
     ) {
         var alerts = safetyGuard.assess(userMessage, response.aiText());
-        AgentChatResponse withSafety = new AgentChatResponse(
-                response.aiText(),
+        String groundedText = agentActionResponseGuard.groundFinalText(response.aiText(), actionResults);
+        return new AgentChatResponse(
+                groundedText,
                 response.tags(),
-                response.growthEvent(),
-                response.careLogPatch(),
-                response.reminders(),
-                response.memories(),
-                response.expenses(),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
                 response.sources(),
                 alerts.isEmpty() ? response.safetyAlerts() : alerts,
-                response.effectDecisions(),
+                List.of(),
                 response.usedSkills(),
                 response.traceId(),
                 response.model(),
                 response.requestId()
         );
-        List<AgentEffectDecision> mediaDecisions = mediaDecisions(plan);
-        boolean albumSaveOnly = isAlbumSaveOnly(plan, userMessage);
-        List<AgentEffectDecision> decisions = albumSaveOnly
-                ? new ArrayList<>()
-                : new ArrayList<>(effectPolicy.decide(withSafety, signals, babyProfile, userMessage, skillCandidates, existingGrowthMeasurements));
-        if (isExpenseReadOnlyResult(expensePersistenceResult)) {
-            decisions.removeIf((decision) -> "expenseItem".equals(decision.type()));
-        }
-        decisions.addAll(mediaDecisions);
-        String aiText = albumSaveOnly && !mediaDecisions.isEmpty()
-                ? albumSaveAiText(plan)
-                : adjustedAiText(withSafety.aiText(), signals, decisions, expensePersistenceResult);
-        return new AgentChatResponse(
-                aiText,
-                withSafety.tags(),
-                albumSaveOnly ? null : withSafety.growthEvent(),
-                albumSaveOnly ? null : withSafety.careLogPatch(),
-                albumSaveOnly ? List.of() : withSafety.reminders(),
-                albumSaveOnly ? List.of() : withSafety.memories(),
-                albumSaveOnly ? List.of() : withSafety.expenses(),
-                withSafety.sources(),
-                withSafety.safetyAlerts(),
-                decisions,
-                withSafety.usedSkills(),
-                withSafety.traceId(),
-                withSafety.model(),
-                withSafety.requestId()
-        );
-    }
-
-    private boolean isAlbumSaveOnly(AgentPlan plan, String userMessage) {
-        AgentMediaAction action = plan == null ? null : plan.mediaAction();
-        if (action == null || !"save_to_album".equals(action.intent())) return false;
-        String message = userMessage == null ? "" : userMessage.trim();
-        boolean saveIntent = message.matches(".*(保存到相册|存到相册|加入相册|放进相册|收藏|留念|记录到相册).*");
-        boolean mediaReference = message.matches(".*(刚才|这个|这张|这段|上个|上一条|视频|照片|图片|素材|相册).*");
-        boolean explicitOtherRecord = message.matches(".*(喝了|喝奶|奶量|睡了|睡眠|拉屎|便便|体温|提醒我|闹钟|疫苗|体检|第一次|里程碑).*")
-                && !message.matches(".*(视频|照片|图片).*");
-        return saveIntent && mediaReference && !explicitOtherRecord;
-    }
-
-    private boolean isExpenseReadOnlyResult(ExpensePersistenceResult result) {
-        return result != null
-                && !result.readOnly().isEmpty()
-                && result.saved().isEmpty()
-                && result.duplicates().isEmpty()
-                && result.needsInput().isEmpty();
-    }
-
-    private String albumSaveAiText(AgentPlan plan) {
-        AgentMediaAction action = plan == null ? null : plan.mediaAction();
-        String label = "素材";
-        if (action != null && "video".equals(action.targetKind())) {
-            label = "视频";
-        } else if (action != null && "image".equals(action.targetKind())) {
-            label = "照片";
-        }
-        return "已把刚才的%s整理到相册里。".formatted(label);
-    }
-
-    private List<AgentEffectDecision> mediaDecisions(AgentPlan plan) {
-        AgentMediaAction action = plan == null ? null : plan.mediaAction();
-        if (action == null || !"save_to_album".equals(action.intent())) return List.of();
-        if (action.confidence() != null && action.confidence() < 0.55) return List.of();
-
-        ObjectNode payload = objectMapper.createObjectNode();
-        putIfText(payload, "intent", action.intent());
-        putIfText(payload, "targetScope", action.targetScope());
-        putIfText(payload, "targetKind", action.targetKind());
-        putIfText(payload, "refHint", action.refHint());
-        putIfText(payload, "category", action.category());
-        putIfText(payload, "reason", action.reason());
-        payload.putArray("tags").add(albumCategoryLabel(action.category()));
-
-        return List.of(new AgentEffectDecision(
-                "decision-" + UUID.randomUUID(),
-                "auto",
-                "albumItem",
-                payload,
-                action.confidence() == null ? 0.72 : action.confidence(),
-                StringUtils.hasText(action.reason()) ? action.reason() : "用户表达了保存媒体到相册的意图",
-                "model"
-        ));
-    }
-
-    private void putIfText(ObjectNode payload, String field, String value) {
-        if (StringUtils.hasText(value)) payload.put(field, value);
-    }
-
-    private String albumCategoryLabel(String category) {
-        return switch (category == null ? "" : category) {
-            case "growth" -> "成长";
-            case "feeding" -> "喂养";
-            case "sleep" -> "睡眠";
-            case "health" -> "健康";
-            case "reminder" -> "提醒";
-            default -> "日常";
-        };
-    }
-
-    private AgentChatResponse immediateBoundaryResponse(
-            RecordSignals signals,
-            String traceId,
-            RuntimeModel runtimeModel,
-            List<Skill> selectedSkills
-    ) {
-        return immediateBoundaryResponse(signals, traceId, runtimeModel, selectedSkills, null, "");
-    }
-
-    private AgentChatResponse immediateBoundaryResponse(
-            RecordSignals signals,
-            String traceId,
-            RuntimeModel runtimeModel,
-            List<Skill> selectedSkills,
-            JsonNode babyProfile,
-            String userMessage
-    ) {
-        AgentChatResponse empty = new AgentChatResponse(
-                "",
-                List.of(),
-                null,
-                null,
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                usedSkillIds(selectedSkills, List.of()),
-                traceId,
-                runtimeModel.apiModel(),
-                ""
-        );
-        List<AgentEffectDecision> decisions = effectPolicy.decide(empty, signals, babyProfile, userMessage);
-        if (!shouldUseImmediateBoundaryResponse(signals, decisions)) return null;
-        String aiText = adjustedAiText("", signals, decisions, ExpensePersistenceResult.empty());
-        return new AgentChatResponse(
-                StringUtils.hasText(aiText) ? aiText : "这条记录还缺一点信息，补充后我再帮你整理。",
-                signals.unsupportedMutationRequest() ? List.of("能力边界") : List.of("需要补充"),
-                null,
-                null,
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                decisions,
-                usedSkillIds(selectedSkills, List.of()),
-                traceId,
-                runtimeModel.apiModel(),
-                ""
-        );
-    }
-
-    private boolean shouldUseImmediateBoundaryResponse(RecordSignals signals, List<AgentEffectDecision> decisions) {
-        if (signals.unsupportedMutationRequest()) return true;
-        boolean hasAsk = decisions.stream().anyMatch((decision) -> "ask".equals(decision.mode()));
-        if (!hasAsk) return false;
-        return signals.topics().stream().allMatch((topic) -> List.of("feeding", "sleep").contains(topic));
-    }
-
-    private String adjustedAiText(String aiText, RecordSignals signals, List<AgentEffectDecision> decisions, ExpensePersistenceResult expensePersistenceResult) {
-        if (signals.privateStateShareRequest()) {
-            return AgentCapabilityContract.privateStateShareMessage();
-        }
-        if (signals.unsupportedMutationRequest()) {
-            return containsBoundaryExplanation(aiText) ? aiText : AgentCapabilityContract.unsupportedMutationMessage();
-        }
-        String expenseSummary = expensePersistenceSummary(expensePersistenceResult);
-        if (StringUtils.hasText(expenseSummary)) {
-            String normalized = aiText == null ? "" : aiText.trim();
-            if (!StringUtils.hasText(normalized) || looksLikeExpenseConfirmation(normalized)) return expenseSummary;
-            if (normalized.contains("已记录") || normalized.contains("没有重复记录") || normalized.contains("没有入账")) return normalized;
-            return normalized + "\n\n" + expenseSummary;
-        }
-        String askQuestion = decisions.stream()
-                .filter((decision) -> "ask".equals(decision.mode()))
-                .map(AgentEffectDecision::payload)
-                .map((payload) -> payload == null ? "" : payload.path("question").asText(""))
-                .filter(StringUtils::hasText)
-                .findFirst()
-                .orElse("");
-        if (StringUtils.hasText(askQuestion) && hasDuplicateGrowthMeasurementAsk(decisions)) {
-            return askQuestion;
-        }
-        if (StringUtils.hasText(askQuestion)) return mergeFollowUpQuestion(aiText, askQuestion);
-
-        boolean hasPendingExpense = decisions.stream().anyMatch((decision) ->
-                "expenseItem".equals(decision.type()) && "pending".equals(decision.mode())
-        );
-        if (hasPendingExpense && looksLikeAmountClarification(aiText)) {
-            return "我已识别出这笔支出，并整理成待确认的账本草稿。请确认后我再记到账本里。";
-        }
-        boolean hasPendingCareLog = decisions.stream().anyMatch((decision) ->
-                "careLog".equals(decision.type()) && "pending".equals(decision.mode())
-        );
-        if (hasPendingCareLog && (!StringUtils.hasText(aiText) || looksLikeCareLogRecorded(aiText))) {
-            return "我已整理出一条待确认照护记录。确认后会写入今天记录；需要调整的话，可以先编辑。";
-        }
-        return aiText;
-    }
-
-    private boolean hasDuplicateGrowthMeasurementAsk(List<AgentEffectDecision> decisions) {
-        return decisions.stream().anyMatch((decision) -> {
-            if (!"growthMeasurement".equals(decision.type()) || !"ask".equals(decision.mode())) return false;
-            JsonNode missingFields = decision.payload() == null ? null : decision.payload().path("missingFields");
-            if (missingFields == null || !missingFields.isArray()) return false;
-            for (JsonNode missingField : missingFields) {
-                if ("duplicate".equals(missingField.asText())) return true;
-            }
-            return false;
-        });
-    }
-
-    private boolean looksLikeExpenseConfirmation(String text) {
-        if (!StringUtils.hasText(text)) return false;
-        return text.matches(".*(确认后|待确认|再帮你记|补充后).*账本.*")
-                || text.matches(".*(实际花了多少钱|实际支付金额|金额是多少).*");
-    }
-
-    private String expensePersistenceSummary(ExpensePersistenceResult result) {
-        if (result == null || !result.hasFacts()) return "";
-        List<String> parts = new ArrayList<>();
-        if (!result.saved().isEmpty()) {
-            parts.add("已记录 " + result.saved().size() + " 笔支出到账本" + expenseTotalText(result.saved()) + "。");
-        }
-        if (!result.duplicates().isEmpty()) {
-            parts.add(result.duplicates().size() + " 笔之前已经在账本里，没有重复记录。");
-        }
-        if (!result.readOnly().isEmpty() && result.saved().isEmpty() && result.duplicates().isEmpty()) {
-            parts.add("我已识别出 " + result.readOnly().size() + " 笔支出，本轮只是识别，没有写入账本。");
-        }
-        if (!result.needsInput().isEmpty()) {
-            parts.add("还有 " + result.needsInput().size() + " 笔信息不完整，需要补充金额、日期或用途后再记录。");
-        }
-        return String.join("\n", parts);
-    }
-
-    private String expenseTotalText(List<JsonNode> expenses) {
-        double total = expenses.stream().mapToDouble((expense) -> expense.path("amount").asDouble(0)).sum();
-        if (total <= 0) return "";
-        return "，共 ¥" + String.format(java.util.Locale.ROOT, "%.2f", Math.round(total * 100.0) / 100.0);
-    }
-
-    private boolean containsBoundaryExplanation(String text) {
-        if (!StringUtils.hasText(text)) return false;
-        return text.matches(".*(不能|暂不支持|不支持|无法).*(撤销|删除|修改|回滚|改历史|历史记录).*")
-                || text.matches(".*(记录页|成长页|重新记录|重新添加).*");
-    }
-
-    private String mergeFollowUpQuestion(String aiText, String question) {
-        String normalizedQuestion = question == null ? "" : question.trim();
-        if (!StringUtils.hasText(normalizedQuestion)) return aiText;
-        if (!StringUtils.hasText(aiText)) return normalizedQuestion;
-        String normalizedText = aiText.trim();
-        if (normalizedText.contains(normalizedQuestion)) return normalizedText;
-        if (looksLikeAmountClarification(normalizedQuestion) && looksLikeAmountClarification(normalizedText)) {
-            return normalizedText;
-        }
-        return normalizedText + "\n\n" + normalizedQuestion;
-    }
-
-    private boolean looksLikeAmountClarification(String text) {
-        if (!StringUtils.hasText(text)) return false;
-        return text.matches(".*(实际花了多少钱|实际支付金额|实际金额|确认金额|金额是多少|告诉我.*金额|补充.*金额).*");
-    }
-
-    private boolean looksLikeCareLogRecorded(String text) {
-        if (!StringUtils.hasText(text)) return false;
-        return text.matches(".*(已经|已|帮你).*(记到|记录|保存|写入).*(今天|照护|喂养|记录|日志).*")
-                || text.matches(".*(今天|照护|喂养).*(记录|日志).*(已经|已).*(记好|记录|保存|写入).*");
     }
 
     private void handleStreamLine(
@@ -2341,7 +1994,7 @@ public class AgentRuntime {
             boolean visualInputsAttachedToFinalRequest,
             SkillPlan skillPlan,
             ExpenseRecognitionResult expenseRecognitionResult,
-            ExpensePersistenceResult expensePersistenceResult
+            List<AgentActionResult> actionResults
     ) {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("traceId", traceId);
@@ -2364,6 +2017,11 @@ public class AgentRuntime {
         context.put("retrievedContext", contextSnapshot);
         context.put("conversationSummary", contextSnapshot.conversationSummary());
         context.put("recordContext", contextSnapshot.recordContext());
+        context.put("actionResults", listOrEmpty(actionResults));
+        context.put(
+                "actionResultUsageRule",
+                "actionResults 是本轮已执行工具/受控写入的事实来源。只有 status=applied 才能说已记录/已保存；只有 status=pending_created 才能说已整理成待确认草稿；status=needs_input 时要追问 missingFields。"
+        );
         context.put("attachments", attachmentSummaries(request.attachments()));
         context.put("visualInputsAttachedToFinalRequest", visualInputsAttachedToFinalRequest);
         if (visualAnalysisResults != null && !visualAnalysisResults.isEmpty()) {
@@ -2387,13 +2045,6 @@ public class AgentRuntime {
             context.put(
                     "skillResultUsageRule",
                     "expense-recognition 是已执行的能力模块；最终回复必须尊重该 skill 的 status、证据和 effectCandidates。若 effectCandidates 已包含实际支付金额，不要再追问实际花了多少钱。若 skill 失败，应说明真实失败阶段。"
-            );
-        }
-        if (expensePersistenceResult != null && expensePersistenceResult.hasFacts()) {
-            context.put("expensePersistenceResult", expensePersistenceContext(expensePersistenceResult));
-            context.put(
-                    "expensePersistenceUsageRule",
-                    "这是账本写入的事实结果，优先级高于模型草稿：saved 表示已新增到账本，duplicates 表示已存在且没有重复记录，needsInput 表示仍需补充，readOnly 表示本轮只是识别没有入账。最终回复要自然表达这些事实，不要再让用户确认已经保存或已跳过的记录。"
             );
         }
         context.put("userMessage", request.message());
@@ -2422,7 +2073,7 @@ public class AgentRuntime {
             List<VisualAnalysisResult> visualAnalysisResults,
             SkillPlan skillPlan,
             ExpenseRecognitionResult expenseRecognitionResult,
-            ExpensePersistenceResult expensePersistenceResult
+            List<AgentActionResult> actionResults
     ) {
         String prompt = buildUserPrompt(
                 request,
@@ -2437,7 +2088,7 @@ public class AgentRuntime {
                 visualInputs != null && !visualInputs.isEmpty(),
                 skillPlan,
                 expenseRecognitionResult,
-                expensePersistenceResult
+                actionResults
         );
         if (visualInputs == null || visualInputs.isEmpty()) return prompt;
 
@@ -2613,7 +2264,7 @@ public class AgentRuntime {
         return expenseContext && recordIntent;
     }
 
-    boolean shouldPersistExpenseRecognition(String message, AgentPlan plan, SkillPlan skillPlan) {
+    boolean shouldCreateExpensePending(String message, AgentPlan plan, SkillPlan skillPlan) {
         if (hasExpenseRecordingIntent(message)) return true;
         if (plan == null || skillPlan == null || !skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID)) return false;
         boolean plannerRecordIntent = "record".equalsIgnoreCase(plan.intent());
@@ -2621,112 +2272,112 @@ public class AgentRuntime {
         return plannerRecordIntent && plannerExpenseTopic;
     }
 
-    ExpensePersistenceResult persistExpenseRecognitionResult(
+    List<AgentActionResult> expenseRecognitionActionResults(
             ExpenseRecognitionResult result,
-            boolean shouldSave,
+            boolean shouldCreatePending,
+            String traceId,
             String familyId,
             String userId
     ) {
-        if (result == null || result.effectCandidates().isEmpty() || appStateService == null) {
-            return ExpensePersistenceResult.empty();
-        }
-        return appStateService.persistAgentExpenseCandidates(
-                result.effectCandidates().stream()
-                        .map(AgentEffectDecision::payload)
-                        .filter((payload) -> payload != null && payload.isObject())
-                        .toList(),
-                shouldSave,
-                familyId,
-                userId
-        );
-    }
-
-    private List<AgentEffectDecision> skillEffectCandidates(
-            ExpenseRecognitionResult result,
-            ExpensePersistenceResult persistenceResult,
-            boolean expenseRecordingIntent
-    ) {
-        if (result == null) return List.of();
-        if (!expenseRecordingIntent) return List.of();
-        if (persistenceResult == null || !persistenceResult.hasFacts()) {
-            if (!result.effectCandidates().isEmpty()) return result.effectCandidates();
+        if (result == null || !shouldCreatePending) return List.of();
+        if (result.effectCandidates().isEmpty()) {
             if (!result.clarifications().isEmpty()) {
-                return List.of(expenseSkillClarificationDecision(result.clarifications().get(0)));
+                return List.of(AgentActionResult.needsInput(
+                        "expense_recognition",
+                        "pending_effect",
+                        result.clarifications().get(0),
+                        List.of("amount", "date", "purpose")
+                ));
             }
             if (StringUtils.hasText(result.userFacingError())) {
-                return List.of(expenseSkillClarificationDecision(result.userFacingError()));
+                return List.of(AgentActionResult.failed(
+                        "expense_recognition",
+                        "pending_effect",
+                        result.userFacingError(),
+                        result.status()
+                ));
             }
             return List.of();
         }
-        List<AgentEffectDecision> decisions = new ArrayList<>();
-        persistenceResult.saved().forEach((payload) -> decisions.add(expensePersistenceDecision("auto", payload, "支出已自动保存到账本。", "saved")));
-        persistenceResult.duplicates().forEach((payload) -> decisions.add(expensePersistenceDecision("ignore", payload, "支出已存在，未重复保存。", "duplicate")));
-        persistenceResult.needsInput().forEach((payload) -> decisions.add(needsInputExpenseDecision(payload)));
-        return decisions;
+        if (appStateService == null) {
+            return List.of(AgentActionResult.failed(
+                    "expense_recognition",
+                    "pending_effect",
+                    "账本草稿暂时没有保存成功，可以稍后再试。",
+                    "missing_app_state_service"
+            ));
+        }
+        ArrayNode expenses = objectMapper.createArrayNode();
+        result.effectCandidates().stream()
+                .map(AgentEffectDecision::payload)
+                .filter((payload) -> payload != null && payload.isObject())
+                .map((payload) -> (ObjectNode) payload.deepCopy())
+                .forEach((expense) -> {
+                    if (!StringUtils.hasText(nodeText(expense, "id", ""))) {
+                        expense.put("id", "expense-" + stableExpenseSignature(expense));
+                    }
+                    expense.put("source", "agent");
+                    expenses.add(expense);
+                });
+        if (expenses.isEmpty()) return List.of();
+        String pendingId = "pending-effect:expense-recognition:%s:%s".formatted(familyId, stableExpenseSignature(expenses));
+        ObjectNode pending = objectMapper.createObjectNode();
+        pending.put("id", pendingId);
+        pending.put("domain", "ledger");
+        pending.put("status", "pending");
+        pending.put("createdAt", Instant.now(clock).toString());
+        pending.putArray("tags").add("账本");
+        pending.set("expenses", expenses);
+        ObjectNode source = pending.putObject("source");
+        source.put("kind", "agent_action");
+        source.put("traceId", traceId);
+        source.put("toolCallId", "expense-recognition:" + stableExpenseSignature(expenses));
+        source.put("toolName", "expense_recognition");
+        source.put("idempotencyKey", stableExpenseSignature(expenses));
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.set("expenses", expenses.deepCopy());
+        pending.set("payload", payload);
+        appStateService.upsertAgentPendingEffect(familyId, userId, pending);
+        return List.of(new AgentActionResult(
+                "pending_created",
+                "expense_recognition",
+                "pending_effect",
+                List.of(),
+                pendingId,
+                Map.of("expenseCount", expenses.size()),
+                "已整理成待确认账本草稿。",
+                List.of(),
+                List.of()
+        ));
     }
 
-    private AgentEffectDecision expensePersistenceDecision(String mode, JsonNode payload, String reason, String status) {
-        ObjectNode next = payload != null && payload.isObject()
-                ? (ObjectNode) payload.deepCopy()
-                : objectMapper.createObjectNode();
-        next.put("persistenceStatus", status);
-        return new AgentEffectDecision(
-                "decision-" + UUID.randomUUID(),
-                mode,
-                "expenseItem",
-                next,
-                "auto".equals(mode) ? 0.96 : 0.9,
-                reason,
-                SkillRouter.EXPENSE_RECOGNITION_SKILL_ID
-        );
+    private List<AgentActionResult> mergeActionResults(
+            List<AgentActionResult> left,
+            List<AgentActionResult> right
+    ) {
+        return Stream.concat(listOrEmpty(left).stream(), listOrEmpty(right).stream()).toList();
     }
 
-    private AgentEffectDecision expenseSkillClarificationDecision(String question) {
-        ObjectNode ask = objectMapper.createObjectNode();
-        ask.put("topic", "expense");
-        ask.put("question", StringUtils.hasText(question)
-                ? question.trim()
-                : "这次没有拿到足够稳定的支出识别结果，可以补充更清晰的图片或金额后再记录。");
-        ask.set("missingFields", objectMapper.createArrayNode().add("支出图片证据"));
-        return new AgentEffectDecision(
-                "decision-" + UUID.randomUUID(),
-                "ask",
-                "expenseItem",
-                ask,
-                0.82,
-                "支出识别 skill 没有产生完整可保存候选。",
-                SkillRouter.EXPENSE_RECOGNITION_SKILL_ID
-        );
-    }
-
-    private AgentEffectDecision needsInputExpenseDecision(JsonNode payload) {
-        ObjectNode ask = objectMapper.createObjectNode();
-        ask.put("topic", "expense");
-        ask.put("question", "这笔账还缺少金额、日期或用途，补充后我再帮你记到账本里。");
-        ask.set("missingFields", objectMapper.createArrayNode().add("金额、日期或用途"));
-        if (payload != null && payload.isObject()) ask.set("draftExpense", payload);
-        return new AgentEffectDecision(
-                "decision-" + UUID.randomUUID(),
-                "ask",
-                "expenseItem",
-                ask,
-                0.78,
-                "支出信息不完整，需要补充核心字段。",
-                SkillRouter.EXPENSE_RECOGNITION_SKILL_ID
-        );
-    }
-
-    private Map<String, Object> expensePersistenceContext(ExpensePersistenceResult result) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put("saved", result.saved());
-        values.put("duplicates", result.duplicates());
-        values.put("needsInput", result.needsInput());
-        values.put("readOnly", result.readOnly());
-        values.put("savedCount", result.saved().size());
-        values.put("duplicateCount", result.duplicates().size());
-        values.put("needsInputCount", result.needsInput().size());
-        values.put("readOnlyCount", result.readOnly().size());
-        return values;
+    private String stableExpenseSignature(JsonNode node) {
+        if (node == null || node.isNull()) return "empty";
+        String raw;
+        if (node instanceof ArrayNode array) {
+            List<String> parts = new ArrayList<>();
+            array.forEach((item) -> parts.add(stableExpenseSignature(item)));
+            raw = String.join("|", parts);
+        } else {
+            raw = String.join(
+                    "|",
+                    nodeText(node, "dedupeKey", ""),
+                    nodeText(node, "sourceExpenseKey", ""),
+                    nodeText(node, "date", ""),
+                    nodeText(node, "title", ""),
+                    node.path("amount").asText(""),
+                    nodeText(node, "merchant", "")
+            );
+            if (!StringUtils.hasText(raw.replace("|", ""))) raw = node.toString();
+        }
+        return Integer.toHexString(raw.hashCode());
     }
 
     private List<AgentSource> collectSources(List<AgentToolResult> toolResults) {

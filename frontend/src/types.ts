@@ -14,6 +14,7 @@ export interface Attachment {
   width?: number;
   height?: number;
   createdAt?: string;
+  capturedAt?: string;
 }
 
 export interface RecordedBy {
@@ -385,17 +386,26 @@ export interface SafetyAlert {
 
 export interface PendingEffect {
   id: string;
-  messageId: string;
+  messageId?: string;
   createdAt: string;
-  status: "pending";
-  tags: string[];
+  status: "pending" | "applied" | "dismissed";
+  domain?: string;
+  source?: {
+    kind?: string;
+    traceId?: string;
+    toolCallId?: string;
+    toolName?: string;
+    idempotencyKey?: string;
+  };
+  payload?: unknown;
+  tags?: string[];
   growthEvent?: GrowthEvent;
   growthMeasurements?: GrowthMeasurement[];
   careLogPatch?: Partial<CareLog>;
-  reminders: Reminder[];
-  memories: MemoryItem[];
+  reminders?: Reminder[];
+  memories?: MemoryItem[];
   expenses?: ExpenseItem[];
-  safetyAlerts: SafetyAlert[];
+  safetyAlerts?: SafetyAlert[];
 }
 
 export interface AppStateSnapshot {

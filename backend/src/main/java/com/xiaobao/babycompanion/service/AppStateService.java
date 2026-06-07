@@ -294,6 +294,37 @@ public class AppStateService {
     }
 
     @Transactional
+    public void appendAgentCareLogPatch(String familyId, String userId, JsonNode patch) {
+        saveCareLogPatch(patch, Instant.now().toString(), familyId, userId);
+    }
+
+    @Transactional
+    public void upsertAgentPendingEffect(String familyId, String userId, JsonNode pendingEffect) {
+        saveEffectObject(
+                pendingEffectService,
+                PendingEffectRecord::new,
+                pendingEffect,
+                "pending",
+                Instant.now().toString(),
+                familyId,
+                userId
+        );
+    }
+
+    public boolean hasCareLogAgentAction(String familyId, String userId, String idempotencyKey) {
+        if (!StringUtils.hasText(idempotencyKey)) return false;
+        return readForUser(familyId, userId).state().careLogs().stream()
+                .map((careLog) -> careLog.path("agentActionIds"))
+                .filter(JsonNode::isArray)
+                .flatMap((ids) -> {
+                    List<JsonNode> values = new ArrayList<>();
+                    ids.forEach(values::add);
+                    return values.stream();
+                })
+                .anyMatch((id) -> id.isTextual() && idempotencyKey.equals(id.asText()));
+    }
+
+    @Transactional
     public ExpensePersistenceResult persistAgentExpenseCandidates(List<JsonNode> candidates, boolean shouldSave) {
         AuthPrincipal principal = currentUser.requirePrincipal();
         return persistAgentExpenseCandidates(candidates, shouldSave, Instant.now().toString(), principal.familyId(), principal.userId());
@@ -780,7 +811,7 @@ public class AppStateService {
     private ObjectNode mergeCareLogJson(JsonNode existing, ObjectNode patch) {
         ObjectNode merged = existing instanceof ObjectNode object ? object.deepCopy() : objectMapper.createObjectNode();
         patch.fields().forEachRemaining((entry) -> {
-            if ("notes".equals(entry.getKey()) || "solids".equals(entry.getKey()) || "events".equals(entry.getKey())) {
+            if ("notes".equals(entry.getKey()) || "solids".equals(entry.getKey()) || "events".equals(entry.getKey()) || "agentActionIds".equals(entry.getKey())) {
                 merged.set(entry.getKey(), mergeArrayUnique(entry.getKey(), merged.get(entry.getKey()), entry.getValue()));
             } else if (isAdditiveCareNumber(entry.getKey(), merged.get(entry.getKey()), entry.getValue())) {
                 merged.set(entry.getKey(), summedCareNumber(entry.getKey(), merged.get(entry.getKey()), entry.getValue()));

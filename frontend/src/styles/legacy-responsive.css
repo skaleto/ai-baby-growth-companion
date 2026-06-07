@@ -115,12 +115,8 @@
     display: none;
   }
 
-  .mobile-tab-chat .workspace {
+  .mobile-tab-records .workspace {
     overflow: hidden;
-  }
-
-  .mobile-tab-chat .chat-panel {
-    display: grid;
   }
 
   .mobile-tab-today .left-rail,

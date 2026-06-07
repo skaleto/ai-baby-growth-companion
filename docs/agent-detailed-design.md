@@ -1,8 +1,8 @@
 # Agent 模块详细设计文档
 
-更新时间：2026-06-06
+更新时间：2026-06-07
 
-本文记录当前 Agent 实现和下一步迁移目标。历史版本强调“确定性规则优先 + EffectPolicy 合并副作用”；该路径已经在真实用户路径中暴露多次“AI 说已记录，但系统没有记录/待确认项”的问题。后续记录/账本迁移以 tool-first action tools 为准。
+本文记录当前 Agent 实现。历史版本强调“确定性规则优先 + EffectPolicy 合并副作用”；该路径已经在真实用户路径中暴露多次“AI 说已记录，但系统没有记录/待确认项”的问题。2026-06-07 起，记录/账本写入以 tool-first action tools 为准。
 
 ## 1. 当前目标
 
@@ -26,7 +26,7 @@ Agent 的目标是帮助照护人低负担完成记录和回看，而不是让�
 
 所有写入类 Agent 请求必须要求 caregiver 权限。仅查看成员不可调用 Agent、ASR、上传或状态写入。
 
-## 3. 当前问题链路
+## 3. 已废弃的旧问题链路
 
 旧链路大致是：
 
@@ -48,9 +48,11 @@ Agent 的目标是帮助照护人低负担完成记录和回看，而不是让�
 - `EffectPolicy` 会重新生成副作用，导致模型理解和真实写入脱节。
 - 前端二次组装 pending effect，增加了“后端说有、前端没显示、数据库没落”的裂缝。
 
-## 4. 目标链路：Tool-first Agent Actions
+该链路的生产写入职责已删除：`RecordSignalExtractor`、`EffectPolicy`、`CareEventCompletenessPolicy` 不再存在于主代码中。
 
-目标链路：
+## 4. 当前链路：Tool-first Agent Actions
+
+当前链路：
 
 ```text
 用户消息 / ASR / 附件
@@ -63,21 +65,21 @@ Agent 的目标是帮助照护人低负担完成记录和回看，而不是让�
   -> 前端刷新 app state
 ```
 
-P0 工具：
+当前工具：
 
 | Tool | 行为 | 结果 |
 | --- | --- | --- |
 | `record_feeding_event` | 母乳/配方奶等字段完整、低风险喂养直接写入 | `applied` |
+| `record_sleep_event` | 字段完整的睡眠记录直接写入 | `applied` |
+| `record_diaper_event` | 便便/尿布/小便记录直接写入 | `applied` |
+| `record_temperature_event` | 体温事实记录，异常值进入待确认/安全提示 | `applied` 或 `pending_created` |
 | `create_growth_measurement_pending` | 身高、体重、头围等成长测量创建待确认项 | `pending_created` |
+| `create_milestone_pending` | 成长里程碑/成长事件创建待确认项 | `pending_created` |
 | `create_expense_pending` | 文本账本请求创建待确认支出 | `pending_created` |
 
-后续 P1 工具：
+保留/后续能力：
 
-- `record_sleep_event`
-- `record_diaper_event`
-- `record_temperature_event`
-- `create_growth_event_pending`
-- `recognize_expense_image_pending`
+- `expense_recognition` 图片识别走受控 pending 创建，不直接入账。
 - `read_family_records`
 - `read_family_ledger`
 
@@ -85,11 +87,11 @@ P0 工具：
 
 Action tools 不是 CLI，也不是前端/公网 API。它们是后端 Agent Runtime 内部注册给模型 function calling 的受控函数。
 
-建议接口：
+接口：
 
 ```java
 public interface AgentActionTool {
-    String name();
+    String id();
     String displayName();
     DeepSeekTool definition();
     AgentActionResult execute(AgentActionCall call, AgentActionContext context);
@@ -101,9 +103,8 @@ public interface AgentActionTool {
 | 类 | 职责 |
 | --- | --- |
 | `AgentActionTool` | 单个记录/账本工具接口 |
-| `AgentActionRegistry` | Spring 注入并按名称索引 action tools |
 | `AgentActionExecutor` | 解析模型 tool calls、执行工具、记录 trace |
-| `AgentActionValidator` | JSON schema 后的业务校验 |
+| `AgentActionToolSupport` | JSON schema 后的通用业务校验与参数帮助方法 |
 | `AgentMutationService` | 事务内写 `care_log` 或 `pending_effect`，做幂等 |
 | `AgentActionResult` | 工具执行事实，供最终回复和前端同步 |
 

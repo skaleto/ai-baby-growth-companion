@@ -1,10 +1,35 @@
 # 小宝记 Agent Tool-first 记录架构迁移 Spec v0.1
 
 - 创建日期：2026-06-06
-- 状态：待评审
+- 状态：已实施（2026-06-07 完成 retained Records/Ledger AI write path cutover；未发布）
 - 适用范围：后端 Agent Runtime、内部工具调用、记录/账本副作用、Agent benchmark、L2 app-state 验证
 - 产品边界：继续坚持“记录和陪伴”，不引入电商、专家、知识付费或开放社区
 - 相关文档：`harness/agent-model-context-harness.md`、`backend/src/main/resources/agent/capability-manifest.json`、`docs/agent-detailed-design.md`、`docs/app-function-coverage-index.md`
+
+## 实施记录（2026-06-07）
+
+- 已新增后端 action tool 体系，核心目录为 `backend/src/main/java/com/xiaobao/babycompanion/agent/action/`。
+- 已新增 `AgentMutationService`，统一负责 agent action 的 `careLogs` 写入和 `pendingEffects` 创建。
+- 已实现并接入：
+  - `record_feeding_event`
+  - `record_sleep_event`
+  - `record_diaper_event`
+  - `record_temperature_event`
+  - `create_growth_measurement_pending`
+  - `create_milestone_pending`
+  - `create_expense_pending`
+- 已从生产主代码删除旧写链路类：
+  - `RecordSignalExtractor`
+  - `EffectPolicy`
+  - `CareEventCompletenessPolicy`
+- 已移除旧 effect apply L2 本地模拟脚本，L2 unit 改为 action-result / backend app-state 语义。
+- 已通过验证：
+  - targeted Maven action-tool/runtime tests
+  - `mvn -f backend/pom.xml test`
+  - `npm run test:agent-benchmark`
+  - `npm run test:agent-l2:unit`
+  - `npm run verify:frontend`
+- 本次没有执行 ECS 或 OTA 发布。
 
 ## 0. 背景
 
@@ -31,6 +56,7 @@
 3. 最终回复必须基于工具执行结果，不能再出现“文案承诺记录，但系统没有记录/待确认项”的情况。
 4. 保留低焦虑体验：字段完整的低风险照护记录自动写入；成长测量和账本先以持久化待确认项为主。
 5. 让 bad case 进入 harness 和 benchmark，而不是继续堆进业务正则。
+6. 当前保留的记录/账本 AI 写入能力同批迁移到 action tools；不保留一半旧链路、一半新链路的生产状态。
 
 ## 2. 非目标
 
@@ -40,7 +66,8 @@
 - 不允许 AI 直接修改或删除历史成长数据、照护记录、账本或宝宝资料。
 - 不做完整工作流编排平台；只做当前 Agent 记录和账本链路需要的工具化能力。
 - 不做提醒/待办相关 Agent 能力。模型不再获得 `set_reminder` 这类工具，也不应承诺创建提醒或待办；现有非 AI 提醒入口若仍存在，属于独立产品能力，不在本架构迁移范围内。
-- 不把所有记录能力一次性迁完。P0 只迁移 `record_feeding_event`、`create_growth_measurement_pending`、`create_expense_pending`，并为只读记录/账本查询预留工具边界；后续再逐步迁移睡眠、尿布、体温、成长事件和图片账本识别。
+- 不做旧链路兼容、shadow oracle、逐域灰度或新旧双写。旧链路要么删除，要么完全退出生产写入链路。
+- 不保留未迁移的 AI 写入承诺。若某项能力暂时没有 action tool，就从 prompt/capability manifest 中移除，并让模型给出手动入口或 unsupported 边界。
 - 不把 harness 改成全 JSON。人类维护的产品语境和 bad case 仍使用中文 Markdown；模型 function calling 的工具参数 schema 必须是机器可校验 JSON Schema。
 
 ## 3. 当前架构问题
@@ -502,11 +529,11 @@ P0 可以不重做聊天 UI，但必须调整状态来源：
 
 迁移策略：
 
-1. P0 开启 `agent.toolActions.enabled=true`。
-2. 成长测量、喂养记录、文本账本只走工具。
-3. 工具返回 `applied|pending_created|needs_input|ignored|rejected|failed` 后，同域 deterministic decision 不再追加。
-4. 工具路由失败时返回失败或追问，不 fallback 到 `RecordSignalExtractor + EffectPolicy`。
-5. P0 完成后删除成长测量/喂养/文本账本相关旧正则测试和旧副作用生成代码；仅保留真正安全边界代码。
+1. P0 合入点直接移除 `RecordSignalExtractor + EffectPolicy` 的生产写入职责。
+2. 当前保留的记录/账本 AI 写入只走 action tools。
+3. 工具返回 `applied|pending_created|needs_input|unsupported|rejected|failed` 后，不再追加 deterministic decision。
+4. 工具路由失败时返回失败、追问或 unsupported，不 fallback 到 `RecordSignalExtractor + EffectPolicy`。
+5. 删除旧正则测试和旧副作用生成代码；仅保留真正安全边界代码。
 
 ## 10. Benchmark 和验收
 
@@ -567,17 +594,21 @@ P0 live case 控制在 12-16 条，重点覆盖：
 
 ## 11. 发布计划
 
-### P0：喂养 + 成长测量待确认 + 文本账本待确认工具化
+### P0：当前保留的记录/账本 AI 写入全量工具化
 
 交付：
 
 - `AgentActionTool` 抽象和 `AgentActionResult`。
 - `record_feeding_event`。
+- `record_sleep_event`。
+- `record_diaper_event`。
+- `record_temperature_event`。
 - `create_growth_measurement_pending`。
+- `create_growth_event_pending` / `create_milestone_pending`。
 - `create_expense_pending`。
 - `AgentMutationService`：负责 pending effect 创建、care log 写入、账本待确认项创建和幂等。
 - Runtime 接入工具路由和最终回复工具结果。
-- 移除 `RecordSignalExtractor + EffectPolicy` 在成长测量、喂养、文本账本上的主链路写入职责。
+- 移除 `RecordSignalExtractor + EffectPolicy` 在所有保留记录/账本 AI 写入上的主链路职责。
 - 模型工具列表不暴露提醒/待办能力。
 - Benchmark + L2 case。
 
@@ -586,28 +617,23 @@ P0 live case 控制在 12-16 条，重点覆盖：
 - 后端发布到 ECS。
 - 如果前端要从 `effectDecisions` 组装 pending effect 改为读取后端持久化 pending effect，需要 OTA，并按生产 base URL 防事故规则验证。
 
-### P1：记录和账本能力扩展
+### P1：识别和只读能力扩展
 
 迁移：
 
-- `record_sleep_event`。
-- `record_diaper_event`。
-- `record_temperature_event`。
-- `create_growth_event_pending`。
 - `recognize_expense_image_pending`。
 - `read_family_records` / `read_family_ledger`。
 
 目标：
 
-- 记录和账本类副作用都由工具创建或明确拒绝。
+- 图片/订单/票据识别与只读查询也进入工具边界，但不恢复旧 effect 链路。
 
-### P2：旧规则收敛
+### P2：旧规则删除确认
 
 收敛：
 
-- 删除或极简化成长测量正则。
-- 删除或极简化喂养和文本账本相关旧抽取规则。
-- `EffectPolicy` 不再直接从 `RecordSignals` 创建成长测量、喂养、账本等主副作用。
+- 删除成长测量、喂养、睡眠、尿布、体温、成长事件和文本账本相关旧抽取规则，除非它们有完全独立的非 Agent、非写入用途。
+- `EffectPolicy` 不再直接从 `RecordSignals` 创建任何记录/账本主副作用。
 - 前端不再负责从未持久化 `effectDecisions` 构造 pending effect；后端成为 pending effect 权威来源。
 
 ## 12. 成功标准
@@ -629,6 +655,6 @@ P0 live case 控制在 12-16 条，重点覆盖：
 根据用户反馈，本 spec 已采用以下决策：
 
 1. 本轮只聚焦记录和账本；AI 提醒/待办能力从工具列表和迁移范围中移除。
-2. P0 包含细分工具 `record_feeding_event`、`create_growth_measurement_pending`、`create_expense_pending`；只读记录/账本查询以 `read_*` 工具独立建模。
-3. 旧链路不作为兼容目标；`RecordSignalExtractor` 和 `EffectPolicy` 不再承担主链路副作用生成职责，能删的旧代码直接删。
+2. P0 包含当前保留的记录/账本 AI 写入细分工具：喂养、睡眠、尿布、体温、成长测量、成长事件/里程碑和文本账本；只读记录/账本查询以 `read_*` 工具独立建模。
+3. 旧链路不作为兼容目标；`RecordSignalExtractor` 和 `EffectPolicy` 不再承担主链路副作用生成职责，能删的旧代码直接删，不做半迁移。
 4. 后端直接持久化 pending effect 和自动记录结果；前端以 app state 为准，不再从未持久化 `effectDecisions` 组装待确认项。

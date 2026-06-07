@@ -1,6 +1,6 @@
 # Project Index
 
-Updated: 2026-06-06
+Updated: 2026-06-07
 
 This is the top-level navigation map for this repository. Use it to decide what to read first, what to ignore, and where to put new work.
 
@@ -42,6 +42,7 @@ Do not infer current product direction from `docs/archive/`, `docs/research-arch
 | Release readiness | `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`, `docs/ops/` |
 | Agent benchmark and coverage | `harness/agent-model-context-harness.md`, `docs/agent-harness-case-audit-2026-06-06.md`, `docs/agent-harness-live-benchmark-results.md`, `docs/agent-harness-live-benchmark-results-doubao.md`, `docs/agent-harness-model-comparison-2026-06-06.md`, `docs/agent-benchmark-results.md`, `docs/agent-l2-benchmark-results.md`, `docs/agent-product-coverage-index.md`, `docs/app-function-coverage-index.md`, `docs/native-capability-benchmark.md`, `docs/superpowers/specs/2026-06-04-agent-capability-benchmark.md` |
 | Architecture | `docs/system-architecture.md`, `docs/agent-detailed-design.md`, `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`, `docs/assets/architecture/` |
+| Current implementation plan | `docs/superpowers/plans/2026-06-06-module-native-ai-tool-first-implementation.md` |
 | Frontend verification | `docs/frontend-verification.md`, `docs/frontend-directory-structure.md` |
 | Legal and data processing drafts | `docs/legal/` |
 | Deployment and OTA | `docs/aliyun-ecs-deploy.md`, `docs/mobile-updates.md`, `docs/ops/ota-incident-2026-06-05.md` |
@@ -60,9 +61,9 @@ Snapshot after cleanup on 2026-06-06:
 | `backend/` | 75M, main Java backend plus resources and tests | Main Java backend plus resources and tests |
 | `ios/` | 20M, 65 source/config files | Native shell; expected for Capacitor |
 | `frontend/` | 5.3M, 82 source/config files | Main React app |
-| `docs/` | 508K, 43 files total | 37 markdown docs after deleting May decision docs and moving legal drafts to `docs/legal/` |
+| `docs/` | 524K, 44 files total | 38 markdown docs after deleting May decision docs, moving legal drafts to `docs/legal/`, and adding the full tool-first migration plan |
 | `scripts/` | 520K | Verification and operational scripts |
-| `harness/` | 96K | Current agent restart source plus compressed handoff |
+| `harness/` | 100K | Current agent restart source plus compressed handoff |
 
 The practical read set for most product work is 6-8 files, not the full tree.
 

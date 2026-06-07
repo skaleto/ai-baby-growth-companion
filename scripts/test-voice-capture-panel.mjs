@@ -11,6 +11,11 @@ assert.match(appSource, /voice-recording-active/, "app shell should enter a reco
 assert.match(appSource, /voice-recording-hidden/, "composer controls should be visually hidden while recording");
 assert.match(
   appSource,
+  /voiceRecordingActive\s*\?\s*createPortal\([\s\S]*?className=\{`voice-recording-panel \$\{voiceCancelArmed \? "canceling" : ""\}`\.trim\(\)\}[\s\S]*?document\.body/,
+  "voice recording panel should portal to body so it can sit above body-level Records drawers",
+);
+assert.match(
+  appSource,
   /voice-recording-panel \$\{voiceCancelArmed \? "canceling" : ""\}/,
   "voice recording panel should have a canceling state",
 );
@@ -21,6 +26,12 @@ assert.match(appSource, /Array\.from\(\{ length: 56 \}/, "waveform should use en
 
 assert.match(mobileCss, /\.voice-recording-panel\s*\{[\s\S]*?position:\s*fixed/, "voice panel should be fixed over the bottom of the screen");
 assert.match(mobileCss, /\.voice-recording-panel\s*\{[\s\S]*?inset:\s*0/, "voice panel should cover the full app surface");
+assert.match(mobileCss, /\.voice-recording-panel\s*\{[\s\S]*?z-index:\s*3600/, "voice panel should render above full-screen record drawers");
+assert.match(
+  appSource,
+  /const closeRecordsEntryDrawer = \(\) => \{[\s\S]*?if \(voiceRecordingActive\) cancelVoiceCapture\(\);/,
+  "closing a Records drawer should cancel active voice capture instead of revealing it on the main page",
+);
 assert.match(mobileCss, /\.voice-recording-panel::before\s*\{[\s\S]*?border-radius:\s*50%/, "voice panel should render a circular region from below the app");
 assert.match(mobileCss, /\.voice-recording-panel::before\s*\{[\s\S]*?bottom:\s*calc\(36vh - var\(--voice-orb-size\)\)/, "voice circle should extend from below the app bottom");
 assert.match(mobileCss, /\.voice-recording-panel::before\s*\{[\s\S]*?radial-gradient\([\s\S]*?circle at 50% 54%[\s\S]*?#2f73ff/, "normal voice panel should use a circular blue region");

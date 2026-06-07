@@ -23,7 +23,7 @@ const viewports = [
   { name: "android-large-432x960", width: 432, height: 960, mobile: true },
 ];
 
-const tabLabels = ["聊天", "记录", "账本", "相册", "我的"];
+const tabLabels = ["记录", "相册", "账本", "我的"];
 const smokeFutureReminderAt = futureDateTimeParts(7 * 24 * 60);
 
 const smokeState = {
@@ -918,22 +918,24 @@ async function exerciseAlbumVideoFallback(page) {
   return { albumVideoFallbackChecked: true };
 }
 
-async function exerciseChatExpenseShortcut(page, viewport) {
-  await page.getByRole("button", { name: "聊天" }).last().click();
+async function exerciseRecordsAiExpenseShortcut(page, viewport) {
+  await page.getByRole("button", { name: "记录" }).last().click();
   await page.waitForTimeout(120);
   await page.getByRole("button", { name: "记账" }).click();
-  const composer = page.locator(".composer textarea").first();
+  const composer = page.locator(".records-assistant-composer textarea").first();
   await composer.waitFor({ timeout: 5000 });
   const value = await composer.inputValue();
   if (!value.includes("记一笔") || !value.includes("支出")) {
-    throw new Error(`chat expense shortcut did not prefill ledger prompt: "${value}"`);
+    throw new Error(`records AI expense shortcut did not prefill ledger prompt: "${value}"`);
   }
   if (viewport.mobile) {
     await simulateKeyboardCycle(page, viewport, composer);
-    await checkAppShellAligned(page, `${viewport.name} chat after keyboard`);
+    await checkAppShellAligned(page, `${viewport.name} records AI composer after keyboard`);
   }
   await composer.fill("");
-  return { chatExpenseShortcutChecked: true };
+  await page.locator(".records-entry-drawer").getByRole("button", { name: "关闭" }).click();
+  await page.locator(".records-entry-scrim").waitFor({ state: "detached", timeout: 5000 });
+  return { recordsAiExpenseShortcutChecked: true };
 }
 
 async function exerciseGrowthMeasurementFlow(page, viewport) {
@@ -944,6 +946,19 @@ async function exerciseGrowthMeasurementFlow(page, viewport) {
   // 成长 is now an independent overlay accessed from the 今日 card
   await page.getByRole("tab", { name: "今日" }).click();
   await page.waitForTimeout(80);
+  const standaloneMilestoneCards = await page.locator(".record-milestone-card").count();
+  if (standaloneMilestoneCards > 0) {
+    throw new Error(`records today should not render standalone milestone cards; found ${standaloneMilestoneCards}`);
+  }
+  await page.getByRole("tab", { name: "成长" }).click();
+  await page.locator(".growth-curve-card").waitFor({ timeout: 5000 });
+  await page.locator(".growth-curve-svg").waitFor({ timeout: 5000 });
+  const observationEntry = page.locator(".growth-entry-card .growth-observation-row").first();
+  await observationEntry.waitFor({ timeout: 5000 });
+  await observationEntry.click();
+  await page.getByRole("heading", { name: /成长足迹/ }).waitFor({ timeout: 5000 });
+  await page.getByRole("button", { name: "返回" }).click();
+  await page.waitForTimeout(120);
   const growthCardBtn = page.locator(".growth-entry-card-open");
   await growthCardBtn.waitFor({ timeout: 5000 });
   await growthCardBtn.click();
@@ -1163,17 +1178,17 @@ async function exerciseAppShell(page, viewport) {
   }
 
   const albumVideoFallback = await exerciseAlbumVideoFallback(page);
-  const chatExpenseShortcut = await exerciseChatExpenseShortcut(page, viewport);
+  const recordsAiExpenseShortcut = await exerciseRecordsAiExpenseShortcut(page, viewport);
   const growthMeasurementFlow = await exerciseGrowthMeasurementFlow(page, viewport);
   const ledgerKeyboard = await exerciseLedgerKeyboardFlow(page, viewport);
   const reminderFlow = await exerciseReminderFlow(page, viewport);
 
   if (viewport.mobile) {
-    await page.getByRole("button", { name: "聊天" }).last().click();
+    await page.getByRole("button", { name: "记录" }).last().click();
     await page.waitForTimeout(120);
   }
 
-  return { mode: "authenticated", tabsChecked: checkedTabs, mobileUpdateNotice, albumVideoFallback, chatExpenseShortcut, growthMeasurementFlow, ledgerKeyboard, reminderFlow };
+  return { mode: "authenticated", tabsChecked: checkedTabs, mobileUpdateNotice, albumVideoFallback, recordsAiExpenseShortcut, growthMeasurementFlow, ledgerKeyboard, reminderFlow };
 }
 
 async function runViewport(browser, viewport) {

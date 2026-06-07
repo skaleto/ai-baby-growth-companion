@@ -66,6 +66,20 @@ try {
   assert.equal(photoItem.attachment.name.endsWith(".jpg"), true);
   assert.equal(album.isVisibleAlbumMedia(photoItem), true);
 
+  const capturedPhoto = imageAttachment({
+    id: "att-captured-photo",
+    capturedAt: "2026-05-29T08:10:12",
+    createdAt: "2026-06-04T10:30:00+08:00",
+  });
+  const capturedDecision = album.decideAlbumMedia(message({ attachments: [capturedPhoto] }), capturedPhoto);
+  const capturedItem = album.albumItemFromDecision(capturedDecision, message({ attachments: [capturedPhoto] }), capturedPhoto);
+  assert.equal(capturedItem.date, "2026-05-29", "chat album media should use photo capture date before message time");
+  assert.equal(capturedItem.occurredAt, "2026-05-29T08:10:12");
+
+  const standaloneItem = album.albumItemFromStandaloneAttachment(capturedPhoto);
+  assert.equal(standaloneItem.date, "2026-05-29", "manual album upload should use photo capture date before upload time");
+  assert.equal(album.albumDayLabel("2026-05-29"), "2026年5月29日");
+
   const screenshot = imageAttachment({
     id: "att-screenshot",
     name: "screenshot-localhost.png",

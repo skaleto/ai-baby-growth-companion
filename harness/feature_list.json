@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-06",
+  "lastUpdated": "2026-06-07",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -48,14 +48,25 @@
       "area": "product",
       "title": "Module-native AI and records-first information architecture",
       "userVisibleBehavior": "The app should center on Records as the default home, with bottom navigation targeting 记录 / 相册 / 账本 / 我的 and AI presented inside modules instead of as an independent chat center.",
-      "status": "in_progress",
+      "status": "passing",
       "verification": [
         "npm run verify:frontend",
+        "npm run test:agent-l2:unit",
+        "npm run mobile:sync",
+        "npm run build:ios:debug",
+        "npm run build:android:debug",
         "Manual screenshot review for mobile bottom navigation and Records first screen"
       ],
       "evidence": [
         "Current spec: docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md",
-        "Previous simplification spec: docs/superpowers/specs/2026-06-06-product-simplification-records-trust-spec.md"
+        "Previous simplification spec: docs/superpowers/specs/2026-06-06-product-simplification-records-trust-spec.md",
+        "2026-06-07 implemented Records default home, removed independent chat/reminder bottom tabs, moved reminder management under My, and kept model/mode selection system-adaptive.",
+        "2026-06-07 implemented Records growth-observation cleanup: today summary and timeline now precede low-frequency growth review; standalone milestone card was removed; `成长观察` remains reachable inside the Growth card.",
+        "2026-06-07 released Records CTA copy cleanup: `AI 自动记录` and `手动记录` are clearer pill actions; ECS deploy and OTA version 0.1.0-20260607145703 passed health, OTA check, checksum, and production base URL verification.",
+        "2026-06-07 implemented Records entry drawer and Growth peer-tab refinement: AI/manual record actions open full-screen drawers, manual record uses type-specific event forms, Growth moved out of Today into a peer tab with SVG growth curves; npm run verify:frontend passed and targeted drawer screenshots were reviewed.",
+        "2026-06-07 released Records full-screen drawer refinement to ECS and OTA version 0.1.0-20260607180704; live health, systemd, OTA check, checksum, and production base URL verification passed.",
+        "2026-06-07 implemented Album by-day grouping using media `occurredAt`, with capture-date priority: native metadata / JPEG EXIF / file lastModified / upload timestamp.",
+        "2026-06-07 verification passed: npm run verify:frontend; smoke screenshots show tabs 记录, 相册, 账本, 我的 across desktop and mobile viewports."
       ],
       "notes": "Independent chat and reminder tabs are not target IA. Model selection and deep/fast mode should not be user-facing settings."
     },
@@ -65,7 +76,7 @@
       "area": "agent",
       "title": "Tool-first Agent write path for records and ledger",
       "userVisibleBehavior": "When AI says something was recorded or created as pending, the matching backend state must already exist. Records and ledger writes should come from model-selected controlled tools, not from post-hoc regex/effect fallback.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "npm run test:agent-benchmark",
         "npm run test:agent-l2:unit",
@@ -73,9 +84,12 @@
       ],
       "evidence": [
         "Current spec: docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md",
-        "Current design note: docs/agent-detailed-design.md"
+        "Current design note: docs/agent-detailed-design.md",
+        "2026-06-07 implemented backend action tools under backend/src/main/java/com/xiaobao/babycompanion/agent/action/ and AgentMutationService.",
+        "2026-06-07 deleted production RecordSignalExtractor, EffectPolicy, and CareEventCompletenessPolicy classes and their legacy tests.",
+        "2026-06-07 verification passed: targeted Maven action-tool tests, full backend mvn test (177 tests), npm run test:agent-benchmark, npm run test:agent-l2:unit, npm run verify:frontend."
       ],
-      "notes": "P0 scope is records and ledger only: feeding direct write, growth measurement pending, expense pending. AI reminder/todo tools are out of scope."
+      "notes": "P0 scope is records and ledger only. Delivered tools: feeding, sleep, diaper, temperature, growth measurement pending, milestone pending, and expense pending. AI reminder/todo tools remain disabled."
     },
     {
       "id": "agent-context-harness-2026-06-06",
@@ -105,7 +119,14 @@
         "npm run verify:frontend"
       ],
       "evidence": [
-        "docs/frontend-verification.md defines the current UI verification contract."
+        "docs/frontend-verification.md defines the current UI verification contract.",
+        "2026-06-07 npm run verify:frontend passed after Records-first navigation, My reminder management, Records AI composer, and Album day grouping changes.",
+        "2026-06-07 Records drawer interaction fix passed npm run verify:frontend plus targeted 390x844 Playwright screenshots for AI/manual full-screen drawers.",
+        "2026-06-07 Records AI drawer visual polish passed npm run verify:frontend plus targeted drawer screenshots; keyboard simulation kept focused field bottom 351px above keyboard top 387px in 375x667.",
+        "2026-06-07 Records AI recent context finalized as adaptive left/right bubbles; npm run verify:frontend passed and comparison screenshots were saved under .verification/drawer-ui/.",
+        "2026-06-07 Records quick prompt and drawer voice layer fix passed npm run verify:frontend plus targeted 390x844 screenshots; prompt links computed as transparent/no-shadow/0-border and the voice panel rendered above the Records drawer at z-index 3600.",
+        "2026-06-07 Records AI processing input responsiveness fix passed npm run verify:frontend plus targeted slow-SSE Playwright probes; the drawer shows a three-dot `正在整理` loading state while keyboard and voice controls remain enabled during processing.",
+        "2026-06-07 Records timeline density and swipe-actions fix passed npm run verify:frontend plus targeted Playwright probes; timeline rows are low-radius rectangular two-line cards, left-swipe reveals matching edit/delete actions, delete requires confirmation, and AI processing loading renders inside the message bubble."
       ],
       "notes": "Any navigation, Records, Album, Ledger, My, voice input, composer, modal, keyboard, or safe-area change needs this gate."
     },
@@ -115,14 +136,23 @@
       "area": "cloud",
       "title": "Aliyun deployment and live smoke discipline",
       "userVisibleBehavior": "Cloud deployments keep production data intact and include behavior-specific probes beyond /api/health.",
-      "status": "in_progress",
+      "status": "passing",
       "verification": [
         "SYNC_DATA=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun",
         "curl /api/health",
         "Behavior-specific probe for the changed feature"
       ],
       "evidence": [
-        "Deployment safety and OTA rules are documented in AGENTS.md, docs/aliyun-ecs-deploy.md, and docs/mobile-updates.md."
+        "Deployment safety and OTA rules are documented in AGENTS.md, docs/aliyun-ecs-deploy.md, and docs/mobile-updates.md.",
+        "2026-06-07 ECS deploy succeeded with SYNC_DATA=0, ECS_HOST=120.55.188.242, SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun.",
+        "2026-06-07 live health returned ok and systemd reported ai-baby-growth-companion active.",
+        "2026-06-07 Records full-screen drawer release deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607180704 passed live check and checksum verification.",
+        "2026-06-07 Records drawer interaction fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607185551 passed live check, checksum, and production base URL verification.",
+        "2026-06-07 Records drawer visual polish deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607193137 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
+        "2026-06-07 Records adaptive bubble context deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607195646 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
+        "2026-06-07 Records quick prompt and drawer voice layer fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607203321 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
+        "2026-06-07 Records AI processing input responsiveness fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607210050 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
+        "2026-06-07 Records timeline density and swipe-actions fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607221114 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification."
       ],
       "notes": "Do not sync or reset production data unless explicitly requested."
     },
@@ -140,7 +170,17 @@
         "Device probe when OS behavior is part of the claim"
       ],
       "evidence": [
-        "docs/native-capability-benchmark.md tracks native capability evidence and known gaps."
+        "docs/native-capability-benchmark.md tracks native capability evidence and known gaps.",
+        "2026-06-07 native media picker now returns `capturedAt` from iOS image/video metadata and Android MediaStore when available.",
+        "2026-06-07 verification passed: npm run mobile:sync, npm run build:ios:debug, npm run build:android:debug.",
+        "2026-06-07 OTA published version 0.1.0-20260607112133; manifest checksum 986b87f889161e5ed738245cc67a6c5881ce5f347ac6a096b3de1e12e15d3a65; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-07 OTA published version 0.1.0-20260607180704; manifest checksum 4a5ffe9c2e67c359d32d3ccc5e1165ed0a73bfcf543d46b29fa464442972ebfe; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-07 OTA published version 0.1.0-20260607185551; manifest checksum 2e7e1543426334c931673f28338cc1862985454eeb6c17fca173390331849a59; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-07 OTA published version 0.1.0-20260607193137; manifest checksum 4a9e0c4e4af5cb920b3974d877de8be41dd119f2df0d28cb061e99e92d634666; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-07 OTA published version 0.1.0-20260607195646; manifest checksum 5159287a66d8038c56e06fd0cc613d5bdc916fe345bcc3b54c2d56e20e246af7; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-07 OTA published version 0.1.0-20260607203321; manifest checksum e4474e5ec83ac93dffc41a22db23a8e6e4978419f9f2ca8eeb69a919239b1c0e; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-07 OTA published version 0.1.0-20260607210050; manifest checksum a2c9024a5691141a63b49df042a994e15ed7360ba620ffc04e1ba91d86b32ac0; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-07 OTA published version 0.1.0-20260607221114; manifest checksum f9f5cd3dde345eff3b89efcc433ca3c8b1ae723b734cdd8375cc975e1230179d; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits."
       ],
       "notes": "Browser smoke cannot prove OS notification delivery, full-screen ringing, native camera/media picker behavior, or OTA apply."
     },

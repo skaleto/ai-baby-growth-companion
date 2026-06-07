@@ -6,23 +6,23 @@
 
 ## 分层策略
 
-### L0 确定性规则层
+### L0 受控工具与防漂移层
 
-覆盖 `RecordSignalExtractor`、`EffectPolicy`、`CareEventCompletenessPolicy`、`AgentPlanner` 兜底策略和 `SkillDisclosureService`。这一层不联网、不调用模型，适合每次提交前和 CI 中运行。
+覆盖 `AgentActionTool`、`AgentMutationService`、`AgentActionResponseGuard`、`AgentPlanner` 兜底策略、`SkillDisclosureService` 和 capability manifest 防漂移。这一层不联网、不调用模型，适合每次提交前和 CI 中运行。
 
 准出标准：
 - 所有用例必须通过。
-- 不能出现误写正式照护日志、误创建提醒、错误闹铃模式、重复记忆等高风险行为。
+- 不能出现未经过 action tool 的正式照护日志写入、未持久化却声称待确认、AI 创建提醒/待办、错误闹铃模式、重复记忆等高风险行为。
 - 面向用户的追问和原因不能暴露 `milkMl`、`feedingType`、`dueAt`、`intervalMinutes` 等内部字段名。
 
 ### L1 模型输出夹具层
 
-用固定的 `AgentChatResponse` 夹具模拟模型“正确、缺字段、乱吐 memory、把循环提醒错写成一次性日程”等输出，再验证策略层是否能纠偏。当前已合并在 `AgentBenchmarkTests` 中。
+用固定的 `AgentChatResponse` / `AgentActionResult` 夹具模拟模型“正确调用工具、缺字段、无工具却声称已记录、尝试写禁用能力”等输出，再验证 runtime 和 response guard 是否能纠偏。当前已合并在 `AgentBenchmarkTests` 中。
 
 准出标准：
-- 模型返回不完整照护记录时必须转为 `ask`，不能写正式记录。
-- 模型把循环喂奶误写成普通日程时，规则层必须强制改成循环闹铃。
-- reminder-only 输入中模型乱吐的 profile memory 必须被过滤。
+- 没有 `applied` 工具结果时，最终回复不能说“已记录”。
+- 没有 `pending_created` 工具结果时，最终回复不能说“待确认草稿已创建”。
+- AI reminder/todo 和 memory 写入不在当前 action tool 列表中，不能产生 app state mutation。
 
 ### L2 真实模型回归层
 
@@ -32,20 +32,14 @@
 
 | 能力域 | 用例 | 准出标准 |
 | --- | --- | --- |
-| 时间理解 | 晚上 20:45 说“6点半配方奶120ml” | 解析为 18:30，不误判为 06:30 |
-| 喂养记录 | “今天18:30配方奶120ml” | `auto careLog`，时间线含 milk 事件和 120ml |
-| 喂养边界 | “现在5:16开始吃奶” | `ask careLog`，不写正式记录 |
-| 睡眠记录 | “9点睡了1小时” | `auto careLog`，生成 sleep 事件 |
-| 睡眠边界 | “9点睡着了” | `ask careLog`，追问睡了多久 |
-| 健康风险 | “体温39.2度” | `pending careLog`，不自动写入 |
-| 一次性提醒 | “10:45提醒我喂奶” | `once + notification`，不追问奶量或喂养类型 |
-| 循环喂奶 | “每十分钟提醒我喂奶” | `interval + ringing`，间隔 10 分钟，过滤无关 memory |
-| 通用循环 | “每两小时提醒我喝水” | 默认 `interval + notification` |
-| 通用闹铃 | “每两小时闹钟提醒我喝水” | `interval + ringing` |
-| 模糊提醒 | “过会儿提醒我喝奶” | `ask reminder`，自然语言追问具体时间 |
-| 记账 | “今天给小宝买奶粉花了268” | `pending expenseItem`，标题奶粉、金额 268、分类 formula |
-| 条码查询 | “这个条形码多少钱” | 不自动入账 |
-| 撤销边界 | “撤销刚才那条记录” | `ignore`，说明聊天内不能直接撤销 |
+| 工具清单 | 当前保留的记录/账本 action tools | capability manifest 与后端实现一致 |
+| 工具 schema | 所有写工具 function definition | 严格 JSON schema，禁用额外字段 |
+| 喂养记录 | “今天18:30配方奶120ml” | `record_feeding_event` 返回 `applied` 后才允许说已记录 |
+| 混合喂养边界 | 混合喂养下只说“喝奶120ml” | `needs_input`，追问母乳/配方奶，不写正式记录 |
+| 成长测量 | 身高/体重/头围具体值 | `create_growth_measurement_pending` 创建持久化 pending |
+| 记账 | “今天给小宝买奶粉花了268” | `create_expense_pending` 创建持久化 pending |
+| 最终回复防护 | 模型无工具结果却说“已记好” | `AgentActionResponseGuard` 改写为未完成/需补充 |
+| 提醒边界 | “提醒我两小时后喂奶” | 不暴露 AI reminder tool，不产生 mutation |
 | 联网兜底 | planner 返回空工具但问题需要政策查询 | 自动补 `web_search` |
 | Skill 披露 | 纯记录不披露育儿 skill；发热问答披露体温和风险小节 | 渐进披露符合边界 |
 

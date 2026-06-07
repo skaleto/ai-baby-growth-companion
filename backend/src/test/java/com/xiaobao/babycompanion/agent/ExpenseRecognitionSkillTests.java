@@ -19,7 +19,6 @@ class ExpenseRecognitionSkillTests {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExpenseRecognitionSkill skill = new ExpenseRecognitionSkill(objectMapper);
-    private final RecordSignalExtractor extractor = new RecordSignalExtractor(objectMapper);
 
     @Test
     void producesPendingCandidateFromOneImageWithoutTools() {
@@ -157,7 +156,7 @@ class ExpenseRecognitionSkillTests {
         List<VisualAttachmentInput> visualInputs = attachments.stream()
                 .map((attachment) -> new VisualAttachmentInput(attachment.id(), attachment.name(), attachment.kind(), attachment.dataUrl()))
                 .toList();
-        return new ExpenseRecognitionInput(request, extractor.extract(message), "trace-test", runtimeModel, profile, visualInputs);
+        return new ExpenseRecognitionInput(request, signals("expense"), "trace-test", runtimeModel, profile, visualInputs);
     }
 
     private AgentAttachment image(String id) {
@@ -234,5 +233,9 @@ class ExpenseRecognitionSkillTests {
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    private RecordSignals signals(String... topics) {
+        return new RecordSignals(List.of("2026-05-16"), List.of(topics), List.of(), null, false, false, List.of(), false);
     }
 }

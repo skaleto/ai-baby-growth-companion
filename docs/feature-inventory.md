@@ -74,7 +74,7 @@
 | 优先级 | 功能 | 当前目标 | 自动化验证建议 |
 | --- | --- | --- | --- |
 | P0 | 相册上传 | 照护人可上传图片/视频，生成家庭共享 albumItems。 | local 上传 fixture，断言相册 tile。 |
-| P0 | 按天分组 | 相册按照片对应日期分组，不再按月分组。 | 同天多图同组、跨天分组不同。 |
+| P0 | 按天分组 | 相册按照片拍摄/素材日期优先分组，不再按月分组；取不到拍摄时间时再用文件时间和上传时间兜底。 | 同天多图同组、跨天分组不同；`capturedAt`/EXIF fallback 有单元测试。 |
 | P1 | 相册预览编辑删除 | 支持预览、编辑日期/备注/分类、删除。 | 点击 tile 打开预览并编辑保存。 |
 | P1 | 低打扰 AI 增强 | P0 不强化 AI；P1 只做日期建议、去重、封面、小故事等低打扰增强。 | P0 smoke 断言无醒目泛 AI 入口。 |
 | P2 | 媒体权限与缩略图 | 附件按 family 校验，图片缩略图可读取。 | 跨家庭附件 403；thumbnail API 小图返回。 |
@@ -146,6 +146,7 @@
 - OTA 运行时：`frontend/src/mobileUpdates.ts`
 - 后端状态服务：`backend/src/main/java/com/xiaobao/babycompanion/service/AppStateService.java`
 - Agent 主链路：`backend/src/main/java/com/xiaobao/babycompanion/agent/AgentRuntime.java`
-- 旧记录抽取链路：`backend/src/main/java/com/xiaobao/babycompanion/agent/RecordSignalExtractor.java`
-- 旧 effect 策略：`backend/src/main/java/com/xiaobao/babycompanion/agent/EffectPolicy.java`
+- Agent action tools：`backend/src/main/java/com/xiaobao/babycompanion/agent/action/`
+- Agent 写入边界：`backend/src/main/java/com/xiaobao/babycompanion/service/AgentMutationService.java`
+- Agent 能力清单：`backend/src/main/resources/agent/capability-manifest.json`
 - 当前模型上下文 harness：`harness/agent-model-context-harness.md`

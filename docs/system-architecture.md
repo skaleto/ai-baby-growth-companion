@@ -105,7 +105,7 @@ P0 只聚焦记录和账本：
 - 最终回复只能引用工具结果。
 - `pending` 必须真实落到 `pending_effect` 并能从 `/api/app/state` 看到。
 - AI 提醒/待办工具不在本轮迁移范围。
-- 迁移完成后，`RecordSignalExtractor` 和 `EffectPolicy` 不再作为 P0 记录/账本主写入链路。
+- 2026-06-07 迁移完成后，`RecordSignalExtractor`、`EffectPolicy` 和 `CareEventCompletenessPolicy` 已从生产主代码删除；P0 记录/账本 AI 写入只走 action tool / `AgentMutationService`。
 
 ## 6. 验证和发布
 

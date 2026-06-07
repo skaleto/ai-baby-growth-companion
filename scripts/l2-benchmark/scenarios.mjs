@@ -5,33 +5,29 @@
 // request and is scored on three axes: latency / result-accuracy / system-execution.
 //
 // Structural assertion conventions verified against the L0/L1 layer
-// (backend/.../agent/AgentBenchmarkTests.java) so hard assertions here match the
-// real effectDecision shapes the backend emits:
-//   - careLog auto:   mode=auto,  type=careLog,  payload.events[0].type=milk|sleep
-//   - careLog ask:    mode=ask,   type=careLog
-//   - careLog pending:mode=pending,type=careLog
-//   - reminder:       mode=auto,  type=reminder, payload.scheduleMode=once|interval,
-//                                              payload.alertMode=notification|ringing,
-//                                              payload.repeatRule.intervalMinutes
-//   - expense:        mode=pending,type=expenseItem, payload.{title,amount,category}
-//   - album:          mode=auto,  type=albumItem  (auto_save) / mode=ignore (drop)
+// (backend/.../agent/AgentBenchmarkTests.java). The current production write
+// path is tool-first: records/ledger/growth writes are performed by backend
+// action tools and verified primarily through app_state diff. Legacy
+// effectDecision expectations remain in some scenario records as compatibility
+// hints for old reports; assertions.mjs accepts matching action tool events as
+// the authoritative replacement.
 //
 // A scenario shape:
 // {
 //   id, capability, inputType: "text" | "image",
 //   message, attachments?, pageContext?, babyProfile?,
-//   // structural hard-assertions over the parsed AgentChatResponse:
+//   // structural hard-assertions over tool events / parsed AgentChatResponse:
 //   expect: {
 //     effect?: { type, mode, payloadAssertions?: [{ path, op, value }] },
 //     // alternative shape if the scenario can produce one of several effects:
 //     anyEffect?: [{ type, mode }],
-//     noEffectMutation?: boolean,   // assert no auto/pending careLog|expense|reminder|album effect
+//     noEffectMutation?: boolean,   // assert no mutating action tool or legacy effect
 //     safetyAlert?: boolean,        // assert at least one safetyAlert present
 //     tool?: string,                // assert an SSE tool event with this id/name fired (e.g. web_search)
 //   },
 //   // system-execution expectations (app_state diff after the call):
 //   stateExpect: {
-//     collection?: "careLogs"|"expenses"|"reminders"|"growthEvents"|"albumItems"|"memories",
+//     collection?: "careLogs"|"pendingEffects"|"expenses"|"growthEvents"|"albumItems"|"memories",
 //     mustGrow?: boolean,           // collection length must increase
 //     mustNotGrow?: string[],       // these collections must NOT grow (boundary / no side-effect)
 //     // optional field assertions on the newly-added item (best-effort, first new item):
@@ -1336,6 +1332,25 @@ export const scenarios = [
     },
   },
 ];
+
+const DISABLED_AGENT_WRITE_SCENARIOS = new Set([
+  "reminder-once",
+  "reminder-interval",
+  "vague-reminder-ask",
+  "medicine-reminder-pending",
+  "vaccine-reminder-pending",
+  "memory-health-pending",
+  "memory-preference-pending",
+  "memory-caregiver-pending",
+  "photo-album",
+]);
+
+for (const scenario of scenarios) {
+  if (DISABLED_AGENT_WRITE_SCENARIOS.has(scenario.id)) {
+    scenario.skip = true;
+    scenario.skipReason = "本轮 tool-first 迁移暂不开放该 AI 写入能力";
+  }
+}
 
 /**
  * Filter scenarios by a comma-separated id allowlist (the --only CLI flag).

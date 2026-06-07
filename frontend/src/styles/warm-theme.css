@@ -353,6 +353,19 @@ body {
   color: #48685b;
 }
 
+.records-quick-row .records-prompt-link,
+.records-quick-row .records-prompt-link:hover,
+.records-quick-row .records-prompt-link:active {
+  min-height: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--sage-dark) !important;
+  transform: none !important;
+}
+
 .quick-action__icon {
   color: #5e7f70;
   background: rgba(91, 127, 109, 0.1);
@@ -724,35 +737,30 @@ body {
   animation: pageSoftIn 220ms ease both;
 }
 
-.record-event > div {
-  position: relative;
-  min-height: 58px;
-  padding: 10px 10px 10px 52px;
-  border: 1px solid rgba(234, 223, 208, 0.78);
-  border-left: 0;
+.record-event-card {
+  border-color: rgba(222, 229, 221, 0.82);
   border-radius: 8px;
-  background: #fffdf8;
-  box-shadow: 0 8px 18px rgba(106, 78, 48, 0.05);
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 253, 250, 0.96)),
+    #fffdf8;
+  box-shadow: 0 10px 24px rgba(106, 78, 48, 0.05);
 }
 
 .record-event-icon {
-  position: absolute;
-  top: 10px;
-  left: 10px;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 7px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
   background: rgba(255, 250, 241, 0.82);
   color: #377b64;
   box-shadow: 0 7px 14px rgba(106, 78, 48, 0.08);
 }
 
 .record-event-icon img {
-  width: 42px;
-  height: 42px;
-  transform: scale(1.08);
+  width: 36px;
+  height: 36px;
+  transform: scale(1.04);
 }
 
 .record-event.event-milk .record-event-icon {
@@ -778,8 +786,7 @@ body {
   color: #c66a55;
 }
 
-.record-event time {
-  padding-top: 8px;
+.record-event-time {
   color: #8b8075;
 }
 

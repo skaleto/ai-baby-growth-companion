@@ -1,7 +1,6 @@
 import {
   CalendarDays,
   Image as ImageIcon,
-  MessageCircle,
   ReceiptText,
   UserRound,
 } from "lucide-react";
@@ -53,15 +52,14 @@ export const MODEL_OPTIONS: AgentModelOption[] = [
 export const DEFAULT_MODEL: AgentModelId = "deepseek-v4-pro";
 
 export const MOBILE_TABS = [
-  { id: "chat", label: "聊天", icon: MessageCircle },
   { id: "records", label: "记录", icon: CalendarDays },
-  { id: "ledger", label: "账本", icon: ReceiptText },
   { id: "album", label: "相册", icon: ImageIcon },
+  { id: "ledger", label: "账本", icon: ReceiptText },
   { id: "profile", label: "我的", icon: UserRound },
 ] as const;
 
 export type MobileTab = (typeof MOBILE_TABS)[number]["id"];
-export type RecordView = "today" | "trend" | "calendar";
+export type RecordView = "today" | "growth" | "trend" | "calendar";
 export type LedgerView = "month" | "year" | "details";
 
 export const ROLE_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外公", "外婆", "月嫂", "保姆", "亲友", "其他"] as const;
@@ -69,6 +67,7 @@ export const UNIQUE_ROLE_OPTIONS = ["爸爸", "妈妈", "爷爷", "奶奶", "外
 
 export const RECORD_VIEWS: Array<{ id: RecordView; label: string }> = [
   { id: "today", label: "今日" },
+  { id: "growth", label: "成长" },
   { id: "trend", label: "趋势" },
   { id: "calendar", label: "日历" },
 ];

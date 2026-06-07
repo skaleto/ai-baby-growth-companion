@@ -65,11 +65,15 @@ export const albumCategoryFromTags = (tags: string[], text = ""): AlbumItemCateg
   return "daily";
 };
 
-export const albumMonthLabel = (month: string) => {
-  const [year, value] = month.split("-");
-  const monthNumber = Number(value);
-  return year && monthNumber ? `${year}年${monthNumber}月` : "未归档";
+export const albumDayLabel = (date: string) => {
+  const [year, month, day] = date.split("-");
+  const monthNumber = Number(month);
+  const dayNumber = Number(day);
+  return year && monthNumber && dayNumber ? `${year}年${monthNumber}月${dayNumber}日` : "未归档";
 };
+
+const attachmentOccurredAt = (attachment: Attachment, fallback?: string) =>
+  attachment.capturedAt ?? attachment.createdAt ?? fallback ?? new Date().toISOString();
 
 const albumItemKey = (item: AlbumItem) => `${item.kind}|${item.linkedType ?? ""}|${item.linkedId ?? ""}|${item.attachmentId ?? ""}|${item.date}|${item.title}`;
 const albumMediaItemKey = (item: AlbumItem) =>
@@ -203,7 +207,7 @@ export const decideAlbumMedia = (message: ChatMessage, attachment: Attachment): 
     reason: explicitIntent
       ? "用户表达了留念意图，已放进成长相册。"
       : "宝宝的生活照片，已自动放进成长相册。",
-    title: albumTitleFromText(text, attachment, category, message.createdAt),
+    title: albumTitleFromText(text, attachment, category, attachmentOccurredAt(attachment, message.createdAt)),
     tags: [albumCategoryLabel(category), mediaKindLabel(attachment)],
   };
 };
@@ -221,13 +225,14 @@ export const albumPromptFromDecision = (decision: AlbumMediaDecision): AlbumProm
 });
 
 export const albumItemFromDecision = (decision: AlbumMediaDecision, message: ChatMessage, attachment: Attachment): AlbumItem => {
-  const title = decision.title || albumTitleFromText(message.text, attachment, decision.category, message.createdAt);
+  const occurredAt = attachmentOccurredAt(attachment, message.createdAt);
+  const title = decision.title || albumTitleFromText(message.text, attachment, decision.category, occurredAt);
   return {
     id: `album-media-${message.id}-${attachment.id}`,
     kind: "media",
     title,
-    date: message.createdAt.slice(0, 10),
-    occurredAt: message.createdAt,
+    date: occurredAt.slice(0, 10),
+    occurredAt,
     category: decision.category,
     tags: decision.tags.length ? decision.tags : [albumCategoryLabel(decision.category), mediaKindLabel(attachment)],
     attachmentId: attachment.id,
@@ -241,7 +246,7 @@ export const albumItemFromDecision = (decision: AlbumMediaDecision, message: Cha
   };
 };
 
-export const albumItemFromStandaloneAttachment = (attachment: Attachment, occurredAt = attachment.createdAt ?? new Date().toISOString()): AlbumItem => {
+export const albumItemFromStandaloneAttachment = (attachment: Attachment, occurredAt = attachmentOccurredAt(attachment)): AlbumItem => {
   const category = classifyAlbumCategoryFromText(attachment.name);
   const title = standaloneAlbumTitle(attachment, category, occurredAt);
   return {
@@ -338,7 +343,7 @@ export const albumPromptFromEffectDecision = (
     id: decision.id || makeId("album-decision"),
     attachmentId: attachment.id,
     sourceMessageId: sourceMessage.id,
-    title: albumTitleFromText(payload.title || payload.refHint || sourceMessage.text, attachment, category, sourceMessage.createdAt),
+    title: albumTitleFromText(payload.title || payload.refHint || sourceMessage.text, attachment, category, attachmentOccurredAt(attachment, sourceMessage.createdAt)),
     category,
     reason: payload.reason || decision.reason || `这段${mediaKindLabel(attachment)}可能值得保存到相册。`,
     tags: uniqueTexts([albumCategoryLabel(category), mediaKindLabel(attachment), ...(payload.tags ?? [])]).slice(0, 6),

@@ -165,6 +165,7 @@ export const normalizeAttachment = (value: Partial<Attachment> | null | undefine
   width: numberValue(value?.width),
   height: numberValue(value?.height),
   createdAt: textValue(value?.createdAt) || undefined,
+  capturedAt: textValue(value?.capturedAt) || undefined,
 });
 
 export const normalizeRecordedBy = (value: Partial<RecordedBy> | null | undefined): RecordedBy | undefined => {
@@ -879,7 +880,18 @@ export const normalizePendingEffect = (value: Partial<PendingEffect> | null | un
   id: textValue(value?.id, `pending-${index}`),
   messageId: textValue(value?.messageId),
   createdAt: textValue(value?.createdAt, new Date().toISOString()),
-  status: "pending",
+  status: value?.status === "applied" || value?.status === "dismissed" ? value.status : "pending",
+  domain: textValue(value?.domain) || undefined,
+  source: value?.source && typeof value.source === "object"
+    ? {
+        kind: textValue(value.source.kind) || undefined,
+        traceId: textValue(value.source.traceId) || undefined,
+        toolCallId: textValue(value.source.toolCallId) || undefined,
+        toolName: textValue(value.source.toolName) || undefined,
+        idempotencyKey: textValue(value.source.idempotencyKey) || undefined,
+      }
+    : undefined,
+  payload: value?.payload,
   tags: stringList(value?.tags),
   growthEvent: value?.growthEvent ? normalizeGrowthEvent(value.growthEvent, index) : undefined,
   growthMeasurements: Array.isArray(value?.growthMeasurements) ? value.growthMeasurements.map(normalizeGrowthMeasurement) : [],

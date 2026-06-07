@@ -25,6 +25,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -147,7 +149,47 @@ public class NativeMediaPickerPlugin extends Plugin {
         item.put("mimeType", mimeType);
         item.put("kind", mimeType.startsWith("video/") ? "video" : "image");
         item.put("size", destination.length());
+        String capturedAt = captureDate(sourceUri);
+        if (capturedAt != null) {
+            item.put("capturedAt", capturedAt);
+        }
         return item;
+    }
+
+    private String captureDate(Uri uri) {
+        String[] columns = new String[] {
+            "datetaken",
+            MediaStore.MediaColumns.DATE_MODIFIED,
+            MediaStore.MediaColumns.DATE_ADDED
+        };
+        try (Cursor cursor = getContext().getContentResolver().query(uri, columns, null, null, null)) {
+            if (cursor == null || !cursor.moveToFirst()) return null;
+            long dateTakenMs = longColumn(cursor, "datetaken");
+            if (dateTakenMs > 0) return localIsoString(dateTakenMs);
+
+            long modifiedSeconds = longColumn(cursor, MediaStore.MediaColumns.DATE_MODIFIED);
+            if (modifiedSeconds > 0) return localIsoString(modifiedSeconds * 1000L);
+
+            long addedSeconds = longColumn(cursor, MediaStore.MediaColumns.DATE_ADDED);
+            if (addedSeconds > 0) return localIsoString(addedSeconds * 1000L);
+        } catch (Exception ignored) {
+            // Some document providers do not expose media timestamps.
+        }
+        return null;
+    }
+
+    private long longColumn(Cursor cursor, String columnName) {
+        int index = cursor.getColumnIndex(columnName);
+        if (index < 0 || cursor.isNull(index)) return 0L;
+        try {
+            return cursor.getLong(index);
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
+    private String localIsoString(long epochMs) {
+        return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(new Date(epochMs));
     }
 
     private String displayName(Uri uri) {
