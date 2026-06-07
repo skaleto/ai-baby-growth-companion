@@ -216,6 +216,7 @@ import {
   suggestedFamilyName,
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
+import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { StorybookScene } from "./components/StorybookScene";
 import { ConsentGate } from "./components/ConsentGate";
@@ -9435,6 +9436,26 @@ function App() {
       ) : null}
       {previewAttachment?.url ? (
         <div className={`media-preview ${previewMotion}`} role="dialog" aria-modal="true" aria-label="附件预览" onClick={handlePreviewClick}>
+          <div className="media-preview-topbar" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="preview-close"
+              aria-label="关闭"
+              onClick={(event) => {
+                event.stopPropagation();
+                closePreviewAttachment();
+              }}
+            >
+              <X size={20} />
+            </button>
+            {previewAlbumItem ? (
+              <div className="media-preview-topinfo">
+                <strong>{previewAlbumItem.title}</strong>
+                <span>{formatFullDate(previewAlbumItem.date)} · {albumCategoryLabel(previewAlbumItem.category)}</span>
+                {previewAlbumItem.recordedBy ? <small>{creatorMetaText(previewAlbumItem.recordedBy)}</small> : null}
+              </div>
+            ) : null}
+          </div>
           <figure
             className={previewAlbumItem ? "album-preview-figure" : undefined}
             onPointerDown={onPreviewStagePointerDown}
@@ -9452,15 +9473,11 @@ function App() {
                       <div className={`media-preview-slide ${isCurrent ? "current" : ""} ${attachment ? "" : "empty"}`} key={`preview-slide-${index}`}>
                         {attachment?.url ? (
                           attachment.kind === "video" ? (
-                            <video
-                              ref={isCurrent ? bindPreviewVideo : undefined}
-                              src={attachment.url}
-                              controls={isCurrent}
-                              playsInline
-                              poster={attachment.thumbnailUrl}
-                              preload={isCurrent ? "auto" : "metadata"}
-                              onClick={(event) => event.stopPropagation()}
-                            />
+                            isCurrent ? (
+                              <PreviewVideoPlayer attachment={attachment} active bindVideo={bindPreviewVideo} />
+                            ) : (
+                              <img src={attachment.thumbnailUrl || attachment.url} alt={attachment.name} draggable={false} />
+                            )
                           ) : (
                             <img
                               className={isCurrent && previewTransform.scale > 1 ? "is-zoomed" : ""}
@@ -9485,15 +9502,7 @@ function App() {
                 </div>
               </div>
             ) : previewAttachment.kind === "video" ? (
-              <video
-                ref={bindPreviewVideo}
-                src={previewAttachment.url}
-                controls
-                playsInline
-                poster={previewAttachment.thumbnailUrl}
-                preload="auto"
-                onClick={(event) => event.stopPropagation()}
-              />
+              <PreviewVideoPlayer attachment={previewAttachment} active bindVideo={bindPreviewVideo} />
             ) : (
               <img
                 className={previewTransform.scale > 1 ? "is-zoomed" : ""}
@@ -9511,11 +9520,6 @@ function App() {
             )}
             {previewAlbumItem ? (
               <figcaption className="media-preview-details" onClick={(event) => event.stopPropagation()}>
-                <div className="media-preview-meta">
-                  <strong>{previewAlbumItem.title}</strong>
-                  <span>{formatFullDate(previewAlbumItem.date)} · {albumCategoryLabel(previewAlbumItem.category)}</span>
-                  {previewAlbumItem.recordedBy ? <small>{creatorMetaText(previewAlbumItem.recordedBy)}</small> : null}
-                </div>
                 {previewAlbumItem.tags.length ? (
                   <div className="media-preview-tags">
                     {previewAlbumItem.tags.slice(0, 4).map((tag) => (
