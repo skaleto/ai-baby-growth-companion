@@ -1,0 +1,135 @@
+/* Full-screen lively background for consent / auth screens + frosted-glass panels. */
+
+.auth-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 15% 8%, rgba(255, 231, 209, 0.92), transparent 60%),
+    radial-gradient(120% 90% at 85% 18%, rgba(213, 240, 224, 0.92), transparent 60%),
+    linear-gradient(160deg, #fff7ee 0%, #f1faf2 55%, #eaf5ee 100%);
+}
+
+.auth-scene-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(42px);
+  opacity: 0.55;
+  will-change: transform;
+}
+
+.auth-scene-blob.blob-a {
+  width: 300px;
+  height: 300px;
+  top: -64px;
+  left: -48px;
+  background: radial-gradient(circle, rgba(255, 198, 160, 0.8), transparent 70%);
+  animation: authBlobFloat 18s ease-in-out infinite;
+}
+
+.auth-scene-blob.blob-b {
+  width: 340px;
+  height: 340px;
+  right: -72px;
+  bottom: -88px;
+  background: radial-gradient(circle, rgba(150, 210, 175, 0.7), transparent 70%);
+  animation: authBlobFloat 22s ease-in-out infinite reverse;
+}
+
+.auth-scene-blob.blob-c {
+  width: 220px;
+  height: 220px;
+  top: 42%;
+  left: 58%;
+  background: radial-gradient(circle, rgba(255, 224, 178, 0.6), transparent 70%);
+  animation: authBlobFloat 26s ease-in-out infinite;
+}
+
+.auth-scene-star {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+  animation: authStarTwinkle 4s ease-in-out infinite;
+}
+
+.auth-scene-star.star-a { top: 18%; left: 24%; }
+.auth-scene-star.star-b { top: 26%; right: 22%; animation-delay: 1.2s; }
+.auth-scene-star.star-c { top: 62%; left: 18%; animation-delay: 2.1s; }
+
+.auth-scene-mark {
+  position: absolute;
+  top: 11%;
+  left: 50%;
+  width: 92px;
+  transform: translateX(-50%);
+  opacity: 0.92;
+  animation: authMarkBob 6s ease-in-out infinite;
+}
+
+.auth-scene-mark img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 10px 18px rgba(90, 70, 40, 0.18));
+}
+
+@keyframes authBlobFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(22px, -26px) scale(1.08); }
+}
+
+@keyframes authStarTwinkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50% { opacity: 0.9; transform: scale(1.1); }
+}
+
+@keyframes authMarkBob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-10px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-scene-blob,
+  .auth-scene-star,
+  .auth-scene-mark {
+    animation: none !important;
+  }
+}
+
+/* Containers become the stacking context; the fixed scene shows through. */
+.auth-shell {
+  position: relative;
+  background: #f3f7f2;
+}
+
+.consent-gate-backdrop {
+  background: #f3f7f2;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Panels -> frosted glass, above the scene. */
+.auth-shell .auth-panel,
+.consent-gate-backdrop .consent-gate-card {
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 253, 250, 0.62);
+  box-shadow: 0 24px 60px rgba(80, 74, 54, 0.18);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+
+.auth-shell .auth-panel {
+  border-radius: 22px;
+}
+
+/* Old inline panel decoration is now provided full-screen by AuthScene. */
+.auth-shell .auth-panel::before {
+  display: none;
+}
