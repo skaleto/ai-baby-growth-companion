@@ -7,12 +7,12 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(72% 72% at 32% 32%, rgba(164, 223, 186, 0.92), transparent 62%),
+    radial-gradient(72% 72% at 32% 32%, rgba(193, 224, 193, 0.5), transparent 62%),
     radial-gradient(60% 60% at 82% 76%, rgba(255, 206, 166, 0.72), transparent 60%),
-    radial-gradient(56% 56% at 86% 26%, rgba(170, 214, 235, 0.6), transparent 60%),
-    linear-gradient(160deg, #e8f5ec, #f2faf3);
+    radial-gradient(56% 56% at 86% 26%, rgba(170, 214, 235, 0.58), transparent 60%),
+    linear-gradient(160deg, #f6f3e9, #f1f7ee);
   background-size: 180% 180%;
-  animation: authAuroraDrift 8s ease-in-out infinite;
+  animation: authAuroraDrift 5s ease-in-out infinite;
 }
 
 @keyframes authAuroraDrift {
