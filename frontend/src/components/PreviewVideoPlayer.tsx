@@ -49,6 +49,9 @@ export function PreviewVideoPlayer({
     if (!video) return;
     if (active) {
       setControlsVisible(true);
+      // Start muted so playback isn't gated on audio buffering (fast tap-to-play);
+      // onPlaying unmutes once it's actually running.
+      video.muted = true;
       void video
         .play()
         .then(() => scheduleHide())
@@ -115,6 +118,9 @@ export function PreviewVideoPlayer({
         onPlay={() => {
           setPlaying(true);
           setEnded(false);
+        }}
+        onPlaying={(event) => {
+          event.currentTarget.muted = false;
         }}
         onPause={() => setPlaying(false)}
         onEnded={() => {

@@ -8488,7 +8488,11 @@ function App() {
                                   <AlbumVideoThumbnail
                                     attachment={attachment}
                                     title={item.title}
-                                    onRatio={(ratio) => recordAlbumRatio(attachment.id, ratio)}
+                                    onRatio={
+                                      attachment.width && attachment.height
+                                        ? undefined
+                                        : (ratio) => recordAlbumRatio(attachment.id, ratio)
+                                    }
                                   />
                                 ) : attachment ? (
                                   <img
@@ -8496,11 +8500,15 @@ function App() {
                                     alt={item.title}
                                     loading="lazy"
                                     decoding="async"
-                                    onLoad={(event) => {
-                                      const el = event.currentTarget;
-                                      if (el.naturalWidth && el.naturalHeight)
-                                        recordAlbumRatio(attachment.id, el.naturalWidth / el.naturalHeight);
-                                    }}
+                                    onLoad={
+                                      attachment.width && attachment.height
+                                        ? undefined
+                                        : (event) => {
+                                            const el = event.currentTarget;
+                                            if (el.naturalWidth && el.naturalHeight)
+                                              recordAlbumRatio(attachment.id, el.naturalWidth / el.naturalHeight);
+                                          }
+                                    }
                                   />
                                 ) : (
                                   <img src={albumCategoryIconSrc(item.category)} alt="" loading="lazy" decoding="async" />

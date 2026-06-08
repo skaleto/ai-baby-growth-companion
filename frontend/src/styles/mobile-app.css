@@ -3537,6 +3537,12 @@ body.keyboard-open .expense-optional-fields {
   animation-delay: calc(var(--tile-index, 0) * 28ms);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .album-photo-tile {
+    animation: none;
+  }
+}
+
 .album-photo-thumb {
   position: relative;
   display: grid;

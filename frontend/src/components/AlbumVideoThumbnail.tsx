@@ -1,6 +1,7 @@
 import { Video } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
+import { registerAlbumVideo } from "./albumVideoPlayback";
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
@@ -27,20 +28,8 @@ export function AlbumVideoThumbnail({
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !canAutoplay) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            void video.play().catch(() => {});
-          } else {
-            video.pause();
-          }
-        }
-      },
-      { threshold: 0.4 },
-    );
-    observer.observe(video);
-    return () => observer.disconnect();
+    // Shared controller plays only the most-centered video (caps concurrent decodes to 1).
+    return registerAlbumVideo(video);
   }, [canAutoplay]);
 
   if (!attachment.url) {
