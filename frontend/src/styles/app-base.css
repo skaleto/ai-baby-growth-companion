@@ -1241,6 +1241,7 @@ h3 {
 .preview-menu-popover button {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   padding: 10px 12px;
   border: none;
@@ -1248,8 +1249,14 @@ h3 {
   background: transparent;
   color: #fff;
   font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
   text-align: left;
   cursor: pointer;
+}
+
+.preview-menu-popover button svg {
+  flex: none;
 }
 
 .preview-menu-popover button:active {
