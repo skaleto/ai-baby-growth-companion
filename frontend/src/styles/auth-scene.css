@@ -1,86 +1,49 @@
-/* Full-screen lively splash (the "正在确认登录状态" loading screen) +
-   brand lockup. Scoped to `.auth-splash` so other auth screens (consent,
-   login, onboarding) keep their original look. */
+/* Loading splash (正在确认登录状态): flowing-aurora background + centered brand.
+   Scoped to `.auth-splash` so consent/login/onboarding keep their original look. */
 
 .auth-scene {
   position: fixed;
   inset: 0;
   z-index: 0;
-  overflow: hidden;
   pointer-events: none;
   background:
-    radial-gradient(120% 90% at 15% 8%, rgba(255, 231, 209, 0.92), transparent 60%),
-    radial-gradient(120% 90% at 85% 18%, rgba(213, 240, 224, 0.92), transparent 60%),
-    linear-gradient(160deg, #fff7ee 0%, #f1faf2 55%, #eaf5ee 100%);
+    radial-gradient(60% 60% at 28% 30%, rgba(255, 208, 168, 0.78), transparent 60%),
+    radial-gradient(55% 55% at 76% 34%, rgba(170, 214, 235, 0.62), transparent 60%),
+    radial-gradient(62% 62% at 52% 82%, rgba(174, 226, 190, 0.74), transparent 60%),
+    linear-gradient(160deg, #fbf3ea, #eef6f1);
+  background-size: 200% 200%;
+  animation: authAuroraDrift 16s ease-in-out infinite;
 }
 
-.auth-scene-blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(42px);
-  opacity: 0.55;
-  will-change: transform;
+@keyframes authAuroraDrift {
+  0%, 100% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
 }
 
-.auth-scene-blob.blob-a {
-  width: 300px;
-  height: 300px;
-  top: -64px;
-  left: -48px;
-  background: radial-gradient(circle, rgba(255, 198, 160, 0.8), transparent 70%);
-  animation: authBlobFloat 18s ease-in-out infinite;
+/* Vertically-centered brand lockup + loading line on the splash. */
+.auth-splash {
+  position: relative;
+  justify-content: center;
+  background: #f3f7f2;
 }
 
-.auth-scene-blob.blob-b {
-  width: 340px;
-  height: 340px;
-  right: -72px;
-  bottom: -88px;
-  background: radial-gradient(circle, rgba(150, 210, 175, 0.7), transparent 70%);
-  animation: authBlobFloat 22s ease-in-out infinite reverse;
+.auth-splash-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
-.auth-scene-blob.blob-c {
-  width: 220px;
-  height: 220px;
-  top: 42%;
-  left: 58%;
-  background: radial-gradient(circle, rgba(255, 224, 178, 0.6), transparent 70%);
-  animation: authBlobFloat 26s ease-in-out infinite;
+.auth-splash-status {
+  margin: 14px 0 12px;
+  color: #6f6657;
+  font-size: 14px;
+  letter-spacing: 1px;
 }
 
-.auth-scene-star {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
-  animation: authStarTwinkle 4s ease-in-out infinite;
-}
-
-.auth-scene-star.star-a { top: 18%; left: 24%; }
-.auth-scene-star.star-b { top: 26%; right: 22%; animation-delay: 1.2s; }
-.auth-scene-star.star-c { top: 62%; left: 18%; animation-delay: 2.1s; }
-
-@keyframes authBlobFloat {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(22px, -26px) scale(1.08); }
-}
-
-@keyframes authStarTwinkle {
-  0%, 100% { opacity: 0.25; transform: scale(0.8); }
-  50% { opacity: 0.9; transform: scale(1.1); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .auth-scene-blob,
-  .auth-scene-star {
-    animation: none !important;
-  }
-}
-
-/* Foreground brand lockup (crisp, above the scene). */
+/* Brand lockup: splash watercolor + 小宝记 wordmark + slogan. */
 .auth-brand {
   position: relative;
   z-index: 1;
@@ -88,19 +51,19 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  margin-bottom: 18px;
   text-align: center;
 }
 
 .auth-brand-mark {
-  width: 128px;
-  height: 128px;
+  width: 132px;
+  height: 132px;
   object-fit: contain;
   border-radius: 28px;
   filter: drop-shadow(0 14px 30px rgba(120, 96, 60, 0.24));
 }
 
 .auth-brand-name {
+  margin-top: 6px;
   font-size: 26px;
   font-weight: 800;
   letter-spacing: 3px;
@@ -113,23 +76,8 @@
   color: #7c7163;
 }
 
-/* Splash screen only: positioning context + frosted-glass status panel. */
-.auth-splash {
-  position: relative;
-  background: #f3f7f2;
-}
-
-.auth-splash .auth-panel {
-  position: relative;
-  z-index: 1;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: 22px;
-  background: rgba(255, 253, 250, 0.62);
-  box-shadow: 0 24px 60px rgba(80, 74, 54, 0.18);
-  -webkit-backdrop-filter: blur(18px) saturate(1.1);
-  backdrop-filter: blur(18px) saturate(1.1);
-}
-
-.auth-splash .auth-panel::before {
-  display: none;
+@media (prefers-reduced-motion: reduce) {
+  .auth-scene {
+    animation: none !important;
+  }
 }

@@ -6319,15 +6319,15 @@ function App() {
       <main className="app-shell auth-shell auth-splash">
         <AuthScene />
         {systemWeakNoticeView}
-        <AuthBrand />
-        <section className="auth-panel">
-          <p>正在确认登录状态...</p>
+        <div className="auth-splash-content">
+          <AuthBrand />
+          <p className="auth-splash-status">正在确认登录状态...</p>
           <span className="loading-stars auth-loading" aria-hidden="true">
             <i />
             <i />
             <i />
           </span>
-        </section>
+        </div>
       </main>
     );
   }
