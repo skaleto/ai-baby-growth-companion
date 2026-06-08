@@ -220,6 +220,7 @@ import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
 import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { AuthScene } from "./components/AuthScene";
+import { AuthBrand } from "./components/AuthBrand";
 import { ConsentGate } from "./components/ConsentGate";
 import { AiDataNotice } from "./components/AiDataNotice";
 import { LegalDocModal } from "./components/LegalDocModal";
@@ -6335,6 +6336,7 @@ function App() {
       <main className="app-shell auth-shell">
         <AuthScene />
         {systemWeakNoticeView}
+        <AuthBrand />
         <section className="auth-panel">
           <div>
             <p className="eyebrow">本地家庭私有部署</p>

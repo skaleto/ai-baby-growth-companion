@@ -1,9 +1,8 @@
-import companionIcon from "../assets/storybook-icons/companion.png";
-
 /**
  * Full-screen lively background for the consent / auth screens.
  * Pure decoration (aria-hidden). Rendered as a sibling BEFORE the glass panel
  * so the panel's backdrop-filter can blur it. Position: fixed (see auth-scene.css).
+ * The brand mascot lives in the crisp foreground lockup (see AuthBrand), not here.
  */
 export function AuthScene() {
   return (
@@ -14,9 +13,6 @@ export function AuthScene() {
       <span className="auth-scene-star star-a" />
       <span className="auth-scene-star star-b" />
       <span className="auth-scene-star star-c" />
-      <span className="auth-scene-mark">
-        <img src={companionIcon} alt="" />
-      </span>
     </div>
   );
 }
