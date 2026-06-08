@@ -17,6 +17,7 @@ import {
   Mic,
   Milk,
   Moon,
+  MoreHorizontal,
   Music2,
   PartyPopper,
   PencilLine,
@@ -2299,6 +2300,7 @@ function App() {
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const [previewAlbumItem, setPreviewAlbumItem] = useState<AlbumItem | null>(null);
   const [previewMotion, setPreviewMotion] = useState<PreviewMotion>("idle");
+  const [previewActionsOpen, setPreviewActionsOpen] = useState(false);
   const [albumAnimationSeed, setAlbumAnimationSeed] = useState(0);
   const [previewTransform, setPreviewTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [runtimeVersion, setRuntimeVersion] = useState<RuntimeVersionInfo>(() => ({
@@ -2687,6 +2689,21 @@ function App() {
     }
     closePreviewAttachment();
   }, [closePreviewAttachment]);
+
+  useEffect(() => {
+    setPreviewActionsOpen(false);
+  }, [previewAlbumItem?.id, previewAttachment?.id]);
+
+  useEffect(() => {
+    if (!previewActionsOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".media-preview-menu")) return;
+      setPreviewActionsOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [previewActionsOpen]);
 
   const findAdjacentPreviewAlbumItem = useCallback((direction: -1 | 1) => {
     const items = previewAlbumItemsRef.current;
@@ -9455,6 +9472,49 @@ function App() {
                 {previewAlbumItem.recordedBy ? <small>{creatorMetaText(previewAlbumItem.recordedBy)}</small> : null}
               </div>
             ) : null}
+            {previewAlbumItem && canCaregive ? (
+              <div className="media-preview-menu">
+                <button
+                  type="button"
+                  className="preview-menu-button"
+                  aria-label="更多操作"
+                  aria-expanded={previewActionsOpen}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPreviewActionsOpen((open) => !open);
+                  }}
+                >
+                  <MoreHorizontal size={20} />
+                </button>
+                {previewActionsOpen ? (
+                  <div className="preview-menu-popover">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPreviewActionsOpen(false);
+                        editAlbumItem(previewAlbumItem);
+                      }}
+                    >
+                      <PencilLine size={15} />
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPreviewActionsOpen(false);
+                        void removeAlbumItem(previewAlbumItem);
+                      }}
+                    >
+                      <Trash2 size={15} />
+                      删除
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <figure
             className={previewAlbumItem ? "album-preview-figure" : undefined}
@@ -9517,44 +9577,6 @@ function App() {
                 onPointerUp={onPreviewImagePointerEnd}
                 onPointerCancel={onPreviewImagePointerEnd}
               />
-            )}
-            {previewAlbumItem ? (
-              <figcaption className="media-preview-details" onClick={(event) => event.stopPropagation()}>
-                {previewAlbumItem.tags.length ? (
-                  <div className="media-preview-tags">
-                    {previewAlbumItem.tags.slice(0, 4).map((tag) => (
-                      <span key={tag}>{tag}</span>
-                    ))}
-                  </div>
-                ) : null}
-                {canCaregive ? (
-                  <div className="media-preview-actions">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        editAlbumItem(previewAlbumItem);
-                      }}
-                    >
-                      <PencilLine size={14} />
-                      编辑
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void removeAlbumItem(previewAlbumItem);
-                      }}
-                    >
-                      <Trash2 size={14} />
-                      删除
-                    </button>
-                  </div>
-                ) : null}
-              </figcaption>
-            ) : (
-              <figcaption>{previewAttachment.name}</figcaption>
             )}
           </figure>
         </div>

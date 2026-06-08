@@ -1203,6 +1203,63 @@ h3 {
   opacity: 0.7;
 }
 
+.media-preview-menu {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+}
+
+.preview-menu-button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.preview-menu-popover {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 132px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(28, 28, 30, 0.96);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+}
+
+.preview-menu-popover button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.preview-menu-popover button:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.preview-menu-popover button.danger {
+  color: #ff6b6b;
+}
+
 .preview-video-player {
   position: relative;
   display: grid;
@@ -1282,7 +1339,7 @@ h3 {
 .media-preview figure {
   --preview-details-height: calc(96px + env(safe-area-inset-bottom));
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   gap: 0;
   width: 100vw;
   max-width: 100vw;
@@ -1294,7 +1351,7 @@ h3 {
 }
 
 .media-preview figure.album-preview-figure {
-  grid-template-rows: minmax(0, 1fr) var(--preview-details-height);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .media-preview.closing figure {
@@ -1364,7 +1421,7 @@ h3 {
   width: 100vw;
   height: 100%;
   max-width: 100vw;
-  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 34px);
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   object-fit: contain;
   border-radius: 0;
   background: #05070a;
@@ -1374,7 +1431,7 @@ h3 {
 
 .media-preview .album-preview-figure img,
 .media-preview .album-preview-figure video {
-  max-height: calc(100dvh - env(safe-area-inset-top) - var(--preview-details-height));
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 }
 
 .media-preview .album-preview-figure .media-preview-slide img,
