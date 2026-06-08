@@ -2,6 +2,7 @@ import { Pause, Play, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
 import { fractionFromPointer, progressFraction, seekTimeFromFraction } from "./previewVideoMath";
+import { getAlbumVideoResumeTime } from "./albumVideoPlayback";
 
 const HIDE_DELAY_MS = 2500;
 
@@ -49,20 +50,37 @@ export function PreviewVideoPlayer({
     if (!video) return;
     if (active) {
       setControlsVisible(true);
+      // Resume from where the album tile was playing (handoff) instead of restarting at 0.
+      const resume = getAlbumVideoResumeTime(attachment.id);
       // Start muted so playback isn't gated on audio buffering (fast tap-to-play);
       // onPlaying unmutes once it's actually running.
-      video.muted = true;
-      void video
-        .play()
-        .then(() => scheduleHide())
-        .catch(() => setControlsVisible(true));
+      const begin = () => {
+        if (resume > 0 && Number.isFinite(video.duration) && video.duration > 0) {
+          try {
+            video.currentTime = Math.min(resume, Math.max(0, video.duration - 0.1));
+          } catch {
+            /* seeking before ready; ignore */
+          }
+        }
+        video.muted = true;
+        void video
+          .play()
+          .then(() => scheduleHide())
+          .catch(() => setControlsVisible(true));
+      };
+      if (video.readyState >= 1 /* HAVE_METADATA */) {
+        begin();
+      } else {
+        video.addEventListener("loadedmetadata", begin, { once: true });
+        return () => video.removeEventListener("loadedmetadata", begin);
+      }
     } else {
       video.pause();
       video.currentTime = 0;
       setFraction(0);
       setEnded(false);
     }
-  }, [active, scheduleHide]);
+  }, [active, attachment.id, scheduleHide]);
 
   useEffect(
     () => () => {
