@@ -378,6 +378,13 @@ type QueuedMediaFile = {
 
 type PreviewMotion = "opening" | "idle" | "closing";
 
+// Viewport-relative center (%) of the tapped element, so the preview can zoom
+// open/closed from where the user tapped rather than the screen center.
+const previewOriginFromRect = (rect: DOMRect): { x: number; y: number } => ({
+  x: ((rect.left + rect.width / 2) / (window.innerWidth || 1)) * 100,
+  y: ((rect.top + rect.height / 2) / (window.innerHeight || 1)) * 100,
+});
+
 type RuntimeVersionInfo = {
   otaVersion: string;
   nativeVersion: string;
@@ -2302,6 +2309,7 @@ function App() {
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const [previewAlbumItem, setPreviewAlbumItem] = useState<AlbumItem | null>(null);
   const [previewMotion, setPreviewMotion] = useState<PreviewMotion>("idle");
+  const [previewOrigin, setPreviewOrigin] = useState<{ x: number; y: number } | null>(null);
   const [previewActionsOpen, setPreviewActionsOpen] = useState(false);
   const [albumAnimationSeed, setAlbumAnimationSeed] = useState(0);
   const [previewTransform, setPreviewTransform] = useState({ scale: 1, x: 0, y: 0 });
@@ -2645,7 +2653,7 @@ function App() {
     });
   }, []);
 
-  const openPreviewAttachment = useCallback((attachment: Attachment, albumItem?: AlbumItem | null, motion: PreviewMotion = "opening") => {
+  const openPreviewAttachment = useCallback((attachment: Attachment, albumItem?: AlbumItem | null, motion: PreviewMotion = "opening", origin: { x: number; y: number } | null = null) => {
     clearPreviewTimers();
     previewPointersRef.current.clear();
     previewPinchRef.current = null;
@@ -2656,6 +2664,7 @@ function App() {
     setPreviewTransform({ scale: 1, x: 0, y: 0 });
     setPreviewAlbumItem(albumItem ?? null);
     setPreviewAttachment(attachment);
+    setPreviewOrigin(origin);
     setPreviewMotion(motion);
     if (motion !== "opening") return;
     previewOpenTimerRef.current = window.setTimeout(() => {
@@ -8477,9 +8486,14 @@ function App() {
                               <button
                                 type="button"
                                 className="album-photo-thumb"
-                                onClick={() => {
+                                onClick={(event) => {
                                   if (!attachment?.url) return;
-                                  openPreviewAttachment(attachment, item);
+                                  openPreviewAttachment(
+                                    attachment,
+                                    item,
+                                    "opening",
+                                    previewOriginFromRect(event.currentTarget.getBoundingClientRect()),
+                                  );
                                 }}
                                 aria-label={`预览 ${item.title}`}
                                 disabled={!attachment?.url}
@@ -9462,7 +9476,21 @@ function App() {
         </div>
       ) : null}
       {previewAttachment?.url ? (
-        <div className={`media-preview ${previewMotion}`} role="dialog" aria-modal="true" aria-label="附件预览" onClick={handlePreviewClick}>
+        <div
+          className={`media-preview ${previewMotion}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="附件预览"
+          style={
+            previewOrigin
+              ? ({
+                  "--preview-origin-x": `${previewOrigin.x}%`,
+                  "--preview-origin-y": `${previewOrigin.y}%`,
+                } as CSSProperties)
+              : undefined
+          }
+          onClick={handlePreviewClick}
+        >
           <div className="media-preview-topbar" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
