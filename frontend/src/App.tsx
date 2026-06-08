@@ -219,7 +219,7 @@ import {
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
 import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
-import { StorybookScene } from "./components/StorybookScene";
+import { AuthScene } from "./components/AuthScene";
 import { ConsentGate } from "./components/ConsentGate";
 import { AiDataNotice } from "./components/AiDataNotice";
 import { LegalDocModal } from "./components/LegalDocModal";
@@ -6315,9 +6315,9 @@ function App() {
   if (authStatus === "checking") {
     return (
       <main className="app-shell auth-shell">
+        <AuthScene />
         {systemWeakNoticeView}
         <section className="auth-panel">
-          <StorybookScene />
           <h1>小宝记</h1>
           <p>正在确认登录状态...</p>
           <span className="loading-stars auth-loading" aria-hidden="true">
@@ -6333,9 +6333,9 @@ function App() {
   if (authStatus === "unauthenticated") {
     return (
       <main className="app-shell auth-shell">
+        <AuthScene />
         {systemWeakNoticeView}
         <section className="auth-panel">
-          <StorybookScene />
           <div>
             <p className="eyebrow">本地家庭私有部署</p>
             <h1>欢迎回来</h1>
@@ -6430,10 +6430,10 @@ function App() {
     if (!canCaregive) {
       return (
         <main className="app-shell auth-shell">
+          <AuthScene />
           {systemWeakNoticeView}
           <section className="auth-panel onboarding-panel">
-            <StorybookScene />
-            <div className="onboarding-head">
+              <div className="onboarding-head">
               <div className="brand-mark">
                 <img className="storybook-brand-icon" src={companionIcon} alt="" />
               </div>
@@ -6455,9 +6455,9 @@ function App() {
     const progress = onboardingStep + 1;
     return (
       <main className="app-shell auth-shell">
+        <AuthScene />
         {systemWeakNoticeView}
         <section className="auth-panel onboarding-panel">
-          <StorybookScene />
           <div className="onboarding-head">
             <div className="brand-mark">
               <img className="storybook-brand-icon" src={companionIcon} alt="" />
