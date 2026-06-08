@@ -1,4 +1,4 @@
-import splashMark from "../assets/splash/splash-mark.png";
+import splashMark from "../assets/splash/splash-mark-cutout.png";
 
 /**
  * Foreground brand lockup for the consent / auth screens: the watercolor

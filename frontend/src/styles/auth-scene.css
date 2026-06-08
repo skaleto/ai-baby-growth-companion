@@ -55,11 +55,10 @@
 }
 
 .auth-brand-mark {
-  width: 132px;
-  height: 132px;
+  width: 150px;
+  height: 150px;
   object-fit: contain;
-  border-radius: 28px;
-  filter: drop-shadow(0 14px 30px rgba(120, 96, 60, 0.24));
+  filter: drop-shadow(0 12px 26px rgba(120, 96, 60, 0.2));
 }
 
 .auth-brand-name {
