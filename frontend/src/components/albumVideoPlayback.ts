@@ -68,6 +68,32 @@ const ensureGlobals = () => {
   }
 };
 
+// Warm the HTTP cache for a video the user is about to open (pressed its tile),
+// so the fullscreen player reuses the bytes instead of starting a cold load.
+const prefetched = new Set<string>();
+export const prefetchAlbumVideo = (url: string | undefined | null): void => {
+  if (!url || prefetched.has(url) || typeof document === "undefined") return;
+  prefetched.add(url);
+  const warm = document.createElement("video");
+  warm.muted = true;
+  warm.preload = "auto";
+  warm.src = url;
+  try {
+    warm.load();
+  } catch {
+    /* ignore */
+  }
+  // Release after a short while; Cache-Control keeps the fetched bytes around.
+  window.setTimeout(() => {
+    warm.removeAttribute("src");
+    try {
+      warm.load();
+    } catch {
+      /* ignore */
+    }
+  }, 8000);
+};
+
 /** Register an album tile <video>; only the most-centered visible one plays. Returns an unregister fn. */
 export const registerAlbumVideo = (el: HTMLVideoElement): (() => void) => {
   ensureGlobals();

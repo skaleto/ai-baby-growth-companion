@@ -54,7 +54,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
+import { prefetchAlbumVideo } from "./components/albumVideoPlayback";
 import { compressConversationSummary, runAgentChatStream, type AgentStreamStatusType } from "./agentApi";
 import {
   ALBUM_CATEGORIES,
@@ -387,6 +388,22 @@ const previewOriginFromRect = (rect: DOMRect): PreviewOriginRect => ({
   width: rect.width,
   height: rect.height,
 });
+
+// View Transitions API (Chromium WebView 111+, iOS 18+ WKWebView) gives a native
+// container-transform morph between the tapped thumbnail and the fullscreen media.
+// Older WebViews fall back to the FLIP animation.
+const supportsViewTransition = (): boolean =>
+  typeof document !== "undefined" &&
+  typeof (document as Document & { startViewTransition?: unknown }).startViewTransition === "function";
+
+const PREVIEW_VT = supportsViewTransition();
+
+const startViewTransition = (callback: () => void): { finished: Promise<unknown> } =>
+  (
+    document as unknown as {
+      startViewTransition: (cb: () => void) => { finished: Promise<unknown> };
+    }
+  ).startViewTransition(callback);
 
 type RuntimeVersionInfo = {
   otaVersion: string;
@@ -2676,6 +2693,31 @@ function App() {
     }, 260);
   }, [clearPreviewTimers, resetPreviewCarouselTransform]);
 
+  // Album tile tap: use a View Transition (container-transform morph from the
+  // tapped thumbnail) when supported, else the FLIP path inside openPreviewAttachment.
+  const openAlbumPreview = useCallback(
+    (event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => {
+      if (!attachment.url) return;
+      const tileEl = event.currentTarget;
+      const origin = previewOriginFromRect(tileEl.getBoundingClientRect());
+      if (!PREVIEW_VT) {
+        openPreviewAttachment(attachment, item, "opening", origin);
+        return;
+      }
+      // Name the tapped thumbnail so the browser morphs it into the fullscreen media.
+      tileEl.style.viewTransitionName = "preview-media";
+      const vt = startViewTransition(() => {
+        flushSync(() => openPreviewAttachment(attachment, item, "idle", origin));
+        // Drop the name in the new snapshot so only the fullscreen figure carries it.
+        tileEl.style.viewTransitionName = "";
+      });
+      vt.finished.finally(() => {
+        tileEl.style.viewTransitionName = "";
+      });
+    },
+    [openPreviewAttachment],
+  );
+
   const closePreviewAttachment = useCallback(() => {
     clearPreviewTimers();
     previewPointersRef.current.clear();
@@ -2684,12 +2726,40 @@ function App() {
     previewTapGuardRef.current = false;
     resetPreviewCarouselTransform();
     setPreviewTransform({ scale: 1, x: 0, y: 0 });
-    setPreviewMotion("closing");
-    previewCloseTimerRef.current = window.setTimeout(() => {
+
+    const finalize = () => {
       setPreviewAttachment(null);
       setPreviewAlbumItem(null);
       previewAlbumItemRef.current = null;
       setPreviewMotion("idle");
+    };
+
+    if (PREVIEW_VT) {
+      // Morph the fullscreen media back into its thumbnail (if it's on screen).
+      const itemId = previewAlbumItemRef.current?.id;
+      const tileEl =
+        itemId && typeof document !== "undefined"
+          ? (document.querySelector(`[data-vt-item="${itemId}"]`) as HTMLElement | null)
+          : null;
+      const onScreen =
+        !!tileEl &&
+        (() => {
+          const r = tileEl.getBoundingClientRect();
+          return r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
+        })();
+      if (tileEl && onScreen) tileEl.style.viewTransitionName = "preview-media";
+      const vt = startViewTransition(() => {
+        flushSync(finalize);
+      });
+      vt.finished.finally(() => {
+        if (tileEl) tileEl.style.viewTransitionName = "";
+      });
+      return;
+    }
+
+    setPreviewMotion("closing");
+    previewCloseTimerRef.current = window.setTimeout(() => {
+      finalize();
       previewCloseTimerRef.current = null;
     }, 240);
   }, [clearPreviewTimers, resetPreviewCarouselTransform]);
@@ -8489,14 +8559,12 @@ function App() {
                               <button
                                 type="button"
                                 className="album-photo-thumb"
+                                data-vt-item={item.id}
+                                onPointerDown={() => {
+                                  if (attachment?.kind === "video") prefetchAlbumVideo(attachment.url);
+                                }}
                                 onClick={(event) => {
-                                  if (!attachment?.url) return;
-                                  openPreviewAttachment(
-                                    attachment,
-                                    item,
-                                    "opening",
-                                    previewOriginFromRect(event.currentTarget.getBoundingClientRect()),
-                                  );
+                                  if (attachment) openAlbumPreview(event, attachment, item);
                                 }}
                                 aria-label={`预览 ${item.title}`}
                                 disabled={!attachment?.url}
@@ -9480,7 +9548,7 @@ function App() {
       ) : null}
       {previewAttachment?.url ? (
         <div
-          className={`media-preview ${previewMotion}`}
+          className={`media-preview ${previewMotion}${PREVIEW_VT ? " vt-mode" : ""}`}
           role="dialog"
           aria-modal="true"
           aria-label="附件预览"

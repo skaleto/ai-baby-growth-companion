@@ -1383,6 +1383,29 @@ h3 {
   animation: previewZoomOut 220ms ease both;
 }
 
+/* When View Transitions drive the open/close morph, suppress the FLIP/backdrop
+   keyframes and let the browser's container-transform handle it. */
+.media-preview.vt-mode,
+.media-preview.vt-mode.closing,
+.media-preview.vt-mode figure,
+.media-preview.vt-mode.closing figure {
+  animation: none;
+}
+
+.media-preview.vt-mode figure {
+  view-transition-name: preview-media;
+}
+
+::view-transition-group(preview-media) {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.2, 0.82, 0.24, 1);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 240ms;
+}
+
 .media-preview-carousel {
   align-self: stretch;
   justify-self: stretch;
