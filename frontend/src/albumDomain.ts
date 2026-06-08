@@ -72,6 +72,12 @@ export const albumDayLabel = (date: string) => {
   return year && monthNumber && dayNumber ? `${year}年${monthNumber}月${dayNumber}日` : "未归档";
 };
 
+export const albumMonthLabel = (month: string) => {
+  const [year, monthPart] = month.split("-");
+  const monthNumber = Number(monthPart);
+  return year && monthNumber ? `${year}年${monthNumber}月` : "未归档";
+};
+
 const attachmentOccurredAt = (attachment: Attachment, fallback?: string) =>
   attachment.capturedAt ?? attachment.createdAt ?? fallback ?? new Date().toISOString();
 

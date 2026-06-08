@@ -59,7 +59,7 @@ import {
   ALBUM_CATEGORIES,
   albumCategoryFromTags,
   albumCategoryLabel,
-  albumDayLabel,
+  albumMonthLabel,
   albumItemFromDecision,
   albumItemFromStandaloneAttachment,
   albumPromptFromDecision,
@@ -2976,12 +2976,12 @@ function App() {
   const albumGroups = useMemo(() => {
     const groups = new Map<string, AlbumItem[]>();
     filteredAlbumItems.forEach((item) => {
-      const key = (item.occurredAt ?? item.date).slice(0, 10) || "unknown";
+      const key = (item.occurredAt ?? item.date).slice(0, 7) || "unknown";
       groups.set(key, [...(groups.get(key) ?? []), item]);
     });
     return Array.from(groups.entries()).map(([key, items]) => ({
       key,
-      label: albumDayLabel(key),
+      label: albumMonthLabel(key),
       items,
     }));
   }, [filteredAlbumItems]);

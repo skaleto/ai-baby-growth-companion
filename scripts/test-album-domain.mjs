@@ -79,6 +79,9 @@ try {
   const standaloneItem = album.albumItemFromStandaloneAttachment(capturedPhoto);
   assert.equal(standaloneItem.date, "2026-05-29", "manual album upload should use photo capture date before upload time");
   assert.equal(album.albumDayLabel("2026-05-29"), "2026年5月29日");
+  assert.equal(album.albumMonthLabel("2026-05"), "2026年5月");
+  assert.equal(album.albumMonthLabel("2026-12"), "2026年12月");
+  assert.equal(album.albumMonthLabel("bad"), "未归档");
 
   const screenshot = imageAttachment({
     id: "att-screenshot",
