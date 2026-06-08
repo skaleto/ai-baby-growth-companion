@@ -8,7 +8,9 @@ import com.xiaobao.babycompanion.dto.app.UploadPresignResponse;
 import com.xiaobao.babycompanion.dto.app.UploadRequest;
 import com.xiaobao.babycompanion.service.AttachmentStorageService;
 import jakarta.validation.Valid;
+import java.util.concurrent.TimeUnit;
 import org.springframework.core.io.Resource;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -61,6 +63,7 @@ public class UploadController {
                     .build();
         }
         return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(30, TimeUnit.DAYS).cachePrivate().immutable())
                 .contentType(MediaType.parseMediaType(attachment.mimeType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
                         .filename(attachment.name())
@@ -79,6 +82,7 @@ public class UploadController {
                     .build();
         }
         return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(30, TimeUnit.DAYS).cachePrivate().immutable())
                 .contentType(MediaType.parseMediaType(attachment.mimeType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
                         .filename(attachment.name())
