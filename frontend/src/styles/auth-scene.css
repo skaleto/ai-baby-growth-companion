@@ -1,4 +1,6 @@
-/* Full-screen lively background for consent / auth screens + frosted-glass panels. */
+/* Full-screen lively splash (the "正在确认登录状态" loading screen) +
+   brand lockup. Scoped to `.auth-splash` so other auth screens (consent,
+   login, onboarding) keep their original look. */
 
 .auth-scene {
   position: fixed;
@@ -61,23 +63,6 @@
 .auth-scene-star.star-b { top: 26%; right: 22%; animation-delay: 1.2s; }
 .auth-scene-star.star-c { top: 62%; left: 18%; animation-delay: 2.1s; }
 
-.auth-scene-mark {
-  position: absolute;
-  top: 11%;
-  left: 50%;
-  width: 92px;
-  transform: translateX(-50%);
-  opacity: 0.92;
-  animation: authMarkBob 6s ease-in-out infinite;
-}
-
-.auth-scene-mark img {
-  display: block;
-  width: 100%;
-  height: auto;
-  filter: drop-shadow(0 10px 18px rgba(90, 70, 40, 0.18));
-}
-
 @keyframes authBlobFloat {
   0%, 100% { transform: translate(0, 0) scale(1); }
   50% { transform: translate(22px, -26px) scale(1.08); }
@@ -88,20 +73,14 @@
   50% { opacity: 0.9; transform: scale(1.1); }
 }
 
-@keyframes authMarkBob {
-  0%, 100% { transform: translateX(-50%) translateY(0); }
-  50% { transform: translateX(-50%) translateY(-10px); }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .auth-scene-blob,
-  .auth-scene-star,
-  .auth-scene-mark {
+  .auth-scene-star {
     animation: none !important;
   }
 }
 
-/* Foreground brand lockup (crisp, above the glass card). */
+/* Foreground brand lockup (crisp, above the scene). */
 .auth-brand {
   position: relative;
   z-index: 1;
@@ -134,40 +113,23 @@
   color: #7c7163;
 }
 
-/* Containers become the stacking context; the fixed scene shows through. */
-.auth-shell {
+/* Splash screen only: positioning context + frosted-glass status panel. */
+.auth-splash {
   position: relative;
   background: #f3f7f2;
 }
 
-/* Stack the brand hero above the consent card. */
-.consent-gate-backdrop {
-  flex-direction: column;
-}
-
-.consent-gate-backdrop {
-  background: #f3f7f2;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
-/* Panels -> frosted glass, above the scene. */
-.auth-shell .auth-panel,
-.consent-gate-backdrop .consent-gate-card {
+.auth-splash .auth-panel {
   position: relative;
   z-index: 1;
   border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 22px;
   background: rgba(255, 253, 250, 0.62);
   box-shadow: 0 24px 60px rgba(80, 74, 54, 0.18);
   -webkit-backdrop-filter: blur(18px) saturate(1.1);
   backdrop-filter: blur(18px) saturate(1.1);
 }
 
-.auth-shell .auth-panel {
-  border-radius: 22px;
-}
-
-/* Old inline panel decoration is now provided full-screen by AuthScene. */
-.auth-shell .auth-panel::before {
+.auth-splash .auth-panel::before {
   display: none;
 }

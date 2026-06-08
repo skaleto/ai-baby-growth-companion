@@ -2,8 +2,6 @@ import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import type { LegalDocId } from "../legalContent";
 import { LegalDocModal } from "./LegalDocModal";
-import { AuthScene } from "./AuthScene";
-import { AuthBrand } from "./AuthBrand";
 
 export type ConsentGateProps = {
   /** 用户勾选监护人确认并点击“同意并继续”后调用。 */
@@ -24,8 +22,6 @@ export function ConsentGate({ onAccept }: ConsentGateProps) {
 
   return (
     <div className="consent-gate-backdrop" role="dialog" aria-modal="true" aria-labelledby="consent-gate-title">
-      <AuthScene />
-      <AuthBrand />
       <div className="consent-gate-card">
         <div className="consent-gate-badge" aria-hidden="true">
           <ShieldCheck size={26} />
