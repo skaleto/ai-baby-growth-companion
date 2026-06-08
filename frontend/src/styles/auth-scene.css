@@ -58,7 +58,6 @@
   width: 150px;
   height: 150px;
   object-fit: contain;
-  filter: drop-shadow(0 12px 26px rgba(120, 96, 60, 0.2));
 }
 
 .auth-brand-name {
