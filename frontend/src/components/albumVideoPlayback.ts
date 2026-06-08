@@ -11,15 +11,6 @@ let observer: IntersectionObserver | null = null;
 let listenersBound = false;
 let frameScheduled = false;
 
-// Remembers each tile video's latest playback position so the fullscreen preview
-// can resume from where the tile was instead of restarting at 0.
-const resumeTimes = new Map<string, number>();
-export const rememberAlbumVideoTime = (attachmentId: string, time: number): void => {
-  if (time > 0) resumeTimes.set(attachmentId, time);
-};
-export const getAlbumVideoResumeTime = (attachmentId: string): number =>
-  resumeTimes.get(attachmentId) ?? 0;
-
 const update = () => {
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
   const center = viewportHeight / 2;

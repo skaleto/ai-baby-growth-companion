@@ -378,11 +378,14 @@ type QueuedMediaFile = {
 
 type PreviewMotion = "opening" | "idle" | "closing";
 
-// Viewport-relative center (%) of the tapped element, so the preview can zoom
-// open/closed from where the user tapped rather than the screen center.
-const previewOriginFromRect = (rect: DOMRect): { x: number; y: number } => ({
-  x: ((rect.left + rect.width / 2) / (window.innerWidth || 1)) * 100,
-  y: ((rect.top + rect.height / 2) / (window.innerHeight || 1)) * 100,
+// Rect of the tapped thumbnail, so the preview can morph (FLIP) out of / back
+// into that exact thumbnail instead of a generic center zoom.
+type PreviewOriginRect = { top: number; left: number; width: number; height: number };
+const previewOriginFromRect = (rect: DOMRect): PreviewOriginRect => ({
+  top: rect.top,
+  left: rect.left,
+  width: rect.width,
+  height: rect.height,
 });
 
 type RuntimeVersionInfo = {
@@ -2309,7 +2312,7 @@ function App() {
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const [previewAlbumItem, setPreviewAlbumItem] = useState<AlbumItem | null>(null);
   const [previewMotion, setPreviewMotion] = useState<PreviewMotion>("idle");
-  const [previewOrigin, setPreviewOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [previewOriginRect, setPreviewOriginRect] = useState<PreviewOriginRect | null>(null);
   const [previewActionsOpen, setPreviewActionsOpen] = useState(false);
   const [albumAnimationSeed, setAlbumAnimationSeed] = useState(0);
   const [previewTransform, setPreviewTransform] = useState({ scale: 1, x: 0, y: 0 });
@@ -2653,7 +2656,7 @@ function App() {
     });
   }, []);
 
-  const openPreviewAttachment = useCallback((attachment: Attachment, albumItem?: AlbumItem | null, motion: PreviewMotion = "opening", origin: { x: number; y: number } | null = null) => {
+  const openPreviewAttachment = useCallback((attachment: Attachment, albumItem?: AlbumItem | null, motion: PreviewMotion = "opening", origin: PreviewOriginRect | null = null) => {
     clearPreviewTimers();
     previewPointersRef.current.clear();
     previewPinchRef.current = null;
@@ -2664,7 +2667,7 @@ function App() {
     setPreviewTransform({ scale: 1, x: 0, y: 0 });
     setPreviewAlbumItem(albumItem ?? null);
     setPreviewAttachment(attachment);
-    setPreviewOrigin(origin);
+    setPreviewOriginRect(origin);
     setPreviewMotion(motion);
     if (motion !== "opening") return;
     previewOpenTimerRef.current = window.setTimeout(() => {
@@ -2688,7 +2691,7 @@ function App() {
       previewAlbumItemRef.current = null;
       setPreviewMotion("idle");
       previewCloseTimerRef.current = null;
-    }, 180);
+    }, 240);
   }, [clearPreviewTimers, resetPreviewCarouselTransform]);
 
   const handlePreviewClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -9482,10 +9485,12 @@ function App() {
           aria-modal="true"
           aria-label="附件预览"
           style={
-            previewOrigin
+            previewOriginRect
               ? ({
-                  "--preview-origin-x": `${previewOrigin.x}%`,
-                  "--preview-origin-y": `${previewOrigin.y}%`,
+                  "--preview-flip": `translate(${previewOriginRect.left}px, ${previewOriginRect.top}px) scale(${
+                    previewOriginRect.width / (window.innerWidth || 1)
+                  }, ${previewOriginRect.height / (window.innerHeight || 1)})`,
+                  "--preview-to": "top left",
                 } as CSSProperties)
               : undefined
           }

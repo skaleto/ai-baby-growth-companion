@@ -1,7 +1,7 @@
 import { Video } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
-import { registerAlbumVideo, rememberAlbumVideoTime } from "./albumVideoPlayback";
+import { registerAlbumVideo } from "./albumVideoPlayback";
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
@@ -50,9 +50,7 @@ export function AlbumVideoThumbnail({
         preload="metadata"
         aria-label={title}
         onTimeUpdate={(event) => {
-          const t = event.currentTarget.currentTime;
-          if (t > 0) setFramesReady(true);
-          rememberAlbumVideoTime(attachment.id, t);
+          if (event.currentTarget.currentTime > 0) setFramesReady(true);
         }}
         onLoadedMetadata={(event) => {
           const el = event.currentTarget;

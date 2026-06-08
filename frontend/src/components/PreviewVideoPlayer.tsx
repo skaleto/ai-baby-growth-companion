@@ -2,7 +2,6 @@ import { Pause, Play, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
 import { fractionFromPointer, progressFraction, seekTimeFromFraction } from "./previewVideoMath";
-import { getAlbumVideoResumeTime } from "./albumVideoPlayback";
 
 const HIDE_DELAY_MS = 2500;
 
@@ -23,6 +22,9 @@ export function PreviewVideoPlayer({
   const [ended, setEnded] = useState(false);
   const [fraction, setFraction] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
+  // Keep the thumbnail covering the <video> until it paints a real frame, so
+  // opening doesn't flash black while the fresh element loads/decodes.
+  const [frameReady, setFrameReady] = useState(false);
 
   // Bind the internal ref AND forward to bindPreviewVideo (which sets muted=false,
   // wires native-fullscreen-exit → close, and pauses on unbind).
@@ -50,37 +52,26 @@ export function PreviewVideoPlayer({
     if (!video) return;
     if (active) {
       setControlsVisible(true);
-      // Resume from where the album tile was playing (handoff) instead of restarting at 0.
-      const resume = getAlbumVideoResumeTime(attachment.id);
       // Start muted so playback isn't gated on audio buffering (fast tap-to-play);
       // onPlaying unmutes once it's actually running.
-      const begin = () => {
-        if (resume > 0 && Number.isFinite(video.duration) && video.duration > 0) {
-          try {
-            video.currentTime = Math.min(resume, Math.max(0, video.duration - 0.1));
-          } catch {
-            /* seeking before ready; ignore */
-          }
-        }
-        video.muted = true;
-        void video
-          .play()
-          .then(() => scheduleHide())
-          .catch(() => setControlsVisible(true));
-      };
-      if (video.readyState >= 1 /* HAVE_METADATA */) {
-        begin();
-      } else {
-        video.addEventListener("loadedmetadata", begin, { once: true });
-        return () => video.removeEventListener("loadedmetadata", begin);
-      }
+      video.muted = true;
+      void video
+        .play()
+        .then(() => scheduleHide())
+        .catch(() => setControlsVisible(true));
     } else {
       video.pause();
       video.currentTime = 0;
       setFraction(0);
       setEnded(false);
+      setFrameReady(false);
     }
-  }, [active, attachment.id, scheduleHide]);
+  }, [active, scheduleHide]);
+
+  // Re-show the poster whenever the media changes (carousel swipe).
+  useEffect(() => {
+    setFrameReady(false);
+  }, [attachment.id]);
 
   useEffect(
     () => () => {
@@ -139,6 +130,7 @@ export function PreviewVideoPlayer({
         }}
         onPlaying={(event) => {
           event.currentTarget.muted = false;
+          setFrameReady(true);
         }}
         onPause={() => setPlaying(false)}
         onEnded={() => {
@@ -146,10 +138,20 @@ export function PreviewVideoPlayer({
           setPlaying(false);
           setControlsVisible(true);
         }}
-        onTimeUpdate={(event) =>
-          setFraction(progressFraction(event.currentTarget.currentTime, event.currentTarget.duration))
-        }
+        onTimeUpdate={(event) => {
+          if (event.currentTarget.currentTime > 0) setFrameReady(true);
+          setFraction(progressFraction(event.currentTarget.currentTime, event.currentTarget.duration));
+        }}
       />
+      {attachment.thumbnailUrl ? (
+        <img
+          className={`preview-video-poster${frameReady ? " is-hidden" : ""}`}
+          src={attachment.thumbnailUrl}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+        />
+      ) : null}
       <button
         type="button"
         className="preview-video-toggle"
