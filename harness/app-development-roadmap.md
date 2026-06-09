@@ -3,12 +3,9 @@
 - 日期：2026-06-02
 - 状态：战略规划，待拆分为 Phase 0/Phase 1 设计与实施计划
 - 输入：
-  - `docs/research-archive/mother-baby-strategy-2026-06-02/2026-06-01-market-landscape-positioning.md`
-  - `docs/research-archive/mother-baby-strategy-2026-06-02/2026-06-01-cross-app-design-review.md`
-  - `docs/research-archive/mother-baby-strategy-2026-06-02/mother-baby-competitor-research-2026-06-02.md`
   - 用户 2026-06-02 反馈：记录为基线、低焦虑反疲劳为主；认可“中文 AI 情感陪伴 × baby 数据关联”和“反记录疲劳的陪伴叙事”；专家/知识付费不做；社区暂不做；孕期到 3 岁后续可做。
 
-> 当前产品战略以本文档为准。历史调研和草稿已归档到 `docs/research-archive/mother-baby-strategy-2026-06-02/`，只能作为证据来源，不应被后续 agent 当作当前发展方向直接执行。
+> 当前产品战略以本文档为准。历史市场/竞品调研已在仓库清理中删除，仅保留在 git 历史中作为证据来源，不应被后续 agent 当作当前发展方向直接执行。
 
 ## 0. 结论
 

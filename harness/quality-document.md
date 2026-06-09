@@ -57,21 +57,3 @@ Current release blockers are tracked in `docs/release/release-readiness.md`. The
 | CSRF is disabled; current bearer-token JSON API risk is limited, but revisit before cookie sessions or public web forms. | Security review before public web expansion |
 | ECS still relies on local secret files for some cloud credentials. | Harden with RAM role or managed secret path before broader release |
 | Native device behavior for ASR, notifications, full-screen ringing, haptics, OTA apply, and WebView safe-area/keyboard still needs device proof. | `mobile-001` native capability gate |
-
-## Change History
-
-### 2026-06-06
-
-- Deleted stale May/old decision docs from the workspace and compressed `harness/claude-progress.md`.
-- Current implementation should be anchored to the 2026-06-06 module-native AI spec and Agent tool-first spec.
-- Reframed Agent quality around the new records/ledger-only tool migration.
-
-### 2026-06-05
-
-- Recorded real-user path fixes for record-and-companion UX: additive care-log writes, no final completed tool-status rows, no missing-prompt nudges on records view, toast/quick-action layout cleanup, and voice drag-to-cancel. Verified with targeted backend tests, `npm run test:agent-benchmark`, `npm run test:agent-l2:unit`, and `npm run verify:frontend`.
-- Merged the still-current security and release risks into this live harness quality snapshot.
-
-### Historical Harness Note
-
-- Root `AGENTS.md` points future sessions to harness files and project verification rules.
-- Older May decision logs were intentionally removed from required-read docs; use git history only when old release evidence is explicitly needed.

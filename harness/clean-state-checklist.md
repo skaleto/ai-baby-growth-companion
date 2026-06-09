@@ -11,6 +11,6 @@ Use this before ending a session, especially before commit, push, deploy, or han
 - [ ] Native-risk changes ran `npm run mobile:sync` and attempted the affected platform build.
 - [ ] Cloud updates used data-safe flags unless a data sync/reset was explicitly requested.
 - [ ] Feature status/evidence was updated in `harness/feature_list.json` or the relevant `docs/` result file.
-- [ ] `harness/claude-progress.md` reflects the actual current state.
+- [ ] `harness/feature_list.json` reflects the actual current state.
 - [ ] Blocked checks and residual risk are explicit in the final handoff.
 - [ ] No task is marked passing just because code was edited.

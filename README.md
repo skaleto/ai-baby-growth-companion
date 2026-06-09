@@ -10,7 +10,7 @@ ai-baby-growth-companion
 - 当前发展脉络：[harness/app-development-roadmap.md](harness/app-development-roadmap.md)
 - 发布硬化方案：[docs/release/release-readiness.md](docs/release/release-readiness.md)
 - 功能清单与验证归属：[docs/product/feature-inventory.md](docs/product/feature-inventory.md)
-- 历史 PRD：[docs/archive/completed-2026-06-05/product-requirements.md](docs/archive/completed-2026-06-05/product-requirements.md)
+- 系统架构：[docs/architecture/system-architecture.md](docs/architecture/system-architecture.md)
 
 ## 本地运行
 

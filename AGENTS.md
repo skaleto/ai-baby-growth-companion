@@ -8,7 +8,7 @@ All harness files live under `harness/` except this root entry file.
 
 1. Confirm the repository root with `pwd`.
 2. Read `harness/project-index.md` for the repository navigation map.
-3. Read `harness/claude-progress.md` for the latest verified state and next step.
+3. Read `harness/app-development-roadmap.md` for current product direction.
 4. Read `harness/feature_list.json` before choosing or changing feature scope.
 5. Check `git status --short` and `git log --oneline -5`.
 6. Run the standard harness entrypoint:
@@ -23,11 +23,9 @@ If the baseline gate fails, fix the baseline first or clearly record the blocker
 
 - `harness/feature_list.json`: feature state and evidence tracker.
 - `harness/project-index.md`: top-level repository navigation map.
-- `harness/claude-progress.md`: current progress, validated state, and next action.
 - `harness/init.sh`: standard repo initialization and verification entrypoint.
 - `harness/quality-document.md`: quality snapshot by product area and architecture layer.
 - `harness/clean-state-checklist.md`: final handoff checklist.
-- `harness/session-handoff.md`: optional long-session handoff note.
 - `harness/evaluator-rubric.md`: review rubric before accepting work.
 
 ## Project Rules
@@ -87,7 +85,7 @@ A feature is done only when:
 
 - the target behavior is implemented;
 - the appropriate verification was actually run;
-- evidence is recorded in `harness/feature_list.json`, `harness/claude-progress.md`, or the relevant `docs/` result file;
+- evidence is recorded in `harness/feature_list.json` or the relevant `docs/` result file;
 - known gaps and blocked checks are explicit;
 - the repo can be restarted through `bash harness/init.sh`.
 

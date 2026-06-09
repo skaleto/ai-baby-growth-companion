@@ -4,11 +4,8 @@
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
-    "progressLog": "harness/claude-progress.md",
     "qualityDocument": "harness/quality-document.md",
-    "appDevelopmentRoadmap": "harness/app-development-roadmap.md",
-    "currentImplementationContext": "harness/session-handoff.md",
-    "researchArchive": "docs/research-archive"
+    "appDevelopmentRoadmap": "harness/app-development-roadmap.md"
   },
   "rules": {
     "singleActiveFeature": true,
@@ -59,7 +56,6 @@
       ],
       "evidence": [
         "Current spec: docs/architecture/system-architecture.md",
-        "Previous simplification spec: docs/superpowers/specs/2026-06-06-product-simplification-records-trust-spec.md",
         "2026-06-07 implemented Records default home, removed independent chat/reminder bottom tabs, moved reminder management under My, and kept model/mode selection system-adaptive.",
         "2026-06-07 implemented Records growth-observation cleanup: today summary and timeline now precede low-frequency growth review; standalone milestone card was removed; `成长观察` remains reachable inside the Growth card.",
         "2026-06-07 released Records CTA copy cleanup: `AI 自动记录` and `手动记录` are clearer pill actions; ECS deploy and OTA version 0.1.0-20260607145703 passed health, OTA check, checksum, and production base URL verification.",
@@ -104,7 +100,7 @@
       ],
       "evidence": [
         "harness/agent-model-context-harness.md is the current human-readable harness.",
-        "docs/agent-harness-model-comparison-2026-06-06.md records DeepSeek, Doubao, and Codex comparison evidence."
+        "Model-comparison evidence is retained in git history; current benchmark sources live under docs/benchmark/."
       ],
       "notes": "Harness may be Markdown/Chinese; only machine tool parameter schemas need JSON Schema."
     },

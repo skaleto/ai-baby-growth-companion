@@ -293,4 +293,4 @@ Owner：harness
 1. 在本文新增一段观察路径和预期行为。
 2. 添加或更新 agent benchmark，验证模型 prompt 包含相关 harness 文本。
 3. 如果仍需要本地确定性安全网，先记录 harness 规则，再补确定性代码。
-4. 更新 `harness/claude-progress.md`，记录验证命令和结果。
+4. 更新 `harness/feature_list.json`，记录验证命令和结果。
