@@ -149,6 +149,16 @@ export async function submitProTrialApplication(source: string): Promise<ProTria
   return (await response.json()) as ProTrialStatus;
 }
 
+export async function redeemProCode(code: string): Promise<ProTrialStatus> {
+  const response = await apiFetch(`${apiBaseUrl}/api/pro/redeem`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ code }),
+  });
+  if (!response.ok) throw new Error(await parseError(response, `兑换失败（${response.status}）`));
+  return (await response.json()) as ProTrialStatus;
+}
+
 export async function readAiUsageSummary(days = 30): Promise<AiUsageSummary> {
   const response = await apiFetch(`${apiBaseUrl}/api/pro/usage?days=${encodeURIComponent(String(days))}`, {
     headers: authHeaders(),

@@ -365,3 +365,43 @@
     display: grid;
   }
 }
+
+.pro-redeem-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.pro-redeem-input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(83, 143, 121, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #263432;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.pro-redeem-input::placeholder {
+  color: #9aa3a0;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+
+.pro-redeem-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(83, 160, 122, 0.3);
+  border-radius: 8px;
+  background: rgba(83, 160, 122, 0.16);
+  color: #2f7957;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pro-redeem-button:disabled {
+  opacity: 0.5;
+}

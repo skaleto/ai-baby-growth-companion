@@ -85,6 +85,7 @@ import {
   importAppState,
   readAppState,
   readAiUsageSummary,
+  redeemProCode,
   submitProTrialApplication,
   type AppStateCollection,
   type AppStateResponse,
@@ -2259,6 +2260,8 @@ function App() {
   const [familyMemberBusyUserId, setFamilyMemberBusyUserId] = useState<string | null>(null);
   const [resetInviteCodeValue, setResetInviteCodeValue] = useState<string | null>(null);
   const [isApplyingProTrial, setIsApplyingProTrial] = useState(false);
+  const [redeemCodeInput, setRedeemCodeInput] = useState("");
+  const [isRedeemingProCode, setIsRedeemingProCode] = useState(false);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
   const [loginPhone, setLoginPhone] = useState("");
   const [loginInviteCode, setLoginInviteCode] = useState("");
@@ -3620,6 +3623,22 @@ function App() {
       showSystemWeakNotice(error instanceof Error ? error.message : "申请失败，请稍后再试。", "warning");
     } finally {
       setIsApplyingProTrial(false);
+    }
+  };
+
+  const redeemProTrialCode = async () => {
+    const code = redeemCodeInput.trim();
+    if (!code || isRedeemingProCode) return;
+    setIsRedeemingProCode(true);
+    try {
+      const status = await redeemProCode(code);
+      setProTrial(normalizeProTrialStatus(status));
+      setRedeemCodeInput("");
+      showSystemWeakNotice("内测码兑换成功，Pro 已开通。", "success");
+    } catch (error) {
+      showSystemWeakNotice(error instanceof Error ? error.message : "兑换失败，请稍后再试。", "warning");
+    } finally {
+      setIsRedeemingProCode(false);
     }
   };
 
@@ -9133,15 +9152,40 @@ function App() {
                 </div>
                 {/* R1 (REQ-PRO-001): Pro gating 已启用，非 Pro 家庭展示申请入口 */}
                 {!proTrial.enabled ? (
-                  <button
-                    className="screen-action-button"
-                    type="button"
-                    onClick={() => void applyForProTrial("profile")}
-                    disabled={isApplyingProTrial || proApplicationPending}
-                  >
-                    <Sparkles size={16} />
-                    {proApplicationPending ? "已提交申请" : "申请 Pro 内测"}
-                  </button>
+                  <>
+                    <div className="pro-redeem-row">
+                      <input
+                        className="pro-redeem-input"
+                        type="text"
+                        autoCapitalize="characters"
+                        placeholder="输入内测码"
+                        value={redeemCodeInput}
+                        onChange={(event) => setRedeemCodeInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void redeemProTrialCode();
+                        }}
+                        disabled={isRedeemingProCode}
+                        aria-label="输入内测码"
+                      />
+                      <button
+                        className="pro-redeem-button"
+                        type="button"
+                        onClick={() => void redeemProTrialCode()}
+                        disabled={isRedeemingProCode || !redeemCodeInput.trim()}
+                      >
+                        {isRedeemingProCode ? "兑换中" : "兑换"}
+                      </button>
+                    </div>
+                    <button
+                      className="screen-action-button"
+                      type="button"
+                      onClick={() => void applyForProTrial("profile")}
+                      disabled={isApplyingProTrial || proApplicationPending}
+                    >
+                      <Sparkles size={16} />
+                      {proApplicationPending ? "已提交申请" : "没有码？申请 Pro 内测"}
+                    </button>
+                  </>
                 ) : null}
               </section>
               <section className="profile-detail-card family-members-card" aria-label="家庭成员">
