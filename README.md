@@ -68,7 +68,7 @@ SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun
 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update
 ```
 
-完整步骤、密钥文件位置、日志和备份说明见：[阿里云 ECS 公网 IP 部署](docs/ops/aliyun-ecs-deploy.md)。2026-06-05 的 OTA base URL 事故复盘见：[docs/ops/ota-incident-2026-06-05.md](docs/ops/ota-incident-2026-06-05.md)。
+完整步骤、密钥文件位置、日志和备份说明见：[阿里云 ECS 公网 IP 部署](docs/ops/aliyun-ecs-deploy.md)。2026-06-05 的 OTA base URL 事故复盘见：[docs/ops/ota-incident-2026-06-05.md](docs/ops/ota-incident-2026-06-05.md)。Pro 内测的运营动作（发兑换码、手动开通/撤销、查状态）见：[Pro 内测运营手册](docs/ops/pro-entitlement-operations.md)。
 
 ## 已接入的移动能力
 
