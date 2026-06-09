@@ -25,7 +25,7 @@ export const productCoverageIndex = [
       },
       {
         layer: "docs",
-        evidence: "docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md defines the target IA and module-native AI boundary.",
+        evidence: "docs/system-architecture.md defines the target IA (记录/相册/账本/我的) and module-native AI boundary.",
       },
     ],
     nextAction: "After implementation, refresh Playwright smoke assertions so bottom navigation and default tab match 记录 / 相册 / 账本 / 我的.",
@@ -36,7 +36,7 @@ export const productCoverageIndex = [
     coverage: [
       {
         layer: "docs",
-        evidence: "docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md defines the target tool-first write path.",
+        evidence: "docs/agent-detailed-design.md defines the target tool-first write path.",
       },
       {
         layer: "l2",

@@ -47,6 +47,12 @@ ios/App/output/
 ios/App/DerivedData/
 ios/App/App.xcworkspace/xcuserdata/
 
+# Script-generated benchmark outputs (regenerated on each run)
+docs/agent-benchmark-results.md
+docs/agent-l2-benchmark-results.md
+docs/agent-harness-live-benchmark-results.md
+docs/agent-harness-live-benchmark-results-doubao.md
+
 # Local editor/system files
 .DS_Store
 .idea/
