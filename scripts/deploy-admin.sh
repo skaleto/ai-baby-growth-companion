@@ -22,7 +22,7 @@ echo "Deploying admin to ${ECS_USER}@${ECS_HOST}:${PORT}"
 # 2) 同步代码(排除 node_modules)
 "${SSH[@]}" "mkdir -p '$APP_DIR' '$CONFIG_DIR'"
 rsync -az --delete -e "ssh -i $SSH_KEY -o BatchMode=yes" \
-  --exclude node_modules --exclude .gitignore \
+  --exclude node_modules --exclude .gitignore --exclude web \
   "$ROOT_DIR/admin/" "${ECS_USER}@${ECS_HOST}:$APP_DIR/"
 
 # 3) 装依赖(better-sqlite3 走 linux-x64 预编译)
