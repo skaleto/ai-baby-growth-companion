@@ -56,7 +56,7 @@ import {
 } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { prefetchAlbumVideo } from "./components/albumVideoPlayback";
-import { compressConversationSummary, runAgentChatStream, type AgentStreamStatusType } from "./agentApi";
+import { AgentApiError, compressConversationSummary, runAgentChatStream, type AgentStreamStatusType } from "./agentApi";
 import {
   ALBUM_CATEGORIES,
   albumCategoryFromTags,
@@ -2087,6 +2087,9 @@ const agentStatusTag = (type: AgentStreamStatusType) => {
 
 const formatAgentFailureMessage = (error: unknown, attachments: Attachment[]) => {
   const message = error instanceof Error ? error.message.trim() : "";
+  if (error instanceof AgentApiError && error.code === "PRO_QUOTA_EXCEEDED") {
+    return message || "本月免费 AI 体验次数已用完，申请 Pro 内测后即可不限次使用。";
+  }
   const hasVisualAttachments = attachments.some((attachment) => attachment.kind === "image" || attachment.kind === "video");
   if (/图片分析超时|AI 响应超时/.test(message)) return message;
   if (/timeout|timed out|超时/i.test(message)) {
@@ -2469,7 +2472,10 @@ function App() {
   }, []);
   const canCaregive = authMember?.caregiver ?? true;
   const visibleTabs = MOBILE_TABS;
-  const canAttachVisuals = canCaregive && proTrial.enabled;
+  const freeAiCallsRemaining = proTrial.freeCallsRemaining;
+  // 统一边界：Pro 不限次；Free 在每月免费额度内也可用 AI（含图片/视频整理）。剩余未知时不前置拦截，由服务端兜底。
+  const hasAiQuota = proTrial.enabled || freeAiCallsRemaining == null || freeAiCallsRemaining > 0;
+  const canAttachVisuals = canCaregive && hasAiQuota;
   const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
   const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
   const albumUploadItems = mediaUploadItems.filter((item) => item.target === "album");
@@ -2496,8 +2502,8 @@ function App() {
   const attachmentTrayOverflowCount = Math.max(0, attachments.length - attachmentTrayPreviewItems.length);
   const visualToolTitle = isUploadingChatMedia
     ? "素材正在上传"
-    : proTrial.enabled ? "照片或视频" : "申请 Pro 后可用图片和视频 AI 整理";
-  const visualToolGated = !proTrial.enabled;
+    : hasAiQuota ? "照片或视频" : "本月免费 AI 已用完，申请 Pro 内测后不限次";
+  const visualToolGated = !hasAiQuota;
   const visualToolDisabled = !canCaregive || isSubmitting || isUploadingChatMedia;
   const visualToolClassName = visualToolGated ? "visual-tool-gated" : "";
   const canUseComposerInput = !isSubmitting || recordsEntryDrawer === "ai";
@@ -4242,9 +4248,9 @@ function App() {
 
   const openMediaPicker = async () => {
     if (!canCaregive || isUploadingChatMedia) return;
-    if (!proTrial.enabled) {
-      showSystemWeakNotice("图片和视频 AI 整理属于 Pro 内测能力，可以先申请体验。", "info");
-      void applyForProTrial("visual-ai-trigger");
+    if (!hasAiQuota) {
+      showSystemWeakNotice("本月免费 AI 体验次数已用完，申请 Pro 内测后即可不限次使用图片/视频整理。", "info");
+      void applyForProTrial("visual-quota-exhausted");
       return;
     }
 
@@ -4974,6 +4980,10 @@ function App() {
         // Local state stays usable; the status chip tells the parent that the backend sync needs attention.
       }
     } catch (error) {
+      if (error instanceof AgentApiError && error.code === "PRO_QUOTA_EXCEEDED") {
+        showSystemWeakNotice(error.message, "info", 3600);
+        void applyForProTrial("ai-quota-exhausted");
+      }
       const failedActivities = failedRunningActivities(toolActivities);
       const aiMessage: ChatMessage = {
         id: makeId("msg"),
@@ -9091,7 +9101,13 @@ function App() {
                     {proTrial.enabled ? "家庭共享" : proApplicationPending ? "等待开通" : "可申请"}
                   </span>
                 </div>
-                <p>Pro 内测会优先支持语音、图片和视频辅助记录，以及家庭数据备份等高成本能力。当前为小范围免费内测。</p>
+                <p>Pro 内测：图片/视频整理、账本 AI 等所有 AI 助手记录均不限次。Free 用户每月可免费体验，用完后申请内测即可继续。</p>
+                {!proTrial.enabled && typeof proTrial.freeCallsRemaining === "number" ? (
+                  <p className="pro-free-quota-note">
+                    本月免费 AI 体验还剩 <b>{proTrial.freeCallsRemaining}</b>
+                    {typeof proTrial.freeMonthlyQuota === "number" ? ` / ${proTrial.freeMonthlyQuota}` : ""} 次
+                  </p>
+                ) : null}
                 <div className="ai-usage-panel" aria-label="AI 用量">
                   <div className="ai-usage-head">
                     <div>

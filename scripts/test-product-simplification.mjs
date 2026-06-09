@@ -263,14 +263,14 @@ assert.doesNotMatch(
   /useStoredState\("baby-companion-thinking-enabled"/,
   "thinking mode should not be stored as a user preference",
 );
-assert.match(appSource, /const visualToolGated = !proTrial\.enabled;/, "visual media button should be gated by Pro status");
+assert.match(appSource, /const visualToolGated = !hasAiQuota;/, "visual media button should be gated by AI quota (Pro or remaining free allowance)");
 assert.match(appSource, /className=\{`icon-button \$\{visualToolClassName\}`\.trim\(\)\}/, "header camera button should show gated styling");
 assert.match(appSource, /className=\{`tool-button \$\{visualToolClassName\}`\.trim\(\)\}/, "composer camera button should show gated styling");
 assert.match(appSource, /aria-disabled=\{visualToolGated\}/, "camera buttons should expose a disabled-looking state without suppressing clicks");
 assert.match(
   appSource,
-  /if \(!proTrial\.enabled\) \{[\s\S]*?图片和视频 AI 整理属于 Pro 内测能力/,
-  "clicking the gated camera button should explain Pro gating",
+  /if \(!hasAiQuota\) \{[\s\S]*?本月免费 AI 体验次数已用完/,
+  "clicking the gated camera button should explain the AI quota gate",
 );
 assert.match(baseCss, /\.icon-button\.visual-tool-gated/, "base CSS should style gated camera buttons");
 assert.match(warmCss, /\.icon-button\.visual-tool-gated/, "warm theme should preserve gated camera button styling");

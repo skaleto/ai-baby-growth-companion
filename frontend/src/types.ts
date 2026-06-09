@@ -283,6 +283,10 @@ export interface ProTrialStatus {
   entitlement?: ProTrialEntitlement | null;
   application?: ProTrialApplication | null;
   message?: string | null;
+  /** 每月免费 AI 体验次数（统一边界：凡走 AI 助手即 Pro，Free 每月若干次免费）。 */
+  freeMonthlyQuota?: number;
+  /** 本月剩余免费次数；Pro 家庭为 null（不限次）。 */
+  freeCallsRemaining?: number | null;
 }
 
 export interface AiUsageBreakdown {

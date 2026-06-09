@@ -6,6 +6,32 @@ type ApiErrorResponse = {
   message?: string;
 };
 
+/** 携带后端 error code 的 AI 接口错误，便于上层区分配额用尽（PRO_QUOTA_EXCEEDED）等情况。 */
+export class AgentApiError extends Error {
+  readonly code?: string;
+  readonly status: number;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "AgentApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+async function toAgentError(response: Response, fallback: string): Promise<AgentApiError> {
+  let message = `${fallback}（${response.status}）`;
+  let code: string | undefined;
+  try {
+    const error = (await response.json()) as ApiErrorResponse;
+    if (error.message) message = error.message;
+    if (error.code) code = error.code;
+  } catch {
+    // Keep the status-based message when the backend did not return JSON.
+  }
+  return new AgentApiError(message, response.status, code);
+}
+
 export type AgentStreamStatusType = "planning" | "retrieving_context" | "analyzing_media" | "generating";
 
 const AGENT_STATUS_EVENTS = new Set<AgentStreamStatusType>([
@@ -26,15 +52,7 @@ export async function runAgentChat(request: AgentChatRequest): Promise<AgentChat
   });
 
   if (!response.ok) {
-    let message = `AI 服务请求失败（${response.status}）`;
-    try {
-      const error = (await response.json()) as ApiErrorResponse;
-      if (error.message) message = error.message;
-      if (error.code) message = `${error.code}: ${message}`;
-    } catch {
-      // Keep the status-based message when the backend did not return JSON.
-    }
-    throw new Error(message);
+    throw await toAgentError(response, "AI 服务请求失败");
   }
 
   return (await response.json()) as AgentChatResponse;
@@ -72,15 +90,7 @@ export async function runAgentChatStream(
   });
 
   if (!response.ok || !response.body) {
-    let message = `AI 服务请求失败（${response.status}）`;
-    try {
-      const error = (await response.json()) as ApiErrorResponse;
-      if (error.message) message = error.message;
-      if (error.code) message = `${error.code}: ${message}`;
-    } catch {
-      // Keep the status-based message when the backend did not return JSON.
-    }
-    throw new Error(message);
+    throw await toAgentError(response, "AI 服务请求失败");
   }
 
   const reader = response.body.getReader();
@@ -162,15 +172,7 @@ export async function compressConversationSummary(): Promise<ConversationSummary
   });
 
   if (!response.ok) {
-    let message = `聊天记录整理失败（${response.status}）`;
-    try {
-      const error = (await response.json()) as ApiErrorResponse;
-      if (error.message) message = error.message;
-      if (error.code) message = `${error.code}: ${message}`;
-    } catch {
-      // Keep the status-based message when the backend did not return JSON.
-    }
-    throw new Error(message);
+    throw await toAgentError(response, "聊天记录整理失败");
   }
 
   return (await response.json()) as ConversationSummaryResponse;

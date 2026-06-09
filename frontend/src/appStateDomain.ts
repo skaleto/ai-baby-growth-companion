@@ -839,6 +839,9 @@ export const normalizeProTrialStatus = (value: Partial<ProTrialStatus> | null | 
       }
     : null,
   message: textValue(value?.message) || undefined,
+  freeMonthlyQuota: typeof value?.freeMonthlyQuota === "number" ? value.freeMonthlyQuota : undefined,
+  // 后端 Pro 家庭返回 null（不限次）；缺省也按 null 处理，避免在状态未知时硬拦截（服务端仍是唯一权威）。
+  freeCallsRemaining: typeof value?.freeCallsRemaining === "number" ? value.freeCallsRemaining : null,
 });
 
 export const normalizeDailySummarySettings = (
