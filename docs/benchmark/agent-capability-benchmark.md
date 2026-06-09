@@ -3,7 +3,7 @@
 - 创建日期：2026-06-04
 - 状态：设计 + 框架 + 核心场景 + 产品补缺（本轮）
 - 触发：用户要求建立场景化 agent 能力 benchmark，防止迭代后性能劣化；评测维度含耗时、结果准确度、系统执行准确度
-- 关联：`docs/agent-benchmark-results.md`、`docs/agent-l2-benchmark-results.md`、`docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`
+- 关联：`docs/agent-benchmark-results.md`、`docs/agent-l2-benchmark-results.md`、`docs/architecture/agent-design.md`
 
 > 本文档保留为 L2 benchmark 场景来源和覆盖记录，不再作为当前产品或 Agent 架构决策来源。当前 Agent 写入架构以 2026-06-06 tool-first spec 为准。
 
@@ -128,7 +128,7 @@ scripts/l2-benchmark/
   judge.mjs                           # LLM 评委（aiText 打分）
   baseline.json                       # 基线快照（耗时/分数）
 docs/agent-l2-benchmark-results.md    # 每次跑的报告
-docs/agent-product-coverage-index.md  # 人读全产品覆盖索引
+docs/benchmark/agent-product-coverage-index.md  # 人读全产品覆盖索引
 ```
 
 **流程**：
@@ -249,7 +249,7 @@ L2 不替代 L0/L1，是补在最上层的真实回归网。
 
 - 新增全产品覆盖索引：`scripts/l2-benchmark/product-coverage-index.mjs` 把 `harness/feature_list.json` 中的每个 feature 映射到 `l0_l1`、`l2`、`frontend`、`backend`、`cloud`、`native`、`docs` 或 `known_gap` 证据层。
 - 新增 `scripts/test-agent-product-coverage-index.mjs`，并接入 `npm run test:agent-l2:unit`。该测试会在新增 feature 未映射、引用不存在的 L2 scenario、引用 skipped scenario、或 known gap 缺少 nextAction 时失败。
-- 新增 `docs/agent-product-coverage-index.md`，供后续 agent 人读：明确哪些 APP 功能属于 Agent L2，哪些应由 `verify:frontend`、AppState controller tests、cloud E2E、native builds 或设备测试证明。
+- 新增 `docs/benchmark/agent-product-coverage-index.md`，供后续 agent 人读：明确哪些 APP 功能属于 Agent L2，哪些应由 `verify:frontend`、AppState controller tests、cloud E2E、native builds 或设备测试证明。
 - 当前显式 known gap 收敛为 `mobile-001` 下的 device/native 能力：ASR、通知、全屏响铃、haptics、WebView-only 行为。它们不应被 L2 聊天 benchmark 冒充覆盖。
 
 ## 产品功能补缺记录（九）（2026-06-04）
@@ -257,34 +257,34 @@ L2 不替代 L0/L1，是补在最上层的真实回归网。
 - 在用户要求继续查漏补缺后，把 `mobile-001` 从单行 known gap 拆成可测试的 native capability audit：`asr-voice-input`、`local-notifications`、`full-screen-ringing`、`haptics`、`native-media-picker`、`ota-updater`、`safe-area-keyboard`。
 - 新增 `scripts/native-capability-audit.mjs`：每个 capability 都必须列出产品面、required gate、静态证据文件、真机缺口和人工 probe。
 - 新增 `scripts/test-native-capability-audit.mjs` 并接入 `npm run test:agent-l2:unit`：如果 capability 缺项、证据文件不存在、关键字符串漂移、文档未更新或 `mobile-001` coverage index 未引用 audit，会直接失败。
-- 新增 `docs/native-capability-benchmark.md`，明确这只是 static/native contract，不等于真机送达/录音/触感/OTA apply 已通过；下一步仍要补 iOS/Android device probe 结果。
+- 新增 `docs/benchmark/native-capability-benchmark.md`，明确这只是 static/native contract，不等于真机送达/录音/触感/OTA apply 已通过；下一步仍要补 iOS/Android device probe 结果。
 
 ## 产品功能补缺记录（十）（2026-06-04）
 
-- 将覆盖粒度从 `harness/feature_list.json` 的 feature 级继续下钻到 `docs/feature-inventory.md` 的功能场景行级。
+- 将覆盖粒度从 `harness/feature_list.json` 的 feature 级继续下钻到 `docs/product/feature-inventory.md` 的功能场景行级。
 - 新增 `scripts/l2-benchmark/app-function-coverage-index.mjs`：解析 feature inventory 中 90 个 P0/P1/P2 功能行，并为每一行分配 `l0_l1`、`l2`、`frontend`、`backend`、`api`、`cloud`、`native`、`docs`、`harness` 或 `known_gap` 归属。
 - 新增 `scripts/test-app-function-coverage-index.mjs` 并接入 `npm run test:agent-l2:unit`：如果 feature inventory 增加了功能行但没有 coverage ownership，或者引用缺失/skip 的 L2 scenario，会直接失败。
-- 新增 `docs/app-function-coverage-index.md`：人读表格列出 90 个功能场景的覆盖层和 next action，避免后续只看高层 feature 导致漏掉具体产品场景。
+- 新增 `docs/benchmark/app-function-coverage-index.md`：人读表格列出 90 个功能场景的覆盖层和 next action，避免后续只看高层 feature 导致漏掉具体产品场景。
 
 ## 产品功能补缺记录（十一）（2026-06-04）
 
-- 针对“成长数据维护还是看不到”的反馈，将 `docs/feature-inventory.md` 从隐含的记录页/成长 feature 拆出独立“成长数据维护”功能域，并把家庭共享数据列表补上 `growthMeasurements`。
+- 针对“成长数据维护还是看不到”的反馈，将 `docs/product/feature-inventory.md` 从隐含的记录页/成长 feature 拆出独立“成长数据维护”功能域，并把家庭共享数据列表补上 `growthMeasurements`。
 - 新增 7 个行级功能：成长入口与最新值、手动新增成长测量、手动删除成长测量、成长测量编辑能力、AI 成长数据待确认、成长数据边界、成长趋势只读查询。
-- `scripts/test-app-function-coverage-index.mjs` 新增必备断言：上述成长维护行缺失时直接失败；`docs/app-function-coverage-index.md` 已从 90 行更新到 97 行。
+- `scripts/test-app-function-coverage-index.mjs` 新增必备断言：上述成长维护行缺失时直接失败；`docs/benchmark/app-function-coverage-index.md` 已从 90 行更新到 97 行。
 - `scripts/frontend-smoke.mjs` 增加成长删除回归：在成长页新增 68.2cm 后点击删除，并断言该历史行消失；`npm run verify:frontend` 已通过桌面和 6 个移动视口。
 
 ## 产品功能补缺记录（十二）（2026-06-04）
 
 - 关闭上一条留下的 `成长测量编辑能力` 缺口：`GrowthEntryView` 历史行新增“编辑”操作，复用顶部表单修改类型、数值、日期和备注，保存后使用同 id upsert 更新共享 `growthMeasurements`。
 - `scripts/frontend-smoke.mjs` 先红于缺少“编辑”按钮，随后覆盖 seeded 66.5cm 身高编辑为 67.1cm、备注更新、旧行消失，再继续验证异常值拒绝、有效新增和新增行删除。
-- `docs/app-function-coverage-index.md` 将 `成长测量编辑能力` 从 `known_gap` 升级为 `covered_by_layer(frontend, backend)`；当前 97 行统计为 `covered=15`、`covered_by_layer=52`、`known_gap=30`。
+- `docs/benchmark/app-function-coverage-index.md` 将 `成长测量编辑能力` 从 `known_gap` 升级为 `covered_by_layer(frontend, backend)`；当前 97 行统计为 `covered=15`、`covered_by_layer=52`、`known_gap=30`。
 
 ## 产品功能补缺记录（十三）（2026-06-04）
 
 - 关闭提醒 Tab 的 P0 `完成/删除二次确认` 覆盖缺口：`scripts/frontend-smoke.mjs` 现在覆盖完成弹层取消、删除弹层取消、确认完成进入 `已完成` 分组，以及确认删除后提醒从列表消失。
 - 这次 RED 暴露出 smoke mock 后端缺陷：`PUT /api/app/state/{collection}/{id}` 和 `DELETE /api/app/state/{collection}/{id}` 固定回原始 `smokeState`，会把带 `applyResponse` 的前端本地状态冲回旧值。
 - 已将 `installApiMocks` 改成每个 Playwright page 独立内存 `apiState`，并模拟 AppState 的 upsert/delete 回包；`npm run smoke:frontend` 在桌面和 6 个移动视口通过。
-- `docs/app-function-coverage-index.md` 将 `完成/删除二次确认` 从 `known_gap` 升级为 `covered_by_layer(frontend)`；当前 97 行统计为 `covered=15`、`covered_by_layer=53`、`known_gap=29`。
+- `docs/benchmark/app-function-coverage-index.md` 将 `完成/删除二次确认` 从 `known_gap` 升级为 `covered_by_layer(frontend)`；当前 97 行统计为 `covered=15`、`covered_by_layer=53`、`known_gap=29`。
 
 ## 首次跑通记录（2026-06-04）
 

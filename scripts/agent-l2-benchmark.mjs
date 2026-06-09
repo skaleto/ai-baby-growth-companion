@@ -7,7 +7,7 @@
 //   2. result accuracy    — structural hard-assertions on tools/app state + LLM judge on aiText
 //   3. system execution   — app_state diff from real backend action tools (no local effect simulation)
 //
-// Spec: docs/superpowers/specs/2026-06-04-agent-capability-benchmark.md
+// Spec: docs/benchmark/agent-capability-benchmark.md
 // Companion modules: scripts/l2-benchmark/scenarios.mjs, scripts/l2-benchmark/judge.mjs
 //
 // SAFETY: only ever talks to L2_BASE_URL (default http://localhost:8300) with a

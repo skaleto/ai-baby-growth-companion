@@ -6,7 +6,7 @@ Use this before ending a session, especially before commit, push, deploy, or han
 - [ ] Unrelated user or prior-agent changes were preserved.
 - [ ] `git diff --check` passed or the failure is documented.
 - [ ] The smallest appropriate verification gate was run.
-- [ ] UI changes followed `docs/frontend-verification.md` or have a documented waiver.
+- [ ] UI changes followed `docs/verification/frontend-verification.md` or have a documented waiver.
 - [ ] Agent behavior changes ran `npm run test:agent-benchmark`.
 - [ ] Native-risk changes ran `npm run mobile:sync` and attempted the affected platform build.
 - [ ] Cloud updates used data-safe flags unless a data sync/reset was explicitly requested.

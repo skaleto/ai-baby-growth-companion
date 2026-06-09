@@ -2,7 +2,7 @@
 
 - 创建日期：2026-06-05
 - 状态：R0.5 运维准备项（配置模板 + 步骤；实际启用需用户提供正式域名）
-- 关联：`scripts/deploy-aliyun-ecs.sh`、`docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`（REQ-OPS-001）
+- 关联：`scripts/deploy-aliyun-ecs.sh`、`docs/release/release-readiness.md`（REQ-OPS-001）
 
 > 当前生产为单 ECS（`120.55.188.242:8300`）裸 IP + HTTP。R0.5 要求：真实家庭数据不能明文传输，公网访问统一走 HTTPS，App 生产包不再访问裸 IP。本指南给出最小落地步骤与模板；实际执行需先有一个正式域名（成本：域名约几十元/年；证书 Let's Encrypt 免费）。
 

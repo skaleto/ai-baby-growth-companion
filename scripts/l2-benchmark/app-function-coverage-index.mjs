@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const inventoryPath = path.join(repoRoot, "docs/feature-inventory.md");
+const inventoryPath = path.join(repoRoot, "docs/product/feature-inventory.md");
 
 function parseInventoryRows(markdown) {
   const rows = [];
@@ -32,7 +32,7 @@ const overrides = new Map([
   ["固定移动视口", { status: "covered_by_layer", coverage: [layer("frontend", "npm run verify:frontend checks mobile viewport overflow and fixed-shell layout regressions.")] }],
   ["右侧/左侧桌面辅助栏", { status: "covered_by_layer", coverage: [layer("frontend", "frontend smoke includes desktop plus mobile viewports, so desktop-only side panels remain visible without blocking mobile content.")] }],
   ["OTA 更新", { status: "covered_by_layer", coverage: [layer("native", "scripts/native-capability-audit.mjs tracks ota-updater static evidence."), layer("cloud", "OTA releases are probed through /api/mobile-updates/check and bundle checksum verification.")] }],
-  ["运行版本信息", { status: "known_gap", coverage: [layer("frontend", "My-page runtime info is documented in docs/feature-inventory.md but lacks a dedicated assertion.")], nextAction: "Add a frontend smoke assertion for platform/native/backend version fields on the My tab." }],
+  ["运行版本信息", { status: "known_gap", coverage: [layer("frontend", "My-page runtime info is documented in docs/product/feature-inventory.md but lacks a dedicated assertion.")], nextAction: "Add a frontend smoke assertion for platform/native/backend version fields on the My tab." }],
 
   ["手机号 + 家庭邀请码登录", { status: "covered_by_layer", coverage: [layer("backend", "AuthControllerTests cover login flows and invite handling."), layer("frontend", "frontend smoke exercises authenticated app entry.")] }],
   ["已注册用户再次登录", { status: "covered_by_layer", coverage: [layer("backend", "AuthControllerTests cover existing-member login behavior and invite-role precheck compatibility.")] }],
@@ -102,7 +102,7 @@ const overrides = new Map([
   ["本月视图", { status: "known_gap", coverage: [layer("frontend", "Ledger monthly summary is not yet separately asserted.")], nextAction: "Add seeded ledger month probe for totals, category share, and large expense sorting." }],
   ["年度视图", { status: "known_gap", coverage: [layer("frontend", "Ledger yearly chart is not yet separately asserted.")], nextAction: "Add seeded cross-month ledger probe for 12-month bar rendering." }],
   ["明细视图", { status: "known_gap", coverage: [layer("frontend", "Ledger detail edit/delete needs a focused probe.")], nextAction: "Add ledger detail edit/delete Playwright probe with confirmation modal assertions." }],
-  ["条码/商品查询", { status: "covered_by_layer", coverage: [layer("docs", "docs/feature-inventory.md records barcode/product lookup removal as expected behavior."), layer("frontend", "verify:frontend smoke should fail if removed scanner UI is reintroduced visibly.")] }],
+  ["条码/商品查询", { status: "covered_by_layer", coverage: [layer("docs", "docs/product/feature-inventory.md records barcode/product lookup removal as expected behavior."), layer("frontend", "verify:frontend smoke should fail if removed scanner UI is reintroduced visibly.")] }],
 
   ["相册上传", { status: "covered_by_layer", coverage: [layer("frontend", "verify:frontend covers manual album upload and album rendering."), layer("l0_l1", "scripts/test-album-domain.mjs keeps album-domain local rules covered while AI save_to_album remains disabled.")] }],
   ["分类筛选", { status: "known_gap", coverage: [layer("frontend", "Album filter UI exists but lacks a focused category-filter assertion.")], nextAction: "Add album seeded category filter probe." }],
@@ -124,7 +124,7 @@ const overrides = new Map([
   ["Android 普通通知循环", { status: "known_gap", coverage: [layer("native", "native-capability-audit tracks local-notifications and AlarmReminderStore static evidence.")], nextAction: "Add JVM/Robolectric-style receiver test or Android device probe for notification repeat nextDueAt event queue." }],
   ["iOS 本地通知", { status: "known_gap", coverage: [layer("native", "native-capability-audit tracks iOS AlarmReminderPlugin UNNotificationRequest static evidence.")], nextAction: "Run iOS device/simulator notification permission and delivery probe." }],
   ["前端全屏闹铃页", { status: "known_gap", coverage: [layer("frontend", "Alarm overlay exists in App.tsx but is not yet isolated in a frontend probe.")], nextAction: "Add frontend probe that injects ringingReminder state and verifies overlay, sound close, and nextDueAt update copy." }],
-  ["系统限制说明", { status: "covered_by_layer", coverage: [layer("docs", "docs/native-capability-benchmark.md documents platform limitations and avoids promising unprovable background/full-screen behavior.")] }],
+  ["系统限制说明", { status: "covered_by_layer", coverage: [layer("docs", "docs/benchmark/native-capability-benchmark.md documents platform limitations and avoids promising unprovable background/full-screen behavior.")] }],
 
   ["查看小宝资料", { status: "covered_by_layer", coverage: [layer("frontend", "frontend smoke covers My/Profile rendering in authenticated fixture.")] }],
   ["编辑小宝资料", { status: "covered_by_layer", coverage: [layer("frontend", "Growth/profile smoke covers profile sex/birth-size seed and care mode effects; chat profile mutation boundary is covered by L2."), l2(["profile-update-boundary", "feed-mixed-missing-type"], "L2 covers profile update boundary and mixed-feeding context effect on questions.")] }],
@@ -152,7 +152,7 @@ function defaultCoverage(row) {
   const nextAction = `Add a dedicated ${row.priority} benchmark/probe for ${row.area} / ${row.feature}.`;
   return {
     status: "known_gap",
-    coverage: [layer("docs", "docs/feature-inventory.md defines the automation recommendation, but no dedicated executable gate is registered yet.")],
+    coverage: [layer("docs", "docs/product/feature-inventory.md defines the automation recommendation, but no dedicated executable gate is registered yet.")],
     nextAction,
   };
 }

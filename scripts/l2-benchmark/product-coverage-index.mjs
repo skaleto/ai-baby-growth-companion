@@ -25,7 +25,7 @@ export const productCoverageIndex = [
       },
       {
         layer: "docs",
-        evidence: "docs/system-architecture.md defines the target IA (记录/相册/账本/我的) and module-native AI boundary.",
+        evidence: "docs/architecture/system-architecture.md defines the target IA (记录/相册/账本/我的) and module-native AI boundary.",
       },
     ],
     nextAction: "After implementation, refresh Playwright smoke assertions so bottom navigation and default tab match 记录 / 相册 / 账本 / 我的.",
@@ -36,7 +36,7 @@ export const productCoverageIndex = [
     coverage: [
       {
         layer: "docs",
-        evidence: "docs/agent-detailed-design.md defines the target tool-first write path.",
+        evidence: "docs/architecture/agent-design.md defines the target tool-first write path.",
       },
       {
         layer: "l2",
@@ -70,7 +70,7 @@ export const productCoverageIndex = [
       },
       {
         layer: "docs",
-        evidence: "docs/frontend-verification.md defines the viewport matrix and waiver discipline for UI work.",
+        evidence: "docs/verification/frontend-verification.md defines the viewport matrix and waiver discipline for UI work.",
       },
     ],
   },
@@ -111,7 +111,7 @@ export const productCoverageIndex = [
     coverage: [
       {
         layer: "docs",
-        evidence: "docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md and harness/quality-document.md track release blockers and evidence expectations.",
+        evidence: "docs/release/release-readiness.md and harness/quality-document.md track release blockers and evidence expectations.",
       },
     ],
     nextAction: "Execute the release-hardening checklist before broader beta or public release.",

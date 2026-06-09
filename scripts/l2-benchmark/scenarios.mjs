@@ -1,6 +1,6 @@
 // L2 Agent capability benchmark — scenario set.
 //
-// Source of truth: docs/superpowers/specs/2026-06-04-agent-capability-benchmark.md
+// Source of truth: docs/benchmark/agent-capability-benchmark.md
 // (核心场景集 table). Each scenario drives one real `POST /api/agent/chat/stream`
 // request and is scored on three axes: latency / result-accuracy / system-execution.
 //

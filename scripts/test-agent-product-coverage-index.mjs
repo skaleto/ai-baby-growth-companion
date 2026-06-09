@@ -52,8 +52,8 @@ for (const nonAgentFeature of ["product-ia-2026-06-06", "frontend-001", "cloud-0
   assert.ok(entry.coverage.some((coverage) => coverage.layer !== "l2"), `${nonAgentFeature} needs a non-L2 gate`);
 }
 
-const markdownPath = new URL("../docs/agent-product-coverage-index.md", import.meta.url);
-assert.ok(fs.existsSync(markdownPath), "docs/agent-product-coverage-index.md should exist");
+const markdownPath = new URL("../docs/benchmark/agent-product-coverage-index.md", import.meta.url);
+assert.ok(fs.existsSync(markdownPath), "docs/benchmark/agent-product-coverage-index.md should exist");
 const markdown = fs.readFileSync(markdownPath, "utf8");
 for (const featureId of featureIds) {
   assert.ok(markdown.includes(`\`${featureId}\``), `coverage markdown should mention ${featureId}`);

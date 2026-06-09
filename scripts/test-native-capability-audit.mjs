@@ -63,8 +63,8 @@ for (const capabilityId of requiredCapabilities) {
   );
 }
 
-const markdownPath = path.join(repoRoot, "docs/native-capability-benchmark.md");
-assert.ok(fs.existsSync(markdownPath), "docs/native-capability-benchmark.md should exist");
+const markdownPath = path.join(repoRoot, "docs/benchmark/native-capability-benchmark.md");
+assert.ok(fs.existsSync(markdownPath), "docs/benchmark/native-capability-benchmark.md should exist");
 const markdown = fs.readFileSync(markdownPath, "utf8");
 for (const capabilityId of requiredCapabilities) {
   assert.ok(markdown.includes(`\`${capabilityId}\``), `native benchmark markdown should mention ${capabilityId}`);

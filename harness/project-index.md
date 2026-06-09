@@ -12,8 +12,8 @@ This is the top-level navigation map for this repository. Use it to decide what 
 | Current product direction | `harness/app-development-roadmap.md` |
 | Agent model context and bad-case harness | `harness/agent-model-context-harness.md` |
 | Feature state and evidence tracker | `harness/feature_list.json` |
-| Release hardening requirements | `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md` |
-| Product function inventory and coverage owner | `docs/feature-inventory.md` |
+| Release hardening requirements | `docs/release/release-readiness.md` |
+| Product function inventory and coverage owner | `docs/product/feature-inventory.md` |
 | Quality and risk snapshot | `harness/quality-document.md` |
 | Current compressed implementation context | `harness/session-handoff.md` |
 
@@ -38,15 +38,15 @@ Do not infer current product direction from `docs/archive/`, `docs/research-arch
 
 | Area | Docs |
 | --- | --- |
-| Product direction | `harness/app-development-roadmap.md`, `docs/feature-inventory.md` |
-| Release readiness | `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`, `docs/ops/` |
-| Agent benchmark and coverage | `harness/agent-model-context-harness.md`, `docs/agent-harness-case-audit-2026-06-06.md`, `docs/agent-harness-live-benchmark-results.md`, `docs/agent-harness-live-benchmark-results-doubao.md`, `docs/agent-harness-model-comparison-2026-06-06.md`, `docs/agent-benchmark-results.md`, `docs/agent-l2-benchmark-results.md`, `docs/agent-product-coverage-index.md`, `docs/app-function-coverage-index.md`, `docs/native-capability-benchmark.md`, `docs/superpowers/specs/2026-06-04-agent-capability-benchmark.md` |
-| Architecture | `docs/system-architecture.md`, `docs/agent-detailed-design.md`, `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`, `docs/assets/architecture/` |
+| Product direction | `harness/app-development-roadmap.md`, `docs/product/feature-inventory.md` |
+| Release readiness | `docs/release/release-readiness.md`, `docs/ops/` |
+| Agent benchmark and coverage | `harness/agent-model-context-harness.md`, `docs/agent-harness-case-audit-2026-06-06.md`, `docs/agent-harness-live-benchmark-results.md`, `docs/agent-harness-live-benchmark-results-doubao.md`, `docs/agent-harness-model-comparison-2026-06-06.md`, `docs/agent-benchmark-results.md`, `docs/agent-l2-benchmark-results.md`, `docs/benchmark/agent-product-coverage-index.md`, `docs/benchmark/app-function-coverage-index.md`, `docs/benchmark/native-capability-benchmark.md`, `docs/benchmark/agent-capability-benchmark.md` |
+| Architecture | `docs/architecture/system-architecture.md`, `docs/architecture/agent-design.md`, `docs/architecture/agent-design.md`, `docs/architecture/diagrams/` |
 | Current implementation plan | `docs/superpowers/plans/2026-06-06-module-native-ai-tool-first-implementation.md` |
-| Frontend verification | `docs/frontend-verification.md`, `docs/frontend-directory-structure.md` |
+| Frontend verification | `docs/verification/frontend-verification.md`, `docs/architecture/frontend-directory-structure.md` |
 | Legal and data processing drafts | `docs/legal/` |
-| Deployment and OTA | `docs/aliyun-ecs-deploy.md`, `docs/mobile-updates.md`, `docs/ops/ota-incident-2026-06-05.md` |
-| Current product specs | `docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md`, `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`, `docs/superpowers/specs/2026-06-06-product-simplification-records-trust-spec.md` |
+| Deployment and OTA | `docs/ops/aliyun-ecs-deploy.md`, `docs/ops/mobile-updates.md`, `docs/ops/ota-incident-2026-06-05.md` |
+| Current product specs | `docs/architecture/system-architecture.md`, `docs/architecture/agent-design.md`, `docs/superpowers/specs/2026-06-06-product-simplification-records-trust-spec.md` |
 
 ## File Count Snapshot
 
@@ -100,7 +100,7 @@ The current user-confirmed exception is that `backend/backend/data/` must stay u
 | Current progress / handoff | `harness/claude-progress.md` |
 | Feature state or evidence | `harness/feature_list.json` |
 | Product roadmap changes | `harness/app-development-roadmap.md` |
-| Release hardening requirements | `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md` or a new dated spec |
+| Release hardening requirements | `docs/release/release-readiness.md` or a new dated spec |
 | Implementation plans | `docs/superpowers/plans/` while active; move to `docs/archive/` when completed |
 | Benchmark output | Existing benchmark result docs only when the output is meaningful, not timestamp-only |
 | Agent model harness research/results | `docs/agent-harness-case-audit-YYYY-MM-DD.md`, `docs/agent-harness-live-benchmark-results.md`, `docs/agent-harness-live-benchmark-results-<provider>.md`, `docs/agent-harness-model-comparison-YYYY-MM-DD.md` |

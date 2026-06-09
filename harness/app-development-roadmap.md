@@ -132,7 +132,7 @@ Codex 调研里强调 Baby Tracker PDF 导出、小豆苗疫苗/儿保工具和�
 | 账本 | 手动记账、分类、月度汇总 | Pro 图片/小票识别，自动生成待确认账本草稿 |
 | 我的 | 宝宝资料、家庭成员、提醒管理、隐私、订阅 | 不放模型设置，不做 AI 功能中心 |
 
-这条修订由 `docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md` 承接实施。
+这条修订由 `docs/architecture/system-architecture.md` 承接实施。
 
 ## 3. 产品能力分层
 
@@ -430,7 +430,7 @@ Codex 调研里强调 Baby Tracker PDF 导出、小豆苗疫苗/儿保工具和�
 
 1. `Phase 0: 记录默认首页与模块内 AI 输入`
    - 范围：记录默认首页、记录页快速输入、记录成功反馈、成长最新值、相册按天时间流、反疲劳文案。
-   - 执行时以 `docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md` 和 `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md` 为准，不再参考 5 月或旧 daily-summary 决策文档。
+   - 执行时以 `docs/architecture/system-architecture.md` 和 `docs/architecture/agent-design.md` 为准，不再参考 5 月或旧 daily-summary 决策文档。
 
 2. `Phase 1: 数据关联的中文 AI 陪伴设计`
    - 范围：疲惫/焦虑信号识别、非诊疗边界、陪伴一句话、高风险转介、隐私说明。

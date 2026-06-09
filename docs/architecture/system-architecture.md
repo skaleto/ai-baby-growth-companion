@@ -89,7 +89,7 @@ npm run verify:frontend
 
 当前 Agent 写入迁移目标是 tool-first action tools，详见：
 
-`docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`
+`docs/architecture/agent-design.md`
 
 P0 只聚焦记录和账本：
 
@@ -123,8 +123,6 @@ P0 只聚焦记录和账本：
 
 后续 agent 应优先读取：
 
-1. `harness/project-index.md`
-2. `harness/claude-progress.md`
-3. `harness/session-handoff.md`
-4. `docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md`
-5. `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`
+1. `harness/project-index.md`（文档导航中枢）
+2. `docs/architecture/agent-design.md`（Agent tool-first 设计细节）
+3. `docs/product/feature-inventory.md`（功能与验证清单）

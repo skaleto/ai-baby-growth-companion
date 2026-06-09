@@ -8,7 +8,7 @@ import { scenarios } from "./l2-benchmark/scenarios.mjs";
 import { appFunctionCoverageIndex } from "./l2-benchmark/app-function-coverage-index.mjs";
 
 const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
-const inventoryPath = path.join(repoRoot, "docs/feature-inventory.md");
+const inventoryPath = path.join(repoRoot, "docs/product/feature-inventory.md");
 const inventoryMarkdown = fs.readFileSync(inventoryPath, "utf8");
 
 const allowedStatuses = new Set(["covered", "covered_by_layer", "known_gap"]);
@@ -94,8 +94,8 @@ for (const required of [
   assert.ok(indexByKey.has(required), `coverage index should explicitly mention ${required}`);
 }
 
-const markdownPath = path.join(repoRoot, "docs/app-function-coverage-index.md");
-assert.ok(fs.existsSync(markdownPath), "docs/app-function-coverage-index.md should exist");
+const markdownPath = path.join(repoRoot, "docs/benchmark/app-function-coverage-index.md");
+assert.ok(fs.existsSync(markdownPath), "docs/benchmark/app-function-coverage-index.md should exist");
 const markdown = fs.readFileSync(markdownPath, "utf8");
 for (const row of inventoryRows) {
   assert.ok(markdown.includes(`| ${row.priority} | ${row.feature} |`), `coverage markdown should mention ${row.priority} ${row.feature}`);

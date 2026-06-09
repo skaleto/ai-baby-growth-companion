@@ -20,7 +20,7 @@ This file is the quality snapshot for agent and human handoffs. Ratings are inte
 | Ledger | B | Manual ledger exists; text/image AI ledger direction now lives in current specs | Medium | Medium | Pending expense source of truth must be backend-persisted | 2026-06-06 |
 | Album and media | C | Core behavior exists; new direction requires by-day timeline | Medium | Medium | Media performance, thumbnails, OSS, and device preview need platform evidence | 2026-06-06 |
 | OTA mobile updates | B | Recent releases verified checksum and production API base URL | Medium | Medium | Real-device Capgo apply proof still needed per release | 2026-06-06 |
-| Frontend mobile UI | B | `docs/frontend-verification.md` defines gate; recent simplification passed smoke | Medium | Medium | Module-native navigation/default-home changes still need fresh `verify:frontend` | 2026-06-06 |
+| Frontend mobile UI | B | `docs/verification/frontend-verification.md` defines gate; recent simplification passed smoke | Medium | Medium | Module-native navigation/default-home changes still need fresh `verify:frontend` | 2026-06-06 |
 | Native Android/iOS | C | Build scripts and plugins exist | Medium | Low to Medium | Real-device notification, ringing, ASR, haptics, and safe-area behavior are device-sensitive | 2026-06-06 |
 
 ## Architecture Layers
@@ -46,7 +46,7 @@ This file is the quality snapshot for agent and human handoffs. Ratings are inte
 
 ## Current Security And Release Risks
 
-Current release blockers are tracked in `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`. The old May risk log and archived decision docs were deleted from the workspace on 2026-06-06; current release risk should be read from this file and the release-hardening spec only.
+Current release blockers are tracked in `docs/release/release-readiness.md`. The old May risk log and archived decision docs were deleted from the workspace on 2026-06-06; current release risk should be read from this file and the release-hardening spec only.
 
 | Risk | Current Gate / Owner |
 | --- | --- |

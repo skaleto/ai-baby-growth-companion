@@ -42,7 +42,7 @@ If the baseline gate fails, fix the baseline first or clearly record the blocker
 npm run test:agent-benchmark
 ```
 
-- UI, styling, mobile layout, navigation, forms, keyboard behavior, or user-facing interaction changes must follow `docs/frontend-verification.md`.
+- UI, styling, mobile layout, navigation, forms, keyboard behavior, or user-facing interaction changes must follow `docs/verification/frontend-verification.md`.
 - Build success alone is not enough evidence for UI work. Use:
 
 ```bash

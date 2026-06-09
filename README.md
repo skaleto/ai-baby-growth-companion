@@ -8,8 +8,8 @@ ai-baby-growth-companion
 
 - 项目总索引：[harness/project-index.md](harness/project-index.md)
 - 当前发展脉络：[harness/app-development-roadmap.md](harness/app-development-roadmap.md)
-- 发布硬化方案：[docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md](docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md)
-- 功能清单与验证归属：[docs/feature-inventory.md](docs/feature-inventory.md)
+- 发布硬化方案：[docs/release/release-readiness.md](docs/release/release-readiness.md)
+- 功能清单与验证归属：[docs/product/feature-inventory.md](docs/product/feature-inventory.md)
 - 历史 PRD：[docs/archive/completed-2026-06-05/product-requirements.md](docs/archive/completed-2026-06-05/product-requirements.md)
 
 ## 本地运行
@@ -27,7 +27,7 @@ npm run dev
 npm run verify:frontend
 ```
 
-该命令会构建应用、启动本地预览，并用 Playwright 检查桌面冒烟和 `360x740`、`390x844`、`430x932` 三档移动视口。完整规范见：[前端验证工作流](docs/frontend-verification.md)。
+该命令会构建应用、启动本地预览，并用 Playwright 检查桌面冒烟和 `360x740`、`390x844`、`430x932` 三档移动视口。完整规范见：[前端验证工作流](docs/verification/frontend-verification.md)。
 
 ## 移动端构建
 
@@ -68,7 +68,7 @@ SYNC_DATA=0 ECS_HOST=120.55.188.242 SSH_KEY=/Users/bytedance/.ssh/ai_baby_aliyun
 VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update
 ```
 
-完整步骤、密钥文件位置、日志和备份说明见：[阿里云 ECS 公网 IP 部署](docs/aliyun-ecs-deploy.md)。2026-06-05 的 OTA base URL 事故复盘见：[docs/ops/ota-incident-2026-06-05.md](docs/ops/ota-incident-2026-06-05.md)。
+完整步骤、密钥文件位置、日志和备份说明见：[阿里云 ECS 公网 IP 部署](docs/ops/aliyun-ecs-deploy.md)。2026-06-05 的 OTA base URL 事故复盘见：[docs/ops/ota-incident-2026-06-05.md](docs/ops/ota-incident-2026-06-05.md)。
 
 ## 已接入的移动能力
 

@@ -10,8 +10,8 @@
 - Cloud target: `120.55.188.242:8300`
 - Current product source of truth: `harness/app-development-roadmap.md`
 - Current implementation input set:
-  - `docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md`
-  - `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`
+  - `docs/architecture/system-architecture.md`
+  - `docs/architecture/agent-design.md`
   - `docs/superpowers/specs/2026-06-06-product-simplification-records-trust-spec.md`
   - `docs/research-archive/records-album-domestic-app-research-2026-06-06.md`
 - Current blocker: none recorded.
@@ -284,12 +284,12 @@
   - `docs/ledger-feature-plan.md`
   - `docs/superpowers/specs/2026-06-04-agent-latency-audit.md`
   - `docs/superpowers/specs/2026-06-05-agent-architecture-optimization.md`
-- Kept `docs/superpowers/specs/2026-06-04-agent-capability-benchmark.md` because L2 benchmark scripts still cite it as their scenario source. It should be treated as a benchmark coverage artifact, not current product direction.
+- Kept `docs/benchmark/agent-capability-benchmark.md` because L2 benchmark scripts still cite it as their scenario source. It should be treated as a benchmark coverage artifact, not current product direction.
 - Rewrote this progress file to remove long May session logs and keep only current restart context.
 
 ### 2026-06-06 Agent Tool-first Recording Architecture Spec
 
-- Created and refined `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`.
+- Created and refined `docs/architecture/agent-design.md`.
 - The spec says tools are backend Agent Runtime internal function-calling Spring Bean actions, not CLI or public frontend APIs.
 - Tool granularity was refined from coarse domain tools to specific action tools:
   - `record_feeding_event`
@@ -308,7 +308,7 @@
 
 ### 2026-06-06 Module-native AI Product Direction Spec
 
-- Created `docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md`.
+- Created `docs/architecture/system-architecture.md`.
 - Current target information architecture:
   - `记录`: default home, quick recording, timeline, growth data, trends, calendar.
   - `相册`: baby photos/videos grouped by day.

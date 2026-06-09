@@ -2,7 +2,7 @@
 
 Updated: 2026-06-07
 
-Generated conceptually from `docs/feature-inventory.md` through `scripts/l2-benchmark/app-function-coverage-index.mjs`. This row-level index follows the current Records-first, module-native AI direction.
+Generated conceptually from `docs/product/feature-inventory.md` through `scripts/l2-benchmark/app-function-coverage-index.mjs`. This row-level index follows the current Records-first, module-native AI direction.
 
 | Priority | Feature | Area | Status | Coverage owner | Gap / next action |
 |---|---|---|---|---|---|

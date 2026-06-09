@@ -32,13 +32,13 @@ Updated: 2026-06-07
 The current implementation should combine two 2026-06-06 directions:
 
 1. Product / IA direction:
-   - `docs/superpowers/specs/2026-06-06-module-native-ai-records-album-ledger-spec.md`
+   - `docs/architecture/system-architecture.md`
    - `docs/superpowers/specs/2026-06-06-product-simplification-records-trust-spec.md`
    - `docs/research-archive/records-album-domestic-app-research-2026-06-06.md`
    - `harness/app-development-roadmap.md`
 2. Agent action architecture:
-   - `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md`
-   - `docs/agent-detailed-design.md`
+   - `docs/architecture/agent-design.md`
+   - `docs/architecture/agent-design.md`
 3. Current implementation plan:
    - `docs/superpowers/plans/2026-06-06-module-native-ai-tool-first-implementation.md`
 
@@ -122,11 +122,11 @@ Updated:
 - `harness/project-index.md`
 - `harness/quality-document.md`
 - `harness/app-development-roadmap.md`
-- `docs/system-architecture.md`
-- `docs/agent-detailed-design.md`
+- `docs/architecture/system-architecture.md`
+- `docs/architecture/agent-design.md`
 - `docs/archive/README.md`
-- `docs/superpowers/specs/2026-06-05-release-readiness-improvement-design.md`
-- `docs/superpowers/specs/2026-06-04-agent-capability-benchmark.md`
+- `docs/release/release-readiness.md`
+- `docs/benchmark/agent-capability-benchmark.md`
 
 ## Next Best Action
 

@@ -1046,7 +1046,7 @@ REQ-LONG-003：月度小故事：照片、里程碑、照护事实整理，不�
 
 ## 15. Claude×Codex 交叉 review 共识（2026-06-05）
 
-经与 Claude 两轮交叉 review，本 spec 曾与旧 agent 架构优化方向协调。旧文档已删除；Agent 当前执行路线以 `docs/superpowers/specs/2026-06-06-agent-tool-first-recording-architecture-spec.md` 为准。以下修正叠加在前述 R0-R3 / REQ 之上。
+经与 Claude 两轮交叉 review，本 spec 曾与旧 agent 架构优化方向协调。旧文档已删除；Agent 当前执行路线以 `docs/architecture/agent-design.md` 为准。以下修正叠加在前述 R0-R3 / REQ 之上。
 
 ### 15.1 R0.5「最小可内测」子集（R0 与 R1 之间）
 
