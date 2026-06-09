@@ -1,4 +1,4 @@
-/* Phase 2 — Placeholder + Skeleton primitives */
+/* Base placeholder surface (used by StorySelect). */
 
 .placeholder {
   position: relative;
@@ -19,50 +19,4 @@
   border-radius: 12px;
   color: #a08a6d;
   overflow: hidden;
-}
-
-.placeholder__inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 12px;
-  text-align: center;
-}
-
-.placeholder__icon {
-  opacity: 0.45;
-}
-
-.placeholder__caption {
-  font-size: 12px;
-  line-height: 1.4;
-  color: #a08a6d;
-  opacity: 0.85;
-}
-
-/* Skeleton shimmer */
-@keyframes skeleton-shimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: calc(200px + 100%) 0; }
-}
-
-.skeleton {
-  background-color: rgba(218, 200, 170, 0.35);
-  background-image: linear-gradient(
-    90deg,
-    rgba(218, 200, 170, 0) 0,
-    rgba(255, 248, 230, 0.55) 50%,
-    rgba(218, 200, 170, 0) 100%
-  );
-  background-size: 200px 100%;
-  background-repeat: no-repeat;
-  animation: skeleton-shimmer 1400ms ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none !important;
-    background-image: none;
-  }
 }

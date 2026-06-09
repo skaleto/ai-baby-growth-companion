@@ -102,7 +102,7 @@ assert.match(
   /\.records-quick-row\s+\.records-prompt-link[\s\S]*?background:\s*transparent\s*!important;[\s\S]*?box-shadow:\s*none\s*!important;/,
   "warm theme should preserve transparent Records quick prompt links after import order",
 );
-assert.match(appSource, /import \{ createPortal \} from "react-dom"/, "records drawers should render through a body portal instead of being clipped by the records page");
+assert.match(appSource, /import \{[^}]*\bcreatePortal\b[^}]*\} from "react-dom"/, "records drawers should render through a body portal instead of being clipped by the records page");
 assert.match(recordsBlock, /records-entry-drawer/, "records AI and manual entry should open dedicated drawers");
 assert.match(recordsBlock, /manual-record-type-tabs/, "manual record drawer should expose type-specific record tabs");
 assert.match(recordsBlock, /manual-stepper/, "manual record drawer should use stepper controls for numeric values");
