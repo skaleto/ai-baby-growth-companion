@@ -229,6 +229,37 @@ class ProTrialControllerTests {
                 .andExpect(jsonPath("$.byModel[0].totalTokens").value(120));
     }
 
+    @Test
+    void trialStatusReportsRemainingFreeAiQuotaForFreeFamily() throws Exception {
+        LoginResult login = login(phone(), inviteCode(), "妈妈", true);
+        Instant now = Instant.now();
+        saveUsage(login.familyId(), login.userId(), "agent_chat", "deepseek", "deepseek-v4-pro", 100, 20, 120, now.minusSeconds(100).toString());
+        saveUsage(login.familyId(), login.userId(), "agent_stream", "doubao", "doubao-seed-2.0-pro", 50, 10, 60, now.minusSeconds(200).toString());
+        saveUsage(login.familyId(), login.userId(), "agent_chat", "deepseek", "deepseek-v4-pro", 100, 20, 120, now.minusSeconds(300).toString());
+        // 子步（planner）与超 30 天的历史记录都不计入免费次数
+        saveUsage(login.familyId(), login.userId(), "agent_planner", "deepseek", "deepseek-v4-pro", 30, 5, 35, now.minusSeconds(150).toString());
+        saveUsage(login.familyId(), login.userId(), "agent_chat", "deepseek", "deepseek-v4-pro", 100, 20, 120, now.minusSeconds(40L * 24 * 3600).toString());
+
+        mockMvc.perform(get("/api/pro/trial/status")
+                        .header(HttpHeaders.AUTHORIZATION, login.bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.freeMonthlyQuota").value(10))
+                .andExpect(jsonPath("$.freeCallsRemaining").value(7));
+    }
+
+    @Test
+    void trialStatusReportsQuotaForProFamily() throws Exception {
+        LoginResult login = login(phone(), inviteCode(), "妈妈", true);
+        grantPro(login.familyId());
+
+        mockMvc.perform(get("/api/pro/trial/status")
+                        .header(HttpHeaders.AUTHORIZATION, login.bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.freeMonthlyQuota").value(10));
+    }
+
     private LoginResult login(String phone, String inviteCode, String roleName, boolean caregiver) throws Exception {
         ensureInviteCode(inviteCode);
         String body = mockMvc.perform(post("/api/auth/login")

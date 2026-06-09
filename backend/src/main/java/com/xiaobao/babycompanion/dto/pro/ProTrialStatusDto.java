@@ -4,6 +4,8 @@ public record ProTrialStatusDto(
         boolean enabled,
         ProTrialEntitlementDto entitlement,
         ProTrialApplicationDto application,
-        String message
+        String message,
+        int freeMonthlyQuota,
+        Integer freeCallsRemaining
 ) {
 }

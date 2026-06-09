@@ -67,11 +67,17 @@ public class ProTrialService {
         ProTrialEntitlementRecord entitlement = entitlement(familyId);
         boolean enabled = entitlementEnabled(entitlement);
         ProTrialApplicationRecord application = application(familyId, userId);
+        // Pro 家庭不限次（freeCallsRemaining = null）；Free 家庭给出本月剩余免费体验次数。
+        Integer freeCallsRemaining = enabled
+                ? null
+                : (int) Math.max(0L, freeMonthlyAiQuota - aiUsageLogService.monthlyCalls(familyId));
         return new ProTrialStatusDto(
                 enabled,
                 entitlement == null ? new ProTrialEntitlementDto(false, null, null, null) : entitlementDto(entitlement, enabled),
                 application == null ? null : applicationDto(application),
-                enabled ? "本家庭已开通 Pro 内测" : "申请 Pro 内测后，可体验少输入、少遗漏、自动整理。"
+                enabled ? "本家庭已开通 Pro 内测" : "申请 Pro 内测后，可体验少输入、少遗漏、自动整理。",
+                freeMonthlyAiQuota,
+                freeCallsRemaining
         );
     }
 
