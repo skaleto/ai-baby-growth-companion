@@ -18,9 +18,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.persistence.entity.AiUsageLogRecord;
 import com.xiaobao.babycompanion.persistence.entity.ProTrialApplicationRecord;
 import com.xiaobao.babycompanion.persistence.entity.ProTrialEntitlementRecord;
+import com.xiaobao.babycompanion.persistence.entity.RedeemCodeRecord;
 import com.xiaobao.babycompanion.persistence.service.AiUsageLogRecordService;
 import com.xiaobao.babycompanion.persistence.service.ProTrialApplicationRecordService;
 import com.xiaobao.babycompanion.persistence.service.ProTrialEntitlementRecordService;
+import com.xiaobao.babycompanion.persistence.service.RedeemCodeRecordService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +58,9 @@ class ProTrialControllerTests {
 
     @Autowired
     private AiUsageLogRecordService aiUsageLogRecordService;
+
+    @Autowired
+    private RedeemCodeRecordService redeemCodeService;
 
     private Path inviteCodesPath;
 
@@ -162,6 +167,64 @@ class ProTrialControllerTests {
                 .andExpect(jsonPath("$.freeMonthlyQuota").value(10));
     }
 
+    @Test
+    void redeemValidCodeEnablesProAndIncrementsUsage() throws Exception {
+        LoginResult login = login(phone(), inviteCode(), "妈妈", true);
+        String code = "REDEEM-OK-" + login.familyId();
+        saveRedeemCode(code, "internal-trial", null, 5, 0);
+
+        mockMvc.perform(post("/api/pro/redeem")
+                        .header(HttpHeaders.AUTHORIZATION, login.bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"" + code + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.entitlement.planCode").value("internal-trial"));
+
+        RedeemCodeRecord after = redeemCodeService.getOne(new QueryWrapper<RedeemCodeRecord>()
+                .eq("code", code), false);
+        assertEquals(1, after.getUsedCount());
+    }
+
+    @Test
+    void redeemUnknownCodeIsRejected() throws Exception {
+        LoginResult login = login(phone(), inviteCode(), "妈妈", true);
+        mockMvc.perform(post("/api/pro/redeem")
+                        .header(HttpHeaders.AUTHORIZATION, login.bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"NOPE-NOPE\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("内测码不存在或已停用。"));
+    }
+
+    @Test
+    void redeemExpiredCodeIsRejected() throws Exception {
+        LoginResult login = login(phone(), inviteCode(), "妈妈", true);
+        String code = "REDEEM-EXP-" + login.familyId();
+        saveRedeemCode(code, "internal-trial", Instant.now().minusSeconds(3600).toString(), 5, 0);
+
+        mockMvc.perform(post("/api/pro/redeem")
+                        .header(HttpHeaders.AUTHORIZATION, login.bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"" + code + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("内测码已过期。"));
+    }
+
+    @Test
+    void redeemUsedUpCodeIsRejected() throws Exception {
+        LoginResult login = login(phone(), inviteCode(), "妈妈", true);
+        String code = "REDEEM-FULL-" + login.familyId();
+        saveRedeemCode(code, "internal-trial", null, 1, 1);
+
+        mockMvc.perform(post("/api/pro/redeem")
+                        .header(HttpHeaders.AUTHORIZATION, login.bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"" + code + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("内测码兑换次数已用完。"));
+    }
+
     private LoginResult login(String phone, String inviteCode, String roleName, boolean caregiver) throws Exception {
         ensureInviteCode(inviteCode);
         String body = mockMvc.perform(post("/api/auth/login")
@@ -198,6 +261,20 @@ class ProTrialControllerTests {
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
         entitlementService.saveOrUpdate(record);
+    }
+
+    private void saveRedeemCode(String code, String planCode, String expiresAt, int maxUses, int usedCount) {
+        String now = Instant.now().toString();
+        RedeemCodeRecord record = new RedeemCodeRecord();
+        record.setId("redeem-test-" + UUID.randomUUID());
+        record.setCode(code);
+        record.setPlanCode(planCode);
+        record.setExpiresAt(expiresAt);
+        record.setMaxUses(maxUses);
+        record.setUsedCount(usedCount);
+        record.setCreatedAt(now);
+        record.setUpdatedAt(now);
+        redeemCodeService.saveOrUpdate(record);
     }
 
     private void saveUsage(

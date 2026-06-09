@@ -5,6 +5,7 @@ import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.pro.AiUsageSummaryDto;
 import com.xiaobao.babycompanion.dto.pro.ProTrialApplicationRequest;
 import com.xiaobao.babycompanion.dto.pro.ProTrialStatusDto;
+import com.xiaobao.babycompanion.dto.pro.RedeemCodeRequest;
 import com.xiaobao.babycompanion.service.AiUsageLogService;
 import com.xiaobao.babycompanion.service.ProTrialService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,6 +41,11 @@ public class ProTrialController {
     @PostMapping("/trial/apply")
     public ProTrialStatusDto apply(@RequestBody(required = false) ProTrialApplicationRequest request) {
         return proTrialService.submitApplication(request == null ? null : request.source());
+    }
+
+    @PostMapping("/redeem")
+    public ProTrialStatusDto redeem(@RequestBody(required = false) RedeemCodeRequest request) {
+        return proTrialService.redeem(request == null ? null : request.code());
     }
 
     @GetMapping("/usage")

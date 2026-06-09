@@ -121,6 +121,20 @@ public class DatabaseInitializer implements ApplicationRunner {
         statement.execute("CREATE INDEX IF NOT EXISTS idx_pro_trial_entitlement_family ON pro_trial_entitlement(family_id)");
 
         statement.execute("""
+                CREATE TABLE IF NOT EXISTS redeem_code (
+                  id TEXT PRIMARY KEY,
+                  code TEXT NOT NULL UNIQUE,
+                  plan_code TEXT,
+                  expires_at TEXT,
+                  max_uses INTEGER,
+                  used_count INTEGER,
+                  note TEXT,
+                  created_at TEXT,
+                  updated_at TEXT
+                )
+                """);
+
+        statement.execute("""
                 CREATE TABLE IF NOT EXISTS ai_usage_log (
                   id TEXT PRIMARY KEY,
                   family_id TEXT,

@@ -1,6 +1,7 @@
 package com.xiaobao.babycompanion.service;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -12,8 +13,10 @@ import com.xiaobao.babycompanion.dto.pro.ProTrialStatusDto;
 import com.xiaobao.babycompanion.exception.ProQuotaExceededException;
 import com.xiaobao.babycompanion.persistence.entity.ProTrialApplicationRecord;
 import com.xiaobao.babycompanion.persistence.entity.ProTrialEntitlementRecord;
+import com.xiaobao.babycompanion.persistence.entity.RedeemCodeRecord;
 import com.xiaobao.babycompanion.persistence.service.ProTrialApplicationRecordService;
 import com.xiaobao.babycompanion.persistence.service.ProTrialEntitlementRecordService;
+import com.xiaobao.babycompanion.persistence.service.RedeemCodeRecordService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,22 +27,28 @@ public class ProTrialService {
 
     private final ProTrialApplicationRecordService applicationService;
     private final ProTrialEntitlementRecordService entitlementService;
+    private final RedeemCodeRecordService redeemCodeService;
     private final AiUsageLogService aiUsageLogService;
     private final CurrentUser currentUser;
     private final int freeMonthlyAiQuota;
+    private final int redeemGrantDays;
 
     public ProTrialService(
             ProTrialApplicationRecordService applicationService,
             ProTrialEntitlementRecordService entitlementService,
+            RedeemCodeRecordService redeemCodeService,
             AiUsageLogService aiUsageLogService,
             CurrentUser currentUser,
-            @Value("${app.pro.free-monthly-ai-quota:10}") int freeMonthlyAiQuota
+            @Value("${app.pro.free-monthly-ai-quota:10}") int freeMonthlyAiQuota,
+            @Value("${app.pro.redeem-grant-days:90}") int redeemGrantDays
     ) {
         this.applicationService = applicationService;
         this.entitlementService = entitlementService;
+        this.redeemCodeService = redeemCodeService;
         this.aiUsageLogService = aiUsageLogService;
         this.currentUser = currentUser;
         this.freeMonthlyAiQuota = freeMonthlyAiQuota;
+        this.redeemGrantDays = redeemGrantDays;
     }
 
     public ProTrialStatusDto currentStatus() {
@@ -119,6 +128,67 @@ public class ProTrialService {
         existing.setUpdatedAt(now);
         applicationService.saveOrUpdate(existing);
         return status(familyId, userId);
+    }
+
+    /**
+     * 自助兑换内测码：caregiver 输入有效码 → 给本家庭开通/续期 Pro entitlement，全程无需人工审批。
+     * 码不存在 / 过期 / 兑换次数用尽时抛 {@link IllegalArgumentException} → 400 + 友好文案。
+     */
+    @Transactional
+    public ProTrialStatusDto redeem(String rawCode) {
+        AuthPrincipal principal = currentUser.requirePrincipal();
+        currentUser.requireCaregiver();
+        String code = rawCode == null ? "" : rawCode.trim();
+        if (!StringUtils.hasText(code)) {
+            throw new IllegalArgumentException("请输入内测码。");
+        }
+        RedeemCodeRecord record = redeemCode(code);
+        if (record == null) {
+            throw new IllegalArgumentException("内测码不存在或已停用。");
+        }
+        Instant now = Instant.now();
+        if (StringUtils.hasText(record.getExpiresAt()) && !isAfter(record.getExpiresAt(), now)) {
+            throw new IllegalArgumentException("内测码已过期。");
+        }
+        int used = record.getUsedCount() == null ? 0 : record.getUsedCount();
+        int max = record.getMaxUses() == null ? 1 : record.getMaxUses();
+        if (used >= max) {
+            throw new IllegalArgumentException("内测码兑换次数已用完。");
+        }
+        grantEntitlement(principal.familyId(), record.getPlanCode(), now);
+        record.setUsedCount(used + 1);
+        record.setUpdatedAt(now.toString());
+        redeemCodeService.updateById(record);
+        return status(principal.familyId(), principal.userId());
+    }
+
+    private RedeemCodeRecord redeemCode(String code) {
+        QueryWrapper<RedeemCodeRecord> query = new QueryWrapper<RedeemCodeRecord>()
+                .eq("code", code)
+                .last("LIMIT 1");
+        return redeemCodeService.getOne(query, false);
+    }
+
+    /** 给家庭开通/续期 Pro entitlement；已有更长有效期则不缩短。 */
+    private void grantEntitlement(String familyId, String planCode, Instant now) {
+        ProTrialEntitlementRecord entitlement = entitlement(familyId);
+        String nowText = now.toString();
+        String grantedExpiry = now.plus(redeemGrantDays, ChronoUnit.DAYS).toString();
+        if (entitlement == null) {
+            entitlement = new ProTrialEntitlementRecord();
+            entitlement.setId("pro-entitlement-" + familyId);
+            entitlement.setFamilyId(familyId);
+            entitlement.setStartsAt(nowText);
+            entitlement.setCreatedAt(nowText);
+        } else if (StringUtils.hasText(entitlement.getExpiresAt())
+                && isAfter(entitlement.getExpiresAt(), now.plus(redeemGrantDays, ChronoUnit.DAYS))) {
+            grantedExpiry = entitlement.getExpiresAt();
+        }
+        entitlement.setEnabled("true");
+        entitlement.setPlanCode(StringUtils.hasText(planCode) ? planCode : "internal-trial");
+        entitlement.setExpiresAt(grantedExpiry);
+        entitlement.setUpdatedAt(nowText);
+        entitlementService.saveOrUpdate(entitlement);
     }
 
     private ProTrialApplicationRecord application(String familyId, String userId) {
