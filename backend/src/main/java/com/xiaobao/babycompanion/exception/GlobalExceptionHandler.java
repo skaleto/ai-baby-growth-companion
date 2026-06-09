@@ -39,6 +39,12 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("AUTH_FAILED", exception.getMessage(), Instant.now()));
     }
 
+    @ExceptionHandler(ProQuotaExceededException.class)
+    public ResponseEntity<ErrorResponse> handleProQuota(ProQuotaExceededException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse("PRO_QUOTA_EXCEEDED", exception.getMessage(), Instant.now()));
+    }
+
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException exception) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)

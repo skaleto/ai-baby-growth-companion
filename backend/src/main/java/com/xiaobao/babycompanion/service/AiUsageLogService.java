@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -24,6 +25,11 @@ public class AiUsageLogService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AiUsageLogService.class);
     private static final long SOFT_MONTHLY_TOKEN_THRESHOLD = 500_000L;
+    /**
+     * 计入"每月免费 AI 次数"的顶层用户回合 feature。只数用户直接发起的一次对话，
+     * 不数 planner / 视觉 / 记账识别 / 会话压缩等同一回合内的子步，避免一条消息被算成多次。
+     */
+    private static final Set<String> TOP_LEVEL_AI_FEATURES = Set.of("agent_chat", "agent_stream");
 
     private final AiUsageLogRecordService recordService;
     private final Clock clock;
@@ -73,6 +79,23 @@ public class AiUsageLogService {
         return recordService.list(query).stream()
                 .mapToLong((record) -> record.getTotalTokens() == null ? 0L : record.getTotalTokens())
                 .sum();
+    }
+
+    /**
+     * 近 30 天该家庭"成功的顶层 AI 回合"次数，用于 Free 用户每月免费体验额度判定。
+     * 只统计 success=true、quota_counted=true 且属于 {@link #TOP_LEVEL_AI_FEATURES} 的记录，
+     * 因此同一条用户消息内部的 planner / 视觉 / 记账子步不会被重复计数。
+     */
+    public long monthlyCalls(String familyId) {
+        if (!StringUtils.hasText(familyId)) return 0;
+        String since = Instant.now(clock).minus(30, ChronoUnit.DAYS).toString();
+        QueryWrapper<AiUsageLogRecord> query = new QueryWrapper<AiUsageLogRecord>()
+                .eq("family_id", familyId)
+                .eq("success", "true")
+                .eq("quota_counted", "true")
+                .in("feature", TOP_LEVEL_AI_FEATURES)
+                .ge("created_at", since);
+        return recordService.count(query);
     }
 
     public AiUsageSummaryDto summary(String familyId, Integer requestedDays) {

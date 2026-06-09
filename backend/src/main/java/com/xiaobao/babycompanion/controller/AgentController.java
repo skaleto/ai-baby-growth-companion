@@ -7,6 +7,7 @@ import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.ConversationSummaryResponse;
+import com.xiaobao.babycompanion.service.ProTrialService;
 import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -25,24 +26,35 @@ public class AgentController {
     private final AgentRuntime agentRuntime;
     private final CurrentUser currentUser;
     private final AgentRequestGuard requestGuard;
+    private final ProTrialService proTrialService;
 
-    public AgentController(AgentRuntime agentRuntime, CurrentUser currentUser, AgentRequestGuard requestGuard) {
+    public AgentController(
+            AgentRuntime agentRuntime,
+            CurrentUser currentUser,
+            AgentRequestGuard requestGuard,
+            ProTrialService proTrialService
+    ) {
         this.agentRuntime = agentRuntime;
         this.currentUser = currentUser;
         this.requestGuard = requestGuard;
+        this.proTrialService = proTrialService;
     }
 
     @PostMapping("/chat")
     public AgentChatResponse chat(@Valid @RequestBody AgentChatRequest request) {
         currentUser.requireCaregiver();
-        requestGuard.checkAllowed(currentUser.requireFamilyId());
+        String familyId = currentUser.requireFamilyId();
+        requestGuard.checkAllowed(familyId);
+        proTrialService.requireAiAccess(familyId);
         return agentRuntime.chat(request);
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@Valid @RequestBody AgentChatRequest request) {
         currentUser.requireCaregiver();
-        requestGuard.checkAllowed(currentUser.requireFamilyId());
+        String familyId = currentUser.requireFamilyId();
+        requestGuard.checkAllowed(familyId);
+        proTrialService.requireAiAccess(familyId);
         return agentRuntime.stream(request);
     }
 

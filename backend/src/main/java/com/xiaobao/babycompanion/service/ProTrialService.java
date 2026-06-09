@@ -15,12 +15,14 @@ import com.xiaobao.babycompanion.dto.pro.ProTrialEntitlementDto;
 import com.xiaobao.babycompanion.dto.pro.ProTrialStatusDto;
 import com.xiaobao.babycompanion.dto.pro.UpdateDailySummarySettingsRequest;
 import com.xiaobao.babycompanion.exception.ForbiddenException;
+import com.xiaobao.babycompanion.exception.ProQuotaExceededException;
 import com.xiaobao.babycompanion.persistence.entity.DailySummarySettingRecord;
 import com.xiaobao.babycompanion.persistence.entity.ProTrialApplicationRecord;
 import com.xiaobao.babycompanion.persistence.entity.ProTrialEntitlementRecord;
 import com.xiaobao.babycompanion.persistence.service.DailySummarySettingRecordService;
 import com.xiaobao.babycompanion.persistence.service.ProTrialApplicationRecordService;
 import com.xiaobao.babycompanion.persistence.service.ProTrialEntitlementRecordService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -33,21 +35,27 @@ public class ProTrialService {
     private final ProTrialApplicationRecordService applicationService;
     private final ProTrialEntitlementRecordService entitlementService;
     private final DailySummarySettingRecordService settingService;
+    private final AiUsageLogService aiUsageLogService;
     private final CurrentUser currentUser;
     private final ObjectMapper objectMapper;
+    private final int freeMonthlyAiQuota;
 
     public ProTrialService(
             ProTrialApplicationRecordService applicationService,
             ProTrialEntitlementRecordService entitlementService,
             DailySummarySettingRecordService settingService,
+            AiUsageLogService aiUsageLogService,
             CurrentUser currentUser,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            @Value("${app.pro.free-monthly-ai-quota:10}") int freeMonthlyAiQuota
     ) {
         this.applicationService = applicationService;
         this.entitlementService = entitlementService;
         this.settingService = settingService;
+        this.aiUsageLogService = aiUsageLogService;
         this.currentUser = currentUser;
         this.objectMapper = objectMapper;
+        this.freeMonthlyAiQuota = freeMonthlyAiQuota;
     }
 
     public ProTrialStatusDto currentStatus() {
@@ -88,6 +96,28 @@ public class ProTrialService {
         if (!isProEnabledByEntitlement(familyId)) {
             throw new ForbiddenException("这个功能需要 Pro 内测权益，先在「我的」里申请，开通后即可使用。");
         }
+    }
+
+    /**
+     * R-PRO（统一边界）：凡走 AI 助手的回合都属 Pro 能力。
+     * 放行条件：caregiver 身份，且【家庭已开通 Pro】或【当月免费 AI 次数未用完】。
+     * 免费额度用尽时抛 {@link ProQuotaExceededException} → 403/PRO_QUOTA_EXCEEDED，前端据此引导申请内测。
+     * 本方法只做准入判定；实际计数由 AI 调用成功后写入的用量日志承担（见 {@link AiUsageLogService#monthlyCalls}）。
+     */
+    public void requireAiAccess(String familyId) {
+        currentUser.requireCaregiver();
+        if (isProEnabledByEntitlement(familyId)) {
+            return;
+        }
+        long used = aiUsageLogService.monthlyCalls(familyId);
+        if (used >= freeMonthlyAiQuota) {
+            throw new ProQuotaExceededException(
+                    "本月免费 AI 体验额度已用完（" + used + "/" + freeMonthlyAiQuota + "），申请 Pro 内测后即可不限次使用。");
+        }
+    }
+
+    public int freeMonthlyAiQuota() {
+        return freeMonthlyAiQuota;
     }
 
     @Transactional
