@@ -61,7 +61,7 @@ admin/
 
 - **登录**:`POST /admin-api/login {phone, password}`。
   - `phone` 必须在白名单 `ADMIN_PHONES`(逗号分隔,初始 `18915618653`)。
-  - `password` 必须等于服务端 secret `ADMIN_PASSWORD`(timing-safe 比较)。
+  - `password` 必须等于服务端 secret `ADMIN_PASSWORD`(**默认 `123456`**,6 位数字,部署时可改;timing-safe 比较)。
   - 通过 → 返回 HMAC 签名令牌 `base64(payload).sig`,payload=`{phone, exp}`(默认 8h),sig=HMAC-SHA256(payload, `ADMIN_TOKEN_SECRET`)。
 - **鉴权中间件**:除 `/login` 外所有 `/admin-api/*` 要求 `Authorization: Bearer <token>`;校验签名 + 未过期 + phone 仍在白名单。
 - **防爆破**:登录失败按 IP 做简单内存限流(如 1 分钟 10 次),并对密码用 timing-safe 比较。
@@ -69,6 +69,8 @@ admin/
 - **传输**:v1 用 IP+端口 HTTP;上线前建议挂 HTTPS/域名(与主站一致)。文档注明此风险。
 
 > 设计取舍:用户要"用手机号登录"。纯手机号(无密码)任何知道 `18915618653` 的人都能进,不安全;故采用**手机号(白名单)+ 密码**。若后续要纯手机号,改 `auth.mjs` 一处即可。
+>
+> `ADMIN_PASSWORD` 默认 `123456`(简单口令,内测自用够用)。后台能改任意家庭权益,**暴露到公网 / 上 HTTPS 前建议改成强口令**——改 systemd EnvironmentFile 即可,无需改代码。
 
 ## 4. 数据访问与并发
 
