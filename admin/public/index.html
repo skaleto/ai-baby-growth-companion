@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>小宝记 · 管理后台</title><link rel="stylesheet" href="style.css" /></head>
+<body>
+<div id="login" class="card hidden">
+  <h1>小宝记 管理后台</h1>
+  <input id="phone" placeholder="管理员手机号" inputmode="numeric" />
+  <input id="password" type="password" placeholder="密码" />
+  <button id="loginBtn">登录</button>
+  <p id="loginErr" class="err"></p>
+</div>
+<div id="app" class="hidden">
+  <header><strong>小宝记 管理后台</strong>
+    <span id="overview" class="overview"></span>
+    <button id="logout">退出</button></header>
+  <nav>
+    <button data-tab="applications" class="tab active">内测申请</button>
+    <button data-tab="codes" class="tab">兑换码</button>
+    <button data-tab="entitlements" class="tab">Pro 权益</button>
+    <button data-tab="usage" class="tab">AI 用量</button>
+  </nav>
+  <main id="view"></main>
+</div>
+<script src="app.js"></script></body></html>
