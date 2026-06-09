@@ -29,5 +29,3 @@ export const REMINDER_WEB_SOUND_URLS: Record<ReminderSoundId, string> = {
   soft_chime: softChimeSoundUrl,
   soft_bell: softBellSoundUrl,
 };
-
-export const DAILY_SUMMARY_NOTIFICATION_ID = 210930;

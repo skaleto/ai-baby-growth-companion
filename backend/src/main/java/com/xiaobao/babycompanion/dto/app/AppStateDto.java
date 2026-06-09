@@ -18,9 +18,7 @@ public record AppStateDto(
         JsonNode conversationSummary,
         Boolean thinkingEnabled,
         String selectedModel,
-        JsonNode proTrial,
-        JsonNode dailySummary,
-        JsonNode dailySummarySettings
+        JsonNode proTrial
 ) {
     public AppStateDto(
             JsonNode profile,
@@ -50,8 +48,6 @@ public record AppStateDto(
                 conversationSummary,
                 thinkingEnabled,
                 selectedModel,
-                null,
-                null,
                 null
         );
     }

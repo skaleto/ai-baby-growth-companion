@@ -320,67 +320,6 @@ export interface AiUsageSummary {
   byModel: AiUsageBreakdown[];
 }
 
-export interface DailySummarySettings {
-  enabled: boolean;
-  reminderTime: string;
-  mutedMissingTypes: string[];
-}
-
-export interface MissingItemPrompt {
-  id: string;
-  type: string;
-  scope: "family" | "account" | string;
-  title: string;
-  message: string;
-  action?: string | null;
-}
-
-export type FindingType =
-  | "family_action_continuity"
-  | "cross_domain_link"
-  | "expense_price_compare"
-  | "trend_anomaly"
-  | "media_milestone_candidate"
-  | "memory_recall";
-
-export type FindingRelated = {
-  careLogEventIds: string[];
-  growthEventIds: string[];
-  albumItemIds: string[];
-  expenseIds: string[];
-  reminderIds: string[];
-  memberIds: string[];
-  memoryIds: string[];
-  comparedTo: string[];
-};
-
-export type FindingAction = {
-  label: string;
-  target: string;  // format: "ledger:<id>" | "album:<id>" | "milestone:<id>" | "reminder:<id>"
-};
-
-export type Finding = {
-  type: FindingType;
-  text: string;
-  related: FindingRelated;
-  action: FindingAction | null;
-};
-
-export interface DailySummary {
-  id: string;
-  date: string;
-  text: string;
-  facts: string[];
-  observations: string[];
-  findings: Finding[];
-  missingItems: MissingItemPrompt[];
-  accountMissingItems: MissingItemPrompt[];
-  generatedAt: string;
-  generatedByUserId?: string | null;
-  sourceFingerprint?: string | null;
-  stale: boolean;
-}
-
 export interface SafetyAlert {
   level: "notice" | "urgent";
   category: "fever" | "vaccine" | "medicine" | "allergy" | "injury" | "breathing" | "general";
@@ -427,8 +366,6 @@ export interface AppStateSnapshot {
   thinkingEnabled?: boolean;
   selectedModel?: AgentModelId;
   proTrial?: ProTrialStatus | null;
-  dailySummary?: DailySummary | null;
-  dailySummarySettings?: DailySummarySettings | null;
 }
 
 export interface AnalysisResult {

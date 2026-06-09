@@ -194,8 +194,6 @@ import {
   normalizeChatMessage,
   normalizeClockText,
   normalizeConversationSummary,
-  normalizeDailySummary,
-  normalizeDailySummarySettings,
   normalizeExpenseItem,
   normalizeGrowthEvent,
   normalizeGrowthMeasurement,
@@ -244,8 +242,6 @@ import {
   CareLogEventType,
   ChatMessage,
   ConversationSummary,
-  DailySummary,
-  DailySummarySettings,
   EffectDecision,
   ExpenseCategory,
   ExpenseItem,
@@ -300,7 +296,6 @@ import {
   maxMediaUploadBytes,
 } from "./utils/uploadLimits";
 import {
-  DAILY_SUMMARY_NOTIFICATION_ID,
   LEGACY_REMINDER_CHANNELS,
   REMINDER_CHANNELS,
   REMINDER_QUICK_ACTIONS,
@@ -1325,15 +1320,6 @@ const ensureReminderChannels = async () => {
   }
 };
 
-const cancelDailySummaryNotification = async () => {
-  if (!Capacitor.isNativePlatform()) return;
-  try {
-    await LocalNotifications.cancel({ notifications: [{ id: DAILY_SUMMARY_NOTIFICATION_ID }] });
-  } catch {
-    // The setting remains valid even if the OS had no matching notification to cancel.
-  }
-};
-
 const canScheduleExactAlarm = async () => {
   if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return true;
   try {
@@ -2266,8 +2252,6 @@ function App() {
   const [authFamily, setAuthFamily] = useState<AuthFamily | null>(null);
   const [authMember, setAuthMember] = useState<AuthMember | null>(null);
   const [proTrial, setProTrial] = useState<ProTrialStatus>(() => normalizeProTrialStatus(null));
-  const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
-  const [dailySummarySettings, setDailySummarySettings] = useState<DailySummarySettings>(() => normalizeDailySummarySettings(null));
   const [aiUsageSummary, setAiUsageSummary] = useState<AiUsageSummary | null>(null);
   const [aiUsageStatus, setAiUsageStatus] = useState<AiUsageStatus>("idle");
   const [familyMembers, setFamilyMembers] = useState<FamilyMembersResponse | null>(null);
@@ -3513,8 +3497,6 @@ function App() {
     expenses,
     conversationSummary,
     proTrial,
-    dailySummary,
-    dailySummarySettings,
   });
 
   const applyAppSnapshot = (state: Partial<AppStateSnapshot>) => {
@@ -3544,10 +3526,6 @@ function App() {
       setConversationSummary((state.conversationSummary ?? null) as ConversationSummary | null);
     }
     if ("proTrial" in state) setProTrial(normalizeProTrialStatus(state.proTrial ?? null));
-    if ("dailySummary" in state) setDailySummary(normalizeDailySummary(state.dailySummary ?? null));
-    if ("dailySummarySettings" in state) {
-      setDailySummarySettings(normalizeDailySummarySettings(state.dailySummarySettings ?? null));
-    }
   };
 
   const applyEmptyAppSnapshot = () => {
@@ -3564,8 +3542,6 @@ function App() {
       albumItems: [],
       expenses: [],
       proTrial: normalizeProTrialStatus(null),
-      dailySummary: null,
-      dailySummarySettings: normalizeDailySummarySettings(null),
     });
   };
 
@@ -3722,11 +3698,6 @@ function App() {
       cancelled = true;
       void listener.then((handle) => handle.remove());
     };
-  }, [authStatus]);
-
-  useEffect(() => {
-    if (authStatus !== "authenticated" || !Capacitor.isNativePlatform()) return;
-    void cancelDailySummaryNotification();
   }, [authStatus]);
 
   useEffect(() => {

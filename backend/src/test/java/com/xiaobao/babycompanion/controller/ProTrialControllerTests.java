@@ -1,13 +1,8 @@
 package com.xiaobao.babycompanion.controller;
 
-import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,11 +16,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaobao.babycompanion.persistence.entity.AiUsageLogRecord;
-import com.xiaobao.babycompanion.persistence.entity.DailySummaryRecord;
 import com.xiaobao.babycompanion.persistence.entity.ProTrialApplicationRecord;
 import com.xiaobao.babycompanion.persistence.entity.ProTrialEntitlementRecord;
 import com.xiaobao.babycompanion.persistence.service.AiUsageLogRecordService;
-import com.xiaobao.babycompanion.persistence.service.DailySummaryRecordService;
 import com.xiaobao.babycompanion.persistence.service.ProTrialApplicationRecordService;
 import com.xiaobao.babycompanion.persistence.service.ProTrialEntitlementRecordService;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,9 +53,6 @@ class ProTrialControllerTests {
 
     @Autowired
     private ProTrialEntitlementRecordService entitlementService;
-
-    @Autowired
-    private DailySummaryRecordService summaryRecordService;
 
     @Autowired
     private AiUsageLogRecordService aiUsageLogRecordService;
@@ -109,95 +99,7 @@ class ProTrialControllerTests {
                         .header(HttpHeaders.AUTHORIZATION, login.bearer()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state.proTrial.enabled").value(false))
-                .andExpect(jsonPath("$.state.proTrial.application.status").value("pending"))
-                .andExpect(jsonPath("$.state.dailySummarySettings.enabled").value(true))
-                .andExpect(jsonPath("$.state.dailySummarySettings.reminderTime").value("21:30"));
-    }
-
-    @Test
-    void summaryGenerationRequiresProCaregiverAndDoesNotPersistAccountPrivateMissingItems() throws Exception {
-        String inviteCode = inviteCode();
-        LoginResult caregiver = login(phone(), inviteCode, "爸爸", true);
-        grantPro(caregiver.familyId());
-
-        mockMvc.perform(put("/api/app/state/careLogs/2026-05-14?mode=replace")
-                        .header(HttpHeaders.AUTHORIZATION, caregiver.bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "id": "2026-05-14",
-                                  "date": "2026-05-14",
-                                  "milkMl": 120,
-                                  "milkTimes": 1,
-                                  "events": [
-                                    {"id": "milk-1", "type": "milk", "date": "2026-05-14", "time": "08:00", "amountMl": 120}
-                                  ]
-                                }
-                                """))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(put("/api/app/state/reminders/private-reminder")
-                        .header(HttpHeaders.AUTHORIZATION, caregiver.bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "id": "private-reminder",
-                                  "title": "私密复诊提醒",
-                                  "status": "active",
-                                  "date": "2026-05-14"
-                                }
-                                """))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(post("/api/pro/daily-summary/generate")
-                        .header(HttpHeaders.AUTHORIZATION, caregiver.bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"date\":\"2026-05-14\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.containsString("喂养记录")))
-                .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("私密复诊提醒"))))
-                .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("要补一下"))))
-                .andExpect(jsonPath("$.missingItems").value(hasSize(0)))
-                .andExpect(jsonPath("$.accountMissingItems").value(hasSize(0)));
-
-        DailySummaryRecord stored = summaryRecordService.getOne(new QueryWrapper<DailySummaryRecord>()
-                .eq("family_id", caregiver.familyId())
-                .eq("summary_date", "2026-05-14"), false);
-        assertNotNull(stored);
-        assertFalse(stored.getPayloadJson().contains("account-open-reminders"));
-        assertFalse(stored.getPayloadJson().contains("私密复诊提醒"));
-
-        long usageCount = aiUsageLogRecordService.count(new QueryWrapper<AiUsageLogRecord>()
-                .eq("family_id", caregiver.familyId())
-                .eq("feature", "daily_summary")
-                .eq("success", "true"));
-        assertTrue(usageCount >= 1);
-
-        LoginResult viewer = login(phone(), inviteCode, "外婆", false);
-        mockMvc.perform(get("/api/pro/daily-summary?date=2026-05-14")
-                        .header(HttpHeaders.AUTHORIZATION, viewer.bearer()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.containsString("喂养记录")))
-                .andExpect(jsonPath("$.accountMissingItems").value(hasSize(0)));
-
-        mockMvc.perform(post("/api/pro/daily-summary/generate")
-                        .header(HttpHeaders.AUTHORIZATION, viewer.bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"date\":\"2026-05-14\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("当前身份仅可查看，不能记录或修改。"));
-    }
-
-    @Test
-    void nonProFamilyCannotGenerateDailySummary() throws Exception {
-        LoginResult login = login(phone(), inviteCode(), "妈妈", true);
-
-        mockMvc.perform(post("/api/pro/daily-summary/generate")
-                        .header(HttpHeaders.AUTHORIZATION, login.bearer())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"date\":\"2026-05-14\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("这个功能需要 Pro 内测权益，先在「我的」里申请，开通后即可使用。"));
+                .andExpect(jsonPath("$.state.proTrial.application.status").value("pending"));
     }
 
     @Test

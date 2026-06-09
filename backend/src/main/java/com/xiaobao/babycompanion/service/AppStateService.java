@@ -82,7 +82,6 @@ public class AppStateService {
     private final AuthFamilyMemberRecordService familyMemberService;
     private final AttachmentStorageService attachmentStorageService;
     private final ProTrialService proTrialService;
-    private final DailySummaryService dailySummaryService;
     private final ObjectMapper objectMapper;
     private final CurrentUser currentUser;
 
@@ -102,7 +101,6 @@ public class AppStateService {
             AuthFamilyMemberRecordService familyMemberService,
             AttachmentStorageService attachmentStorageService,
             ProTrialService proTrialService,
-            DailySummaryService dailySummaryService,
             ObjectMapper objectMapper,
             CurrentUser currentUser
     ) {
@@ -121,7 +119,6 @@ public class AppStateService {
         this.familyMemberService = familyMemberService;
         this.attachmentStorageService = attachmentStorageService;
         this.proTrialService = proTrialService;
-        this.dailySummaryService = dailySummaryService;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
     }
@@ -150,23 +147,13 @@ public class AppStateService {
                 readConversationSummary(familyId, userId),
                 null,
                 null,
-                proTrialNode(familyId, userId),
-                dailySummaryNode(familyId, userId, null),
-                dailySummarySettingsNode(familyId, userId)
+                proTrialNode(familyId, userId)
         );
         return new AppStateResponse(isEmpty(state), state);
     }
 
     private JsonNode proTrialNode(String familyId, String userId) {
         return StringUtils.hasText(userId) ? objectMapper.valueToTree(proTrialService.status(familyId, userId)) : null;
-    }
-
-    private JsonNode dailySummaryNode(String familyId, String userId, String date) {
-        return StringUtils.hasText(userId) ? objectMapper.valueToTree(dailySummaryService.read(familyId, userId, date)) : null;
-    }
-
-    private JsonNode dailySummarySettingsNode(String familyId, String userId) {
-        return StringUtils.hasText(userId) ? objectMapper.valueToTree(proTrialService.summarySettings(familyId, userId)) : null;
     }
 
     @Transactional

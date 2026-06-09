@@ -66,8 +66,6 @@ class AgentMutationServiceTests {
                 null,
                 null,
                 null,
-                null,
-                null,
                 null
         ));
     }

@@ -142,34 +142,7 @@ public class DatabaseInitializer implements ApplicationRunner {
                 """);
         statement.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_family_created ON ai_usage_log(family_id, created_at)");
         statement.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_request ON ai_usage_log(request_id)");
-
-        statement.execute("""
-                CREATE TABLE IF NOT EXISTS daily_summary (
-                  id TEXT PRIMARY KEY,
-                  family_id TEXT NOT NULL,
-                  summary_date TEXT NOT NULL,
-                  payload_json TEXT NOT NULL,
-                  source_fingerprint TEXT,
-                  generated_by_user_id TEXT,
-                  created_at TEXT,
-                  updated_at TEXT
-                )
-                """);
-        statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_summary_family_date ON daily_summary(family_id, summary_date)");
-
-        statement.execute("""
-                CREATE TABLE IF NOT EXISTS daily_summary_setting (
-                  id TEXT PRIMARY KEY,
-                  family_id TEXT NOT NULL,
-                  user_id TEXT NOT NULL,
-                  enabled TEXT,
-                  reminder_time TEXT,
-                  muted_missing_types TEXT,
-                  created_at TEXT,
-                  updated_at TEXT
-                )
-                """);
-        statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_summary_setting_family_user ON daily_summary_setting(family_id, user_id)");
+        // 「今日小结」已下线：daily_summary / daily_summary_setting 表不再创建；线上历史表保留不动（不 DROP）。
     }
 
     private void createAgentTraceTables(Statement statement) throws Exception {

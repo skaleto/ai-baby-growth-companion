@@ -20,8 +20,6 @@ import type {
   CareLogEventType,
   ChatMessage,
   ConversationSummary,
-  DailySummary,
-  DailySummarySettings,
   ExpenseCategory,
   ExpenseItem,
   GrowthEvent,
@@ -843,41 +841,6 @@ export const normalizeProTrialStatus = (value: Partial<ProTrialStatus> | null | 
   // 后端 Pro 家庭返回 null（不限次）；缺省也按 null 处理，避免在状态未知时硬拦截（服务端仍是唯一权威）。
   freeCallsRemaining: typeof value?.freeCallsRemaining === "number" ? value.freeCallsRemaining : null,
 });
-
-export const normalizeDailySummarySettings = (
-  value: Partial<DailySummarySettings> | null | undefined,
-): DailySummarySettings => ({
-  enabled: value?.enabled !== false,
-  reminderTime: textValue(value?.reminderTime, "21:30"),
-  mutedMissingTypes: stringList(value?.mutedMissingTypes),
-});
-
-export const normalizeMissingPrompt = (value: Partial<DailySummary["missingItems"][number]> | null | undefined, index: number) => ({
-  id: textValue(value?.id, `missing-${index}`),
-  type: textValue(value?.type, "general"),
-  scope: textValue(value?.scope, "family"),
-  title: textValue(value?.title, "可能漏项"),
-  message: textValue(value?.message, "这条信息可以稍后再补。"),
-  action: textValue(value?.action) || undefined,
-});
-
-export const normalizeDailySummary = (value: Partial<DailySummary> | null | undefined): DailySummary | null => {
-  if (!value || !textValue(value.text).trim()) return null;
-  return {
-    id: textValue(value.id, "daily-summary"),
-    date: textValue(value.date, todayISO()),
-    text: textValue(value.text),
-    facts: stringList(value.facts),
-    observations: stringList(value.observations),
-    findings: Array.isArray(value.findings) ? value.findings : [],
-    missingItems: Array.isArray(value.missingItems) ? value.missingItems.map(normalizeMissingPrompt) : [],
-    accountMissingItems: Array.isArray(value.accountMissingItems) ? value.accountMissingItems.map(normalizeMissingPrompt) : [],
-    generatedAt: textValue(value.generatedAt, new Date().toISOString()),
-    generatedByUserId: textValue(value.generatedByUserId) || undefined,
-    sourceFingerprint: textValue(value.sourceFingerprint) || undefined,
-    stale: Boolean(value.stale),
-  };
-};
 
 export const normalizePendingEffect = (value: Partial<PendingEffect> | null | undefined, index: number): PendingEffect => ({
   id: textValue(value?.id, `pending-${index}`),
