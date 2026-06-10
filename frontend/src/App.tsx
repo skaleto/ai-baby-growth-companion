@@ -2421,6 +2421,7 @@ function App() {
     lastY: number;
     lastTime: number;
     velocityX: number;
+    baseOffset: number;
   } | null>(null);
   const previewDragOffsetRef = useRef(0);
   const previewTapGuardRef = useRef(false);
@@ -2853,8 +2854,22 @@ function App() {
     if (!previewAlbumItemRef.current || previewTransform.scale > 1.05) return;
     previewSwipeSettleTimerRef.current && window.clearTimeout(previewSwipeSettleTimerRef.current);
     previewSwipeSettleTimerRef.current = null;
-    previewDragOffsetRef.current = 0;
-    setPreviewCarouselTransform(0, false);
+    // iOS 式「随时抓住正在动的画面」:回弹/翻页动画进行中被按下时,读取实时渲染位置并原地冻结,
+    // 以该位置为后续拖动基准。此前这里强制归零,动画半路按下会瞬跳回原位——跟手感的最大破坏者。
+    let baseOffset = 0;
+    const track = previewCarouselTrackRef.current;
+    if (track) {
+      try {
+        const matrix = new DOMMatrixReadOnly(window.getComputedStyle(track).transform);
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+        const residual = matrix.m41 + viewportWidth; // 基准位 -100vw,残余偏移 0 即居中
+        baseOffset = Math.abs(residual) < 0.5 ? 0 : residual;
+      } catch {
+        baseOffset = 0;
+      }
+    }
+    previewDragOffsetRef.current = baseOffset;
+    setPreviewCarouselTransform(baseOffset, false);
     previewSwipeRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -2863,6 +2878,7 @@ function App() {
       lastY: event.clientY,
       lastTime: event.timeStamp || window.performance.now(),
       velocityX: 0,
+      baseOffset,
     };
   };
 
@@ -2878,12 +2894,14 @@ function App() {
     swipe.lastTime = eventTime;
     const rawDeltaX = swipe.lastX - swipe.startX;
     const rawDeltaY = swipe.lastY - swipe.startY;
-    if (Math.abs(rawDeltaX) < 3 || Math.abs(rawDeltaX) < Math.abs(rawDeltaY) * 0.8) return;
+    // 动画中接管(baseOffset≠0)时画面已在拖拽态,跳过方向死区判定,首帧即跟手。
+    if (swipe.baseOffset === 0 && (Math.abs(rawDeltaX) < 3 || Math.abs(rawDeltaX) < Math.abs(rawDeltaY) * 0.8)) return;
     if (Math.abs(rawDeltaX) > 8 || Math.abs(rawDeltaY) > 8) previewTapGuardRef.current = true;
     if (event.cancelable) event.preventDefault();
-    const direction = rawDeltaX < 0 ? 1 : -1;
+    const combinedDeltaX = swipe.baseOffset + rawDeltaX;
+    const direction = combinedDeltaX < 0 ? 1 : -1;
     const hasAdjacent = Boolean(findAdjacentPreviewAlbumItem(direction));
-    const offset = dampPreviewSwipeOffset(rawDeltaX, hasAdjacent);
+    const offset = dampPreviewSwipeOffset(combinedDeltaX, hasAdjacent);
     previewDragOffsetRef.current = offset;
     setPreviewCarouselTransform(offset, false);
   };
@@ -2892,7 +2910,7 @@ function App() {
     const swipe = previewSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId) return;
     previewSwipeRef.current = null;
-    const deltaX = swipe.lastX - swipe.startX;
+    const deltaX = swipe.baseOffset + (swipe.lastX - swipe.startX);
     const deltaY = swipe.lastY - swipe.startY;
     const leadingX = Math.abs(deltaX) > 18 ? deltaX : swipe.velocityX;
     const direction = leadingX < 0 ? 1 : -1;
