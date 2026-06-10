@@ -2,6 +2,7 @@ import { Video } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
 import { registerAlbumVideo } from "./albumVideoPlayback";
+import { useCachedMediaSrc } from "./CachedMedia";
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
@@ -18,6 +19,8 @@ export function AlbumVideoThumbnail({
   onRatio?: (ratio: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // 海报走本地缓存:杀进程后也能本地秒出首帧画面(视频流本身仍在线拉)。
+  const poster = useCachedMediaSrc(attachment.thumbnailUrl);
   const [canAutoplay] = useState(() => !prefersReducedMotion());
   // The poster overlay stays on top of the <video> until the video has actually
   // painted a real frame. Without it, the native poster is dismissed the moment
@@ -35,8 +38,6 @@ export function AlbumVideoThumbnail({
   if (!attachment.url) {
     return <Video size={24} />;
   }
-
-  const poster = attachment.thumbnailUrl;
 
   return (
     <>

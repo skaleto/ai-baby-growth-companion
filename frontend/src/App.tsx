@@ -217,6 +217,7 @@ import {
   suggestedFamilyName,
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
+import { CachedImg } from "./components/CachedMedia";
 import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { AuthScene } from "./components/AuthScene";
@@ -8580,7 +8581,7 @@ function App() {
                                     }
                                   />
                                 ) : attachment ? (
-                                  <img
+                                  <CachedImg
                                     src={attachmentListSrc(attachment)}
                                     alt={item.title}
                                     loading="lazy"
@@ -9678,10 +9679,10 @@ function App() {
                             isCurrent ? (
                               <PreviewVideoPlayer attachment={attachment} active bindVideo={bindPreviewVideo} />
                             ) : (
-                              <img src={attachment.thumbnailUrl || attachment.url} alt={attachment.name} draggable={false} />
+                              <CachedImg src={attachment.thumbnailUrl || attachment.url} alt={attachment.name} draggable={false} />
                             )
                           ) : (
-                            <img
+                            <CachedImg
                               className={isCurrent && previewTransform.scale > 1 ? "is-zoomed" : ""}
                               src={attachment.url}
                               alt={attachment.name}
@@ -9706,7 +9707,7 @@ function App() {
             ) : previewAttachment.kind === "video" ? (
               <PreviewVideoPlayer attachment={previewAttachment} active bindVideo={bindPreviewVideo} />
             ) : (
-              <img
+              <CachedImg
                 className={previewTransform.scale > 1 ? "is-zoomed" : ""}
                 src={previewAttachment.url}
                 alt={previewAttachment.name}
