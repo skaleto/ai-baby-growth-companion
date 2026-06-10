@@ -1,4 +1,4 @@
-import { ImgHTMLAttributes, useEffect, useRef, useState } from "react";
+import { ImgHTMLAttributes, useEffect, useState } from "react";
 import {
   cacheMediaFromRemote,
   getCachedPosterUrl,
@@ -53,48 +53,30 @@ type CachedImgProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & { src?:
 
 /**
  * 与 <img> 同用法,src 自动走本地缓存。
- * 防闪规则:远程图一旦加载完成就不再把 src 换成本地 objectURL——换源会让 <img> 重新解码、
- * 期间保留旧帧,正是预览左右滑动时「闪一下前一张」的来源。本地化只服务下一次渲染。
+ * 锁源规则:每个挂载实例只定一次源(内存命中→本地,否则远程),此后绝不切换——
+ * 渲染中途换 src 会重新解码闪旧帧,且 View Transition 进行中换源会让 morph 动画挂起
+ * (线上「点开卡在过渡态」事故)。本地化由后台落库完成,服务下一次挂载(预览 slide
+ * 按 item.id 重建,翻页/重开即命中本地)。
  */
 export function CachedImg({ src, onLoad, ...rest }: CachedImgProps) {
-  const remoteLoadedRef = useRef(false);
   const [resolved, setResolved] = useState<string | undefined>(
     () => getMemoizedLocalUrl(src) || src || undefined,
   );
 
   useEffect(() => {
-    let cancelled = false;
-    remoteLoadedRef.current = false;
     const memo = getMemoizedLocalUrl(src);
-    if (memo) {
-      setResolved(memo);
-      return () => { cancelled = true; };
+    setResolved(memo || src || undefined);
+    if (!src) return;
+    if (!memo) {
+      // 仅暖缓存(填 IDB→objectURL 内存表),不回写本实例的 src。
+      void getLocalMediaUrl(src).then((local) => {
+        if (!local) void cacheMediaFromRemote(src);
+      });
     }
-    setResolved(src || undefined);
-    if (!src) return () => { cancelled = true; };
-    void getLocalMediaUrl(src).then((local) => {
-      if (cancelled) return;
-      if (local) {
-        // 远程尚未加载完成时才切到本地(更快且无旧帧);已显示完成则保持现状,避免重绘闪动。
-        if (!remoteLoadedRef.current) setResolved(local);
-      } else {
-        void cacheMediaFromRemote(src);
-      }
-    });
-    return () => { cancelled = true; };
   }, [src]);
 
   if (!resolved) return null;
-  return (
-    <img
-      src={resolved}
-      onLoad={(event) => {
-        remoteLoadedRef.current = true;
-        onLoad?.(event);
-      }}
-      {...rest}
-    />
-  );
+  return <img src={resolved} onLoad={onLoad} {...rest} />;
 }
 
 /**

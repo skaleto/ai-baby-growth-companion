@@ -1406,6 +1406,12 @@ h3 {
   animation-duration: 240ms;
 }
 
+/* View Transition 进行中,快照覆盖层默认拦截全部指针事件——「点开图后立刻滑动」会被整段吞掉
+   (线上「短划好几下都不动」的主因之一)。放行事件穿透到真实界面:动画照播,手势即刻生效。 */
+::view-transition {
+  pointer-events: none;
+}
+
 .media-preview-carousel {
   align-self: stretch;
   justify-self: stretch;

@@ -397,12 +397,24 @@ const supportsViewTransition = (): boolean =>
 
 const PREVIEW_VT = supportsViewTransition();
 
-const startViewTransition = (callback: () => void): { finished: Promise<unknown> } =>
-  (
+const startViewTransition = (callback: () => void): { finished: Promise<unknown> } => {
+  const vt = (
     document as unknown as {
-      startViewTransition: (cb: () => void) => { finished: Promise<unknown> };
+      startViewTransition: (cb: () => void) => { finished: Promise<unknown>; skipTransition?: () => void };
     }
   ).startViewTransition(callback);
+  // 看门狗:VT 偶发挂起时整页被伪元素层盖住、所有交互被吞(线上「点开卡在过渡态然后卡死」)。
+  // 动画名义时长 ~350ms,800ms 未结案就强制跳过,UI 立即落到终态,页面绝不允许卡死。
+  const watchdog = window.setTimeout(() => {
+    try {
+      vt.skipTransition?.();
+    } catch {
+      // skip 失败也无碍:finished 仍会由浏览器结案或被下一次交互覆盖。
+    }
+  }, 800);
+  void vt.finished.finally(() => window.clearTimeout(watchdog));
+  return vt;
+};
 
 type RuntimeVersionInfo = {
   otaVersion: string;
@@ -2428,6 +2440,8 @@ function App() {
   const previewTapGuardRef = useRef(false);
   const previewCarouselTrackRef = useRef<HTMLDivElement | null>(null);
   const previewSwipeSettleTimerRef = useRef<number | null>(null);
+  // 进行中的翻页(动画未 settle):被新手势抓住时必须先「落账」该次翻页,否则连续快滑会被吞张。
+  const previewPendingPageRef = useRef<{ item: AlbumItem; attachment: Attachment; direction: 1 | -1 } | null>(null);
   const previewSwipeSettleCleanupRef = useRef<(() => void) | null>(null);
   const previewAlbumItemsRef = useRef<AlbumItem[]>([]);
   const previewAlbumItemRef = useRef<AlbumItem | null>(null);
@@ -2643,8 +2657,16 @@ function App() {
     const stableOffset = Math.abs(offsetPx) < 0.4 ? 0 : offsetPx;
     const offsetText = Math.abs(stableOffset).toFixed(2);
     const offsetExpression = stableOffset >= 0 ? `+ ${offsetText}px` : `- ${offsetText}px`;
-    // iOS 风格减速长尾(easeOutQuint 近似):后段时间走极少路程,产生「明显减速后停住」的丝滑感。
-    track.style.transition = animated ? `transform ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1)` : "none";
+    if (animated) {
+      // transition 从 none 切换到有值时,必须强制 reflow 把当前位置先落地,否则浏览器把
+      // 「设 transition + 设新 transform」合并进同一帧 → 过渡完全不播、画面瞬移(无 transitionend,
+      // settle 只能等兜底超时,期间手势全乱)。
+      void track.offsetWidth;
+      // iOS 风格减速长尾(easeOutQuint 近似):后段时间走极少路程,产生「明显减速后停住」的丝滑感。
+      track.style.transition = `transform ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+    } else {
+      track.style.transition = "none";
+    }
     track.style.transform = `translate3d(calc(-100vw ${offsetExpression}), 0, 0)`;
   }, []);
 
@@ -2691,27 +2713,16 @@ function App() {
     }, 260);
   }, [clearPreviewTimers, resetPreviewCarouselTransform]);
 
-  // Album tile tap: use a View Transition (container-transform morph from the
-  // tapped thumbnail) when supported, else the FLIP path inside openPreviewAttachment.
+  // Album tile tap → fullscreen. 打开动画固定走 FLIP(openPreviewAttachment 的 "opening" 路径):
+  // Chrome 在 View Transition 播放期间会丢弃页面输入,「点开后立刻滑动」整段被吞
+  // (DOM 手势测试实证:VT 窗口内 document 连 pointerdown 都收不到);Android WebView 的
+  // open-VT 一旦挂起更会让整页永久不可交互(线上「卡在过渡态然后卡死」)。FLIP 是纯 CSS
+  // 动画,不阻塞输入。关闭动画保留 VT(无后续手势诉求,且有 800ms 看门狗兜底)。
   const openAlbumPreview = useCallback(
     (event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => {
       if (!attachment.url) return;
-      const tileEl = event.currentTarget;
-      const origin = previewOriginFromRect(tileEl.getBoundingClientRect());
-      if (!PREVIEW_VT) {
-        openPreviewAttachment(attachment, item, "opening", origin);
-        return;
-      }
-      // Name the tapped thumbnail so the browser morphs it into the fullscreen media.
-      tileEl.style.viewTransitionName = "preview-media";
-      const vt = startViewTransition(() => {
-        flushSync(() => openPreviewAttachment(attachment, item, "idle", origin));
-        // Drop the name in the new snapshot so only the fullscreen figure carries it.
-        tileEl.style.viewTransitionName = "";
-      });
-      vt.finished.finally(() => {
-        tileEl.style.viewTransitionName = "";
-      });
+      const origin = previewOriginFromRect(event.currentTarget.getBoundingClientRect());
+      openPreviewAttachment(attachment, item, "opening", origin);
     },
     [openPreviewAttachment],
   );
@@ -2851,6 +2862,22 @@ function App() {
     return sign * Math.min(viewportWidth, distance);
   };
 
+  // 把「进行中的翻页」立即落账(切换 item/attachment 等状态);返回该次翻页信息,无则 null。
+  const commitPendingPreviewPage = () => {
+    const pending = previewPendingPageRef.current;
+    if (!pending) return null;
+    previewPendingPageRef.current = null;
+    previewPointersRef.current.clear();
+    previewPinchRef.current = null;
+    previewSwipeRef.current = null;
+    previewAlbumItemRef.current = pending.item;
+    setPreviewTransform({ scale: 1, x: 0, y: 0 });
+    setPreviewAlbumItem(pending.item);
+    setPreviewAttachment(pending.attachment);
+    setPreviewMotion("idle");
+    return pending;
+  };
+
   const beginPreviewSwipe = (event: React.PointerEvent<HTMLElement>) => {
     if (!previewAlbumItemRef.current || previewTransform.scale > 1.05) return;
     previewSwipeSettleTimerRef.current && window.clearTimeout(previewSwipeSettleTimerRef.current);
@@ -2858,16 +2885,27 @@ function App() {
     // 接管前先摘掉上一次翻页的 transitionend 监听,避免被接管的旧动画迟到触发 settle 干扰本次拖动。
     previewSwipeSettleCleanupRef.current?.();
     previewSwipeSettleCleanupRef.current = null;
-    // iOS 式「随时抓住正在动的画面」:动画进行中被按下时,读取实时渲染位置并原地冻结作为拖动基准。
-    // captureBaseOffset 只在残余处于屏宽 2%~98% 时接管——残余≈±一整屏意味着「翻页已完成、React 尚未
-    // 复位窗口」,绝不能当基准(否则短划看似不动、松手判定整屏漂移)。
     let baseOffset = 0;
     const track = previewCarouselTrackRef.current;
     if (track) {
       try {
         const matrix = new DOMMatrixReadOnly(window.getComputedStyle(track).transform);
         const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
-        baseOffset = captureBaseOffset(matrix.m41 + viewportWidth, viewportWidth);
+        const residual = matrix.m41 + viewportWidth;
+        if (previewPendingPageRef.current) {
+          // 抓住「正在翻页」的画面:先把该次翻页立即落账(否则连续快滑只有最后一次生效=吞张),
+          // 再把旧窗口坐标换算到新窗口(residual ± 一屏),视觉上画面原地不动、内容账目已切。
+          const pending = previewPendingPageRef.current;
+          flushSync(() => {
+            commitPendingPreviewPage();
+          });
+          const carried = residual + (pending.direction > 0 ? viewportWidth : -viewportWidth);
+          baseOffset = Math.max(-viewportWidth, Math.min(viewportWidth, carried));
+        } else {
+          // 无进行中的翻页(回弹动画/静止/settle 后竞态):残余在屏宽 2%~98% 才接管,
+          // ≈±一整屏意味着「已完成、React 尚未复位窗口」,绝不能当基准。
+          baseOffset = captureBaseOffset(residual, viewportWidth);
+        }
       } catch {
         baseOffset = 0;
       }
@@ -2937,6 +2975,7 @@ function App() {
     }
     const nextAttachment = nextItem.attachment;
     previewTapGuardRef.current = true;
+    previewPendingPageRef.current = { item: nextItem, attachment: nextAttachment, direction };
     setPreviewCarouselTransform(direction > 0 ? -viewportWidth : viewportWidth, true, durationMs);
     void preloadPreviewAttachment(nextAttachment);
     let settled = false;
@@ -2946,14 +2985,7 @@ function App() {
       settled = true;
       previewSwipeSettleCleanupRef.current?.();
       previewSwipeSettleCleanupRef.current = null;
-      previewPointersRef.current.clear();
-      previewPinchRef.current = null;
-      previewSwipeRef.current = null;
-      previewAlbumItemRef.current = nextItem;
-      setPreviewTransform({ scale: 1, x: 0, y: 0 });
-      setPreviewAlbumItem(nextItem);
-      setPreviewAttachment(nextAttachment);
-      setPreviewMotion("idle");
+      commitPendingPreviewPage();
       previewSwipeSettleTimerRef.current = null;
     };
     if (track) {
