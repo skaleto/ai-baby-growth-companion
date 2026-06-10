@@ -19,8 +19,10 @@ export function AlbumVideoThumbnail({
   onRatio?: (ratio: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  // 海报走本地缓存:杀进程后也能本地秒出首帧画面(视频流本身仍在线拉)。
+  // 海报走本地缓存:杀进程后也能本地秒出首帧画面。
   const poster = useCachedMediaSrc(attachment.thumbnailUrl);
+  // 视频流:本地已缓存(全屏播放过)则本地播,否则在线播;网格自动播放不触发整文件下载。
+  const videoSrc = useCachedMediaSrc(attachment.url, { download: false });
   const [canAutoplay] = useState(() => !prefersReducedMotion());
   // The poster overlay stays on top of the <video> until the video has actually
   // painted a real frame. Without it, the native poster is dismissed the moment
@@ -43,7 +45,7 @@ export function AlbumVideoThumbnail({
     <>
       <video
         ref={videoRef}
-        src={attachment.url}
+        src={videoSrc || attachment.url}
         poster={poster}
         muted
         loop

@@ -11,8 +11,11 @@ const DB_NAME = "xiaobao-media-cache";
 const DB_VERSION = 1;
 const MEDIA_STORE = "media"; // key -> blob
 const META_STORE = "meta"; // key -> { bytes, lastUsed }
-const MAX_TOTAL_BYTES = 300 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 800 * 1024 * 1024;
 const LAST_USED_TOUCH_MS = 60_000; // lastUsed 写入节流,避免每次渲染都写库
+
+/** 单条视频可落库的上限:覆盖绝大多数宝宝短视频;超长视频保持在线播,不挤占缓存池。 */
+export const VIDEO_CACHE_MAX_BYTES = 80 * 1024 * 1024;
 
 export type CacheMeta = { key: string; bytes: number; lastUsed: number };
 
@@ -183,20 +186,39 @@ export async function getLocalMediaUrl(remoteUrl?: string | null): Promise<strin
   return blobToObjectUrl(key, blob);
 }
 
-/** 下载并落库(并发去重);成功返回 objectURL,失败返回 null(调用方继续用远程 URL)。 */
-export function cacheMediaFromRemote(remoteUrl?: string | null): Promise<string | null> {
+/**
+ * 下载并落库(并发去重);成功返回 objectURL,失败返回 null(调用方继续用远程 URL)。
+ * maxBytes:超过则不落库(Content-Length 可知时直接中断下载,省流量)——用于视频单条上限。
+ */
+export function cacheMediaFromRemote(
+  remoteUrl?: string | null,
+  options?: { maxBytes?: number },
+): Promise<string | null> {
   const key = stableMediaKey(remoteUrl);
   if (!key || !remoteUrl) return Promise.resolve(null);
   const running = inflight.get(key);
   if (running) return running;
+  const maxBytes = options?.maxBytes;
   const task = (async () => {
     try {
+      // 已落库直接复用(播放事件会反复触发,不能重复下载)。
+      const existing = await getLocalMediaUrl(remoteUrl);
+      if (existing) return existing;
       const db = await openDb();
       if (!db) return null;
-      const response = await fetch(remoteUrl);
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;
+      const response = await fetch(remoteUrl, controller ? { signal: controller.signal } : undefined);
       if (!response.ok) return null;
+      if (maxBytes) {
+        const declared = Number(response.headers.get("content-length") || 0);
+        if (declared > maxBytes) {
+          controller?.abort();
+          return null;
+        }
+      }
       const blob = await response.blob();
       if (!blob || blob.size === 0) return null;
+      if (maxBytes && blob.size > maxBytes) return null;
       const stored = await idbPut(db, MEDIA_STORE, key, blob);
       if (stored) {
         lastTouched.set(key, Date.now());

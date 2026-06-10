@@ -2,6 +2,8 @@ import { Pause, Play, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
 import { fractionFromPointer, progressFraction, seekTimeFromFraction } from "./previewVideoMath";
+import { cacheMediaFromRemote, VIDEO_CACHE_MAX_BYTES } from "../mediaCache";
+import { useCachedMediaSrc } from "./CachedMedia";
 
 const HIDE_DELAY_MS = 2500;
 
@@ -15,6 +17,9 @@ export function PreviewVideoPlayer({
   bindVideo?: (node: HTMLVideoElement | null) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // 本地缓存命中 → 本地播放(杀进程后即点即播);未命中保持在线播,不在此处触发下载。
+  const videoSrc = useCachedMediaSrc(attachment.url, { download: false });
+  const poster = useCachedMediaSrc(attachment.thumbnailUrl);
   const barRef = useRef<HTMLDivElement | null>(null);
   const hideTimerRef = useRef<number | null>(null);
   const draggingRef = useRef(false);
@@ -114,8 +119,8 @@ export function PreviewVideoPlayer({
     >
       <video
         ref={setVideoNode}
-        src={attachment.url}
-        poster={attachment.thumbnailUrl}
+        src={videoSrc || attachment.url}
+        poster={poster}
         playsInline
         preload="auto"
         aria-label={attachment.name}
@@ -127,6 +132,8 @@ export function PreviewVideoPlayer({
         onPlay={() => {
           setPlaying(true);
           setEnded(false);
+          // 用户真的播放过这条视频 → 后台整文件落库(≤80MB,已缓存则跳过),下次本地即点即播。
+          void cacheMediaFromRemote(attachment.url, { maxBytes: VIDEO_CACHE_MAX_BYTES });
         }}
         onPlaying={(event) => {
           event.currentTarget.muted = false;
@@ -143,10 +150,10 @@ export function PreviewVideoPlayer({
           setFraction(progressFraction(event.currentTarget.currentTime, event.currentTarget.duration));
         }}
       />
-      {attachment.thumbnailUrl ? (
+      {poster ? (
         <img
           className={`preview-video-poster${frameReady ? " is-hidden" : ""}`}
-          src={attachment.thumbnailUrl}
+          src={poster}
           alt=""
           aria-hidden="true"
           decoding="async"

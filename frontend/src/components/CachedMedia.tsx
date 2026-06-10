@@ -1,11 +1,20 @@
 import { ImgHTMLAttributes, useEffect, useState } from "react";
 import { cacheMediaFromRemote, getLocalMediaUrl, getMemoizedLocalUrl } from "../mediaCache";
 
+type CachedSrcOptions = {
+  /**
+   * false 时只查本地、绝不触发整文件下载(用于视频流:命中本地即本地播放,
+   * 未命中保持远程在线播,落库时机由播放事件另行触发)。默认 true(图片/海报)。
+   */
+  download?: boolean;
+};
+
 /**
  * 媒体地址走本地缓存:本地(IndexedDB)命中 → objectURL 秒出;
- * 未命中 → 先用远程 URL 正常显示,同时后台落库,下次(包括杀进程后)即本地秒开。
+ * 未命中 → 先用远程 URL 正常显示;download 不为 false 时后台落库,下次(包括杀进程后)本地秒开。
  */
-export function useCachedMediaSrc(remoteUrl?: string | null): string | undefined {
+export function useCachedMediaSrc(remoteUrl?: string | null, options?: CachedSrcOptions): string | undefined {
+  const download = options?.download !== false;
   const [src, setSrc] = useState<string | undefined>(
     () => getMemoizedLocalUrl(remoteUrl) || remoteUrl || undefined,
   );
@@ -23,13 +32,13 @@ export function useCachedMediaSrc(remoteUrl?: string | null): string | undefined
       if (cancelled) return;
       if (local) {
         setSrc(local);
-      } else {
-        // 远程已在 <img> 中加载展示;这里仅后台落库,服务下一次打开。
+      } else if (download) {
+        // 远程已在元素中加载展示;这里仅后台落库,服务下一次打开。
         void cacheMediaFromRemote(remoteUrl);
       }
     });
     return () => { cancelled = true; };
-  }, [remoteUrl]);
+  }, [remoteUrl, download]);
 
   return src;
 }
