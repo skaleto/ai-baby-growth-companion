@@ -131,11 +131,25 @@ async function downloadBundleWithProgress(version: string, url: string, checksum
       }
     });
     emitMobileUpdateNotice(`正在下载新版本 ${version}`, "info", 0, null, "indeterminate");
-    const bundle = await CapacitorUpdater.download({
-      version,
-      url,
-      ...(checksum ? { checksum } : {}),
-    });
+    let bundle: BundleInfo;
+    try {
+      bundle = await CapacitorUpdater.download({
+        version,
+        url,
+        ...(checksum ? { checksum } : {}),
+      });
+    } catch (firstError) {
+      // 线上观测:偶发网络瞬态导致包下载不完整 → 解压失败,重试即成功。这里当场自动重试一次,
+      // 免得用户要手动重开 App 才能更新。第二次仍失败才上抛(进 ota_fail 上报)。
+      console.warn("[mobile-update] download failed, retrying once", firstError);
+      emitMobileUpdateNotice(`下载中断，正在自动重试`, "info", 0, null, "indeterminate");
+      await sleep(1500);
+      bundle = await CapacitorUpdater.download({
+        version,
+        url,
+        ...(checksum ? { checksum } : {}),
+      });
+    }
     emitMobileUpdateNotice(`新版本 ${version} 下载完成，准备应用`, "success", 1200, 100);
     return bundle;
   } finally {
