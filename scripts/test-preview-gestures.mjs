@@ -73,6 +73,11 @@ async function waitFor(url, timeoutMs = 20000) {
   throw new Error(`server not ready: ${url}`);
 }
 
+let uploadDelayMs = 0;
+let uploadHits = 0;
+const setUploadDelay = (ms) => { uploadDelayMs = ms; };
+const getUploadHits = () => uploadHits;
+
 async function installMocks(page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("baby-companion-auth-token", "gesture-test-token");
@@ -84,6 +89,8 @@ async function installMocks(page) {
     const headers = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS", "content-type": "application/json" };
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers, body: "" });
     if (url.pathname.startsWith("/api/uploads/")) {
+      uploadHits += 1;
+      if (uploadDelayMs) await new Promise((r) => setTimeout(r, uploadDelayMs));
       return route.fulfill({ status: 200, headers: { ...headers, "content-type": "image/png" }, body: PNG_BYTES });
     }
     if (url.pathname === "/api/auth/me") {
@@ -188,6 +195,35 @@ try {
   await page.locator(".preview-close").click();
   await page.locator(".media-preview").waitFor({ state: "hidden" });
   console.log("[E] final close: interactive ✔");
+
+  // ---- F. 慢网络下「瀑布流未渲染好就点开」:绝不卡死(线上卡死复现路径) ----
+  setUploadDelay(700);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "相册" }).last().click();
+  await page.locator(".album-photo-thumb").first().waitFor({ state: "visible", timeout: 6000 });
+  for (let i = 0; i < 6; i++) {
+    // 不等任何图片加载完成,立即点开
+    await page.locator(".album-photo-thumb").first().click();
+    await page.locator(".media-preview").waitFor({ state: "visible", timeout: 3000 });
+    await page.locator(".preview-close").click({ timeout: 2500 });
+    await page.locator(".media-preview").waitFor({ state: "hidden", timeout: 2500 });
+  }
+  console.log("[F] open-before-masonry-ready x6 under slow network: no deadlock ✔");
+
+  // ---- G. 「杀进程后缓存生效」:浏览过的图 reload 后零网络请求 ----
+  setUploadDelay(0);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "相册" }).last().click();
+  await page.locator(".album-photo-thumb").first().waitFor({ state: "visible", timeout: 6000 });
+  await new Promise((r) => setTimeout(r, 1800)); // 等全网格图加载并后台落库(IndexedDB)
+  const hitsBeforeReload = getUploadHits();
+  await page.reload({ waitUntil: "domcontentloaded" }); // ≈ 杀进程重进(IndexedDB 持久,内存清空)
+  await page.getByRole("button", { name: "相册" }).last().click();
+  await page.locator(".album-photo-thumb").first().waitFor({ state: "visible", timeout: 6000 });
+  await new Promise((r) => setTimeout(r, 2000)); // 网格渲染 + IDB 命中窗口
+  const reloadDelta = getUploadHits() - hitsBeforeReload;
+  assert.equal(reloadDelta, 0, `重进后已缓存的图不应发任何网络请求,实际新增 ${reloadDelta} 个 /api/uploads 请求`);
+  console.log("[G] after reload, previously viewed images load with ZERO network requests ✔");
 
   console.log("preview gesture DOM simulation tests passed");
 } finally {

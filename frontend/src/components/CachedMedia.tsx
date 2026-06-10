@@ -53,26 +53,51 @@ type CachedImgProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & { src?:
 
 /**
  * 与 <img> 同用法,src 自动走本地缓存。
- * 锁源规则:每个挂载实例只定一次源(内存命中→本地,否则远程),此后绝不切换——
- * 渲染中途换 src 会重新解码闪旧帧,且 View Transition 进行中换源会让 morph 动画挂起
- * (线上「点开卡在过渡态」事故)。本地化由后台落库完成,服务下一次挂载(预览 slide
- * 按 item.id 重建,翻页/重开即命中本地)。
+ * 取源策略:内存命中→本地秒出;否则先等 IndexedDB(上限 50ms,通常 1~5ms)——
+ * 命中则**完全零网络**直接本地(杀进程后缓存真正生效的关键),未命中/超时才落到远程
+ * 并后台落库。每个实例源一旦确定不再切换(换源会重解码闪旧帧,曾致预览滑动闪跳)。
  */
 export function CachedImg({ src, onLoad, ...rest }: CachedImgProps) {
   const [resolved, setResolved] = useState<string | undefined>(
-    () => getMemoizedLocalUrl(src) || src || undefined,
+    () => getMemoizedLocalUrl(src) || undefined,
   );
 
   useEffect(() => {
+    let cancelled = false;
+    let settled = false;
     const memo = getMemoizedLocalUrl(src);
-    setResolved(memo || src || undefined);
-    if (!src) return;
-    if (!memo) {
-      // 仅暖缓存(填 IDB→objectURL 内存表),不回写本实例的 src。
-      void getLocalMediaUrl(src).then((local) => {
-        if (!local) void cacheMediaFromRemote(src);
-      });
+    if (memo) {
+      setResolved(memo);
+      return () => { cancelled = true; };
     }
+    setResolved(undefined);
+    if (!src) return () => { cancelled = true; };
+    // IDB 查询与 50ms 限时赛跑:命中走本地(零网络);超时先走远程,之后即便查到本地也不换源。
+    const timer = window.setTimeout(() => {
+      if (!cancelled && !settled) {
+        settled = true;
+        setResolved(src);
+      }
+    }, 50);
+    void getLocalMediaUrl(src).then((local) => {
+      if (cancelled) return;
+      window.clearTimeout(timer);
+      if (settled) {
+        if (!local) void cacheMediaFromRemote(src);
+        return;
+      }
+      settled = true;
+      if (local) {
+        setResolved(local);
+      } else {
+        setResolved(src);
+        void cacheMediaFromRemote(src);
+      }
+    });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [src]);
 
   if (!resolved) return null;
