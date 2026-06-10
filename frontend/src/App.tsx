@@ -218,6 +218,7 @@ import {
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
 import { CachedImg } from "./components/CachedMedia";
+import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwipeMath";
 import { reportClientError } from "./errorReporting";
 import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
@@ -2854,16 +2855,19 @@ function App() {
     if (!previewAlbumItemRef.current || previewTransform.scale > 1.05) return;
     previewSwipeSettleTimerRef.current && window.clearTimeout(previewSwipeSettleTimerRef.current);
     previewSwipeSettleTimerRef.current = null;
-    // iOS 式「随时抓住正在动的画面」:回弹/翻页动画进行中被按下时,读取实时渲染位置并原地冻结,
-    // 以该位置为后续拖动基准。此前这里强制归零,动画半路按下会瞬跳回原位——跟手感的最大破坏者。
+    // 接管前先摘掉上一次翻页的 transitionend 监听,避免被接管的旧动画迟到触发 settle 干扰本次拖动。
+    previewSwipeSettleCleanupRef.current?.();
+    previewSwipeSettleCleanupRef.current = null;
+    // iOS 式「随时抓住正在动的画面」:动画进行中被按下时,读取实时渲染位置并原地冻结作为拖动基准。
+    // captureBaseOffset 只在残余处于屏宽 2%~98% 时接管——残余≈±一整屏意味着「翻页已完成、React 尚未
+    // 复位窗口」,绝不能当基准(否则短划看似不动、松手判定整屏漂移)。
     let baseOffset = 0;
     const track = previewCarouselTrackRef.current;
     if (track) {
       try {
         const matrix = new DOMMatrixReadOnly(window.getComputedStyle(track).transform);
         const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
-        const residual = matrix.m41 + viewportWidth; // 基准位 -100vw,残余偏移 0 即居中
-        baseOffset = Math.abs(residual) < 0.5 ? 0 : residual;
+        baseOffset = captureBaseOffset(matrix.m41 + viewportWidth, viewportWidth);
       } catch {
         baseOffset = 0;
       }
@@ -2910,18 +2914,24 @@ function App() {
     const swipe = previewSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId) return;
     previewSwipeRef.current = null;
-    const deltaX = swipe.baseOffset + (swipe.lastX - swipe.startX);
-    const deltaY = swipe.lastY - swipe.startY;
-    const leadingX = Math.abs(deltaX) > 18 ? deltaX : swipe.velocityX;
-    const direction = leadingX < 0 ? 1 : -1;
-    const nextItem = findAdjacentPreviewAlbumItem(direction);
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
-    const isFlick = Math.abs(swipe.velocityX) > 0.35 && Math.abs(deltaX) > 24 && Math.sign(swipe.velocityX) === Math.sign(leadingX || deltaX);
-    const hasHorizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) * 1.18 || isFlick;
-    const hasEnoughTravel = Math.abs(deltaX) > Math.max(64, viewportWidth * 0.18) || isFlick;
+    const outcome = resolveSwipeOutcome({
+      baseOffset: swipe.baseOffset,
+      fingerDeltaX: swipe.lastX - swipe.startX,
+      fingerDeltaY: swipe.lastY - swipe.startY,
+      velocityX: swipe.velocityX,
+      viewportWidth,
+      hasAdjacent: (dir) => Boolean(findAdjacentPreviewAlbumItem(dir)?.attachment?.url),
+    });
     // 时长不随手速缩短:快甩靠曲线前段陡峭衔接手速,减速长尾保持完整(此前「越快越短」产生急停感)。
     const durationMs = 480;
-    if (!nextItem?.attachment?.url || !hasHorizontalIntent || !hasEnoughTravel) {
+    if (outcome.action === "snap") {
+      setPreviewCarouselTransform(0, true, 420);
+      return;
+    }
+    const direction = outcome.direction;
+    const nextItem = findAdjacentPreviewAlbumItem(direction);
+    if (!nextItem?.attachment?.url) {
       setPreviewCarouselTransform(0, true, 420);
       return;
     }
