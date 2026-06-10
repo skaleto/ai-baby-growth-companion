@@ -2641,7 +2641,8 @@ function App() {
     const stableOffset = Math.abs(offsetPx) < 0.4 ? 0 : offsetPx;
     const offsetText = Math.abs(stableOffset).toFixed(2);
     const offsetExpression = stableOffset >= 0 ? `+ ${offsetText}px` : `- ${offsetText}px`;
-    track.style.transition = animated ? `transform ${durationMs}ms cubic-bezier(0.2, 0.88, 0.2, 1)` : "none";
+    // iOS 风格减速长尾(easeOutQuint 近似):后段时间走极少路程,产生「明显减速后停住」的丝滑感。
+    track.style.transition = animated ? `transform ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1)` : "none";
     track.style.transform = `translate3d(calc(-100vw ${offsetExpression}), 0, 0)`;
   }, []);
 
@@ -2844,9 +2845,8 @@ function App() {
       const resisted = viewportWidth * 0.22 * (1 - Math.exp(-distance / (viewportWidth * 0.26)));
       return sign * resisted;
     }
-    const progress = Math.min(distance / viewportWidth, 1);
-    const friction = 0.74 - progress * 0.16;
-    return sign * Math.min(viewportWidth * 0.82, distance * friction);
+    // 有相邻图时 1:1 完全跟手(iOS 相册手感);此前的递增摩擦让手指与画面脱节,是「阻尼生硬」主因。
+    return sign * Math.min(viewportWidth, distance);
   };
 
   const beginPreviewSwipe = (event: React.PointerEvent<HTMLElement>) => {
@@ -2898,13 +2898,13 @@ function App() {
     const direction = leadingX < 0 ? 1 : -1;
     const nextItem = findAdjacentPreviewAlbumItem(direction);
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
-    const isFlick = Math.abs(swipe.velocityX) > 0.46 && Math.abs(deltaX) > 24 && Math.sign(swipe.velocityX) === Math.sign(leadingX || deltaX);
+    const isFlick = Math.abs(swipe.velocityX) > 0.35 && Math.abs(deltaX) > 24 && Math.sign(swipe.velocityX) === Math.sign(leadingX || deltaX);
     const hasHorizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) * 1.18 || isFlick;
     const hasEnoughTravel = Math.abs(deltaX) > Math.max(64, viewportWidth * 0.18) || isFlick;
-    const speedBoost = Math.min(90, Math.abs(swipe.velocityX) * 72);
-    const durationMs = Math.max(210, Math.min(380, 350 - Math.abs(deltaX) * 0.08 - speedBoost));
+    // 时长不随手速缩短:快甩靠曲线前段陡峭衔接手速,减速长尾保持完整(此前「越快越短」产生急停感)。
+    const durationMs = 480;
     if (!nextItem?.attachment?.url || !hasHorizontalIntent || !hasEnoughTravel) {
-      setPreviewCarouselTransform(0, true, 320);
+      setPreviewCarouselTransform(0, true, 420);
       return;
     }
     const nextAttachment = nextItem.attachment;
