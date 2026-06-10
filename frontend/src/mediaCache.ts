@@ -172,6 +172,63 @@ export function getMemoizedLocalUrl(remoteUrl?: string | null): string | null {
   return key ? objectUrls.get(key) || null : null;
 }
 
+// ---------- 视频海报兜底 ----------
+// 部分视频上传时前端抽帧失败(Android WebView 对 preload=metadata 的 seek 不出帧、HEVC 解码失败等),
+// 后端又没有 ffmpeg,导致 thumbnailUrl 为空 → 网格/全屏黑屏。这里在「视频真的画出首帧」时
+// 从 <video> 抽一帧存为本地海报(key = 视频稳定地址 + "#poster"),看过一次后永久有封面,
+// 也顺带救活历史上没封面的存量视频。
+
+const POSTER_SUFFIX = "#poster";
+
+function posterKey(videoUrl?: string | null): string | null {
+  const key = stableMediaKey(videoUrl);
+  return key ? key + POSTER_SUFFIX : null;
+}
+
+/** 查本地兜底海报(由 captureVideoPosterToCache 生成),未命中返回 null。 */
+export async function getCachedPosterUrl(videoUrl?: string | null): Promise<string | null> {
+  const key = posterKey(videoUrl);
+  if (!key) return null;
+  const memo = objectUrls.get(key);
+  if (memo) return memo;
+  const db = await openDb();
+  if (!db) return null;
+  const blob = await idbGet<Blob>(db, MEDIA_STORE, key);
+  if (!(blob instanceof Blob) || blob.size === 0) return null;
+  void touchLastUsed(db, key, blob.size);
+  return blobToObjectUrl(key, blob);
+}
+
+/** 从正在播放的 <video> 抽当前帧,存为该视频的本地海报;返回 objectURL(失败 null)。 */
+export async function captureVideoPosterToCache(
+  video: HTMLVideoElement,
+  videoUrl?: string | null,
+): Promise<string | null> {
+  const key = posterKey(videoUrl);
+  if (!key || !video.videoWidth || !video.videoHeight) return null;
+  if (objectUrls.get(key)) return objectUrls.get(key) || null;
+  try {
+    const scale = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (!blob || blob.size === 0) return null;
+    const db = await openDb();
+    if (db) {
+      await idbPut(db, MEDIA_STORE, key, blob);
+      await idbPut(db, META_STORE, key, { bytes: blob.size, lastUsed: Date.now() });
+    }
+    return blobToObjectUrl(key, blob);
+  } catch {
+    // 跨域视频在 canvas 上 drawImage 后 toBlob 会抛 SecurityError(CORS 未放开时)——静默降级。
+    return null;
+  }
+}
+
 /** 仅查本地:命中返回 objectURL,未命中返回 null。 */
 export async function getLocalMediaUrl(remoteUrl?: string | null): Promise<string | null> {
   const key = stableMediaKey(remoteUrl);

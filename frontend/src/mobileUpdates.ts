@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { CapacitorUpdater, BundleInfo } from "@capgo/capacitor-updater";
 import { apiBaseUrl, apiFetch } from "./authApi";
+import { reportClientError } from "./errorReporting";
 
 const UPDATE_CHECK_DELAY_MS = 2500;
 const LAST_CHECK_AT_KEY = "xiaobao-mobile-update-last-check-at";
@@ -97,6 +98,12 @@ async function checkAndQueueMobileUpdate() {
     await CapacitorUpdater.set({ id: bundle.id });
   } catch (error) {
     console.warn("[mobile-update] check failed", error);
+    // 上报原始错误(此前线上「解压失败」只有友好文案、无法定位真实原因)。
+    reportClientError({
+      kind: "ota_fail",
+      message: error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? "unknown"),
+      page: "mobile-update",
+    });
     emitMobileUpdateNotice(readUpdateFailureMessage(error), "warning", 3600);
   }
 }
@@ -141,7 +148,8 @@ async function downloadBundleWithProgress(version: string, url: string, checksum
 async function findDownloadedBundle(version: string): Promise<BundleInfo | undefined> {
   try {
     const list = await CapacitorUpdater.list();
-    return list.bundles.find((bundle) => bundle.version === version && (bundle.status === "success" || bundle.status === "pending"));
+    // 只复用 success:pending 可能是上次下载/解压失败的残留,复用会陷入「应用坏包→失败→再复用」循环。
+    return list.bundles.find((bundle) => bundle.version === version && bundle.status === "success");
   } catch {
     return undefined;
   }

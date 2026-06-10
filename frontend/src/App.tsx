@@ -218,6 +218,7 @@ import {
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
 import { CachedImg } from "./components/CachedMedia";
+import { reportClientError } from "./errorReporting";
 import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
 import { AuthScene } from "./components/AuthScene";
@@ -4021,7 +4022,9 @@ function App() {
       const timeout = window.setTimeout(() => finish(undefined), VIDEO_THUMBNAIL_TIMEOUT_MS);
       video.muted = true;
       video.playsInline = true;
-      video.preload = "metadata";
+      // preload=metadata 在 Android WebView 上 seek 后经常不解码帧(onseeked 不触发/画出黑帧),
+      // 导致封面静默缺失;auto 让浏览器预取首段数据,本地文件无流量代价。
+      video.preload = "auto";
       video.onloadedmetadata = () => {
         const seekTime = Number.isFinite(video.duration) && video.duration > 0 ? Math.min(0.4, video.duration / 8) : 0;
         try {
@@ -4173,6 +4176,14 @@ function App() {
         updateMediaUploadItem(item.id, { status: "preparing", progress: 0, message: item.kind === "video" ? "生成预览" : "读取信息" });
         const dimensions = item.kind === "image" ? await readImageDimensionsFromFile(item.file) : {};
         const thumbnailDataUrl = item.kind === "video" ? await createVideoThumbnailDataUrl(item.file) : undefined;
+        if (item.kind === "video" && !thumbnailDataUrl) {
+          // 封面抽帧静默失败曾导致线上视频无封面且无从排查——上报留痕(渲染端有抽帧兜底,不阻塞上传)。
+          reportClientError({
+            kind: "unknown",
+            message: `video-thumbnail-failed: ${item.file.name} (${item.file.type || "?"}, ${Math.round(item.file.size / 1024)}KB)`,
+            page: "album-upload",
+          });
+        }
         const attachment = await uploadMediaFile(item.id, item.file, item.kind, dimensions, thumbnailDataUrl);
         if (target === "chat") {
           removeMediaUploadItem(item.id);
@@ -9673,7 +9684,7 @@ function App() {
                     const attachment = item?.attachment;
                     const isCurrent = item?.id === previewAlbumItem.id;
                     return (
-                      <div className={`media-preview-slide ${isCurrent ? "current" : ""} ${attachment ? "" : "empty"}`} key={`preview-slide-${index}`}>
+                      <div className={`media-preview-slide ${isCurrent ? "current" : ""} ${attachment ? "" : "empty"}`} key={item ? `preview-slide-${item.id}` : `preview-slot-${index}`}>
                         {attachment?.url ? (
                           attachment.kind === "video" ? (
                             isCurrent ? (

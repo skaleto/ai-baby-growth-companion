@@ -2,8 +2,8 @@ import { Pause, Play, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
 import { fractionFromPointer, progressFraction, seekTimeFromFraction } from "./previewVideoMath";
-import { cacheMediaFromRemote, VIDEO_CACHE_MAX_BYTES } from "../mediaCache";
-import { useCachedMediaSrc } from "./CachedMedia";
+import { cacheMediaFromRemote, captureVideoPosterToCache, VIDEO_CACHE_MAX_BYTES } from "../mediaCache";
+import { useCachedMediaSrc, useVideoPoster } from "./CachedMedia";
 
 const HIDE_DELAY_MS = 2500;
 
@@ -19,7 +19,10 @@ export function PreviewVideoPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   // 本地缓存命中 → 本地播放(杀进程后即点即播);未命中保持在线播,不在此处触发下载。
   const videoSrc = useCachedMediaSrc(attachment.url, { download: false });
-  const poster = useCachedMediaSrc(attachment.thumbnailUrl);
+  // 海报:thumbnailUrl(本地缓存)→ 抽帧兜底海报;两者皆无时 frameReady 前无遮盖(黑屏已被起播提速缓解)。
+  const poster = useVideoPoster(attachment);
+  const cacheKickedRef = useRef(false);
+  const posterCaptureRef = useRef(false);
   const barRef = useRef<HTMLDivElement | null>(null);
   const hideTimerRef = useRef<number | null>(null);
   const draggingRef = useRef(false);
@@ -132,8 +135,6 @@ export function PreviewVideoPlayer({
         onPlay={() => {
           setPlaying(true);
           setEnded(false);
-          // 用户真的播放过这条视频 → 后台整文件落库(≤80MB,已缓存则跳过),下次本地即点即播。
-          void cacheMediaFromRemote(attachment.url, { maxBytes: VIDEO_CACHE_MAX_BYTES });
         }}
         onPlaying={(event) => {
           event.currentTarget.muted = false;
@@ -146,8 +147,19 @@ export function PreviewVideoPlayer({
           setControlsVisible(true);
         }}
         onTimeUpdate={(event) => {
-          if (event.currentTarget.currentTime > 0) setFrameReady(true);
-          setFraction(progressFraction(event.currentTarget.currentTime, event.currentTarget.duration));
+          const video = event.currentTarget;
+          if (video.currentTime > 0) setFrameReady(true);
+          setFraction(progressFraction(video.currentTime, video.duration));
+          // 播放稳定(≥3s)后才整文件落库——起播阶段不与 <video> 流加载抢带宽(否则开头黑屏变长)。
+          if (video.currentTime >= 3 && !cacheKickedRef.current) {
+            cacheKickedRef.current = true;
+            void cacheMediaFromRemote(attachment.url, { maxBytes: VIDEO_CACHE_MAX_BYTES });
+          }
+          // 无封面视频:画出真帧后抽一帧存为本地海报(本地/同源源才会成功,跨域静默跳过)。
+          if (video.currentTime > 0 && !poster && !posterCaptureRef.current) {
+            posterCaptureRef.current = true;
+            void captureVideoPosterToCache(video, attachment.url);
+          }
         }}
       />
       {poster ? (

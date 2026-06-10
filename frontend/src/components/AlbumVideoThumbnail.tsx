@@ -2,7 +2,8 @@ import { Video } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
 import { registerAlbumVideo } from "./albumVideoPlayback";
-import { useCachedMediaSrc } from "./CachedMedia";
+import { useCachedMediaSrc, useVideoPoster } from "./CachedMedia";
+import { captureVideoPosterToCache } from "../mediaCache";
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
@@ -19,10 +20,11 @@ export function AlbumVideoThumbnail({
   onRatio?: (ratio: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  // 海报走本地缓存:杀进程后也能本地秒出首帧画面。
-  const poster = useCachedMediaSrc(attachment.thumbnailUrl);
+  // 海报:thumbnailUrl(本地缓存)→ 抽帧兜底海报(无封面视频看过一次后生成)。
+  const poster = useVideoPoster(attachment);
   // 视频流:本地已缓存(全屏播放过)则本地播,否则在线播;网格自动播放不触发整文件下载。
   const videoSrc = useCachedMediaSrc(attachment.url, { download: false });
+  const posterCaptureRef = useRef(false);
   const [canAutoplay] = useState(() => !prefersReducedMotion());
   // The poster overlay stays on top of the <video> until the video has actually
   // painted a real frame. Without it, the native poster is dismissed the moment
@@ -53,7 +55,13 @@ export function AlbumVideoThumbnail({
         preload="metadata"
         aria-label={title}
         onTimeUpdate={(event) => {
-          if (event.currentTarget.currentTime > 0) setFramesReady(true);
+          const video = event.currentTarget;
+          if (video.currentTime > 0) setFramesReady(true);
+          // 无封面视频:画出真帧后抽一帧存为本地海报(本地/同源源才会成功,跨域静默跳过)。
+          if (video.currentTime > 0 && !poster && !posterCaptureRef.current) {
+            posterCaptureRef.current = true;
+            void captureVideoPosterToCache(video, attachment.url);
+          }
         }}
         onLoadedMetadata={(event) => {
           const el = event.currentTarget;
