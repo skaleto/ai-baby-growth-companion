@@ -65,6 +65,15 @@ public class AttachmentStorageService {
     private static final int THUMBNAIL_MAX_EDGE = 480;
     private static final int AGENT_IMAGE_MAX_EDGE = 1800;
     private static final long DIRECT_UPLOAD_TTL_SECONDS = 15L * 60L;
+    private static final long THUMBNAIL_RETRY_INTERVAL_MS = 60L * 60L * 1000L;
+
+    // 读放大防护:app/state 每次水合会对每个附件调 metadata()→ensureThumbnail()。
+    // 没有这层进程内缓存时,即使缩略图齐全,每次状态读取也会对每个附件发一次 OSS HEAD
+    // (n 个附件 × 每次读取 = 状态接口被白白拖慢数百毫秒)。
+    private final Set<String> thumbnailVerifiedIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    // 生成失败(如 ImageIO 不支持的格式)的节流:1 小时内不再重拉原图重试,
+    // 否则每次状态读取都会下载整张原图再失败一遍。
+    private final Map<String, Long> thumbnailFailedAt = new java.util.concurrent.ConcurrentHashMap<>();
 
     private final Path dataDir;
     private final AppStorageProperties properties;
@@ -311,6 +320,8 @@ public class AttachmentStorageService {
 
         deleteStoredObject(record.getFilePath());
         deleteStoredObject(record.getThumbnailPath());
+        thumbnailVerifiedIds.remove(id);
+        thumbnailFailedAt.remove(id);
         attachmentService.remove(new QueryWrapper<AttachmentRecord>()
                 .eq("id", id)
                 .eq("family_id", familyId));
@@ -341,6 +352,47 @@ public class AttachmentStorageService {
             throw new IllegalArgumentException("Thumbnail not available: " + id);
         }
         return loadStoredAttachment(id, thumbnailName(record), MediaType.IMAGE_JPEG_VALUE, record.getThumbnailPath());
+    }
+
+    /**
+     * 视频封面自愈:客户端全屏播放无封面视频时抽帧回传,补成正式服务端缩略图。
+     * 幂等——已有有效缩略图则原样返回(绝不覆盖);仅看护人可调;只接受 image dataUrl。
+     */
+    public AttachmentDto attachVideoPosterIfMissing(String id, String thumbnailDataUrl) {
+        currentUser.requireCaregiver();
+        String familyId = currentUser.requireFamilyId();
+        AttachmentRecord record = attachmentService.getOne(new QueryWrapper<AttachmentRecord>()
+                .eq("id", id)
+                .eq("family_id", familyId), false);
+        if (record == null) {
+            throw new IllegalArgumentException("Attachment not found: " + id);
+        }
+        if (!"video".equals(record.getKind())) {
+            throw new IllegalArgumentException("Poster backfill only applies to video attachments");
+        }
+        if (StringUtils.hasText(record.getThumbnailPath())
+                && (thumbnailVerifiedIds.contains(record.getId()) || storedObjectExists(record.getThumbnailPath()))) {
+            thumbnailVerifiedIds.add(record.getId());
+            return toDto(record);
+        }
+        DataUrlPayload payload = uploadRules.parseOptionalImageDataUrl(thumbnailDataUrl);
+        if (payload == null) {
+            throw new IllegalArgumentException("A valid image thumbnailDataUrl is required");
+        }
+        try {
+            ThumbnailPaths thumbnail = createThumbnail(record.getId(), payload.mimeType(), payload.bytes(), parentPath(record.getFilePath()));
+            if (thumbnail == null) {
+                throw new IllegalArgumentException("Thumbnail image could not be decoded");
+            }
+            record.setThumbnailPath(thumbnail.path());
+            record.setThumbnailUrl(thumbnail.url());
+            persistAttachmentPayload(record);
+            thumbnailVerifiedIds.add(record.getId());
+            thumbnailFailedAt.remove(record.getId());
+            return toDto(record);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to store video poster", exception);
+        }
     }
 
     public AttachmentDto metadata(String id, String familyId) {
@@ -483,7 +535,12 @@ public class AttachmentStorageService {
 
     private void ensureThumbnail(AttachmentRecord record) {
         boolean hadThumbnail = StringUtils.hasText(record.getThumbnailPath());
-        if (hadThumbnail && storedObjectExists(record.getThumbnailPath())) return;
+        // 进程内已验证:跳过 OSS HEAD(读放大防护,见字段注释)。
+        if (hadThumbnail && thumbnailVerifiedIds.contains(record.getId())) return;
+        if (hadThumbnail && storedObjectExists(record.getThumbnailPath())) {
+            thumbnailVerifiedIds.add(record.getId());
+            return;
+        }
         boolean changed = false;
         if (hadThumbnail) {
             record.setThumbnailPath(null);
@@ -496,10 +553,19 @@ public class AttachmentStorageService {
             }
             return;
         }
+        // 近期已失败过的不在读路径上重试(否则每次状态读取都拉一遍原图再失败)。
+        Long failedAt = thumbnailFailedAt.get(record.getId());
+        if (failedAt != null && System.currentTimeMillis() - failedAt < THUMBNAIL_RETRY_INTERVAL_MS) {
+            if (changed) {
+                persistAttachmentPayload(record);
+            }
+            return;
+        }
         try {
             byte[] bytes = readStoredObject(record.getFilePath());
             ThumbnailPaths thumbnail = createThumbnail(record.getId(), record.getMimeType(), bytes, parentPath(record.getFilePath()));
             if (thumbnail == null) {
+                thumbnailFailedAt.put(record.getId(), System.currentTimeMillis());
                 if (changed) {
                     persistAttachmentPayload(record);
                 }
@@ -508,7 +574,10 @@ public class AttachmentStorageService {
             record.setThumbnailPath(thumbnail.path());
             record.setThumbnailUrl(thumbnail.url());
             persistAttachmentPayload(record);
+            thumbnailVerifiedIds.add(record.getId());
+            thumbnailFailedAt.remove(record.getId());
         } catch (IOException exception) {
+            thumbnailFailedAt.put(record.getId(), System.currentTimeMillis());
             if (changed) {
                 persistAttachmentPayload(record);
             }

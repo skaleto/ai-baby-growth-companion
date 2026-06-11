@@ -21,6 +21,7 @@ type PswpAlbumData = {
   msrc?: string;
   alt?: string;
   albumItem: AlbumItem;
+  attachmentId?: string;
   isVideo: boolean;
   videoUrl?: string;
   remoteVideoUrl?: string;
@@ -71,6 +72,7 @@ async function buildSlideData(item: AlbumItem, opts: OpenAlbumPhotoSwipeOptions)
       width, height,
       msrc: poster,
       albumItem: item,
+      attachmentId: attachment.id,
       isVideo: true,
       videoUrl,
       remoteVideoUrl: attachment.url,
@@ -104,7 +106,8 @@ function buildVideoElement(data: PswpAlbumData): HTMLElement {
     // 无封面视频:画出真帧后抽帧存为本地海报(本地源必然成功,跨域静默跳过)。
     if (video.currentTime > 0 && !data.poster && !posterCaptured) {
       posterCaptured = true;
-      void captureVideoPosterToCache(video, data.remoteVideoUrl);
+      // 服务端缺封面(data.poster 为空)→ 抽帧本地缓存 + 回传服务端自愈。
+      void captureVideoPosterToCache(video, data.remoteVideoUrl, { uploadForAttachmentId: data.attachmentId });
     }
   });
   return video;

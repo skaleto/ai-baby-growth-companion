@@ -96,7 +96,8 @@ export function AlbumVideoThumbnail({
           // 无封面视频:画出真帧后抽一帧存为本地海报(本地/同源源才会成功,跨域静默跳过)。
           if (video.currentTime > 0 && !poster && !posterCaptureRef.current) {
             posterCaptureRef.current = true;
-            void captureVideoPosterToCache(video, attachment.url);
+            // 服务端缺封面 → 抽帧本地缓存 + 回传服务端自愈(网格静音播放的首帧)。
+            void captureVideoPosterToCache(video, attachment.url, { uploadForAttachmentId: attachment.id });
           }
         }}
         onLoadedMetadata={(event) => {

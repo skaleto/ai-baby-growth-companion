@@ -203,6 +203,7 @@ export async function getCachedPosterUrl(videoUrl?: string | null): Promise<stri
 export async function captureVideoPosterToCache(
   video: HTMLVideoElement,
   videoUrl?: string | null,
+  opts?: { uploadForAttachmentId?: string },
 ): Promise<string | null> {
   const key = posterKey(videoUrl);
   if (!key || !video.videoWidth || !video.videoHeight) return null;
@@ -222,12 +223,22 @@ export async function captureVideoPosterToCache(
       await idbPut(db, MEDIA_STORE, key, blob);
       await idbPut(db, META_STORE, key, { bytes: blob.size, lastUsed: Date.now() });
     }
+    // 视频封面自愈:调用方仅在服务端缺封面时传 attachmentId,把抽到的帧回传补成正式缩略图。
+    if (opts?.uploadForAttachmentId) videoPosterUploader?.(opts.uploadForAttachmentId, blob);
     return blobToObjectUrl(key, blob);
   } catch {
     // 跨域视频在 canvas 上 drawImage 后 toBlob 会抛 SecurityError(CORS 未放开时)——静默降级。
     return null;
   }
 }
+
+// 视频封面自愈的上传实现由 App 注入(posterUpload.ts):本模块被 esbuild 逻辑测试
+// 在 Node 中打包,不得引入 authApi/import.meta.env 等仅 Vite 环境的依赖。
+type VideoPosterUploader = (attachmentId: string, blob: Blob) => void;
+let videoPosterUploader: VideoPosterUploader | null = null;
+export const setVideoPosterUploader = (uploader: VideoPosterUploader): void => {
+  videoPosterUploader = uploader;
+};
 
 /** 仅查本地:命中返回 objectURL,未命中返回 null。 */
 export async function getLocalMediaUrl(remoteUrl?: string | null): Promise<string | null> {

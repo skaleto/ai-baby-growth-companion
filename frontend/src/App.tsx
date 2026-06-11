@@ -221,6 +221,7 @@ import { AlbumScreen } from "./components/AlbumScreen";
 import { CachedImg } from "./components/CachedMedia";
 import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwipeMath";
 import { openAlbumPhotoSwipe } from "./albumPhotoSwipe";
+import "./posterUpload";
 import { reportClientError } from "./errorReporting";
 import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";

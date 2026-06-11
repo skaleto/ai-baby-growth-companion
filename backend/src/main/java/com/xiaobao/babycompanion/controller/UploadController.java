@@ -6,6 +6,7 @@ import com.xiaobao.babycompanion.dto.app.UploadCompleteRequest;
 import com.xiaobao.babycompanion.dto.app.UploadPresignRequest;
 import com.xiaobao.babycompanion.dto.app.UploadPresignResponse;
 import com.xiaobao.babycompanion.dto.app.UploadRequest;
+import com.xiaobao.babycompanion.dto.app.VideoPosterRequest;
 import com.xiaobao.babycompanion.service.AttachmentStorageService;
 import jakarta.validation.Valid;
 import java.util.concurrent.TimeUnit;
@@ -51,6 +52,12 @@ public class UploadController {
     public AttachmentDto completeUpload(@RequestBody UploadCompleteRequest request) {
         currentUser.requireCaregiver();
         return attachmentStorageService.completeDirectUpload(request);
+    }
+
+    // 视频封面自愈:客户端播放无封面视频时抽帧回传,补成服务端缩略图(幂等,绝不覆盖已有封面)。
+    @PostMapping(path = "/{id}/poster", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public AttachmentDto attachVideoPoster(@PathVariable String id, @RequestBody VideoPosterRequest request) {
+        return attachmentStorageService.attachVideoPosterIfMissing(id, request == null ? null : request.thumbnailDataUrl());
     }
 
     @GetMapping("/{id}")
