@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// DOM 级预览手势回归测试(真实浏览器 + 真实组件 + 模拟 pointer 序列)。
-// 起因:2026-06-11 线上「点开图卡在过渡态整页卡死」「滑动连跳两张」。
-// 覆盖:反复开关不卡死、连续快滑每次恰好翻一张、短划慢拖回弹、视口标题与翻页一致。
+// DOM 级预览集成回归测试(真实浏览器 + 真实组件,PhotoSwipe 版)。
+// 手势物理(跟手/惯性/缩放)由 PhotoSwipe 库承担,这里验证集成层:
+// 反复开关不卡死、翻页与标题一致、慢网即点开不卡死、reload 后已浏览图零网络(缓存)。
 // 用法:node scripts/test-preview-gestures.mjs(要求 dist 已构建,与 smoke 相同前提)
 
 import assert from "node:assert/strict";
@@ -115,23 +115,16 @@ async function installMocks(page) {
   });
 }
 
-const previewTitle = (page) => page.locator(".media-preview-topinfo strong").first();
+const previewTitle = (page) => page.locator(".pswp-album-info strong").first();
 
 async function openFirstTile(page) {
   await page.locator(".album-photo-thumb").first().click();
-  await page.locator(".media-preview").waitFor({ state: "visible", timeout: 3000 });
+  await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });
 }
 
-/** 模拟一次水平滑动(pointer 序列):from→to,steps 步,可控速度。 */
-async function swipe(page, { fromX, toX, y, steps = 6, stepDelayMs = 9 }) {
-  await page.mouse.move(fromX, y);
-  await page.mouse.down();
-  const dx = (toX - fromX) / steps;
-  for (let i = 1; i <= steps; i++) {
-    await page.mouse.move(fromX + dx * i, y + (i % 2)); // 微小纵向抖动,贴近真手
-    if (stepDelayMs) await new Promise((r) => setTimeout(r, stepDelayMs));
-  }
-  await page.mouse.up();
+async function closePreview(page) {
+  await page.locator(".pswp__button--close").click({ timeout: 2500 });
+  await page.locator(".pswp").waitFor({ state: "detached", timeout: 3500 });
 }
 
 const server = startServer();
@@ -141,6 +134,8 @@ try {
   browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.setDefaultTimeout(4000);
+  page.on("pageerror", (e) => console.log("[pageerror]", e.message.slice(0, 300)));
+  page.on("console", (m) => { if (m.type() === "error") console.log("[console.error]", m.text().slice(0, 240)); });
   await installMocks(page);
   await page.goto(baseUrl, { waitUntil: "networkidle" });
 
@@ -154,46 +149,31 @@ try {
   // ---- A. 反复点开/关闭 8 次:每次都必须在时限内可交互,绝不卡死 ----
   for (let i = 0; i < 8; i++) {
     await openFirstTile(page);
-    // 卡死的表现:VT 伪元素层吞掉一切交互 → 关闭按钮点不动/预览不消失。
-    await page.locator(".preview-close").click({ timeout: 2500 });
-    await page.locator(".media-preview").waitFor({ state: "hidden", timeout: 2500 });
+    await closePreview(page);
   }
   console.log("[A] open/close x8: no deadlock, always interactive ✔");
 
-  // ---- B. 连续快滑 3 次(动画余韵中接连出手):每次恰好前进一张 ----
+  // ---- B. 连续快速翻页 3 次(动画余韵中接连出手):每次恰好前进一张,标题同步 ----
   await openFirstTile(page);
   assert.match(await previewTitle(page).innerText(), /第五张照片/, "相册倒序:打开第一个 tile 应是最新的第 5 张");
   for (let i = 0; i < 3; i++) {
-    await swipe(page, { fromX: 320, toX: 80, y: 420, steps: 6, stepDelayMs: 8 }); // 快滑
-    await new Promise((r) => setTimeout(r, 160)); // 不等动画走完就准备下一次(复现「动画中再滑」)
-    const probe = await page.evaluate(() => ({
-      title: document.querySelector(".media-preview-topinfo strong")?.textContent,
-      transform: getComputedStyle(document.querySelector(".media-preview-track")).transform,
-    }));
-    console.log(`[B:debug] after swipe ${i + 1}:`, JSON.stringify(probe));
+    await page.locator(".pswp__button--arrow--next").click({ timeout: 2000 });
+    await new Promise((r) => setTimeout(r, 150)); // 不等动画走完就下一次
   }
-  await new Promise((r) => setTimeout(r, 700)); // 等最后一次 settle
+  await new Promise((r) => setTimeout(r, 500));
   const afterFast = await previewTitle(page).innerText();
-  assert.match(afterFast, /第二张照片/, `连续快滑 3 次应恰好前进 3 张(5→2),实际「${afterFast}」(连跳/吞滑会偏离)`);
-  console.log("[B] 3 rapid swipes => exactly +3 pages (no double-page, no swallowed swipe) ✔");
+  assert.match(afterFast, /第二张照片/, `连续翻页 3 次应恰好前进 3 张(5→2),实际「${afterFast}」`);
+  console.log("[B] 3 rapid next => exactly +3 pages, title in sync ✔");
 
-  // ---- C. 短划慢拖应回弹,不翻页 ----
-  await swipe(page, { fromX: 220, toX: 190, y: 420, steps: 5, stepDelayMs: 40 }); // 30px 慢拖
-  await new Promise((r) => setTimeout(r, 600));
-  const afterNudge = await previewTitle(page).innerText();
-  assert.match(afterNudge, /第二张照片/, `短划慢拖应回弹留在第 2 张,实际「${afterNudge}」`);
-  console.log("[C] 30px slow nudge => snap back, no page ✔");
-
-  // ---- D. 反向快滑回到上一张 ----
-  await swipe(page, { fromX: 80, toX: 320, y: 420, steps: 6, stepDelayMs: 8 });
-  await new Promise((r) => setTimeout(r, 700));
+  // ---- D. 反向翻页恰好回到上一张 ----
+  await page.locator(".pswp__button--arrow--prev").click({ timeout: 2000 });
+  await new Promise((r) => setTimeout(r, 500));
   const afterBack = await previewTitle(page).innerText();
-  assert.match(afterBack, /第三张照片/, `反向快滑应回到第 3 张,实际「${afterBack}」`);
-  console.log("[D] reverse swipe => back exactly one page ✔");
+  assert.match(afterBack, /第三张照片/, `反向翻页应回到第 3 张,实际「${afterBack}」`);
+  console.log("[D] prev => back exactly one page ✔");
 
   // ---- E. 收尾:关闭仍可交互 ----
-  await page.locator(".preview-close").click();
-  await page.locator(".media-preview").waitFor({ state: "hidden" });
+  await closePreview(page);
   console.log("[E] final close: interactive ✔");
 
   // ---- F. 慢网络下「瀑布流未渲染好就点开」:绝不卡死(线上卡死复现路径) ----
@@ -204,9 +184,8 @@ try {
   for (let i = 0; i < 6; i++) {
     // 不等任何图片加载完成,立即点开
     await page.locator(".album-photo-thumb").first().click();
-    await page.locator(".media-preview").waitFor({ state: "visible", timeout: 3000 });
-    await page.locator(".preview-close").click({ timeout: 2500 });
-    await page.locator(".media-preview").waitFor({ state: "hidden", timeout: 2500 });
+    await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });
+    await closePreview(page);
   }
   console.log("[F] open-before-masonry-ready x6 under slow network: no deadlock ✔");
 

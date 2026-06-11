@@ -1,0 +1,93 @@
+/* PhotoSwipe 相册集成的自定义 UI(顶栏信息 / 菜单 / 视频) */
+
+.pswp__top-bar {
+  height: auto;
+  min-height: 60px;
+  align-items: flex-start;
+  padding-top: max(6px, env(safe-area-inset-top));
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+}
+
+.pswp-album-info {
+  order: -1;
+  margin-right: auto;
+  padding: 8px 4px 10px 16px;
+  display: grid;
+  gap: 2px;
+  color: #fff;
+  max-width: min(68vw, 420px);
+  pointer-events: none;
+}
+
+.pswp-album-info strong {
+  font-size: 16px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pswp-album-info span {
+  font-size: 12px;
+  opacity: 0.82;
+}
+
+.pswp-album-info small {
+  font-size: 12px;
+  opacity: 0.66;
+}
+
+.pswp__button--album-menu {
+  position: relative;
+}
+
+.pswp-album-popover {
+  position: absolute;
+  top: 48px;
+  right: 6px;
+  min-width: 132px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  background: rgba(28, 32, 31, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.pswp-album-popover button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #f2f5f4;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+.pswp-album-popover button:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pswp-album-popover button.danger {
+  color: #ff8a80;
+}
+
+.pswp-video-wrap {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.pswp-video {
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}

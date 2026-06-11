@@ -219,6 +219,7 @@ import {
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
 import { CachedImg } from "./components/CachedMedia";
 import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwipeMath";
+import { openAlbumPhotoSwipe } from "./albumPhotoSwipe";
 import { reportClientError } from "./errorReporting";
 import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
 import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
@@ -2713,19 +2714,23 @@ function App() {
     }, 260);
   }, [clearPreviewTimers, resetPreviewCarouselTransform]);
 
-  // Album tile tap → fullscreen. 打开动画固定走 FLIP(openPreviewAttachment 的 "opening" 路径):
-  // Chrome 在 View Transition 播放期间会丢弃页面输入,「点开后立刻滑动」整段被吞
-  // (DOM 手势测试实证:VT 窗口内 document 连 pointerdown 都收不到);Android WebView 的
-  // open-VT 一旦挂起更会让整页永久不可交互(线上「卡在过渡态然后卡死」)。FLIP 是纯 CSS
-  // 动画,不阻塞输入。关闭动画保留 VT(无后续手势诉求,且有 800ms 看门狗兜底)。
-  const openAlbumPreview = useCallback(
-    (event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => {
-      if (!attachment.url) return;
-      const origin = previewOriginFromRect(event.currentTarget.getBoundingClientRect());
-      openPreviewAttachment(attachment, item, "opening", origin);
-    },
-    [openPreviewAttachment],
-  );
+  // Album tile tap → 全屏预览,交给 PhotoSwipe(手势物理/开合 morph/缩放均由库承担;
+  // 自研轮播/手势/FLIP 已存档于 tag archive/handcrafted-preview)。
+  const openAlbumPreview = (_event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => {
+    if (!attachment.url) return;
+    void openAlbumPhotoSwipe({
+      items: previewAlbumItemsRef.current,
+      startId: item.id,
+      getThumbEl: (id) => {
+        const safe = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id;
+        return document.querySelector<HTMLElement>(`[data-vt-item="${safe}"] img, [data-vt-item="${safe}"] video`);
+      },
+      formatDate: (entry) => `${formatFullDate(entry.date)} · ${albumCategoryLabel(entry.category)}`,
+      formatRecordedBy: (recordedBy) => (recordedBy ? creatorMetaText(recordedBy) : ""),
+      onEdit: (entry) => editAlbumItem(entry),
+      onDelete: (entry) => { void removeAlbumItem(entry); },
+    });
+  };
 
   const closePreviewAttachment = useCallback(() => {
     clearPreviewTimers();
