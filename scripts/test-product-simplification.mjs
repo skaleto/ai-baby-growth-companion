@@ -56,7 +56,7 @@ assert.doesNotMatch(appSource, /<DailySummaryView\b/, "records today view should
 assert.doesNotMatch(appSource, /接收每日小结提醒|整理今天|重新整理|小宝今日观察/, "UI should not expose today-summary sorting/reminder copy");
 
 const recordsStart = appSource.indexOf('<section className="records-screen');
-const recordsEnd = appSource.indexOf('<section className="album-screen', recordsStart);
+const recordsEnd = appSource.indexOf("<AlbumScreen", recordsStart);
 assert.ok(recordsStart >= 0 && recordsEnd > recordsStart, "records screen block should be findable");
 const recordsBlock = appSource.slice(recordsStart, recordsEnd);
 assert.ok(
@@ -212,7 +212,7 @@ assert.ok(
 );
 
 const ledgerStart = appSource.indexOf("<LedgerView");
-const ledgerEnd = appSource.indexOf("<section className=\"album-screen", ledgerStart);
+const ledgerEnd = appSource.indexOf("<AlbumScreen", ledgerStart);
 assert.ok(ledgerStart >= 0 && ledgerEnd > ledgerStart, "ledger mount block should be findable");
 const ledgerMountBlock = appSource.slice(ledgerStart, ledgerEnd);
 assert.match(ledgerMountBlock, /openLedgerAssistant/, "ledger screen should receive an AI-assisted ledger entry handler");
@@ -221,6 +221,11 @@ const ledgerViewSource = readFileSync("frontend/src/views/LedgerView.tsx", "utf8
 assert.match(ledgerViewSource, /ledger-ai-entry-card/, "ledger view should expose AI-assisted ledger entry card");
 assert.match(ledgerViewSource, /语音记账/, "ledger view should expose voice ledger entry");
 assert.match(ledgerViewSource, /拍照\/上传小票/, "ledger view should expose receipt photo upload entry");
+
+const albumScreenSource = readFileSync("frontend/src/components/AlbumScreen.tsx", "utf8");
+assert.match(albumScreenSource, /<section className="album-screen tab-content-enter" aria-label="相册">/, "album screen section should live in AlbumScreen component");
+assert.match(albumScreenSource, /album-category-row/, "album screen should keep category navigation");
+assert.match(appSource, /<AlbumScreen\b/, "App should mount the extracted AlbumScreen");
 
 const profileStart = appSource.indexOf('<section className="profile-screen');
 const profileEnd = appSource.indexOf('<aside className="right-rail"', profileStart);

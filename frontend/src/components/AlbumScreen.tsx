@@ -5,12 +5,8 @@
 import { memo, type ChangeEvent, type CSSProperties, type RefObject } from "react";
 import { Camera as CameraIcon, Image as ImageIcon, Video } from "lucide-react";
 import type { AlbumItem, Attachment, AlbumItemCategory } from "../types";
-import {
-  ALBUM_CATEGORIES,
-  albumCategoryIconSrc,
-  attachmentListSrc,
-  distributeIntoColumns,
-} from "../albumDomain";
+import { ALBUM_CATEGORIES, attachmentListSrc, distributeIntoColumns } from "../albumDomain";
+import { albumCategoryIconSrc } from "./albumIcons";
 import { AlbumVideoThumbnail } from "./AlbumVideoThumbnail";
 import { CachedImg } from "./CachedMedia";
 import { prefetchAlbumVideo } from "./albumVideoPlayback";
