@@ -43,6 +43,32 @@ const albumItems = ["第一张照片", "第二张照片", "第三张照片", "�
   recordedBy: { label: "妈妈", roleName: "妈妈" },
 }));
 
+// 无尺寸的横版老照片(SVG 1600x800):用于断言「不会被错当正方形显示」。
+albumItems.push({
+  id: "gesture-album-wide",
+  kind: "media",
+  title: "横图无尺寸",
+  date: "2026-05-30",
+  occurredAt: "2026-05-30T08:00:00.000Z",
+  category: "daily",
+  tags: [],
+  attachmentId: "gesture-att-wide",
+  attachment: {
+    id: "gesture-att-wide",
+    name: "wide.svg",
+    kind: "image",
+    url: "/api/uploads/gesture-att-wide",
+    mimeType: "image/svg+xml",
+    createdAt: "2026-05-30T08:00:00.000Z",
+  },
+  source: "manual",
+  recordedBy: { label: "妈妈", roleName: "妈妈" },
+});
+
+const WIDE_SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800"><rect width="1600" height="800" fill="#3a7"/></svg>',
+);
+
 const appState = {
   profile: { nickname: "小宝", birthDate: "2026-02-01", caregivers: ["妈妈"] },
   messages: [], growthEvents: [], growthMeasurements: [], careLogs: [],
@@ -91,6 +117,9 @@ async function installMocks(page) {
     if (url.pathname.startsWith("/api/uploads/")) {
       uploadHits += 1;
       if (uploadDelayMs) await new Promise((r) => setTimeout(r, uploadDelayMs));
+      if (url.pathname.includes("gesture-att-wide")) {
+        return route.fulfill({ status: 200, headers: { ...headers, "content-type": "image/svg+xml" }, body: WIDE_SVG });
+      }
       return route.fulfill({ status: 200, headers: { ...headers, "content-type": "image/png" }, body: PNG_BYTES });
     }
     if (url.pathname === "/api/auth/me") {
@@ -175,6 +204,17 @@ try {
   // ---- E. 收尾:关闭仍可交互 ----
   await closePreview(page);
   console.log("[E] final close: interactive ✔");
+
+  // ---- H. 无尺寸老照片:显示比例必须跟随真实图(1600x800 ≈ 2:1),不得变正方形 ----
+  await page.locator(".album-photo-thumb").last().click();
+  await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });
+  await new Promise((r) => setTimeout(r, 900)); // 等 loadComplete 尺寸精修
+  const box = await page.locator(".pswp__item:not([aria-hidden='true']) .pswp__img").first().boundingBox();
+  assert.ok(box, "横图的 .pswp__img 应可见");
+  const displayRatio = box.width / box.height;
+  assert.ok(displayRatio > 1.6, `无尺寸横图显示比例应≈2:1,实际 ${displayRatio.toFixed(2)}(≈1 即被错当正方形)`);
+  console.log(`[H] dimension-less wide photo renders at true ratio (${displayRatio.toFixed(2)}) ✔`);
+  await closePreview(page);
 
   // ---- F. 慢网络下「瀑布流未渲染好就点开」:绝不卡死(线上卡死复现路径) ----
   setUploadDelay(700);

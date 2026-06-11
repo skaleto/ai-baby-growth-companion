@@ -34,9 +34,11 @@ export type OpenAlbumPhotoSwipeOptions = {
   onDelete?: (item: AlbumItem) => void;
   formatDate?: (item: AlbumItem) => string;
   formatRecordedBy?: (recordedBy?: RecordedBy) => string;
+  /** 网格实测的宽高比(w/h),用于没有 width/height 的老附件——打开即正确比例,不再闪正方形。 */
+  getAspectRatio?: (item: AlbumItem) => number;
 };
 
-const FALLBACK_SIZE = { width: 1440, height: 1440 };
+const FALLBACK_WIDTH = 1600;
 
 async function localOrRemote(url?: string | null): Promise<string | undefined> {
   if (!url) return undefined;
@@ -46,8 +48,14 @@ async function localOrRemote(url?: string | null): Promise<string | undefined> {
 
 async function buildSlideData(item: AlbumItem, opts: OpenAlbumPhotoSwipeOptions): Promise<PswpAlbumData> {
   const attachment = item.attachment as Attachment;
-  const width = attachment.width && attachment.width > 0 ? attachment.width : FALLBACK_SIZE.width;
-  const height = attachment.height && attachment.height > 0 ? attachment.height : FALLBACK_SIZE.height;
+  let width = attachment.width && attachment.width > 0 ? attachment.width : 0;
+  let height = attachment.height && attachment.height > 0 ? attachment.height : 0;
+  if (!width || !height) {
+    // 老附件无尺寸:用网格实测比例推一个等比框(真实尺寸由 loadComplete 再精修)。
+    const ratio = opts.getAspectRatio?.(item) || 4 / 3;
+    width = FALLBACK_WIDTH;
+    height = Math.max(1, Math.round(FALLBACK_WIDTH / ratio));
+  }
   const thumb = await localOrRemote(attachment.thumbnailUrl);
   if (attachment.kind === "video") {
     const videoUrl = await localOrRemote(attachment.url);
@@ -69,8 +77,6 @@ async function buildSlideData(item: AlbumItem, opts: OpenAlbumPhotoSwipeOptions)
 }
 
 function buildVideoElement(data: PswpAlbumData): HTMLElement {
-  const wrap = document.createElement("div");
-  wrap.className = "pswp-video-wrap";
   const video = document.createElement("video");
   video.className = "pswp-video";
   if (data.videoUrl) video.src = data.videoUrl;
@@ -92,8 +98,7 @@ function buildVideoElement(data: PswpAlbumData): HTMLElement {
       void captureVideoPosterToCache(video, data.remoteVideoUrl);
     }
   });
-  wrap.appendChild(video);
-  return wrap;
+  return video;
 }
 
 function pauseVideosExcept(root: HTMLElement | null, current?: HTMLElement | null) {
@@ -115,13 +120,12 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
     dataSource,
     pswpModule: () => import("photoswipe"),
     showHideAnimationType: "zoom",
-    bgOpacity: 0.92,
+    bgOpacity: 1,
     wheelToZoom: true,
     arrowPrev: true,
     arrowNext: true,
     zoom: false,
     counter: true,
-    padding: { top: 64, bottom: 32, left: 0, right: 0 },
     errorMsg: "这张媒体加载失败了,稍后再试。",
   });
 
@@ -153,8 +157,8 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
       if (off > 4) {
         data.width = el.naturalWidth;
         data.height = el.naturalHeight;
-        const instance = e.content.instance as unknown as { refreshSlideContent?: (index: number) => void };
-        instance?.refreshSlideContent?.(e.content.index);
+        const slide = (e.content as unknown as { slide?: { updateContentSize: (force?: boolean) => void } }).slide;
+        slide?.updateContentSize(true);
       }
     }
   });

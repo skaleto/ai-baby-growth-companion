@@ -2726,6 +2726,7 @@ function App() {
         return document.querySelector<HTMLElement>(`[data-vt-item="${safe}"] img, [data-vt-item="${safe}"] video`);
       },
       formatDate: (entry) => `${formatFullDate(entry.date)} · ${albumCategoryLabel(entry.category)}`,
+      getAspectRatio: (entry) => albumTileAspect(entry),
       formatRecordedBy: (recordedBy) => (recordedBy ? creatorMetaText(recordedBy) : ""),
       onEdit: (entry) => editAlbumItem(entry),
       onDelete: (entry) => { void removeAlbumItem(entry); },
