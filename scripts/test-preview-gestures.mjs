@@ -65,6 +65,27 @@ albumItems.push({
   recordedBy: { label: "妈妈", roleName: "妈妈" },
 });
 
+albumItems.push({
+  id: "gesture-album-video",
+  kind: "media",
+  title: "测试视频",
+  date: "2026-05-31",
+  occurredAt: "2026-05-31T08:00:00.000Z",
+  category: "daily",
+  tags: [],
+  attachmentId: "gesture-att-video",
+  attachment: {
+    id: "gesture-att-video",
+    name: "clip.mp4",
+    kind: "video",
+    url: "/api/uploads/gesture-att-video",
+    mimeType: "video/mp4",
+    createdAt: "2026-05-31T08:00:00.000Z",
+  },
+  source: "manual",
+  recordedBy: { label: "妈妈", roleName: "妈妈" },
+});
+
 const WIDE_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800"><rect width="1600" height="800" fill="#3a7"/></svg>',
 );
@@ -101,8 +122,10 @@ async function waitFor(url, timeoutMs = 20000) {
 
 let uploadDelayMs = 0;
 let uploadHits = 0;
+const uploadHitsByPath = new Map();
 const setUploadDelay = (ms) => { uploadDelayMs = ms; };
 const getUploadHits = () => uploadHits;
+const snapshotHits = () => new Map(uploadHitsByPath);
 
 async function installMocks(page) {
   await page.addInitScript(() => {
@@ -116,9 +139,13 @@ async function installMocks(page) {
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers, body: "" });
     if (url.pathname.startsWith("/api/uploads/")) {
       uploadHits += 1;
+      uploadHitsByPath.set(url.pathname, (uploadHitsByPath.get(url.pathname) || 0) + 1);
       if (uploadDelayMs) await new Promise((r) => setTimeout(r, uploadDelayMs));
       if (url.pathname.includes("gesture-att-wide")) {
         return route.fulfill({ status: 200, headers: { ...headers, "content-type": "image/svg+xml" }, body: WIDE_SVG });
+      }
+      if (url.pathname.includes("gesture-att-video")) {
+        return route.fulfill({ status: 200, headers: { ...headers, "content-type": "video/mp4" }, body: "" });
       }
       return route.fulfill({ status: 200, headers: { ...headers, "content-type": "image/png" }, body: PNG_BYTES });
     }
@@ -206,7 +233,7 @@ try {
   console.log("[E] final close: interactive ✔");
 
   // ---- H. 无尺寸老照片:显示比例必须跟随真实图(1600x800 ≈ 2:1),不得变正方形 ----
-  await page.locator(".album-photo-thumb").last().click();
+  await page.getByRole("button", { name: "预览 横图无尺寸" }).click();
   await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });
   await new Promise((r) => setTimeout(r, 900)); // 等 loadComplete 尺寸精修
   const box = await page.locator(".pswp__item:not([aria-hidden='true']) .pswp__img").first().boundingBox();
@@ -214,6 +241,17 @@ try {
   const displayRatio = box.width / box.height;
   assert.ok(displayRatio > 1.6, `无尺寸横图显示比例应≈2:1,实际 ${displayRatio.toFixed(2)}(≈1 即被错当正方形)`);
   console.log(`[H] dimension-less wide photo renders at true ratio (${displayRatio.toFixed(2)}) ✔`);
+  await closePreview(page);
+
+  // ---- I. 视频 slide:占位层必须撤掉(黑屏回归)、video 元素就位且铺开 ----
+  await page.getByRole("button", { name: "预览 测试视频" }).click();
+  await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });
+  await page.locator(".pswp__item:not([aria-hidden='true']) video.pswp-video").waitFor({ state: "visible", timeout: 3000 });
+  const vbox = await page.locator(".pswp__item:not([aria-hidden='true']) video.pswp-video").boundingBox();
+  assert.ok(vbox && vbox.width >= 300, `视频应铺满宽度(≥300px),实际 ${vbox?.width}`);
+  const placeholders = await page.locator(".pswp__item:not([aria-hidden='true']) .pswp__img--placeholder").count();
+  assert.equal(placeholders, 0, "视频 slide 的占位层必须被移除(否则盖住视频=黑屏)");
+  console.log("[I] video slide: placeholder removed, video element laid out ✔");
   await closePreview(page);
 
   // ---- F. 慢网络下「瀑布流未渲染好就点开」:绝不卡死(线上卡死复现路径) ----
@@ -235,14 +273,19 @@ try {
   await page.getByRole("button", { name: "相册" }).last().click();
   await page.locator(".album-photo-thumb").first().waitFor({ state: "visible", timeout: 6000 });
   await new Promise((r) => setTimeout(r, 1800)); // 等全网格图加载并后台落库(IndexedDB)
-  const hitsBeforeReload = getUploadHits();
+  const hitsSnapshot = snapshotHits();
   await page.reload({ waitUntil: "domcontentloaded" }); // ≈ 杀进程重进(IndexedDB 持久,内存清空)
   await page.getByRole("button", { name: "相册" }).last().click();
   await page.locator(".album-photo-thumb").first().waitFor({ state: "visible", timeout: 6000 });
   await new Promise((r) => setTimeout(r, 2000)); // 网格渲染 + IDB 命中窗口
-  const reloadDelta = getUploadHits() - hitsBeforeReload;
-  assert.equal(reloadDelta, 0, `重进后已缓存的图不应发任何网络请求,实际新增 ${reloadDelta} 个 /api/uploads 请求`);
-  console.log("[G] after reload, previously viewed images load with ZERO network requests ✔");
+  const imageDeltas = [];
+  for (const [path, count] of uploadHitsByPath) {
+    const delta = count - (hitsSnapshot.get(path) || 0);
+    // 视频流按设计不预缓存(播放≥3s 才落库),网格 <video> 重新拉流是预期行为,豁免。
+    if (delta > 0 && !path.includes("video")) imageDeltas.push(`${path} +${delta}`);
+  }
+  assert.equal(imageDeltas.length, 0, `重进后已缓存的图片不应发网络请求,实际:${imageDeltas.join(", ")}`);
+  console.log("[G] after reload, previously viewed IMAGES load with ZERO network requests (video stream exempt by design) ✔");
 
   console.log("preview gesture DOM simulation tests passed");
 } finally {

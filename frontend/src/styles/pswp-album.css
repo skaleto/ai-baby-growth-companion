@@ -8,6 +8,21 @@
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
 }
 
+.pswp__button--close {
+  order: -2;
+  margin-left: max(4px, env(safe-area-inset-left));
+}
+
+.pswp__counter {
+  order: 5;
+  margin-right: 4px;
+}
+
+.pswp__button--album-menu {
+  order: 10;
+  margin-right: max(4px, env(safe-area-inset-right));
+}
+
 .pswp-album-info {
   order: -1;
   margin-right: auto;
@@ -77,10 +92,11 @@
 }
 
 .pswp-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  /* 尺寸完全交给 PhotoSwipe 的内联 width/height;解除 App 全局 video reset 的钳制
+     (max-width:100% 相对宽 0 的 zoom-wrap 会把视频钳成 0 宽 → 黑屏)。 */
+  max-width: none;
+  max-height: none;
+  display: block;
   object-fit: contain;
   background: #000;
 }

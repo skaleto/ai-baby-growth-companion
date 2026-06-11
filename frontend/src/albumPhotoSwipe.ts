@@ -145,6 +145,24 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
     if (data.isVideo) {
       e.preventDefault();
       e.content.element = buildVideoElement(data) as unknown as HTMLDivElement;
+      // 自定义内容必须显式标记加载完成,否则 placeholder 占位层一直盖在视频上(黑屏)。
+      (e.content as unknown as { onLoaded: () => void }).onLoaded();
+    }
+  });
+
+  // autoplay 属性对动态插入的 <video> 不可靠:激活时主动播,离开时暂停。
+  lightbox.on("contentActivate", (e) => {
+    const data = e.content.data as PswpAlbumData;
+    if (data.isVideo) {
+      const video = e.content.element instanceof HTMLVideoElement ? e.content.element : e.content.element?.querySelector?.("video");
+      void (video as HTMLVideoElement | null)?.play?.()?.catch?.(() => undefined);
+    }
+  });
+  lightbox.on("contentDeactivate", (e) => {
+    const data = e.content.data as PswpAlbumData;
+    if (data.isVideo) {
+      const video = e.content.element instanceof HTMLVideoElement ? e.content.element : e.content.element?.querySelector?.("video");
+      try { (video as HTMLVideoElement | null)?.pause?.(); } catch { /* 元素可能已分离 */ }
     }
   });
 
