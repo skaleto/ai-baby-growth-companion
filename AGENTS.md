@@ -31,6 +31,7 @@ If the baseline gate fails, fix the baseline first or clearly record the blocker
 ## Project Rules
 
 - This is a mobile-first React + Capacitor app with a Java/Spring backend.
+- **改动相册/全屏预览/全局 CSS/性能相关代码前,必读 `docs/architecture/tech-debt.md`**:其中「不变量」一节每条都对应一次线上事故(违反即 gesture 测试红);「已修复存档」避免重复排查;「债项清单」是当前还债路线图。平台决策(不上 RN、不原生化相册)及复议条件也记录在该文档。
 - Preserve user or prior-agent changes. Never revert unrelated work to make your diff cleaner.
 - One active feature at a time. Do not widen scope unless it removes a direct blocker.
 - Major product iterations should leave a concise markdown plan or record under `docs/`.
