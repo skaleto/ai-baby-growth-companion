@@ -1,7 +1,7 @@
 import { Video } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
-import { registerAlbumVideo } from "./albumVideoPlayback";
+import { observeNearViewport, registerAlbumVideo } from "./albumVideoPlayback";
 import { useCachedMediaSrc, useVideoPoster } from "./CachedMedia";
 import { captureVideoPosterToCache } from "../mediaCache";
 
@@ -31,16 +31,42 @@ export function AlbumVideoThumbnail({
   // play() is called but before the first frame decodes (preload="metadata" did
   // not buffer frames), leaving a brief blank/white flash.
   const [framesReady, setFramesReady] = useState(false);
+  // 接近视口才挂真正的 <video>:N 个视频同时初始化解码器/拉元数据是相册打开卡顿的大头。
+  // 远处 tile 只渲染海报(或占位),进入视口前 320px 才换 <video>;挂上后保持,避免来回churn。
+  const [nearViewport, setNearViewport] = useState(false);
+  const placeholderRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (nearViewport) return;
+    const el = placeholderRef.current;
+    if (!el) return;
+    return observeNearViewport(el, () => setNearViewport(true));
+  }, [nearViewport]);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !canAutoplay) return;
+    if (!video || !canAutoplay || !nearViewport) return;
     // Shared controller plays only the most-centered video (caps concurrent decodes to 1).
     return registerAlbumVideo(video);
-  }, [canAutoplay]);
+  }, [canAutoplay, nearViewport]);
 
   if (!attachment.url) {
     return <Video size={24} />;
+  }
+
+  if (!nearViewport) {
+    return poster ? (
+      <img
+        ref={(el) => { placeholderRef.current = el; }}
+        className="album-video-poster"
+        src={poster}
+        alt={title}
+        loading="lazy"
+        decoding="async"
+      />
+    ) : (
+      <span ref={(el) => { placeholderRef.current = el; }} className="album-video-poster" aria-label={title} />
+    );
   }
 
   return (

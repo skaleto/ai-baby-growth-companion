@@ -111,6 +111,40 @@ export const prefetchAlbumVideo = (url: string | undefined | null): void => {
   }, 8000);
 };
 
+// 「接近视口才挂 <video>」的共享观察器:N 个视频 tile 同时初始化解码器/拉元数据是
+// 相册打开卡顿与冷启动开销的大头;离屏 tile 只渲染海报,进入视口前 320px 才换真视频。
+let nearObserver: IntersectionObserver | null = null;
+const nearCallbacks = new Map<Element, () => void>();
+
+export const observeNearViewport = (el: Element, onNear: () => void): (() => void) => {
+  if (typeof IntersectionObserver === "undefined") {
+    onNear();
+    return () => {};
+  }
+  if (!nearObserver) {
+    nearObserver = new IntersectionObserver(
+      (records) => {
+        for (const record of records) {
+          if (!record.isIntersecting) continue;
+          const callback = nearCallbacks.get(record.target);
+          if (callback) {
+            nearCallbacks.delete(record.target);
+            nearObserver?.unobserve(record.target);
+            callback();
+          }
+        }
+      },
+      { rootMargin: "320px 0px" },
+    );
+  }
+  nearCallbacks.set(el, onNear);
+  nearObserver.observe(el);
+  return () => {
+    nearCallbacks.delete(el);
+    nearObserver?.unobserve(el);
+  };
+};
+
 /** Register an album tile <video>; only the most-centered visible one plays. Returns an unregister fn. */
 export const registerAlbumVideo = (el: HTMLVideoElement): (() => void) => {
   ensureGlobals();

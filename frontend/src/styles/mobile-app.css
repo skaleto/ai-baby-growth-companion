@@ -5824,3 +5824,9 @@ body.keyboard-open .expense-optional-fields {
   color: #2f5e4d;
   font-variant-numeric: tabular-nums;
 }
+
+/* 性能:离屏 tile 跳过 layout/paint(尺寸由 aspect-ratio 提供,估高仅用于极远处占位)。 */
+.album-photo-tile {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
+}

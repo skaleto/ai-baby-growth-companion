@@ -2300,6 +2300,9 @@ function App() {
   const onboardingFamilyNameTouchedRef = useRef(false);
   const [onboardingAllergiesText, setOnboardingAllergiesText] = useState("暂未发现");
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("records");
+  // 性能:没访问过的 Tab 不渲染(冷启动只渲染首 Tab;访问过后保持挂载,行为与从前一致)。
+  const visitedMobileTabsRef = useRef<Set<MobileTab>>(new Set());
+  visitedMobileTabsRef.current.add(activeMobileTab);
   const [recordView, setRecordView] = useState<RecordView>("today");
   const [recordsEntryDrawer, setRecordsEntryDrawer] = useState<RecordsEntryDrawer>(null);
   const [recordsEntryDrawerClosing, setRecordsEntryDrawerClosing] = useState(false);
@@ -2337,7 +2340,6 @@ function App() {
   const [previewMotion, setPreviewMotion] = useState<PreviewMotion>("idle");
   const [previewOriginRect, setPreviewOriginRect] = useState<PreviewOriginRect | null>(null);
   const [previewActionsOpen, setPreviewActionsOpen] = useState(false);
-  const [albumAnimationSeed, setAlbumAnimationSeed] = useState(0);
   const [previewTransform, setPreviewTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [runtimeVersion, setRuntimeVersion] = useState<RuntimeVersionInfo>(() => ({
     otaVersion: BUILD_OTA_VERSION || "内置包",
@@ -2536,9 +2538,6 @@ function App() {
     ? loginCredentialsReady
     : Boolean(loginCredentialsReady && loginRoleName && loginCaregiver !== null && !loginSelectedRoleOccupied);
   const switchMobileTab = (tab: MobileTab) => {
-    if (tab === "album" && activeMobileTab !== "album") {
-      setAlbumAnimationSeed((seed) => seed + 1);
-    }
     setRecordsAssistantOpen(false);
     if (tab !== "profile") {
       setReminderManagementOpen(false);
@@ -3152,11 +3151,30 @@ function App() {
     [filteredAlbumItems],
   );
   const [albumRatioOverrides, setAlbumRatioOverrides] = useState<Record<string, number>>({});
+  // 合批:相册首次加载时几十张老照片密集 onLoad,逐张 setState 会逐张重渲染整棵树。
+  // 缓冲 160ms 一次性合并提交,几十次渲染收敛为 1~2 次。
+  const pendingAlbumRatiosRef = useRef<Record<string, number>>({});
+  const albumRatioFlushTimerRef = useRef<number | null>(null);
   const recordAlbumRatio = useCallback((attachmentId: string, ratio: number) => {
     if (!attachmentId || !Number.isFinite(ratio) || ratio <= 0) return;
-    setAlbumRatioOverrides((current) =>
-      current[attachmentId] ? current : { ...current, [attachmentId]: ratio },
-    );
+    pendingAlbumRatiosRef.current[attachmentId] = ratio;
+    if (albumRatioFlushTimerRef.current !== null) return;
+    albumRatioFlushTimerRef.current = window.setTimeout(() => {
+      albumRatioFlushTimerRef.current = null;
+      const pending = pendingAlbumRatiosRef.current;
+      pendingAlbumRatiosRef.current = {};
+      setAlbumRatioOverrides((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const [id, value] of Object.entries(pending)) {
+          if (!next[id]) {
+            next[id] = value;
+            changed = true;
+          }
+        }
+        return changed ? next : current;
+      });
+    }, 160);
   }, []);
   const albumTileAspect = useCallback(
     (item: AlbumItem) => {
@@ -8503,6 +8521,7 @@ function App() {
           )}
         </section>
 
+        {visitedMobileTabsRef.current.has("ledger") ? (
         <LedgerView
           babyNickname={babyNickname}
           canCaregive={canCaregive}
@@ -8527,8 +8546,9 @@ function App() {
           requestBulkDeleteExpenses={requestBulkDeleteExpenses}
           openPreviewAttachment={openPreviewAttachment}
         />
+        ) : null}
 
-
+        {visitedMobileTabsRef.current.has("album") ? (
         <section className="album-screen tab-content-enter" aria-label="相册">
           <div className="screen-head">
             <div>
@@ -8611,7 +8631,7 @@ function App() {
           ) : null}
 
           {albumGroups.length ? (
-            <div className="album-timeline" key={`album-timeline-${albumAnimationSeed}-${albumCategory}`}>
+            <div className="album-timeline">
               {albumGroups.map((group, groupIndex) => (
                 <section className="album-month-group" key={group.key}>
                   <div className="album-month-head">
@@ -8700,7 +8720,10 @@ function App() {
             </div>
           )}
         </section>
+        ) : null}
 
+        {visitedMobileTabsRef.current.has("profile") ? (
+        <>
         <section className="reminders-screen tab-content-enter" aria-label="提醒">
           <div className="screen-head">
             <div className="screen-heading-with-icon">
@@ -9479,6 +9502,8 @@ function App() {
           )}
           </>
         </section>
+        </>
+        ) : null}
 
         <aside className="right-rail">
           <section className="insight-panel">
