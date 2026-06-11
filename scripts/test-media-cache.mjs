@@ -19,7 +19,7 @@ try {
     platform: "neutral",
     outfile: bundlePath,
   });
-  const { stableMediaKey, planEviction } = await import(pathToFileURL(bundlePath).href);
+  const { stableMediaKey, planEviction, planObjectUrlEviction } = await import(pathToFileURL(bundlePath).href);
 
   // ---- stableMediaKey:签名轮换必须映射到同一个键 ----
   const signedA =
@@ -56,6 +56,33 @@ try {
   assert.deepEqual(planEviction(entries, 150), ["old", "mid"], "持续淘汰直到达标");
   assert.deepEqual(planEviction(entries, 0), ["old", "mid", "new"], "上限 0 全部淘汰");
   assert.deepEqual(planEviction([], 100), [], "空集合无淘汰");
+
+  // ---- planObjectUrlEviction(D4):objectURL 映射超上限时,只挑「不在 DOM 且已静置」的最旧条目 ----
+  const now = 100_000;
+  const idle = 30_000;
+  const usage = [
+    { key: "a-oldest-free", lastUsed: 1_000, inDom: false },
+    { key: "b-old-in-dom", lastUsed: 2_000, inDom: true },
+    { key: "c-old-free", lastUsed: 3_000, inDom: false },
+    { key: "d-fresh-free", lastUsed: now - 1_000, inDom: false },
+  ];
+  assert.deepEqual(planObjectUrlEviction(usage, 4, now, idle), [], "未超上限不释放");
+  assert.deepEqual(
+    planObjectUrlEviction(usage, 3, now, idle),
+    ["a-oldest-free"],
+    "超 1 条:释放最旧的非 DOM 条目",
+  );
+  assert.deepEqual(
+    planObjectUrlEviction(usage, 2, now, idle),
+    ["a-oldest-free", "c-old-free"],
+    "在 DOM 中的条目绝不释放(跳过 b)",
+  );
+  assert.deepEqual(
+    planObjectUrlEviction(usage, 0, now, idle),
+    ["a-oldest-free", "c-old-free"],
+    "静置不足保护期的条目绝不释放(跳过 d),宁可暂时超额",
+  );
+  assert.deepEqual(planObjectUrlEviction([], 0, now, idle), [], "空映射无动作");
 
   console.log("media cache key + LRU eviction tests passed");
 } finally {

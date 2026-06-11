@@ -30,6 +30,27 @@
   opacity: 1;
 }
 
+/* D5 后全局 button reset 不再进入 .pswp,按「在第三方容器上显式声明」的规则补回点按反馈。 */
+.pswp__button--album-close,
+.pswp__button--album-menu,
+.pswp-album-popover button {
+  cursor: pointer;
+  transition: transform 100ms ease-out;
+}
+
+.pswp__button--album-close:active,
+.pswp__button--album-menu:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pswp__button--album-close,
+  .pswp__button--album-menu,
+  .pswp-album-popover button {
+    transition: none !important;
+  }
+}
+
 .pswp__button--album-close {
   order: -2;
   margin-left: max(10px, env(safe-area-inset-left));

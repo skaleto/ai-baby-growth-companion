@@ -11,12 +11,12 @@ assert.match(appSource, /voice-recording-active/, "app shell should enter a reco
 assert.match(appSource, /voice-recording-hidden/, "composer controls should be visually hidden while recording");
 assert.match(
   appSource,
-  /voiceRecordingActive\s*\?\s*createPortal\([\s\S]*?className=\{`voice-recording-panel \$\{voiceCancelArmed \? "canceling" : ""\}`\.trim\(\)\}[\s\S]*?document\.body/,
+  /voiceRecordingActive\s*\?\s*createPortal\([\s\S]*?className=\{`voice-recording-panel app-portal \$\{voiceCancelArmed \? "canceling" : ""\}`\.trim\(\)\}[\s\S]*?document\.body/,
   "voice recording panel should portal to body so it can sit above body-level Records drawers",
 );
 assert.match(
   appSource,
-  /voice-recording-panel \$\{voiceCancelArmed \? "canceling" : ""\}/,
+  /voice-recording-panel app-portal \$\{voiceCancelArmed \? "canceling" : ""\}/,
   "voice recording panel should have a canceling state",
 );
 assert.match(appSource, /松手发送，上移取消/, "normal voice panel should explain release-to-send and move-up-to-cancel");

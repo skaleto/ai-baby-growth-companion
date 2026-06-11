@@ -1,6 +1,6 @@
 # 架构债登记册(Tech Debt Register)
 
-> 更新:2026-06-12(P0 完成,见 docs/verification/perf-p0-report-2026-06-12.md)· 来源:2026-06-10 ~ 06-12 排障复盘
+> 更新:2026-06-12(P1/P2 批次完成:D3/D4/D5/D8,见 docs/verification/perf-p1p2-report-2026-06-12.md;此前 P0 见 perf-p0-report-2026-06-12.md)· 来源:2026-06-10 ~ 06-12 排障复盘
 > 读者:后续在本仓库工作的所有 agent 与开发者
 > 用法:**动手前先查本文**——「不变量」一节是红线,「已修复存档」避免重复排查,「债项清单」按优先级取活。行号会漂移,定位一律用文中的 grep 锚点。
 
@@ -12,12 +12,12 @@
 |---|------|--------|--------|------|
 | D1 | App.tsx 单体组件(~9800 行 / 98 useState / 全 Tab 一棵树) | 全局性能、可维护性 | **P0** | **阶段一完成**(AlbumScreen 已拆,守卫测试 [M];余 Records/Profile,见报告) |
 | D2 | ~~服务端缩略图缺失~~ 实为:app/state 读放大 + 视频封面缺失 | 状态接口延迟、相册 | **P0** | **完成**(2026-06-12,见报告;原"图片缺缩略图"前提经生产实查证伪) |
-| D3 | 长列表无 DOM 虚拟化(相册/聊天/照护记录) | 滚动性能、内存 | P1 | 仅做了 content-visibility |
-| D4 | 媒体 objectURL 会话内永不释放 + 网格首挂 IDB 事务风暴 | 内存、相册首开 | P1 | 未开工 |
-| D5 | 全局裸元素 CSS reset 渗透第三方组件 | 任何引入第三方 UI 的场景 | P1 | 已两次踩坑,未系统审计 |
-| D6 | 服务端状态与 UI 状态混杂(无分层) | 可维护性 | P1 | 随 D1 一起还 |
-| D7 | 共享 SQLite(主服务 + admin 同库) | 规模化 | P2 | WAL+busy_timeout 已配,带触发条件 |
-| D8 | 测试盲区:DOM 级测试只覆盖相册预览 | 回归风险 | P2 | gesture 套件 [A]-[L] 已建 |
+| D3 | 长列表无 DOM 虚拟化(相册/聊天/照护记录) | 滚动性能、内存 | P1 | **相册完成**(2026-06-12,tile 视口窗口化;聊天/记录列表待 D1 拆 RecordsScreen 后做) |
+| D4 | 媒体 objectURL 会话内永不释放 + 网格首挂 IDB 事务风暴 | 内存、相册首开 | P1 | **完成**(2026-06-12,LRU 释放 + 单事务批量预查) |
+| D5 | 全局裸元素 CSS reset 渗透第三方组件 | 任何引入第三方 UI 的场景 | P1 | **完成**(2026-06-12,审计归零,资产规则见 D5 详情) |
+| D6 | 服务端状态与 UI 状态混杂(无分层) | 可维护性 | P1 | 随 D1 一起还(D1 剩余 Records/Profile 拆分时同步抽 hooks,本批未动) |
+| D7 | 共享 SQLite(主服务 + admin 同库) | 规模化 | P2 | WAL+busy_timeout 已配,带触发条件(2026-06-12 复核:触发条件均未满足,不动) |
+| D8 | 测试盲区:DOM 级测试只覆盖相册预览 | 回归风险 | P2 | **完成**(2026-06-12,核心三链路齐:聊天[N]/记录[O]/相册 gesture 套件) |
 | D9 | OSS 签名 URL 轮换 vs 一切缓存层 | 缓存正确性 | 设计约束 | 已解,须遵守 |
 
 **平台决策(2026-06-12,与用户对齐)**:不上 React Native、不做原生相册。所有已知卡顿均为应用层架构问题(见 §3),换平台不解决。复议条件:打完 D2+D3 后,千元安卓机相册滚动仍 <55fps 或冷启动仍 >2s,才考虑「仅原生化全屏查看器」(绝不原生化网格——滚动同步/双缓存/失去 OTA,代价最高收益最低)。
@@ -49,22 +49,20 @@
   2. **视频封面自愈**:`POST /api/uploads/{id}/poster`(幂等/仅看护人/不覆盖),客户端播无封面视频抽帧回传(`grep -n setVideoPosterUploader frontend/src/mediaCache.ts`,实现在 posterUpload.ts)。8 个存量缺封面视频随浏览自动痊愈。
 - **附带规则**:被 esbuild 逻辑测试打包的模块(albumDomain/mediaCache 等)不得引入资产文件或 `import.meta.env` 依赖——需要时用注入(参见 posterUpload.ts / components/albumIcons.ts)。
 
-### D3【P1】长列表无 DOM 虚拟化
+### D3【P1,相册已完成 2026-06-12】长列表无 DOM 虚拟化
 
-- **现状**:相册瀑布流、聊天消息列表、照护记录列表都是全量 DOM。已加 `content-visibility: auto`(`grep -n content-visibility frontend/src/styles/mobile-app.css`)只跳过离屏 paint/layout,**DOM 节点与 React 协调成本还在**。
-- **方案**:相册优先。自研窗口化(masonry 列高已知,`distributeIntoColumns` + `albumTileAspect` 可直接算每 tile 位置)或引 `@tanstack/react-virtual`。聊天列表次之(倒序 + 锚定底部,注意键盘弹起场景)。
-- **验收**:500 张相册,挂载的 tile DOM 数 ≤ 可视区 ±2 屏;千元安卓滚动 ≥55fps。
-- **前置**:依赖 D1 把 AlbumScreen 拆出来再做,否则改动面积失控。
+- **已落地(相册)**:tile 视口窗口化(`grep -n AlbumPhotoTile frontend/src/components/AlbumScreen.tsx`):tile 壳(article+button)常驻保布局/点击目标,媒体子树进滚动容器 ±150%(约两屏)才挂、离开即卸(`grep -n observeViewportWindow frontend/src/components/albumVideoPlayback.ts`);首组每列前 8 个 tile 首帧即挂(首屏不等观察器)。600 项数据集实测:首开挂载媒体元素 600 → 26,滚动 8 屏后稳定在 ~52(见 perf-p1p2 报告)。
+- **排查沉淀(重要)**:IntersectionObserver `root: null`(视口)时,目标会先被**内层 overflow 滚动容器裁剪**,`rootMargin` 形同虚设——相册的滚动容器是 `.album-screen` 而非视口,余量从未生效(视频近视口挂载的 320px 同样)。现按「目标最近可滚动祖先」解析 root、按 root 建观察器。**今后任何基于 IO 的预挂载都必须传对 root。**
+- **剩余**:聊天消息列表、照护记录列表仍全量 DOM,依赖 D1 拆出 RecordsScreen 后再做(倒序 + 锚定底部,注意键盘弹起场景)。
+- **验收(相册部分,已达)**:挂载媒体元素数 ≤ 可视区 ±2 屏;gesture 套件 + 冒烟全绿。千元安卓 ≥55fps 待真机复核。
 
-### D4【P1】媒体内存生命周期 + IDB 事务风暴
+### D4【P1,已完成 2026-06-12】媒体内存生命周期 + IDB 事务风暴
 
-- **现状**:
-  - `mediaCache.ts` 的内存映射(`getMemoizedLocalUrl`)中的 objectURL **整个会话不 revoke**,大相册长会话内存只增不减;
-  - 网格首挂时每个 tile 各自发起 `getLocalMediaUrl`(50ms 限时赛跑,`grep -n "50" frontend/src/components/CachedMedia.tsx`),几百 tile = 几百个并发 IDB 事务。
-- **方案**:
-  - objectURL 引用计数或 LRU 上限(如内存映射 >200 条时 revoke 最旧且当前不在 DOM 的);
-  - 网格首挂改批量预查:一次 IDB `getAll`(或按 key 批查)灌满内存映射后再渲染网格,tile 命中内存同步出图。
-- **验收**:浏览 500 张相册 30 分钟,WebView 内存曲线平稳;相册首开 IDB 事务数从 O(n) 降到 O(1)。
+- **已落地**(`frontend/src/mediaCache.ts`):
+  - **objectURL LRU 上限**:映射 >200 条时 revoke「最旧、不在 DOM、静置 ≥30s」的条目(`grep -n planObjectUrlEviction frontend/src/mediaCache.ts`,纯函数有单测);被释放的条目下次从 IndexedDB 重建,功能无感。配合 D3 的出窗卸载,长会话浏览大相册内存有界。
+  - **批量预查**:`preloadLocalMediaUrls`(单只读事务批 get,绝不触网)在相册数据就绪时灌首屏 32 项进内存映射(`grep -n preloadLocalMediaUrls frontend/src/components/AlbumScreen.tsx`);后续 tile 进窗按需单查。首挂并发 IDB 事务从 O(全部 tile) 降到 O(可视窗口)。
+- **注意**:revoke 只挑「不在 DOM」的 URL(查 `img[src]/video[src]/video[poster]/source[src]`);30s 静置保护期防「解析出 URL 尚未挂进 DOM 即被回收」的竞态。
+- **验收**:planObjectUrlEviction 单测全绿(test:media-cache);「500 张 30 分钟内存曲线平稳」待真机长测复核。
 
 ### D5【P1】全局裸元素 CSS reset 渗透第三方组件
 
@@ -72,27 +70,34 @@
 - **已发生的事故**(都修了,引以为戒):
   1. PhotoSwipe 视频被 `max-width:100%` 相对宽 0 的容器**钳成 0 宽 → 全屏黑屏**(修复:`.pswp-video { max-width:none }`,commit `cfaca66`);
   2. admin 后台 `.card { display:grid }` 声明顺序覆盖 `[hidden]{display:none}` → 登录框关不掉;相册 ⋯ 菜单灰框常驻同根因(popover 的 display 规则覆盖 hidden 属性,commit `520bc28`)。
-- **方案**:
-  - 审计 `frontend/src/styles/*.css` 里所有裸元素选择器(`grep -nE "^(img|video|button|input|ul|li|a|p|h[1-6]) *[,{]" frontend/src/styles/*.css`),逐个收紧为 class 作用域;
-  - **规则**:显隐一律用 class(`.is-open`/`.hidden` + 明确的 display 默认值),绝不依赖 `hidden` 属性对抗 class 规则;新引第三方 UI 时先在其容器上显式解除本站 reset。
-- **验收**:gesture 套件 [I](视频铺开)/[J](菜单弹层)常绿;审计清单归零。
+- **已落地(2026-06-12,审计归零)**:`frontend/src/styles/*.css` 全部裸元素选择器(button/a/label/summary/nav/input/select/textarea/h1-h3/p/img/video/canvas)收紧为 `:where(#root, .app-portal) <元素>`——`:where()` 零特异性,**级联与改前完全一致**,只是不再命中应用 DOM 之外(PhotoSwipe 等第三方容器)。`html/body/:root/*` 为文档级基础规则,保留为豁免项。
+- **配套规则(新增,必须遵守)**:
+  1. **portal 到 body 的应用自有弹层必须带 `.app-portal` 类**(现有:records-entry-scrim、voice-recording-panel),否则拿不到全局 reset;
+  2. 第三方容器内需要本站观感时,在其专属样式里显式声明(参照 pswp-album.css 给关闭/菜单按钮补回的点按反馈),不依赖全局渗透;
+  3. 显隐一律用 class(`.is-open`/`.hidden` + 明确的 display 默认值),绝不依赖 `hidden` 属性对抗 class 规则。
+- **验收(已达)**:审计 grep 归零(`grep -nE "^(img|video|button|input|ul|li|a|p|h[1-6]) *[,{]" frontend/src/styles/*.css` 仅余 html/body 豁免);gesture [I]/[J] 常绿;smoke 多视口布局检查全绿。
 
 ### D6【P1】状态分层缺失
 
 - **现状**:服务端状态(`/api/app/state` 全量)与 UI 瞬时状态混在 98 个 useState 里;`LedgerView` 要钻 20+ 个 props。
 - **方案**:随 D1 拆分**同步**抽领域 hooks:`useAlbumState` / `useLedgerState` / `useCareLogState`…(数据 + 操作封装在一起,组件只拿自己那份)。**beta 阶段不引状态库**(zustand/jotai 等),拆完单体后如 props 钻探仍痛再评估。
+- **2026-06-12 批次说明**:本轮 P1/P2 还债未动 D6——它与 D1 剩余阶段(Records/Profile 拆分)是同一改动面,单独抽 hooks 会让 D1 拆分二次返工,维持「随 D1 一起还」。
 - **验收**:每个 Screen 组件 props ≤ 8 个;领域逻辑可单测。
 
 ### D7【P2】共享 SQLite(主服务 + admin)
 
 - **现状**:Spring Boot 主服务与 Node admin(better-sqlite3)共享同一 SQLite 文件,WAL + busy_timeout 已配,内测体量(个位数家庭)安全。
 - **触发条件**(满足任一才动):并发家庭 >100 / 出现 `SQLITE_BUSY` 报错 / 需要多实例部署。届时迁 MySQL(ECS 已有运维基础),admin 改走主服务的内部 API 而非直连库。
+- **2026-06-12 复核**:内测仍为个位数家庭、无 `SQLITE_BUSY` 报告、单实例部署——三个触发条件均未满足,按既定决策不动(P2 还债批次明确跳过,非遗漏)。
 
-### D8【P2】测试盲区
+### D8【P2,已完成 2026-06-12】测试盲区
 
-- **现状**:DOM 级回归只有相册预览 gesture 套件(`scripts/test-preview-gestures.mjs`,场景 [A]-[L],含义见 §2);聊天、记录、账本无 DOM 级测试;无帧率/性能预算门禁。
-- **方案**:沿 gesture 套件的 mock 模式(`page.route` + `appState` 注入)给聊天发送/记录创建各写一条主链路冒烟;性能门禁可用 CDP tracing 统计相册滚动 long task 数(>50ms 任务计数)设阈值。
-- **验收**:核心三链路(聊天/记录/相册)都有 DOM 级最小回归;verify:frontend 仍 <5 分钟。
+- **已落地**:`scripts/test-core-flows.mjs`(纳入 `verify:frontend`,沿 gesture 套件 mock 模式):
+  - **[N] 聊天发送主链路**:AI 助手抽屉 composer 输入 → 发送 → mock SSE 流(`/api/agent/chat/stream`)→ 家长消息与 AI 回复均出现在对话线程 → 消息持久化到 `/api/app/state/messages/*`;
+  - **[O] 记录创建主链路**:手动记录抽屉 → 选 150ml → 保存 → `/api/app/state/careLogs/*` 收到含 milk 事件的 careLog → 当日时间线显示 150ml。
+  - 注:移动端主聊天面板 `display:none`,真实聊天入口就是 records 助手抽屉,[N] 测的就是用户实际路径。
+- **剩余(降级为观察项)**:帧率/性能预算门禁未设;`scripts/perf-benchmark.mjs` 已输出 `album_scroll_longtasks`/`blocked_ms` 与挂载媒体数,可在需要时设阈值接入 CI。
+- **验收(已达)**:核心三链路(聊天[N]/记录[O]/相册 gesture [A]-[M])都有 DOM 级最小回归;verify:frontend 全套 ~3 分钟。
 
 ### D9【设计约束】OSS 签名 URL 轮换 vs 缓存
 
@@ -149,12 +154,12 @@ gesture 套件场景速查:[A] 反复开关不卡死 · [B] 连续快翻恰好 +
 
 ## 4. 还债路线图(建议顺序)
 
-1. **D2 服务端缩略图**(后端独立任务,对相册性能立竿见影,不依赖任何拆分)
-2. **D1 拆 AlbumScreen**(为 D3 铺路;拆完即做 D4 的批量预查)
-3. **D3 相册虚拟化** + **D4 内存生命周期**
-4. D1 余下部分(Profile → Records)+ D6 领域 hooks
-5. D5 CSS 审计(可与任意阶段并行,小步)
-6. D8 测试补盲(每拆一个 Screen 配一条冒烟)
+1. ~~**D2 服务端缩略图**~~(完成,2026-06-12)
+2. ~~**D1 拆 AlbumScreen**~~(完成,2026-06-12)
+3. ~~**D3 相册虚拟化** + **D4 内存生命周期**~~(完成,2026-06-12,见 perf-p1p2 报告)
+4. D1 余下部分(Profile → Records)+ D6 领域 hooks ← **下一步**
+5. ~~D5 CSS 审计~~(完成,2026-06-12,审计归零 + app-portal 规则)
+6. ~~D8 测试补盲~~(完成,2026-06-12,[N]/[O] 入 verify)+ D3 聊天/记录列表窗口化随 4 一起
 7. 达到量化线后复评平台决策(§0)
 
 每步完成的定义:`npm run verify:frontend` 全绿 + 真机体感验证 + 本文对应条目更新状态。

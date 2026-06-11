@@ -111,37 +111,99 @@ export const prefetchAlbumVideo = (url: string | undefined | null): void => {
   }, 8000);
 };
 
+// 观察器的 root 必须是真正的滚动容器:root:null(视口)时,目标会先被内层
+// overflow 容器裁剪,rootMargin 形同虚设——视口外的 tile 永远「不相交」,
+// 预挂载余量失效(D3 排查发现;视频 320px 余量此前同样未生效)。
+// 按「目标最近的可滚动祖先」解析 root,并按 root 分别建观察器。
+const scrollRootCache = new WeakMap<Element, Element | null>();
+
+function scrollRootOf(el: Element): Element | null {
+  const parent = el.parentElement;
+  if (!parent) return null;
+  const cached = scrollRootCache.get(parent);
+  if (cached !== undefined) return cached;
+  let node: Element | null = parent;
+  let result: Element | null = null;
+  while (node) {
+    const overflowY = getComputedStyle(node).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") {
+      result = node;
+      break;
+    }
+    node = node.parentElement;
+  }
+  scrollRootCache.set(parent, result);
+  return result;
+}
+
 // 「接近视口才挂 <video>」的共享观察器:N 个视频 tile 同时初始化解码器/拉元数据是
 // 相册打开卡顿与冷启动开销的大头;离屏 tile 只渲染海报,进入视口前 320px 才换真视频。
-let nearObserver: IntersectionObserver | null = null;
-const nearCallbacks = new Map<Element, () => void>();
+const nearObservers = new Map<Element | null, IntersectionObserver>();
+const nearCallbacks = new Map<Element, { onNear: () => void; observer: IntersectionObserver }>();
 
 export const observeNearViewport = (el: Element, onNear: () => void): (() => void) => {
   if (typeof IntersectionObserver === "undefined") {
     onNear();
     return () => {};
   }
-  if (!nearObserver) {
-    nearObserver = new IntersectionObserver(
+  const root = scrollRootOf(el);
+  let observer = nearObservers.get(root);
+  if (!observer) {
+    observer = new IntersectionObserver(
       (records) => {
         for (const record of records) {
           if (!record.isIntersecting) continue;
-          const callback = nearCallbacks.get(record.target);
-          if (callback) {
+          const entry = nearCallbacks.get(record.target);
+          if (entry) {
             nearCallbacks.delete(record.target);
-            nearObserver?.unobserve(record.target);
-            callback();
+            entry.observer.unobserve(record.target);
+            entry.onNear();
           }
         }
       },
-      { rootMargin: "320px 0px" },
+      { root, rootMargin: "320px 0px" },
     );
+    nearObservers.set(root, observer);
   }
-  nearCallbacks.set(el, onNear);
-  nearObserver.observe(el);
+  nearCallbacks.set(el, { onNear, observer });
+  observer.observe(el);
   return () => {
+    const entry = nearCallbacks.get(el);
     nearCallbacks.delete(el);
-    nearObserver?.unobserve(el);
+    entry?.observer.unobserve(el);
+  };
+};
+
+// 「可视窗口」双向观察(架构债 D3 相册窗口化):tile 进入滚动容器 ±150%(约两屏)挂载媒体子树,
+// 离开则卸载。与 observeNearViewport(挂上后保持)不同,这里是双向的——长相册滚到哪挂到哪,
+// DOM 中的媒体元素数始终 ≈ 可视区±2屏,内存与协调成本不再随相册体量线性增长。
+const windowObservers = new Map<Element | null, IntersectionObserver>();
+const windowCallbacks = new Map<Element, { onChange: (inWindow: boolean) => void; observer: IntersectionObserver }>();
+
+export const observeViewportWindow = (el: Element, onChange: (inWindow: boolean) => void): (() => void) => {
+  if (typeof IntersectionObserver === "undefined") {
+    onChange(true);
+    return () => {};
+  }
+  const root = scrollRootOf(el);
+  let observer = windowObservers.get(root);
+  if (!observer) {
+    observer = new IntersectionObserver(
+      (records) => {
+        for (const record of records) {
+          windowCallbacks.get(record.target)?.onChange(record.isIntersecting);
+        }
+      },
+      { root, rootMargin: "150% 0px" },
+    );
+    windowObservers.set(root, observer);
+  }
+  windowCallbacks.set(el, { onChange, observer });
+  observer.observe(el);
+  return () => {
+    const entry = windowCallbacks.get(el);
+    windowCallbacks.delete(el);
+    entry?.observer.unobserve(el);
   };
 };
 

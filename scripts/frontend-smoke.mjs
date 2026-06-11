@@ -902,6 +902,8 @@ async function exerciseMobileUpdateNotice(page) {
 async function exerciseAlbumVideoFallback(page) {
   await page.getByRole("button", { name: "相册" }).last().click();
   await page.waitForSelector(".album-photo-thumb", { timeout: 5000 });
+  // D3 窗口化后媒体子树按视口窗口异步挂载(IntersectionObserver 两跳),等真实 <video> 出现再断言。
+  await page.waitForSelector(".album-photo-thumb video", { timeout: 5000 });
   const result = await page.evaluate(() => {
     const videoThumbs = Array.from(document.querySelectorAll(".album-photo-thumb video"));
     return {

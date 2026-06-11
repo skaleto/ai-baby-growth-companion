@@ -71,7 +71,7 @@
     height: 40px;
   }
 
-  h1 {
+  :where(#root, .app-portal) h1 {
     font-size: 21px;
   }
 

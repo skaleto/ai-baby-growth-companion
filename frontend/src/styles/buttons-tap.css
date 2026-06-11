@@ -1,25 +1,28 @@
 /* Phase 1 — universal button tap feedback */
+/* 架构债 D5:裸 button 选择器会渗透第三方组件(PhotoSwipe 等)。
+   一律以 :where(#root, .app-portal) 限定在应用自有 DOM 内(:where 零特异性,级联不变);
+   挂到 body 的应用自有弹层须带 .app-portal 类;第三方容器需要时在其样式里显式声明。 */
 
-button {
+:where(#root, .app-portal) button {
   transition: transform 100ms ease-out, box-shadow 120ms ease-out;
 }
 
-button:active:not(:disabled) {
+:where(#root, .app-portal) button:active:not(:disabled) {
   transform: scale(0.97);
 }
 
 @media (hover: hover) {
-  button:hover:not(:disabled) {
+  :where(#root, .app-portal) button:hover:not(:disabled) {
     box-shadow: 0 2px 8px rgba(180, 140, 80, 0.12);
   }
 }
 
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  button {
+  :where(#root, .app-portal) button {
     transition: none !important;
   }
-  button:active {
+  :where(#root, .app-portal) button:active {
     transform: none !important;
   }
 }

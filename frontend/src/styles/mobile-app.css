@@ -71,10 +71,10 @@ body.keyboard-open .mobile-tabbar {
   transform: translateY(100%);
 }
 
-input,
-select,
-button,
-textarea {
+:where(#root, .app-portal) input,
+:where(#root, .app-portal) select,
+:where(#root, .app-portal) button,
+:where(#root, .app-portal) textarea {
   font: inherit;
 }
 
@@ -162,9 +162,11 @@ textarea {
   z-index: 120;
 }
 
-img,
-video,
-canvas {
+/* D5:此前的裸 img/video 选择器曾把 PhotoSwipe 视频钳成 0 宽(全屏黑屏,commit cfaca66)。
+   限定在应用自有 DOM 内,第三方容器(.pswp 等)不再被渗透。 */
+:where(#root, .app-portal) img,
+:where(#root, .app-portal) video,
+:where(#root, .app-portal) canvas {
   max-width: 100%;
 }
 

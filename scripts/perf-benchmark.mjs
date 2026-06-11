@@ -187,13 +187,17 @@ async function benchOnce(runIndex) {
   metrics.boot_ms = Date.now() - t0;
   await takeLongtasks(page);
 
-  // 2) 相册首开 → 首屏 tile 可见
+  // 2) 相册首开 → 首屏 tile 的真实媒体元素可见(窗口化后 tile 壳先于媒体出现,等 img 才公平)
   t0 = Date.now();
   await albumTab.click();
-  await page.locator(".album-photo-thumb").nth(11).waitFor({ state: "visible", timeout: 30000 });
+  await page.locator(".album-photo-thumb img").nth(11).waitFor({ state: "visible", timeout: 30000 });
   await settleFrames(page);
   metrics.album_first_open_ms = Date.now() - t0;
   metrics.album_open_blocked_ms = blockedMs(await takeLongtasks(page));
+  // D3 验收证据:首开时挂载的媒体元素数(全量 DOM 版 ≈ 数据集大小;窗口化版 ≈ 可视区±2屏)
+  metrics.album_mounted_media_first = await page.evaluate(
+    () => document.querySelectorAll(".album-photo-thumb img, .album-photo-thumb video, .album-photo-thumb .album-video-poster").length,
+  );
 
   // 3) 相册滚动:连续滚 8 屏,统计长任务阻塞
   await page.evaluate(() => {
@@ -211,6 +215,9 @@ async function benchOnce(runIndex) {
   const scrollTasks = await takeLongtasks(page);
   metrics.album_scroll_longtasks = scrollTasks.length;
   metrics.album_scroll_blocked_ms = blockedMs(scrollTasks);
+  metrics.album_mounted_media_after_scroll = await page.evaluate(
+    () => document.querySelectorAll(".album-photo-thumb img, .album-photo-thumb video, .album-photo-thumb .album-video-poster").length,
+  );
 
   // 4) 返回记录页
   t0 = Date.now();
@@ -240,7 +247,7 @@ async function benchOnce(runIndex) {
   // 6) 相册二开(旧版会整网格重挂载,新版应接近免费)
   t0 = Date.now();
   await albumTab.click();
-  await page.locator(".album-photo-thumb").nth(11).waitFor({ state: "visible", timeout: 30000 });
+  await page.locator(".album-photo-thumb img").nth(11).waitFor({ state: "visible", timeout: 30000 });
   await settleFrames(page);
   metrics.album_reopen_ms = Date.now() - t0;
   metrics.album_reopen_blocked_ms = blockedMs(await takeLongtasks(page));

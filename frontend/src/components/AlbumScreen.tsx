@@ -2,14 +2,15 @@
 // React.memo:聊天输入/其他 Tab 的任何 setState 不再重渲染整个相册网格。
 // memo 生效前提:函数 props 必须引用稳定——App 侧经 ref 包装(albumScreenHandlers),
 // 数据 props 均为 useMemo/state 产物。DOM 结构与拆分前逐字一致(CSS/手势测试不感知)。
-import { memo, type ChangeEvent, type CSSProperties, type RefObject } from "react";
+import { memo, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type RefObject } from "react";
 import { Camera as CameraIcon, Image as ImageIcon, Video } from "lucide-react";
 import type { AlbumItem, Attachment, AlbumItemCategory } from "../types";
 import { ALBUM_CATEGORIES, attachmentListSrc, distributeIntoColumns } from "../albumDomain";
 import { albumCategoryIconSrc } from "./albumIcons";
 import { AlbumVideoThumbnail } from "./AlbumVideoThumbnail";
 import { CachedImg } from "./CachedMedia";
-import { prefetchAlbumVideo } from "./albumVideoPlayback";
+import { observeViewportWindow, prefetchAlbumVideo } from "./albumVideoPlayback";
+import { preloadLocalMediaUrls } from "../mediaCache";
 import growthIcon from "../assets/storybook-icons/growth.png";
 
 type AlbumUploadListItem = {
@@ -40,6 +41,103 @@ export type AlbumScreenProps = {
   onRecordRatio: (attachmentId: string, ratio: number) => void;
 };
 
+// 首组每列前 8 个 tile 首帧即挂媒体(约两屏),其余进入 ±150% 视口窗口才挂、离开即卸(D3)。
+const EAGER_TILES_PER_COLUMN = 8;
+
+type AlbumPhotoTileProps = {
+  item: AlbumItem;
+  tileIndexSeed: number;
+  eager: boolean;
+  albumTileAspect: (item: AlbumItem) => number;
+  onOpenPreview: AlbumScreenProps["onOpenPreview"];
+  onRecordRatio: AlbumScreenProps["onRecordRatio"];
+};
+
+const AlbumPhotoTile = memo(function AlbumPhotoTile({
+  item,
+  tileIndexSeed,
+  eager,
+  albumTileAspect,
+  onOpenPreview,
+  onRecordRatio,
+}: AlbumPhotoTileProps) {
+  const attachment = item.attachment;
+  // tile 壳(article+button)常驻保证布局高度与点击目标稳定;媒体子树按视口窗口挂卸。
+  const [inWindow, setInWindow] = useState(eager);
+  const articleRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const el = articleRef.current;
+    if (!el) return;
+    let mounted = eager;
+    return observeViewportWindow(el, (next) => {
+      // 进窗即挂;出窗卸载(媒体元素数 ≈ 可视区±2屏)。eager tile 同样参与出窗卸载。
+      if (next !== mounted) {
+        mounted = next;
+        setInWindow(next);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <article
+      ref={articleRef}
+      className={`album-photo-tile album-${item.category}`}
+      style={
+        {
+          "--aspect": albumTileAspect(item),
+          "--tile-index": tileIndexSeed % 18,
+        } as CSSProperties
+      }
+    >
+      <button
+        type="button"
+        className="album-photo-thumb"
+        data-vt-item={item.id}
+        onPointerDown={() => {
+          if (attachment?.kind === "video") prefetchAlbumVideo(attachment.url);
+        }}
+        onClick={(event) => {
+          if (attachment) onOpenPreview(event, attachment, item);
+        }}
+        aria-label={`预览 ${item.title}`}
+        disabled={!attachment?.url}
+      >
+        {!inWindow ? null : attachment?.kind === "video" ? (
+          <AlbumVideoThumbnail
+            attachment={attachment}
+            title={item.title}
+            onRatio={
+              attachment.width && attachment.height
+                ? undefined
+                : (ratio) => onRecordRatio(attachment.id, ratio)
+            }
+          />
+        ) : attachment ? (
+          <CachedImg
+            src={attachmentListSrc(attachment)}
+            alt={item.title}
+            loading="lazy"
+            decoding="async"
+            onLoad={
+              attachment.width && attachment.height
+                ? undefined
+                : (event) => {
+                    const el = event.currentTarget;
+                    if (el.naturalWidth && el.naturalHeight)
+                      onRecordRatio(attachment.id, el.naturalWidth / el.naturalHeight);
+                  }
+            }
+          />
+        ) : (
+          <img src={albumCategoryIconSrc(item.category)} alt="" loading="lazy" decoding="async" />
+        )}
+      </button>
+    </article>
+  );
+});
+
 export const AlbumScreen = memo(function AlbumScreen({
   canCaregive,
   isUploadingAlbumMedia,
@@ -62,6 +160,16 @@ export const AlbumScreen = memo(function AlbumScreen({
     const w = window as unknown as { __albumRenders?: number };
     w.__albumRenders = (w.__albumRenders || 0) + 1;
   }
+
+  // D4:相册数据就绪后,用单个 IDB 事务批量预查首屏素材灌进内存映射,
+  // 替代每个 tile 各自开事务的「首挂事务风暴」;后续 tile 进窗按需单查。
+  useEffect(() => {
+    const firstScreen = albumGroups
+      .flatMap((group) => group.items)
+      .slice(0, EAGER_TILES_PER_COLUMN * 4)
+      .map((item) => (item.attachment ? attachmentListSrc(item.attachment) : null));
+    if (firstScreen.length) void preloadLocalMediaUrls(firstScreen);
+  }, [albumGroups]);
   return (
     <section className="album-screen tab-content-enter" aria-label="相册">
       <div className="screen-head">
@@ -155,65 +263,17 @@ export const AlbumScreen = memo(function AlbumScreen({
               <div className="album-photo-grid">
                 {distributeIntoColumns(group.items, 2, albumTileAspect).map((column, columnIndex) => (
                   <div className="album-photo-column" key={columnIndex}>
-                    {column.map((item, itemIndex) => {
-                      const attachment = item.attachment;
-                      return (
-                        <article
-                          className={`album-photo-tile album-${item.category}`}
-                          key={item.id}
-                          style={
-                            {
-                              "--aspect": albumTileAspect(item),
-                              "--tile-index": (groupIndex * 7 + columnIndex * 3 + itemIndex) % 18,
-                            } as CSSProperties
-                          }
-                        >
-                          <button
-                            type="button"
-                            className="album-photo-thumb"
-                            data-vt-item={item.id}
-                            onPointerDown={() => {
-                              if (attachment?.kind === "video") prefetchAlbumVideo(attachment.url);
-                            }}
-                            onClick={(event) => {
-                              if (attachment) onOpenPreview(event, attachment, item);
-                            }}
-                            aria-label={`预览 ${item.title}`}
-                            disabled={!attachment?.url}
-                          >
-                            {attachment?.kind === "video" ? (
-                              <AlbumVideoThumbnail
-                                attachment={attachment}
-                                title={item.title}
-                                onRatio={
-                                  attachment.width && attachment.height
-                                    ? undefined
-                                    : (ratio) => onRecordRatio(attachment.id, ratio)
-                                }
-                              />
-                            ) : attachment ? (
-                              <CachedImg
-                                src={attachmentListSrc(attachment)}
-                                alt={item.title}
-                                loading="lazy"
-                                decoding="async"
-                                onLoad={
-                                  attachment.width && attachment.height
-                                    ? undefined
-                                    : (event) => {
-                                        const el = event.currentTarget;
-                                        if (el.naturalWidth && el.naturalHeight)
-                                          onRecordRatio(attachment.id, el.naturalWidth / el.naturalHeight);
-                                      }
-                                }
-                              />
-                            ) : (
-                              <img src={albumCategoryIconSrc(item.category)} alt="" loading="lazy" decoding="async" />
-                            )}
-                          </button>
-                        </article>
-                      );
-                    })}
+                    {column.map((item, itemIndex) => (
+                      <AlbumPhotoTile
+                        key={item.id}
+                        item={item}
+                        tileIndexSeed={groupIndex * 7 + columnIndex * 3 + itemIndex}
+                        eager={groupIndex === 0 && itemIndex < EAGER_TILES_PER_COLUMN}
+                        albumTileAspect={albumTileAspect}
+                        onOpenPreview={onOpenPreview}
+                        onRecordRatio={onRecordRatio}
+                      />
+                    ))}
                   </div>
                 ))}
               </div>

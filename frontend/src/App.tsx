@@ -7737,7 +7737,7 @@ function App() {
           {canCaregive && recordsEntryDrawer
             ? createPortal(
                 <div
-                  className={`records-entry-scrim ${recordsEntryDrawerClosing ? "is-closing" : "is-open"}`}
+                  className={`records-entry-scrim app-portal ${recordsEntryDrawerClosing ? "is-closing" : "is-open"}`}
                   role="presentation"
                   onClick={closeRecordsEntryDrawer}
                 >
@@ -9485,7 +9485,7 @@ function App() {
       {voiceRecordingActive
         ? createPortal(
             <div
-              className={`voice-recording-panel ${voiceCancelArmed ? "canceling" : ""}`.trim()}
+              className={`voice-recording-panel app-portal ${voiceCancelArmed ? "canceling" : ""}`.trim()}
               style={voiceButtonStyle}
               role="status"
               aria-live="polite"

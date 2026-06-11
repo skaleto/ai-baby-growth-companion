@@ -32,15 +32,16 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-button,
-a,
-label,
-summary,
+/* D5:裸元素选择器以 :where(#root, .app-portal) 限定(零特异性,级联不变),不再渗透第三方组件 */
+:where(#root, .app-portal) button,
+:where(#root, .app-portal) a,
+:where(#root, .app-portal) label,
+:where(#root, .app-portal) summary,
 [role="button"],
 [role="tab"],
 [role="menuitem"],
 [role="option"],
-nav,
+:where(#root, .app-portal) nav,
 .mobile-tabbar,
 .mobile-tabbar *,
 .segmented-tabs,
@@ -63,8 +64,8 @@ nav,
   -webkit-touch-callout: none;
 }
 
-input,
-textarea,
+:where(#root, .app-portal) input,
+:where(#root, .app-portal) textarea,
 [contenteditable="true"],
 [contenteditable=""] {
   -webkit-user-select: text;
@@ -72,12 +73,12 @@ textarea,
   -webkit-touch-callout: default;
 }
 
-button,
-textarea {
+:where(#root, .app-portal) button,
+:where(#root, .app-portal) textarea {
   font: inherit;
 }
 
-button {
+:where(#root, .app-portal) button {
   cursor: pointer;
 }
 
@@ -145,26 +146,26 @@ button {
   letter-spacing: 0;
 }
 
-h1,
-h2,
-h3,
-p {
+:where(#root, .app-portal) h1,
+:where(#root, .app-portal) h2,
+:where(#root, .app-portal) h3,
+:where(#root, .app-portal) p {
   margin-top: 0;
 }
 
-h1 {
+:where(#root, .app-portal) h1 {
   margin-bottom: 0;
   font-size: 24px;
   line-height: 1.1;
 }
 
-h2 {
+:where(#root, .app-portal) h2 {
   margin-bottom: 0;
   font-size: 17px;
   line-height: 1.25;
 }
 
-h3 {
+:where(#root, .app-portal) h3 {
   margin-bottom: 4px;
   font-size: 14px;
   line-height: 1.3;

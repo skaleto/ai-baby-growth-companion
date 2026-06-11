@@ -136,16 +136,77 @@ function idbAllMeta(db: IDBDatabase): Promise<CacheMeta[]> {
 
 // ---------- 缓存核心 ----------
 
-// objectURL 会话级复用:同一 blob 不重复创建,也不主动 revoke(随页面生命周期释放)。
+// objectURL 会话级复用 + LRU 上限(架构债 D4):同一 blob 不重复创建;映射超过上限时
+// revoke「最旧、当前不在 DOM、且静置超过保护期」的条目,长会话浏览大相册内存不再只增不减。
+// 被 revoke 的条目从映射删除,下次访问从 IndexedDB 重建,功能无感。
+const OBJECT_URL_LRU_LIMIT = 200;
+/** revoke 保护期:刚解析出的 URL 可能尚未挂进 DOM,静置不足此时长的一律不动。 */
+export const OBJECT_URL_MIN_IDLE_MS = 30_000;
 const objectUrls = new Map<string, string>();
+const objectUrlLastUsed = new Map<string, number>();
 const inflight = new Map<string, Promise<string | null>>();
 const lastTouched = new Map<string, number>();
 
+export type ObjectUrlUsage = { key: string; lastUsed: number; inDom: boolean };
+
+/** LRU 释放计划(纯函数,可单测):超过 limit 时,从最旧开始挑「不在 DOM 且已静置」的条目。 */
+export function planObjectUrlEviction(
+  entries: ObjectUrlUsage[],
+  limit: number,
+  now: number,
+  minIdleMs: number = OBJECT_URL_MIN_IDLE_MS,
+): string[] {
+  const excess = entries.length - limit;
+  if (excess <= 0) return [];
+  return entries
+    .filter((entry) => !entry.inDom && now - entry.lastUsed >= minIdleMs)
+    .sort((a, b) => a.lastUsed - b.lastUsed)
+    .slice(0, excess)
+    .map((entry) => entry.key);
+}
+
+function collectInDomObjectUrls(): Set<string> {
+  const inDom = new Set<string>();
+  if (typeof document === "undefined") return inDom;
+  document
+    .querySelectorAll<HTMLElement>('img[src^="blob:"], video[src^="blob:"], video[poster^="blob:"], source[src^="blob:"]')
+    .forEach((el) => {
+      const src = el.getAttribute("src");
+      const poster = el.getAttribute("poster");
+      if (src?.startsWith("blob:")) inDom.add(src);
+      if (poster?.startsWith("blob:")) inDom.add(poster);
+    });
+  return inDom;
+}
+
+function enforceObjectUrlBudget() {
+  if (objectUrls.size <= OBJECT_URL_LRU_LIMIT) return;
+  const inDom = collectInDomObjectUrls();
+  const usage: ObjectUrlUsage[] = Array.from(objectUrls.entries()).map(([key, url]) => ({
+    key,
+    lastUsed: objectUrlLastUsed.get(key) || 0,
+    inDom: inDom.has(url),
+  }));
+  for (const key of planObjectUrlEviction(usage, OBJECT_URL_LRU_LIMIT, Date.now())) {
+    const url = objectUrls.get(key);
+    if (!url) continue;
+    URL.revokeObjectURL(url);
+    objectUrls.delete(key);
+    objectUrlLastUsed.delete(key);
+  }
+}
+
+function touchObjectUrl(key: string) {
+  objectUrlLastUsed.set(key, Date.now());
+}
+
 function blobToObjectUrl(key: string, blob: Blob): string {
   const existing = objectUrls.get(key);
+  touchObjectUrl(key);
   if (existing) return existing;
   const url = URL.createObjectURL(blob);
   objectUrls.set(key, url);
+  enforceObjectUrlBudget();
   return url;
 }
 
@@ -163,13 +224,56 @@ async function evictIfNeeded(db: IDBDatabase) {
     await idbDelete(db, MEDIA_STORE, key);
     await idbDelete(db, META_STORE, key);
     objectUrls.delete(key);
+    objectUrlLastUsed.delete(key);
   }
 }
 
 /** 同步查会话内已建好的 objectURL(用于 React 首帧避免闪烁);无则 null。 */
 export function getMemoizedLocalUrl(remoteUrl?: string | null): string | null {
   const key = stableMediaKey(remoteUrl);
-  return key ? objectUrls.get(key) || null : null;
+  if (!key) return null;
+  const url = objectUrls.get(key);
+  if (url) touchObjectUrl(key);
+  return url || null;
+}
+
+/**
+ * 批量预查(架构债 D4):一次只读事务把多个 key 的 blob 灌进内存映射,
+ * 相册首挂时替代每个 tile 各自开 IDB 事务的风暴。只读本地,绝不触网。
+ * 返回命中条数(0 = 无库或全 miss,调用方无需处理)。
+ */
+export async function preloadLocalMediaUrls(remoteUrls: Array<string | null | undefined>): Promise<number> {
+  const keys: string[] = [];
+  for (const url of remoteUrls) {
+    const key = stableMediaKey(url);
+    if (key && !objectUrls.has(key) && !keys.includes(key)) keys.push(key);
+  }
+  if (!keys.length) return 0;
+  const db = await openDb();
+  if (!db) return 0;
+  return new Promise((resolve) => {
+    let hits = 0;
+    try {
+      const tx = db.transaction(MEDIA_STORE, "readonly");
+      const store = tx.objectStore(MEDIA_STORE);
+      for (const key of keys) {
+        const req = store.get(key);
+        req.onsuccess = () => {
+          const blob = req.result as Blob | undefined;
+          if (blob instanceof Blob && blob.size > 0) {
+            blobToObjectUrl(key, blob);
+            hits += 1;
+          }
+        };
+        req.onerror = () => {};
+      }
+      tx.oncomplete = () => resolve(hits);
+      tx.onerror = () => resolve(hits);
+      tx.onabort = () => resolve(hits);
+    } catch {
+      resolve(0);
+    }
+  });
 }
 
 // ---------- 视频海报兜底 ----------
@@ -190,7 +294,10 @@ export async function getCachedPosterUrl(videoUrl?: string | null): Promise<stri
   const key = posterKey(videoUrl);
   if (!key) return null;
   const memo = objectUrls.get(key);
-  if (memo) return memo;
+  if (memo) {
+    touchObjectUrl(key);
+    return memo;
+  }
   const db = await openDb();
   if (!db) return null;
   const blob = await idbGet<Blob>(db, MEDIA_STORE, key);
@@ -245,7 +352,10 @@ export async function getLocalMediaUrl(remoteUrl?: string | null): Promise<strin
   const key = stableMediaKey(remoteUrl);
   if (!key) return null;
   const memo = objectUrls.get(key);
-  if (memo) return memo;
+  if (memo) {
+    touchObjectUrl(key);
+    return memo;
+  }
   const db = await openDb();
   if (!db) return null;
   const blob = await idbGet<Blob>(db, MEDIA_STORE, key);
