@@ -41,14 +41,13 @@
   5. **每拆一块就跑 `npm run verify:frontend` 并提交一次**,不积攒。
 - **验收**:React DevTools Profiler 下,切 Tab / 聊天输入时,非活动 Tab 组件 0 render;App.tsx 降到 <3000 行。
 
-### D2【P0】服务端缩略图缺失
+### D2【P0,已完成 2026-06-12】~~服务端缩略图缺失~~ → 实为读放大 + 视频封面
 
-- **现状**:历史照片的 `attachment.thumbnailUrl` 为空,网格 tile 走原图(几 MB 解码成 ~200px 格子)。`attachmentListSrc` 已经是 `thumbnailUrl || url`(`grep -n "const attachmentListSrc" frontend/src/albumDomain.ts`),**客户端无需改动,纯后端任务**。
-- **方案**:
-  1. 上传链路:后端收到图片后生成缩略图(长边 ~480px,JPEG q75)存 OSS,回填 `thumbnail_url`;
-  2. 历史数据:批量脚本遍历无缩略图的 attachment,生成并回填(参考 `scripts/` 下运营脚本模式);
-  3. 视频已有抽帧封面链路(上传时 + 客户端兜底),不在本债范围。
-- **验收**:线上相册网格 100% tile 请求的是缩略图;原图只在全屏预览时加载。配合既有测试 [G](已浏览图片 reload 后零网络)不回归。
+- **前提证伪**(生产只读实查):132 张图片 0 缺缩略图——上传生成 + `ensureThumbnail` 懒回填一直健康,"老照片网格解码原图"不成立。**经验:债项登记前先拿生产数据验证假设。**
+- **实际修复**(commit `523d503`,详见 docs/verification/perf-p0-report-2026-06-12.md):
+  1. **app/state 读放大**:每次水合对每个附件 ensureThumbnail→OSS HEAD(132×每次读取)。已加进程内 verified 缓存 + 生成失败 1h 节流(`grep -n thumbnailVerifiedIds backend/src/main/java/com/xiaobao/babycompanion/service/AttachmentStorageService.java`)。
+  2. **视频封面自愈**:`POST /api/uploads/{id}/poster`(幂等/仅看护人/不覆盖),客户端播无封面视频抽帧回传(`grep -n setVideoPosterUploader frontend/src/mediaCache.ts`,实现在 posterUpload.ts)。8 个存量缺封面视频随浏览自动痊愈。
+- **附带规则**:被 esbuild 逻辑测试打包的模块(albumDomain/mediaCache 等)不得引入资产文件或 `import.meta.env` 依赖——需要时用注入(参见 posterUpload.ts / components/albumIcons.ts)。
 
 ### D3【P1】长列表无 DOM 虚拟化
 
