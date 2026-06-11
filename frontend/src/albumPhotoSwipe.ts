@@ -40,6 +40,12 @@ export type OpenAlbumPhotoSwipeOptions = {
 
 const FALLBACK_WIDTH = 1600;
 
+// 干净的细线 X(复刻旧版 lucide <X>),替代 PhotoSwipe 自带带描边阴影的"塑料"关闭图标。
+const ICON_CLOSE =
+  '<svg class="pswp-album-icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+const ICON_MORE =
+  '<svg class="pswp-album-icn" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+
 async function localOrRemote(url?: string | null): Promise<string | undefined> {
   if (!url) return undefined;
   const local = await getLocalMediaUrl(url);
@@ -181,10 +187,23 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
     }
   });
 
-  // 顶栏:标题/日期/记录人 + ⋯ 菜单(编辑/删除)。
+  // 顶栏:自定义关闭(干净圆形深色底)/ 标题信息 / ⋯ 菜单(编辑/删除)。
   lightbox.on("uiRegister", () => {
     const pswp = lightbox.pswp;
     if (!pswp?.ui) return;
+
+    // 自定义关闭按钮(默认那个带描边阴影、观感塑料;此处复刻旧版圆形深色底 + 细线 X)。
+    pswp.ui.registerElement({
+      name: "album-close",
+      order: 1,
+      isButton: true,
+      appendTo: "bar",
+      title: "关闭",
+      ariaLabel: "关闭",
+      html: ICON_CLOSE,
+      onClick: () => pswp.close(),
+    });
+
     pswp.ui.registerElement({
       name: "album-info",
       order: 6,
@@ -206,27 +225,32 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
         pswp.on("change", render);
       },
     });
+
     if (opts.onEdit || opts.onDelete) {
+      // popover 挂到根容器(而非菜单按钮内部)——button 内嵌 button 会让内层点击不可靠,
+      // 是「点了没反应」的根因之一;显隐用 .is-open class(而非 hidden 属性,
+      // 后者会被 .pswp-album-popover 的 display 规则覆盖,导致灰框常驻)。
+      let popover: HTMLDivElement | null = null;
       pswp.ui.registerElement({
         name: "album-menu",
-        order: 7,
+        order: 9,
         isButton: true,
         appendTo: "bar",
-        html: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
+        title: "更多操作",
+        ariaLabel: "更多操作",
+        html: ICON_MORE,
         onInit: (el) => {
-          el.setAttribute("aria-label", "更多操作");
-          const popover = document.createElement("div");
+          popover = document.createElement("div");
           popover.className = "pswp-album-popover";
-          popover.hidden = true;
           const mk = (label: string, danger: boolean, fn?: (item: AlbumItem) => void) => {
-            if (!fn) return;
+            if (!fn || !popover) return;
             const btn = document.createElement("button");
             btn.type = "button";
             btn.textContent = label;
             if (danger) btn.className = "danger";
             btn.addEventListener("click", (ev) => {
               ev.stopPropagation();
-              popover.hidden = true;
+              popover?.classList.remove("is-open");
               const data = pswp.currSlide?.data as PswpAlbumData | undefined;
               if (data?.albumItem) {
                 pswp.close();
@@ -237,13 +261,17 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
           };
           mk("编辑", false, opts.onEdit);
           mk("删除", true, opts.onDelete);
-          el.appendChild(popover);
-          el.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            popover.hidden = !popover.hidden;
+          pswp.element?.appendChild(popover);
+          // 翻页 / 点击空白处收起(菜单按钮自身的点击交给 onClick 切换)。
+          pswp.on("change", () => popover?.classList.remove("is-open"));
+          pswp.element?.addEventListener("pointerdown", (ev) => {
+            if (!popover) return;
+            const target = ev.target as Node | null;
+            if (!target || popover.contains(target) || el.contains(target)) return;
+            popover.classList.remove("is-open");
           });
-          pswp.on("change", () => { popover.hidden = true; });
         },
+        onClick: () => popover?.classList.toggle("is-open"),
       });
     }
   });

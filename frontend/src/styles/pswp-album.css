@@ -1,4 +1,4 @@
-/* PhotoSwipe 相册集成的自定义 UI(顶栏信息 / 菜单 / 视频) */
+/* PhotoSwipe 相册集成的自定义 UI(顶栏按钮 / 信息 / 菜单 / 视频) */
 
 .pswp__top-bar {
   height: auto;
@@ -8,9 +8,42 @@
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
 }
 
+/* 自带关闭按钮(带描边阴影、观感塑料)隐藏,改用下方干净的圆形 album-close。 */
 .pswp__button--close {
+  display: none !important;
+}
+
+/* 顶栏自定义圆形按钮:复刻旧版 .preview-close(深色半透明 + 模糊 + 白色细线图标)。 */
+.pswp__button--album-close,
+.pswp__button--album-menu {
+  width: 40px;
+  height: 40px;
+  margin-top: 8px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  opacity: 1;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.pswp__button--album-close {
   order: -2;
-  margin-left: max(4px, env(safe-area-inset-left));
+  margin-left: max(10px, env(safe-area-inset-left));
+}
+
+.pswp__button--album-menu {
+  order: 10;
+  margin-right: max(10px, env(safe-area-inset-right));
+}
+
+.pswp-album-icn {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 
 .pswp__counter {
@@ -18,24 +51,20 @@
   margin-right: 4px;
 }
 
-.pswp__button--album-menu {
-  order: 10;
-  margin-right: max(4px, env(safe-area-inset-right));
-}
-
 .pswp-album-info {
   order: -1;
   margin-right: auto;
-  padding: 8px 4px 10px 16px;
+  padding: 10px 4px 10px 14px;
   display: grid;
   gap: 2px;
   color: #fff;
-  max-width: min(68vw, 420px);
+  max-width: min(62vw, 420px);
   pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .pswp-album-info strong {
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -44,51 +73,60 @@
 
 .pswp-album-info span {
   font-size: 12px;
-  opacity: 0.82;
+  opacity: 0.85;
 }
 
 .pswp-album-info small {
-  font-size: 12px;
-  opacity: 0.66;
+  font-size: 11px;
+  opacity: 0.7;
 }
 
-.pswp__button--album-menu {
-  position: relative;
-}
-
+/* ⋯ 菜单弹层:挂在根容器(避免 button 内嵌 button),用 .is-open class 切换显隐
+   (绝不用 hidden 属性——会被本规则的 display 覆盖,导致灰框常驻)。 */
 .pswp-album-popover {
   position: absolute;
-  top: 48px;
-  right: 6px;
+  top: calc(env(safe-area-inset-top) + 54px);
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 100;
+  display: none;
+  flex-direction: column;
   min-width: 132px;
   padding: 6px;
-  display: grid;
-  gap: 2px;
-  background: rgba(28, 32, 31, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  background: rgba(28, 28, 30, 0.96);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.pswp-album-popover.is-open {
+  display: flex;
 }
 
 .pswp-album-popover button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 10px 12px;
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #f2f5f4;
+  color: #fff;
   font: inherit;
   font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
   text-align: left;
+  cursor: pointer;
 }
 
 .pswp-album-popover button:active {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .pswp-album-popover button.danger {
-  color: #ff8a80;
+  color: #ff6b6b;
 }
 
 .pswp-video {

@@ -179,7 +179,8 @@ async function openFirstTile(page) {
 }
 
 async function closePreview(page) {
-  await page.locator(".pswp__button--close").click({ timeout: 2500 });
+  // 自定义关闭按钮(默认 .pswp__button--close 已隐藏)。
+  await page.locator(".pswp__button--album-close").click({ timeout: 2500 });
   await page.locator(".pswp").waitFor({ state: "detached", timeout: 3500 });
 }
 
@@ -192,6 +193,8 @@ try {
   page.setDefaultTimeout(4000);
   page.on("pageerror", (e) => console.log("[pageerror]", e.message.slice(0, 300)));
   page.on("console", (m) => { if (m.type() === "error") console.log("[console.error]", m.text().slice(0, 240)); });
+  // 「编辑」走 window.prompt:测试里一律取消(返回 null → editAlbumItem 早退,不改状态)。
+  page.on("dialog", (d) => { void d.dismiss().catch(() => undefined); });
   await installMocks(page);
   await page.goto(baseUrl, { waitUntil: "networkidle" });
 
@@ -231,6 +234,29 @@ try {
   // ---- E. 收尾:关闭仍可交互 ----
   await closePreview(page);
   console.log("[E] final close: interactive ✔");
+
+  // ---- J. 顶栏:自定义干净关闭按钮在位、自带塑料关闭隐藏;⋯ 菜单点开才出编辑/删除 ----
+  await openFirstTile(page);
+  // 自定义关闭可见、自带关闭隐藏(塑料图标问题)
+  assert.equal(await page.locator(".pswp__button--album-close").isVisible(), true, "自定义关闭按钮应可见");
+  const defaultCloseBox = await page.locator(".pswp__button--close").boundingBox();
+  assert.equal(defaultCloseBox, null, "自带(塑料)关闭按钮应隐藏(display:none → 无盒模型)");
+  // 初始:popover 必须隐藏(灰框常驻 bug 的回归断言)
+  assert.equal(await page.locator(".pswp-album-popover").isVisible(), false, "菜单弹层初始必须隐藏(不得灰框常驻)");
+  // 点 ⋯ → 弹层出现,含「编辑」「删除」
+  await page.locator(".pswp__button--album-menu").click({ timeout: 2000 });
+  await page.locator(".pswp-album-popover.is-open").waitFor({ state: "visible", timeout: 2000 });
+  assert.equal(await page.locator(".pswp-album-popover button", { hasText: "编辑" }).isVisible(), true, "弹层应有「编辑」");
+  assert.equal(await page.locator(".pswp-album-popover button", { hasText: "删除" }).isVisible(), true, "弹层应有「删除」");
+  // 再点 ⋯ → 收起(切换可用)
+  await page.locator(".pswp__button--album-menu").click({ timeout: 2000 });
+  assert.equal(await page.locator(".pswp-album-popover").isVisible(), false, "再次点击应收起弹层");
+  // 点「编辑」→ 关闭预览(进入编辑流程),证明内层按钮点击生效(非内嵌 button 死区)
+  await page.locator(".pswp__button--album-menu").click({ timeout: 2000 });
+  await page.locator(".pswp-album-popover.is-open").waitFor({ state: "visible", timeout: 2000 });
+  await page.locator(".pswp-album-popover button", { hasText: "编辑" }).click({ timeout: 2000 });
+  await page.locator(".pswp").waitFor({ state: "detached", timeout: 3000 });
+  console.log("[J] clean close button + ⋯ menu opens edit/delete on tap (no stuck gray box, clicks live) ✔");
 
   // ---- H. 无尺寸老照片:显示比例必须跟随真实图(1600x800 ≈ 2:1),不得变正方形 ----
   await page.getByRole("button", { name: "预览 横图无尺寸" }).click();
