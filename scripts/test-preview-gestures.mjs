@@ -258,6 +258,21 @@ try {
   await page.locator(".pswp").waitFor({ state: "detached", timeout: 3000 });
   console.log("[J] clean close button + ⋯ menu opens edit/delete on tap (no stuck gray box, clicks live) ✔");
 
+  // ---- K. 相邻图无缝贴合:slide 间距必须 == 视口宽(spacing:0),不得有黑边间隔 ----
+  await openFirstTile(page);
+  await page.locator(".pswp__button--arrow--next").click({ timeout: 2000 }); // 让三个 holder 都就位
+  await new Promise((r) => setTimeout(r, 500));
+  // 读内联 style.transform(setTransform 对 display:none 的侧边 holder 也会写),避免 computed 取不到。
+  const holderX = await page.$$eval(".pswp__item", (els) =>
+    els.map((el) => { const m = /translate3d\(\s*(-?[\d.]+)px/.exec(el.style.transform || ""); return m ? parseFloat(m[1]) : null; })
+       .filter((v) => v !== null).sort((a, b) => a - b));
+  const gaps = holderX.slice(1).map((v, i) => Math.round(v - holderX[i])).filter((d) => d > 1);
+  const minGap = gaps.length ? Math.min(...gaps) : -1;
+  // 视口 390:spacing 0 → 间距 390;旧默认 spacing 0.1 → 429(那条黑边)。
+  assert.equal(minGap, 390, `相邻 slide 间距应等于视口宽 390(无缝),实际 ${minGap}(429=默认黑边间隔, holderX=${JSON.stringify(holderX)})`);
+  console.log(`[K] adjacent slides are seamless (gap=${minGap}px == viewport, no black bar) ✔`);
+  await closePreview(page);
+
   // ---- H. 无尺寸老照片:显示比例必须跟随真实图(1600x800 ≈ 2:1),不得变正方形 ----
   await page.getByRole("button", { name: "预览 横图无尺寸" }).click();
   await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });

@@ -127,11 +127,15 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
     pswpModule: () => import("photoswipe"),
     showHideAnimationType: "zoom",
     bgOpacity: 1,
+    // 相邻图无缝贴合:默认 spacing 0.1(=10% 视口宽)就是滑动时看到的那条黑边间隔。
+    spacing: 0,
     wheelToZoom: true,
     arrowPrev: true,
     arrowNext: true,
     zoom: false,
     counter: true,
+    // 翻页/缩放归位用 iOS 式减速长尾(拖拽松手是内部弹簧,此项主要影响箭头导航与开合)。
+    easing: "cubic-bezier(0.22, 1, 0.36, 1)",
     errorMsg: "这张媒体加载失败了,稍后再试。",
   });
 

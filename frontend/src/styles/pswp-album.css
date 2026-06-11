@@ -13,7 +13,9 @@
   display: none !important;
 }
 
-/* 顶栏自定义圆形按钮:复刻旧版 .preview-close(深色半透明 + 模糊 + 白色细线图标)。 */
+/* 顶栏自定义圆形按钮:复刻旧版 .preview-close 的深色圆形底。
+   注意:绝不加 backdrop-filter:blur——它会在横滑时每帧重采样身后移动的图片、强制
+   合成层重绘,是「滑动卡卡的」掉帧主因。改用略深的纯色底补偿失去的毛玻璃。 */
 .pswp__button--album-close,
 .pswp__button--album-menu {
   width: 40px;
@@ -23,11 +25,9 @@
   place-items: center;
   overflow: visible;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
   color: #fff;
   opacity: 1;
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
 }
 
 .pswp__button--album-close {
