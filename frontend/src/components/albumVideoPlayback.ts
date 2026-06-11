@@ -11,7 +11,24 @@ let observer: IntersectionObserver | null = null;
 let listenersBound = false;
 let frameScheduled = false;
 
+// 全屏预览打开期间挂起网格自动播放:被 PhotoSwipe 盖住的网格视频在底下继续解码,
+// 会直接拖低预览滑动帧率(IntersectionObserver 感知不到遮挡)。
+let suspended = false;
+
+export const suspendAlbumVideos = (): void => {
+  suspended = true;
+  for (const entry of entries) {
+    if (!entry.el.paused) entry.el.pause();
+  }
+};
+
+export const resumeAlbumVideos = (): void => {
+  suspended = false;
+  schedule();
+};
+
 const update = () => {
+  if (suspended) return;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
   const center = viewportHeight / 2;
   let best: Entry | null = null;

@@ -12,6 +12,7 @@ import {
   getLocalMediaUrl,
   VIDEO_CACHE_MAX_BYTES,
 } from "./mediaCache";
+import { resumeAlbumVideos, suspendAlbumVideos } from "./components/albumVideoPlayback";
 
 type PswpAlbumData = {
   src?: string;
@@ -89,7 +90,9 @@ function buildVideoElement(data: PswpAlbumData): HTMLElement {
   if (data.poster) video.poster = data.poster;
   video.controls = true;
   video.playsInline = true;
-  video.autoplay = true;
+  // 绝不设 autoplay:PhotoSwipe 会预加载相邻 slide(contentLoad 对没划到的视频也会触发),
+  // 带 autoplay 的 <video> 攒够数据就自行带声开播——这就是「没划到/刚划过的视频在后台响」。
+  // 播放只允许由 contentActivate(真正成为当前页)触发。
   let cacheKicked = false;
   let posterCaptured = false;
   video.addEventListener("timeupdate", () => {
@@ -173,6 +176,21 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
     if (data.isVideo) {
       const video = e.content.element instanceof HTMLVideoElement ? e.content.element : e.content.element?.querySelector?.("video");
       try { (video as HTMLVideoElement | null)?.pause?.(); } catch { /* 元素可能已分离 */ }
+    }
+  });
+  // slide 内容被回收/销毁时彻底拆除:停播 + 卸 src + load(),释放解码器与音频会话,
+  // 杜绝「划过去的视频还在后台出声」。
+  lightbox.on("contentDestroy", (e) => {
+    const data = e.content.data as PswpAlbumData;
+    if (data.isVideo) {
+      const video = e.content.element instanceof HTMLVideoElement ? e.content.element : e.content.element?.querySelector?.("video");
+      if (video instanceof HTMLVideoElement) {
+        try {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+        } catch { /* 已分离的元素操作可能抛,无碍 */ }
+      }
     }
   });
 
@@ -311,10 +329,14 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
     pauseVideosExcept(lightbox.pswp?.element ?? null, null);
   });
   lightbox.on("destroy", () => {
+    // 恢复网格自动播放(预览期间挂起)。
+    resumeAlbumVideos();
     // 一次性使用:每次打开新建实例,销毁时彻底释放。
     setTimeout(() => lightbox.destroy(), 0);
   });
 
+  // 预览期间挂起网格视频解码:被盖住的网格视频继续播放会拖低滑动帧率。
+  suspendAlbumVideos();
   lightbox.init();
   lightbox.loadAndOpen(startIndex);
 }

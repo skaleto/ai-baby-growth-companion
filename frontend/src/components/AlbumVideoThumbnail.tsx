@@ -46,7 +46,17 @@ export function AlbumVideoThumbnail({
   return (
     <>
       <video
-        ref={videoRef}
+        ref={(el) => {
+          videoRef.current = el;
+          if (el) {
+            // React 的 muted prop 只设 DOM 属性、不写 muted attribute;部分 Android WebView
+            // 按 attribute 初始化音频管线,导致网格静音视频漏出声音。四重强制,只播画面。
+            el.muted = true;
+            el.defaultMuted = true;
+            el.volume = 0;
+            el.setAttribute("muted", "");
+          }
+        }}
         src={videoSrc || attachment.url}
         poster={poster}
         muted

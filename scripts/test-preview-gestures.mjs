@@ -295,6 +295,28 @@ try {
   console.log("[I] video slide: placeholder removed, video element laid out ✔");
   await closePreview(page);
 
+  // ---- L. 预加载的相邻视频绝不自播:无 autoplay、保持暂停(后台漏音回归) ----
+  // 横图(05-30)的相邻 slide 是测试视频(05-31):打开横图,PhotoSwipe 会预加载视频内容。
+  await page.getByRole("button", { name: "预览 横图无尺寸" }).click();
+  await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });
+  await new Promise((r) => setTimeout(r, 800)); // 等相邻 slide 预加载完成
+  const preloadState = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".pswp video")).map((v) => ({ autoplay: v.autoplay, paused: v.paused })));
+  for (const v of preloadState) {
+    assert.equal(v.autoplay, false, "预览视频元素绝不允许带 autoplay(预加载的相邻视频会带声自播)");
+    assert.equal(v.paused, true, "未激活的预加载视频必须处于暂停态");
+  }
+  // 划到视频再划走:被划过的视频也必须停。
+  await page.locator(".pswp__button--arrow--prev").click({ timeout: 2000 }); // 到视频
+  await new Promise((r) => setTimeout(r, 400));
+  await page.locator(".pswp__button--arrow--next").click({ timeout: 2000 }); // 划走
+  await new Promise((r) => setTimeout(r, 500));
+  const passedByState = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".pswp video")).map((v) => v.paused));
+  assert.ok(passedByState.every(Boolean), "刚划过去的视频必须已暂停(不得后台出声)");
+  console.log(`[L] preloaded/passed-by videos never autoplay, all paused (${preloadState.length} probed) ✔`);
+  await closePreview(page);
+
   // ---- F. 慢网络下「瀑布流未渲染好就点开」:绝不卡死(线上卡死复现路径) ----
   setUploadDelay(700);
   await page.reload({ waitUntil: "domcontentloaded" });
