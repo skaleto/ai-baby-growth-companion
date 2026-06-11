@@ -9,6 +9,22 @@ import type {
 } from "./types";
 
 // Keep album rules pure: UI components, agent effects, and persistence can share them without React coupling.
+import growthIcon from "./assets/storybook-icons/growth.png";
+import milkIcon from "./assets/storybook-icons/milk.png";
+import recordsIcon from "./assets/storybook-icons/records.png";
+import reminderIcon from "./assets/storybook-icons/reminder.png";
+import sleepIcon from "./assets/storybook-icons/sleep.png";
+import temperatureIcon from "./assets/storybook-icons/temperature.png";
+
+export const albumCategoryIconSrc = (category: AlbumItemCategory): string => {
+  if (category === "growth") return growthIcon;
+  if (category === "feeding") return milkIcon;
+  if (category === "sleep") return sleepIcon;
+  if (category === "health") return temperatureIcon;
+  if (category === "reminder") return reminderIcon;
+  return recordsIcon;
+};
+
 export const ALBUM_CATEGORIES: Array<{ id: AlbumItemCategory | "all"; label: string }> = [
   { id: "all", label: "全部" },
   { id: "growth", label: "成长" },

@@ -217,6 +217,7 @@ import {
   suggestedFamilyName,
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
+import { AlbumScreen } from "./components/AlbumScreen";
 import { CachedImg } from "./components/CachedMedia";
 import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwipeMath";
 import { openAlbumPhotoSwipe } from "./albumPhotoSwipe";
@@ -786,15 +787,6 @@ const recordEventIconSrc = (event: RecordEvent) => {
 };
 
 // reminder labels moved to ./utils/reminderLabels
-
-const albumCategoryIconSrc = (category: AlbumItemCategory) => {
-  if (category === "growth") return growthIcon;
-  if (category === "feeding") return milkIcon;
-  if (category === "sleep") return sleepIcon;
-  if (category === "health") return temperatureIcon;
-  if (category === "reminder") return reminderIcon;
-  return recordsIcon;
-};
 
 // careAlbumCategory + careAlbumTitle moved to ./utils/careLogHelpers
 
@@ -2486,7 +2478,10 @@ function App() {
   const canAttachVisuals = canCaregive && hasAiQuota;
   const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
   const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
-  const albumUploadItems = mediaUploadItems.filter((item) => item.target === "album");
+  const albumUploadItems = useMemo(
+    () => mediaUploadItems.filter((item) => item.target === "album"),
+    [mediaUploadItems],
+  );
   const activeChatUploadItems = chatUploadItems.filter((item) => activeUploadStatuses.includes(item.status));
   const isUploadingChatMedia = activeChatUploadItems.length > 0;
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
@@ -4380,6 +4375,22 @@ function App() {
     }
     albumFileInputRef.current?.click();
   };
+
+  // AlbumScreen(memo)的函数 props:经 ref 间接调用最新实现,引用永远稳定——
+  // 否则 App 每次渲染重建闭包,memo 形同虚设。
+  const albumScreenHandlersRef = useRef({ handleAlbumFiles, openAlbumMediaPicker, openAlbumPreview });
+  albumScreenHandlersRef.current = { handleAlbumFiles, openAlbumMediaPicker, openAlbumPreview };
+  const [albumScreenHandlers] = useState(() => ({
+    onPickFiles: (event: ChangeEvent<HTMLInputElement>) => {
+      void albumScreenHandlersRef.current.handleAlbumFiles(event);
+    },
+    onOpenPicker: () => {
+      void albumScreenHandlersRef.current.openAlbumMediaPicker();
+    },
+    onOpenPreview: (event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => {
+      albumScreenHandlersRef.current.openAlbumPreview(event, attachment, item);
+    },
+  }));
 
   const clearVoiceAutoSubmitTimer = () => {
     if (voiceAutoSubmitTimerRef.current !== null) {
@@ -8549,177 +8560,22 @@ function App() {
         ) : null}
 
         {visitedMobileTabsRef.current.has("album") ? (
-        <section className="album-screen tab-content-enter" aria-label="相册">
-          <div className="screen-head">
-            <div>
-              <p className="eyebrow">相册</p>
-              <h2>成长回忆库</h2>
-            </div>
-            <div className="screen-head-actions">
-              <input
-                ref={albumFileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                multiple
-                hidden
-                disabled={!canCaregive || isUploadingAlbumMedia}
-                onChange={handleAlbumFiles}
-              />
-              <span className="screen-pill">{albumItems.length} 项素材</span>
-              {canCaregive ? (
-                <button
-                  type="button"
-                  className="screen-action-button album-upload-button"
-                  title={isUploadingAlbumMedia ? "相册素材正在上传" : "上传到相册"}
-                  disabled={isUploadingAlbumMedia}
-                  onClick={openAlbumMediaPicker}
-                >
-                  <CameraIcon size={15} />
-                  上传
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="album-summary-strip">
-            <span>
-              <b>{albumStats.media}</b>
-              素材
-            </span>
-            <span>
-              <b>{albumStats.videos}</b>
-              视频
-            </span>
-            <span>
-              <b>{albumStats.categories}</b>
-              分类
-            </span>
-          </div>
-
-          <div className="album-category-row" role="tablist" aria-label="相册分类">
-            {ALBUM_CATEGORIES.map((category) => (
-              <button
-                type="button"
-                className={albumCategory === category.id ? "active" : ""}
-                aria-selected={albumCategory === category.id}
-                role="tab"
-                key={category.id}
-                onClick={() => setAlbumCategory(category.id)}
-              >
-                {category.label}
-              </button>
-            ))}
-          </div>
-
-          {albumUploadItems.length ? (
-            <div className="album-upload-list" aria-live="polite">
-              {albumUploadItems.map((item) => (
-                <div className={`album-upload-item upload-item ${item.status}`} key={item.id}>
-                  <div className="album-upload-icon" aria-hidden="true">
-                    {item.kind === "video" ? <Video size={17} /> : <ImageIcon size={17} />}
-                  </div>
-                  <div className="upload-copy">
-                    <span title={item.name}>{item.name}</span>
-                    <small>{item.message ?? (item.status === "uploading" ? `上传 ${item.progress}%` : "准备中")}</small>
-                    <div className="upload-progress-track" aria-hidden="true">
-                      <div className="upload-progress-bar" style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {albumGroups.length ? (
-            <div className="album-timeline">
-              {albumGroups.map((group, groupIndex) => (
-                <section className="album-month-group" key={group.key}>
-                  <div className="album-month-head">
-                    <h3>{group.label}</h3>
-                    <span>{group.items.length} 项</span>
-                  </div>
-                  <div className="album-photo-grid">
-                    {distributeIntoColumns(group.items, 2, albumTileAspect).map((column, columnIndex) => (
-                      <div className="album-photo-column" key={columnIndex}>
-                        {column.map((item, itemIndex) => {
-                          const attachment = item.attachment;
-                          return (
-                            <article
-                              className={`album-photo-tile album-${item.category}`}
-                              key={item.id}
-                              style={
-                                {
-                                  "--aspect": albumTileAspect(item),
-                                  "--tile-index": (groupIndex * 7 + columnIndex * 3 + itemIndex) % 18,
-                                } as CSSProperties
-                              }
-                            >
-                              <button
-                                type="button"
-                                className="album-photo-thumb"
-                                data-vt-item={item.id}
-                                onPointerDown={() => {
-                                  if (attachment?.kind === "video") prefetchAlbumVideo(attachment.url);
-                                }}
-                                onClick={(event) => {
-                                  if (attachment) openAlbumPreview(event, attachment, item);
-                                }}
-                                aria-label={`预览 ${item.title}`}
-                                disabled={!attachment?.url}
-                              >
-                                {attachment?.kind === "video" ? (
-                                  <AlbumVideoThumbnail
-                                    attachment={attachment}
-                                    title={item.title}
-                                    onRatio={
-                                      attachment.width && attachment.height
-                                        ? undefined
-                                        : (ratio) => recordAlbumRatio(attachment.id, ratio)
-                                    }
-                                  />
-                                ) : attachment ? (
-                                  <CachedImg
-                                    src={attachmentListSrc(attachment)}
-                                    alt={item.title}
-                                    loading="lazy"
-                                    decoding="async"
-                                    onLoad={
-                                      attachment.width && attachment.height
-                                        ? undefined
-                                        : (event) => {
-                                            const el = event.currentTarget;
-                                            if (el.naturalWidth && el.naturalHeight)
-                                              recordAlbumRatio(attachment.id, el.naturalWidth / el.naturalHeight);
-                                          }
-                                    }
-                                  />
-                                ) : (
-                                  <img src={albumCategoryIconSrc(item.category)} alt="" loading="lazy" decoding="async" />
-                                )}
-                              </button>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state album-empty">
-              <span className="empty-sticker" aria-hidden="true">
-                <img src={growthIcon} alt="" />
-              </span>
-              <p>还没有这个分类的回忆。</p>
-              {canCaregive ? (
-                <button type="button" onClick={openAlbumMediaPicker}>
-                  上传到相册
-                </button>
-              ) : null}
-            </div>
-          )}
-        </section>
+        <AlbumScreen
+          canCaregive={canCaregive}
+          isUploadingAlbumMedia={isUploadingAlbumMedia}
+          albumItemCount={albumItems.length}
+          albumStats={albumStats}
+          albumCategory={albumCategory}
+          albumUploadItems={albumUploadItems}
+          albumGroups={albumGroups}
+          albumFileInputRef={albumFileInputRef}
+          albumTileAspect={albumTileAspect}
+          onPickFiles={albumScreenHandlers.onPickFiles}
+          onOpenPicker={albumScreenHandlers.onOpenPicker}
+          onSelectCategory={setAlbumCategory}
+          onOpenPreview={albumScreenHandlers.onOpenPreview}
+          onRecordRatio={recordAlbumRatio}
+        />
         ) : null}
 
         {visitedMobileTabsRef.current.has("profile") ? (

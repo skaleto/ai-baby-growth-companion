@@ -131,6 +131,7 @@ async function installMocks(page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("baby-companion-auth-token", "gesture-test-token");
     window.localStorage.setItem("baby-companion-consent-v1", JSON.stringify(true));
+    window.__COUNT_ALBUM_RENDERS = true;
   });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -349,6 +350,22 @@ try {
   }
   assert.equal(imageDeltas.length, 0, `重进后已缓存的图片不应发网络请求,实际:${imageDeltas.join(", ")}`);
   console.log("[G] after reload, previously viewed IMAGES load with ZERO network requests (video stream exempt by design) ✔");
+
+  // ---- M. AlbumScreen memo 守护:相册已挂载时,在记录页打字 30 字,AlbumScreen 渲染数必须为 0 ----
+  await page.getByRole("button", { name: "记录" }).last().click();
+  await page.locator(".records-screen").waitFor({ state: "visible", timeout: 6000 });
+  await page.getByRole("button", { name: "记账" }).click();
+  const mComposer = page.locator(".records-assistant-composer textarea").first();
+  await mComposer.waitFor({ state: "visible", timeout: 8000 });
+  await mComposer.fill("");
+  await mComposer.click();
+  const rendersBefore = await page.evaluate(() => window.__albumRenders || 0);
+  await page.keyboard.type("宝宝今天第一次翻身啦真是太棒了宝宝今天第一次翻身啦真是太棒了", { delay: 0 });
+  await new Promise((r) => setTimeout(r, 300));
+  const rendersAfter = await page.evaluate(() => window.__albumRenders || 0);
+  assert.equal(rendersAfter - rendersBefore, 0,
+    `打字期间 AlbumScreen 渲染了 ${rendersAfter - rendersBefore} 次(memo 失效:某个 props 引用不稳定)`);
+  console.log("[M] AlbumScreen renders 0 times during 30-char typing (memo holds) ✔");
 
   console.log("preview gesture DOM simulation tests passed");
 } finally {
