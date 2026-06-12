@@ -345,12 +345,14 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
       onInit: (el) => {
         el.className += " pswp-video-bar";
         el.innerHTML =
-          `<button type="button" class="pswp-vb-center" aria-label="播放/暂停">${ICON_PLAY}${ICON_PAUSE}</button>` +
+          `<button type="button" class="pswp-vb-center" aria-label="播放">${ICON_PLAY}</button>` +
           `<div class="pswp-vb-bottom">` +
+          `<button type="button" class="pswp-vb-pause" aria-label="暂停">${ICON_PAUSE}</button>` +
           `<input class="pswp-vb-progress" type="range" min="0" max="1000" step="1" value="0" aria-label="播放进度" />` +
           `<span class="pswp-vb-time">0:00 / 0:00</span>` +
           `</div>`;
-        const toggle = el.querySelector(".pswp-vb-center") as HTMLButtonElement;
+        const centerPlay = el.querySelector(".pswp-vb-center") as HTMLButtonElement;
+        const pauseBtn = el.querySelector(".pswp-vb-pause") as HTMLButtonElement;
         const progress = el.querySelector(".pswp-vb-progress") as HTMLInputElement;
         const timeText = el.querySelector(".pswp-vb-time") as HTMLElement;
 
@@ -375,6 +377,8 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
           if (!scrubbing && Number.isFinite(duration) && duration > 0) {
             progress.value = String(Math.round((video.currentTime / duration) * 1000));
           }
+          const pct = Number.isFinite(duration) && duration > 0 ? (Number(progress.value) / 1000) * 100 : 0;
+          progress.style.setProperty("--p", `${pct}%`);
         };
         const events = ["timeupdate", "durationchange", "play", "pause", "loadedmetadata"];
         const unbind = () => {
@@ -394,10 +398,11 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
           }
         };
 
-        toggle.addEventListener("click", () => {
-          if (!video) return;
-          if (video.paused) void video.play().catch(() => undefined);
-          else video.pause();
+        centerPlay.addEventListener("click", () => {
+          if (video?.paused) void video.play().catch(() => undefined);
+        });
+        pauseBtn.addEventListener("click", () => {
+          video?.pause();
         });
         const seekTo = (raw: string) => {
           if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;

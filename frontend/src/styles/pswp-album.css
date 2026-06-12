@@ -160,8 +160,9 @@
   background: #000;
 }
 
-/* 视频控件(pswp UI 层,与顶栏同层——不经过手势系统,触摸独占)。
-   设计:居中大播放/暂停 + 底部裸进度条与时间;无蒙层面板(2026-06-12 用户定稿)。 */
+/* 视频控件(pswp UI 层,触摸独占;2026-06-13 定稿):
+   暂停态=居中播放键;播放态=中间无按钮(全屏可滑动翻页)、左下角小暂停键;
+   底部裸进度条(自绘细轨,无描边)+ 时间;无蒙层面板。 */
 .pswp-video-bar {
   position: absolute;
   inset: 0;
@@ -189,31 +190,45 @@
   background: rgba(0, 0, 0, 0.36);
   color: #fff;
   pointer-events: auto;
-  transition: opacity 200ms ease;
 }
 
+/* 播放中:中间彻底无按钮(不挡滑动);左下角出现小暂停键。 */
 .pswp-video-bar.is-playing .pswp-vb-center {
-  opacity: 0.42;
+  display: none;
 }
 
-.pswp-vb-icn {
+.pswp-vb-pause {
+  flex: none;
+  display: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.36);
+  color: #fff;
+  pointer-events: auto;
+}
+
+.pswp-video-bar.is-playing .pswp-vb-pause {
+  display: grid;
+}
+
+.pswp-vb-center .pswp-vb-icn {
   width: 30px;
   height: 30px;
 }
 
-.pswp-video-bar .pswp-vb-icn-pause,
-.pswp-video-bar.is-playing .pswp-vb-icn-play {
-  display: none;
-}
-
-.pswp-video-bar.is-playing .pswp-vb-icn-pause {
-  display: block;
+.pswp-vb-pause .pswp-vb-icn {
+  width: 18px;
+  height: 18px;
 }
 
 .pswp-vb-bottom {
   position: absolute;
-  left: 20px;
-  right: 20px;
+  left: 18px;
+  right: 18px;
   bottom: calc(max(16px, env(safe-area-inset-bottom)) + 8px);
   display: flex;
   align-items: center;
@@ -221,14 +236,61 @@
   pointer-events: auto;
 }
 
+/* 自绘滑轨:3px 细轨、已播放白色填充、12px 小拇指,全部无描边/无阴影。 */
 .pswp-vb-progress {
   flex: 1 1 auto;
   min-width: 0;
-  height: 24px;
+  height: 22px;
   margin: 0;
   background: transparent;
-  accent-color: #fff;
+  -webkit-appearance: none;
+  appearance: none;
   touch-action: none;
+  --p: 0%;
+}
+
+.pswp-vb-progress:focus {
+  outline: none;
+}
+
+.pswp-vb-progress::-webkit-slider-runnable-track {
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+  background: linear-gradient(to right, #fff var(--p), rgba(255, 255, 255, 0.32) var(--p));
+}
+
+.pswp-vb-progress::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: none;
+}
+
+.pswp-vb-progress::-moz-range-track {
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.pswp-vb-progress::-moz-range-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: #fff;
+}
+
+.pswp-vb-progress::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: none;
 }
 
 .pswp-vb-time {
