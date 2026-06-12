@@ -305,7 +305,7 @@ try {
   assert.equal(placeholders, 0, "视频 slide 的占位层必须被移除(否则盖住视频=黑屏)");
   // 控制条挂 pswp UI 层(教训:slide 内控件与手势层抢触摸)——视频页必须可见,含播放/进度控件。
   await page.locator(".pswp-video-bar.is-video").waitFor({ state: "visible", timeout: 3000 });
-  assert.ok(await page.locator(".pswp-video-bar .pswp-vb-toggle").isVisible(), "视频控制条应有播放/暂停按钮");
+  assert.ok(await page.locator(".pswp-video-bar .pswp-vb-center").isVisible(), "应有居中播放/暂停按钮");
   assert.ok(await page.locator(".pswp-video-bar .pswp-vb-progress").isVisible(), "视频控制条应有进度条");
   console.log("[I] video slide: placeholder removed, video laid out, UI-layer control bar visible ✔");
   await closePreview(page);

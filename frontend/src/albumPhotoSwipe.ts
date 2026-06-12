@@ -49,11 +49,6 @@ const ICON_PLAY =
   '<svg class="pswp-vb-icn pswp-vb-icn-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
 const ICON_PAUSE =
   '<svg class="pswp-vb-icn pswp-vb-icn-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>';
-const ICON_VOLUME =
-  '<svg class="pswp-vb-icn pswp-vb-icn-vol" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-const ICON_MUTED =
-  '<svg class="pswp-vb-icn pswp-vb-icn-muted" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="m16 9 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-
 const ICON_MORE =
   '<svg class="pswp-album-icn" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
 
@@ -350,16 +345,14 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
       onInit: (el) => {
         el.className += " pswp-video-bar";
         el.innerHTML =
-          `<button type="button" class="pswp-vb-toggle" aria-label="播放/暂停">${ICON_PLAY}${ICON_PAUSE}</button>` +
-          `<span class="pswp-vb-time pswp-vb-cur">0:00</span>` +
+          `<button type="button" class="pswp-vb-center" aria-label="播放/暂停">${ICON_PLAY}${ICON_PAUSE}</button>` +
+          `<div class="pswp-vb-bottom">` +
           `<input class="pswp-vb-progress" type="range" min="0" max="1000" step="1" value="0" aria-label="播放进度" />` +
-          `<span class="pswp-vb-time pswp-vb-dur">0:00</span>` +
-          `<button type="button" class="pswp-vb-mute" aria-label="静音切换">${ICON_VOLUME}${ICON_MUTED}</button>`;
-        const toggle = el.querySelector(".pswp-vb-toggle") as HTMLButtonElement;
+          `<span class="pswp-vb-time">0:00 / 0:00</span>` +
+          `</div>`;
+        const toggle = el.querySelector(".pswp-vb-center") as HTMLButtonElement;
         const progress = el.querySelector(".pswp-vb-progress") as HTMLInputElement;
-        const curText = el.querySelector(".pswp-vb-cur") as HTMLElement;
-        const durText = el.querySelector(".pswp-vb-dur") as HTMLElement;
-        const muteBtn = el.querySelector(".pswp-vb-mute") as HTMLButtonElement;
+        const timeText = el.querySelector(".pswp-vb-time") as HTMLElement;
 
         // 控制条整体不把指针事件交给下层(双保险;本层本就在手势系统之外)。
         for (const type of ["pointerdown", "pointermove", "pointerup", "touchstart", "touchmove", "touchend", "mousedown", "click"]) {
@@ -377,15 +370,13 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
         const sync = () => {
           if (!video) return;
           el.classList.toggle("is-playing", !video.paused);
-          el.classList.toggle("is-muted", video.muted);
           const duration = video.duration;
-          durText.textContent = fmt(duration);
-          curText.textContent = fmt(video.currentTime);
+          timeText.textContent = `${fmt(video.currentTime)} / ${fmt(duration)}`;
           if (!scrubbing && Number.isFinite(duration) && duration > 0) {
             progress.value = String(Math.round((video.currentTime / duration) * 1000));
           }
         };
-        const events = ["timeupdate", "durationchange", "play", "pause", "volumechange", "loadedmetadata"];
+        const events = ["timeupdate", "durationchange", "play", "pause", "loadedmetadata"];
         const unbind = () => {
           if (!video) return;
           for (const name of events) video.removeEventListener(name, sync);
@@ -408,15 +399,12 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
           if (video.paused) void video.play().catch(() => undefined);
           else video.pause();
         });
-        muteBtn.addEventListener("click", () => {
-          if (video) video.muted = !video.muted;
-        });
         const seekTo = (raw: string) => {
           if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
           video.currentTime = (Number(raw) / 1000) * video.duration;
         };
         progress.addEventListener("pointerdown", () => { scrubbing = true; });
-        progress.addEventListener("input", () => { if (video) { seekTo(progress.value); curText.textContent = fmt(video.currentTime); } });
+        progress.addEventListener("input", () => { if (video) { seekTo(progress.value); timeText.textContent = `${fmt(video.currentTime)} / ${fmt(video.duration)}`; } });
         const endScrub = () => { scrubbing = false; };
         progress.addEventListener("pointerup", endScrub);
         progress.addEventListener("pointercancel", endScrub);

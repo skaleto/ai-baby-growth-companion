@@ -160,43 +160,45 @@
   background: #000;
 }
 
-/* 视频控制条(pswp UI 层,与顶栏同层——不经过手势系统,触摸独占)。 */
+/* 视频控件(pswp UI 层,与顶栏同层——不经过手势系统,触摸独占)。
+   设计:居中大播放/暂停 + 底部裸进度条与时间;无蒙层面板(2026-06-12 用户定稿)。 */
 .pswp-video-bar {
   position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 6px);
+  inset: 0;
   z-index: 12;
   display: none;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 14px;
-  background: rgba(20, 24, 22, 0.72);
-  color: #fff;
+  pointer-events: none;
 }
 
 .pswp-video-bar.is-video {
-  display: flex;
+  display: block;
 }
 
-.pswp-vb-toggle,
-.pswp-vb-mute {
-  flex: none;
+.pswp-vb-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 64px;
+  height: 64px;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.36);
   color: #fff;
+  pointer-events: auto;
+  transition: opacity 200ms ease;
+}
+
+.pswp-video-bar.is-playing .pswp-vb-center {
+  opacity: 0.42;
 }
 
 .pswp-vb-icn {
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
 }
 
 .pswp-video-bar .pswp-vb-icn-pause,
@@ -208,29 +210,31 @@
   display: block;
 }
 
-.pswp-video-bar .pswp-vb-icn-muted,
-.pswp-video-bar.is-muted .pswp-vb-icn-vol {
-  display: none;
-}
-
-.pswp-video-bar.is-muted .pswp-vb-icn-muted {
-  display: block;
-}
-
-.pswp-vb-time {
-  flex: none;
-  min-width: 36px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-  opacity: 0.92;
+.pswp-vb-bottom {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 8px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: auto;
 }
 
 .pswp-vb-progress {
   flex: 1 1 auto;
   min-width: 0;
-  height: 26px;
+  height: 24px;
   margin: 0;
-  accent-color: #ffd27d;
+  background: transparent;
+  accent-color: #fff;
   touch-action: none;
+}
+
+.pswp-vb-time {
+  flex: none;
+  font-size: 12px;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
 }
