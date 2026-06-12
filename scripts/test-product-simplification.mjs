@@ -231,10 +231,10 @@ assert.match(appSource, /<AlbumScreen\b/, "App should mount the extracted AlbumS
 assert.doesNotMatch(appSource, /Capacitor\./, "App.tsx must not call Capacitor directly (use platform.ts port layer, tech-debt D11)");
 assert.doesNotMatch(appSource, /from "@capacitor\/core"/, "App.tsx must not import @capacitor/core directly (tech-debt D11)");
 
-const profileStart = appSource.indexOf('<section className="profile-screen');
-const profileEnd = appSource.indexOf('<aside className="right-rail"', profileStart);
-assert.ok(profileStart >= 0 && profileEnd > profileStart, "profile screen block should be findable");
-const profileBlock = appSource.slice(profileStart, profileEnd);
+// D1 拆分后:我的页整体在 screens/ProfileScreen.tsx(App 仅挂载)。
+const profileBlock = readFileSync("frontend/src/screens/ProfileScreen.tsx", "utf8");
+assert.match(appSource, /<ProfileScreen\b/, "App should mount the extracted ProfileScreen");
+assert.match(profileBlock, /<section className="profile-screen/, "profile screen section should live in ProfileScreen");
 assert.match(profileBlock, /profile-reminder-card/, "profile page should contain reminder management card");
 assert.match(appSource, /openReminderQuickDraft/, "reminder quick buttons should open manual reminder drafts instead of AI chat prompts");
 assert.doesNotMatch(appSource, /REMINDER_QUICK_ACTIONS\.map[\s\S]*?quickFill\(withBabyNickname\(action\.prompt\)\)/, "reminder quick buttons should not send prompt text to AI");
