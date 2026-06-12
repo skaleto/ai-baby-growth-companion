@@ -2,7 +2,9 @@
 // 手势物理(跟手/惯性/缩放/开合 morph)全部交给 PhotoSwipe;本模块只做集成:
 // 数据源(接 IndexedDB 本地缓存)、视频 slide、顶栏信息与编辑/删除菜单、缩略图联动。
 import PhotoSwipeLightbox from "photoswipe/lightbox";
+import Plyr from "plyr";
 import "photoswipe/style.css";
+import "plyr/dist/plyr.css";
 import "./styles/pswp-album.css";
 import type { AlbumItem, Attachment, RecordedBy } from "./types";
 import {
@@ -85,12 +87,16 @@ async function buildSlideData(item: AlbumItem, opts: OpenAlbumPhotoSwipeOptions)
   return { src, width, height, msrc: thumb, alt: item.title, albumItem: item, isVideo: false };
 }
 
+// 每个视频 slide 的 Plyr 实例(随 contentDestroy 销毁)。
+const plyrInstances = new WeakMap<HTMLElement, Plyr>();
+
 function buildVideoElement(data: PswpAlbumData): HTMLElement {
+  const shell = document.createElement("div");
+  shell.className = "pswp-video-shell";
   const video = document.createElement("video");
   video.className = "pswp-video";
   if (data.videoUrl) video.src = data.videoUrl;
   if (data.poster) video.poster = data.poster;
-  video.controls = true;
   video.playsInline = true;
   // 绝不设 autoplay:PhotoSwipe 会预加载相邻 slide(contentLoad 对没划到的视频也会触发),
   // 带 autoplay 的 <video> 攒够数据就自行带声开播——这就是「没划到/刚划过的视频在后台响」。
@@ -110,8 +116,22 @@ function buildVideoElement(data: PswpAlbumData): HTMLElement {
       void captureVideoPosterToCache(video, data.remoteVideoUrl, { uploadForAttachmentId: data.attachmentId });
     }
   });
-  return video;
+  shell.appendChild(video);
+  // Plyr(5.2 选型):简约控制条(播放/进度/时间/静音),替换系统 controls(安卓上不可控且丑)。
+  const player = new Plyr(video, {
+    controls: ["play", "progress", "current-time", "mute"],
+    autoplay: false,
+    clickToPlay: true,
+    fullscreen: { enabled: false },
+    storage: { enabled: false },
+    iconUrl: undefined,
+  });
+  plyrInstances.set(shell, player);
+  return shell;
 }
+
+const plyrOf = (element: Element | null | undefined): Plyr | undefined =>
+  element instanceof HTMLElement ? plyrInstances.get(element) : undefined;
 
 function pauseVideosExcept(root: HTMLElement | null, current?: HTMLElement | null) {
   if (!root) return;
@@ -173,14 +193,20 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
   lightbox.on("contentActivate", (e) => {
     const data = e.content.data as PswpAlbumData;
     if (data.isVideo) {
-      const video = e.content.element instanceof HTMLVideoElement ? e.content.element : e.content.element?.querySelector?.("video");
-      void (video as HTMLVideoElement | null)?.play?.()?.catch?.(() => undefined);
+      const player = plyrOf(e.content.element);
+      if (player) {
+        void Promise.resolve(player.play()).catch(() => undefined);
+      } else {
+        const video = e.content.element?.querySelector?.("video");
+        void (video as HTMLVideoElement | null)?.play?.()?.catch?.(() => undefined);
+      }
     }
   });
   lightbox.on("contentDeactivate", (e) => {
     const data = e.content.data as PswpAlbumData;
     if (data.isVideo) {
-      const video = e.content.element instanceof HTMLVideoElement ? e.content.element : e.content.element?.querySelector?.("video");
+      try { plyrOf(e.content.element)?.pause(); } catch { /* 已分离 */ }
+      const video = e.content.element?.querySelector?.("video");
       try { (video as HTMLVideoElement | null)?.pause?.(); } catch { /* 元素可能已分离 */ }
     }
   });
@@ -189,7 +215,8 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
   lightbox.on("contentDestroy", (e) => {
     const data = e.content.data as PswpAlbumData;
     if (data.isVideo) {
-      const video = e.content.element instanceof HTMLVideoElement ? e.content.element : e.content.element?.querySelector?.("video");
+      try { plyrOf(e.content.element)?.destroy(); } catch { /* 已拆 */ }
+      const video = e.content.element?.querySelector?.("video");
       if (video instanceof HTMLVideoElement) {
         try {
           video.pause();

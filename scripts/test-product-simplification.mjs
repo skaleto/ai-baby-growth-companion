@@ -107,7 +107,9 @@ assert.match(recordsBlock, /records-entry-drawer/, "records AI and manual entry 
 assert.match(recordsBlock, /manual-record-type-tabs/, "manual record drawer should expose type-specific record tabs");
 assert.match(recordsBlock, /manual-stepper/, "manual record drawer should use stepper controls for numeric values");
 assert.match(recordsBlock, /manual-choice-grid/, "manual record drawer should use choice controls instead of freeform numeric typing");
-assert.match(recordsBlock, /type="time"/, "manual record drawer should use a native time picker for exact time");
+// 2026-06-12 选型(5.1):时间选择改 antd-mobile 滚轮(AppTimeField),不再用系统原生控件。
+assert.match(recordsBlock, /<AppTimeField/, "manual record drawer should use the AppTimeField wheel picker for exact time");
+assert.doesNotMatch(recordsBlock, /type="time"/, "system native time input must not return (ugly on Android, replaced by AppTimeField)");
 assert.doesNotMatch(appSource, /type:\s*"note",\s*label:\s*"备注"/, "manual record drawer should not expose a generic note record type");
 assert.doesNotMatch(recordsBlock, /className="records-manual-form"/, "manual care logging should not remain as a coarse inline form");
 assert.match(mobileCss, /\.records-entry-drawer\s*\{[\s\S]*?height:\s*var\(--app-viewport-height, 100dvh\);/, "records entry drawer should use a full-screen drawer height");

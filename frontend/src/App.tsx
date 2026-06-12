@@ -38,6 +38,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { App as CapacitorApp } from "@capacitor/app";
+import "./styles/vendor-mobile.css";
 import { getPlatform, isAndroidPlatform, isIOSPlatform, isNativePlatform, isPluginAvailable, platformDisplayLabel } from "./platform";
 import {
   createReminderDraft,
@@ -231,6 +232,8 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { CachedImg } from "./components/CachedMedia";
 import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwipeMath";
 import { openAlbumPhotoSwipe } from "./albumPhotoSwipe";
+import { appAlert, appConfirm, appPrompt } from "./components/appDialogs";
+import { AppDateField, AppTimeField } from "./components/appWheelFields";
 import "./posterUpload";
 import { reportClientError } from "./errorReporting";
 import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
@@ -2548,7 +2551,7 @@ function App() {
 
   const handleRemoveFamilyMember = async (member: FamilyMember) => {
     if (member.self) return;
-    if (!window.confirm(`确定移除「${member.roleName}」吗？对方会被退出登录，需重新用邀请码加入。`)) return;
+    if (!(await appConfirm({ title: "移除成员", content: `确定移除「${member.roleName}」吗？对方会被退出登录，需重新用邀请码加入。`, danger: true }))) return;
     setFamilyMemberBusyUserId(member.userId);
     try {
       await removeFamilyMember(member.userId);
@@ -2562,7 +2565,7 @@ function App() {
   };
 
   const handleResetFamilyInviteCode = async () => {
-    if (!window.confirm("重置后旧邀请码立即失效（已加入的成员不受影响）。确定重置？")) return;
+    if (!(await appConfirm({ title: "重置邀请码", content: "重置后旧邀请码立即失效（已加入的成员不受影响）。确定重置？" }))) return;
     setFamilyMemberBusyUserId("__reset__");
     try {
       const result = await resetFamilyInviteCode();
@@ -5131,13 +5134,13 @@ function App() {
     event.preventDefault();
     if (!canCaregive) return;
     if (reminderDraft.scheduleMode === "once" && (!reminderDraft.dueDate || !reminderDraft.dueTime)) {
-      window.alert("请选择提醒日期和时间。");
+      void appAlert("请选择提醒日期和时间。");
       return;
     }
     if (reminderDraft.scheduleMode === "interval") {
       const intervalMinutes = Number(reminderDraft.intervalMinutes);
       if (!Number.isFinite(intervalMinutes) || intervalMinutes < MIN_INTERVAL_MINUTES || intervalMinutes > MAX_INTERVAL_MINUTES) {
-        window.alert(`循环间隔需要在 ${formatIntervalText(MIN_INTERVAL_MINUTES)} 到 ${formatIntervalText(MAX_INTERVAL_MINUTES)} 之间。`);
+        void appAlert(`循环间隔需要在 ${formatIntervalText(MIN_INTERVAL_MINUTES)} 到 ${formatIntervalText(MAX_INTERVAL_MINUTES)} 之间。`);
         return;
       }
     }
@@ -5256,7 +5259,7 @@ function App() {
     if (!canCaregive || !postponeReminderTarget) return;
     const postponedAt = dateFromReminderPostponeDraft(postponeReminderDraft);
     if (!postponedAt || postponedAt.getTime() <= Date.now()) {
-      window.alert("请选择晚于现在的提醒时间。");
+      void appAlert("请选择晚于现在的提醒时间。");
       return;
     }
     const target = postponeReminderTarget;
@@ -5307,18 +5310,18 @@ function App() {
     if (!canCaregive) return;
     const amount = Number(expenseDraft.amount);
     if (!expenseDraft.title.trim()) {
-      window.alert("请填写商品名或用途。");
+      void appAlert("请填写商品名或用途。");
       return;
     }
     if (!Number.isFinite(amount) || amount <= 0) {
-      window.alert("请填写实际支付金额。");
+      void appAlert("请填写实际支付金额。");
       return;
     }
     const existing = editingExpenseId ? expenses.find((item) => item.id === editingExpenseId) : undefined;
     if (existing) {
       const delta = Math.abs(amount - existing.amount);
       const needsConfirm = amount >= 1000 || (existing.amount > 0 && delta / existing.amount >= 0.5 && delta >= 100);
-      if (needsConfirm && !window.confirm(`确认把「${existing.title}」的金额改为 ${formatMoney(amount)} 吗？`)) return;
+      if (needsConfirm && !(await appConfirm({ title: "确认金额", content: `确认把「${existing.title}」的金额改为 ${formatMoney(amount)} 吗？` }))) return;
     }
     const nextExpense = expenseFromDraft(expenseDraft, existing);
     setExpenses((current) => {
@@ -5550,11 +5553,11 @@ function App() {
     void deleteAppRecord("growthMeasurements", id).catch(() => setStorageStatus("offline"));
   };
 
-  const editAlbumItem = (item: AlbumItem) => {
+  const editAlbumItem = async (item: AlbumItem) => {
     if (!canCaregive) return;
-    const title = window.prompt("给这段回忆起个名字", item.title);
+    const title = await appPrompt({ title: "给这段回忆起个名字", defaultValue: item.title });
     if (title === null) return;
-    const tags = window.prompt("标签，用顿号或逗号分隔", item.tags.join("、"));
+    const tags = await appPrompt({ title: "标签", defaultValue: item.tags.join("、"), placeholder: "用顿号或逗号分隔" });
     if (tags === null) return;
     const nextItem = normalizeAlbumItem(
       {
@@ -5572,7 +5575,7 @@ function App() {
 
   const removeAlbumItem = async (item: AlbumItem) => {
     if (!canCaregive) return;
-    const confirmed = window.confirm(`删除「${item.title}」？\n\n会同时删除云端/本地存储里的原始素材和缩略图。`);
+    const confirmed = await appConfirm({ title: "删除素材", content: `删除「${item.title}」？会同时删除云端/本地存储里的原始素材和缩略图。`, danger: true });
     if (!confirmed) return;
     const attachmentId = item.attachmentId || item.attachment?.id || "";
     setAlbumItems((current) =>
@@ -5674,7 +5677,7 @@ function App() {
       setEditingPendingId("");
       setPendingDraft(null);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "确认记录失败，请稍后再试。");
+      void appAlert(error instanceof Error ? error.message : "确认记录失败，请稍后再试。");
     } finally {
       setConfirmingPendingEffectIds((current) => current.filter((id) => id !== effect.id));
     }
@@ -5688,7 +5691,7 @@ function App() {
       setEditingPendingId("");
       setPendingDraft(null);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "丢弃记录失败，请稍后再试。");
+      void appAlert(error instanceof Error ? error.message : "丢弃记录失败，请稍后再试。");
     }
   };
 
@@ -5721,7 +5724,7 @@ function App() {
       setEditingPendingId("");
       setPendingDraft(null);
     } catch {
-      window.alert("保存待确认内容失败，请稍后再试。");
+      void appAlert("保存待确认内容失败，请稍后再试。");
     }
   };
 
@@ -6352,12 +6355,11 @@ function App() {
                 日期
                 <span className="expense-date-field">
                   <span>{formatExpenseDateLabel(expenseDraft.date)}</span>
-                  <input
+                  <AppDateField
                     className="expense-date-input"
-                    type="date"
+                    overlay
                     value={expenseDraft.date}
-                    aria-label="支出日期"
-                    onChange={(event) => setExpenseDraft((current) => ({ ...current, date: event.target.value }))}
+                    onChange={(value) => setExpenseDraft((current) => ({ ...current, date: value }))}
                   />
                 </span>
               </label>
@@ -6715,14 +6717,13 @@ function App() {
                 </label>
                 <label>
                   <span>{onboardingDraft.stage === "born" ? "出生日期" : "预产期"}</span>
-                  <input
-                    type="date"
+                  <AppDateField
                     value={onboardingDraft.stage === "born" ? onboardingDraft.birthDate : onboardingDraft.expectedDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setOnboardingDraft((current) =>
                         current.stage === "born"
-                          ? { ...current, birthDate: event.target.value }
-                          : { ...current, expectedDate: event.target.value },
+                          ? { ...current, birthDate: value }
+                          : { ...current, expectedDate: value },
                       )
                     }
                   />
@@ -7111,10 +7112,9 @@ function App() {
                                     </label>
                                     <label>
                                       日期
-                                      <input
-                                        type="date"
+                                      <AppDateField
                                         value={pendingDraft.growthEvent.date}
-                                        onChange={(event) => updatePendingGrowthDraft({ date: event.target.value })}
+                                        onChange={(value) => updatePendingGrowthDraft({ date: value })}
                                       />
                                     </label>
                                     <label>
@@ -7163,11 +7163,10 @@ function App() {
                                       </div>
                                       <label>
                                         日期
-                                        <input
-                                          type="date"
+                                        <AppDateField
                                           value={measurement.date}
-                                          onChange={(event) =>
-                                            updatePendingGrowthMeasurementDraft(measurement.id, { date: event.target.value })
+                                          onChange={(value) =>
+                                            updatePendingGrowthMeasurementDraft(measurement.id, { date: value })
                                           }
                                         />
                                       </label>
@@ -7188,10 +7187,9 @@ function App() {
                                     <legend>照护记录</legend>
                                     <label>
                                       日期
-                                      <input
-                                        type="date"
+                                      <AppDateField
                                         value={pendingDraft.careLogPatch.date}
-                                        onChange={(event) => updatePendingCareDraft({ date: event.target.value })}
+                                        onChange={(value) => updatePendingCareDraft({ date: value })}
                                       />
                                     </label>
                                     <div className="pending-effect-grid">
@@ -7332,21 +7330,19 @@ function App() {
                                       <div className="pending-effect-grid">
                                         <label>
                                           日期
-                                          <input
-                                            type="date"
+                                          <AppDateField
                                             value={item.draft.dueDate}
-                                            onChange={(event) =>
-                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, dueDate: event.target.value }))
+                                            onChange={(value) =>
+                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, dueDate: value }))
                                             }
                                           />
                                         </label>
                                         <label>
                                           时间
-                                          <input
-                                            type="time"
+                                          <AppTimeField
                                             value={item.draft.dueTime}
-                                            onChange={(event) =>
-                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, dueTime: event.target.value }))
+                                            onChange={(value) =>
+                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, dueTime: value }))
                                             }
                                           />
                                         </label>
@@ -7384,10 +7380,9 @@ function App() {
                                       </label>
                                       <label>
                                         日期
-                                        <input
-                                          type="date"
+                                        <AppDateField
                                           value={item.date}
-                                          onChange={(event) => updatePendingExpenseDraft(index, { date: event.target.value })}
+                                          onChange={(value) => updatePendingExpenseDraft(index, { date: value })}
                                         />
                                       </label>
                                     </div>
@@ -7934,10 +7929,9 @@ function App() {
                               </div>
                               <label className="manual-native-picker">
                                 <span>精确时间</span>
-                                <input
-                                  type="time"
+                                <AppTimeField
                                   value={normalizeClockText(careEventDraft.time) ?? currentClockText()}
-                                  onChange={(inputEvent) => updateManualCareDraft({ time: inputEvent.target.value })}
+                                  onChange={(value) => updateManualCareDraft({ time: value })}
                                 />
                               </label>
                             </fieldset>

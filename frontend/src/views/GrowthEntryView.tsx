@@ -1,4 +1,5 @@
 import { ChevronLeft, PencilLine, Save, LineChart } from "lucide-react";
+import { AppDateField } from "../components/appWheelFields";
 import { StorySelect } from "../components/StorySelect";
 import { GROWTH_MEASUREMENT_META, GROWTH_MEASUREMENT_TYPES } from "../appOptions";
 import type { BabyProfile, GrowthMeasurement, GrowthMeasurementType } from "../types";
@@ -70,11 +71,10 @@ export function GrowthEntryView(props: GrowthEntryViewProps) {
               </div>
             </div>
             <div className="growth-entry-row">
-              <input
-                type="date"
+              <AppDateField
                 value={draft.date}
-                onChange={(event) =>
-                  onDraftChange({ ...draft, date: event.target.value })
+                onChange={(value) =>
+                  onDraftChange({ ...draft, date: value })
                 }
               />
               <input

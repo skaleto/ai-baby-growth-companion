@@ -1093,9 +1093,12 @@ async function exerciseReminderFlow(page, viewport) {
     await checkMobileTabbarVisible(page, `${viewport.name} postpone reminder dialog open`);
     await checkDialogNotBlocked(page, postponeDialog, `${viewport.name} postpone reminder dialog`);
   }
-  const future = futureDateTimeParts(120);
-  await postponeDialog.locator('input[type="date"]').fill(future.date);
-  await postponeDialog.locator('input[type="time"]').fill(future.time);
+  // 5.1 选型后:日期/时间为 antd-mobile 滚轮(AppDateField/AppTimeField)。
+  // 延后草稿默认值已是未来时间——各开一次滚轮并确认,覆盖新交互后直接提交。
+  await postponeDialog.locator(".app-wheel-field").first().click();
+  await page.locator(".adm-picker-header-button", { hasText: "确定" }).last().click();
+  await postponeDialog.locator(".app-wheel-field").nth(1).click();
+  await page.locator(".adm-picker-header-button", { hasText: "确定" }).last().click();
   await postponeDialog.getByRole("button", { name: /确认延后/ }).click();
   await postponeDialog.waitFor({ state: "hidden", timeout: 5000 });
 

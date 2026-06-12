@@ -261,6 +261,11 @@ try {
   await page.locator(".pswp-album-popover.is-open").waitFor({ state: "visible", timeout: 2000 });
   await page.locator(".pswp-album-popover button", { hasText: "编辑" }).click({ timeout: 2000 });
   await page.locator(".pswp").waitFor({ state: "detached", timeout: 3000 });
+  // 5.1 选型后:编辑弹 antd-mobile 输入对话框(取代 window.prompt)——出现即取消,清场给后续场景。
+  const admCancel = page.locator(".adm-dialog-button", { hasText: "取消" });
+  await admCancel.waitFor({ state: "visible", timeout: 3000 });
+  await admCancel.click({ timeout: 2000 });
+  await admCancel.waitFor({ state: "detached", timeout: 3000 });
   console.log("[J] clean close button + ⋯ menu opens edit/delete on tap (no stuck gray box, clicks live) ✔");
 
   // ---- K. 相邻图无缝贴合:slide 间距必须 == 视口宽(spacing:0),不得有黑边间隔 ----

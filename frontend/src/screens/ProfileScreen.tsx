@@ -5,6 +5,7 @@ import { memo, type Dispatch, type FormEvent, type SetStateAction } from "react"
 import { Bell, ChevronRight, PencilLine, RefreshCw, Save, Sparkles, Trash2, Users, X } from "lucide-react";
 import { AiDataNotice } from "../components/AiDataNotice";
 import { StorySelect, selectOptionsWithCurrent } from "../components/StorySelect";
+import { AppDateField } from "../components/appWheelFields";
 import { FEEDING_SELECT_OPTIONS, GENDER_SELECT_OPTIONS, REGION_SELECT_OPTIONS, STAGE_SELECT_OPTIONS } from "../appOptions";
 import { ageLabel, displayProfileValue, formatFullDate, stageLabel } from "../appStateDomain";
 import { aiUsageFeatureLabel, aiUsageModelLabel, formatTokenCount } from "../utils/aiUsage";
@@ -452,19 +453,17 @@ export const ProfileScreen = memo(function ProfileScreen({
               </label>
               <label>
                 <span>出生日期</span>
-                <input
-                  type="date"
+                <AppDateField
                   value={profileDraft.birthDate}
-                  onChange={(event) => setProfileDraft((current) => ({ ...current, birthDate: event.target.value }))}
+                  onChange={(value) => setProfileDraft((current) => ({ ...current, birthDate: value }))}
                 />
               </label>
               <label>
                 <span>预产期</span>
-                <input
-                  type="date"
+                <AppDateField
                   value={profileDraft.expectedDate}
-                  onChange={(event) =>
-                    setProfileDraft((current) => ({ ...current, expectedDate: event.target.value }))
+                  onChange={(value) =>
+                    setProfileDraft((current) => ({ ...current, expectedDate: value }))
                   }
                 />
               </label>

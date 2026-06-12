@@ -5,6 +5,7 @@ import { memo, type Dispatch, type FormEvent, type SetStateAction } from "react"
 import { Bell, BellOff, CheckCircle2, ChevronLeft, Clock3, PencilLine, Save, Syringe, Trash2, X } from "lucide-react";
 import { isNativePlatform } from "../platform";
 import { StorySelect } from "../components/StorySelect";
+import { AppDateField, AppTimeField } from "../components/appWheelFields";
 import {
   MAX_INTERVAL_MINUTES,
   MIN_INTERVAL_MINUTES,
@@ -296,18 +297,16 @@ export const RemindersScreen = memo(function RemindersScreen({
                   <div className="reminder-editor-grid">
                     <label>
                       日期
-                      <input
-                        type="date"
+                      <AppDateField
                         value={reminderDraft.dueDate}
-                        onChange={(event) => setReminderDraft((current) => ({ ...current, dueDate: event.target.value }))}
+                        onChange={(value) => setReminderDraft((current) => ({ ...current, dueDate: value }))}
                       />
                     </label>
                     <label>
                       时间
-                      <input
-                        type="time"
+                      <AppTimeField
                         value={reminderDraft.dueTime}
-                        onChange={(event) => setReminderDraft((current) => ({ ...current, dueTime: event.target.value }))}
+                        onChange={(value) => setReminderDraft((current) => ({ ...current, dueTime: value }))}
                       />
                     </label>
                   </div>
@@ -345,19 +344,17 @@ export const RemindersScreen = memo(function RemindersScreen({
                 <div className="reminder-postpone-fields">
                   <label>
                     日期
-                    <input
-                      type="date"
+                    <AppDateField
                       value={postponeReminderDraft.dueDate}
-                      onChange={(event) => setPostponeReminderDraft((current) => ({ ...current, dueDate: event.target.value }))}
-                    />
+                      onChange={(value) => setPostponeReminderDraft((current) => ({ ...current, dueDate: value }))}
+                      />
                   </label>
                   <label>
                     时间
-                    <input
-                      type="time"
+                    <AppTimeField
                       value={postponeReminderDraft.dueTime}
-                      onChange={(event) => setPostponeReminderDraft((current) => ({ ...current, dueTime: event.target.value }))}
-                    />
+                      onChange={(value) => setPostponeReminderDraft((current) => ({ ...current, dueTime: value }))}
+                      />
                   </label>
                 </div>
                 <div className="story-modal-actions delete-confirm-actions">
