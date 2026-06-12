@@ -6,8 +6,6 @@
   --adm-color-danger: #e2624b;
   --adm-font-family: inherit;
   --adm-center-popup-border-radius: 16px;
-  --plyr-color-main: #4d7d60;
-  --plyr-control-radius: 8px;
 }
 
 .adm-dialog-content {
@@ -47,22 +45,14 @@
   color: var(--muted, #9a917f);
 }
 
-/* Plyr 在 PhotoSwipe 视频 slide 内:壳与播放器都铺满 pswp 给定的内容盒。 */
+/* PhotoSwipe 视频 slide:壳与裸 video 铺满 pswp 给定的内容盒(控制条在 pswp UI 层,见 pswp-album.css)。 */
 .pswp-video-shell {
   width: 100%;
   height: 100%;
   background: #000;
 }
 
-.pswp-video-shell .plyr {
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  max-height: none;
-  --plyr-video-background: #000;
-}
-
-.pswp-video-shell .plyr video {
+.pswp-video-shell video {
   width: 100%;
   height: 100%;
   max-width: none;

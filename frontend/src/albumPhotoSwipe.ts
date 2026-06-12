@@ -2,9 +2,7 @@
 // 手势物理(跟手/惯性/缩放/开合 morph)全部交给 PhotoSwipe;本模块只做集成:
 // 数据源(接 IndexedDB 本地缓存)、视频 slide、顶栏信息与编辑/删除菜单、缩略图联动。
 import PhotoSwipeLightbox from "photoswipe/lightbox";
-import Plyr from "plyr";
 import "photoswipe/style.css";
-import "plyr/dist/plyr.css";
 import "./styles/pswp-album.css";
 import type { AlbumItem, Attachment, RecordedBy } from "./types";
 import {
@@ -47,6 +45,15 @@ const FALLBACK_WIDTH = 1600;
 // 干净的细线 X(复刻旧版 lucide <X>),替代 PhotoSwipe 自带带描边阴影的"塑料"关闭图标。
 const ICON_CLOSE =
   '<svg class="pswp-album-icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+const ICON_PLAY =
+  '<svg class="pswp-vb-icn pswp-vb-icn-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const ICON_PAUSE =
+  '<svg class="pswp-vb-icn pswp-vb-icn-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>';
+const ICON_VOLUME =
+  '<svg class="pswp-vb-icn pswp-vb-icn-vol" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const ICON_MUTED =
+  '<svg class="pswp-vb-icn pswp-vb-icn-muted" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="m16 9 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
 const ICON_MORE =
   '<svg class="pswp-album-icn" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
 
@@ -87,9 +94,6 @@ async function buildSlideData(item: AlbumItem, opts: OpenAlbumPhotoSwipeOptions)
   return { src, width, height, msrc: thumb, alt: item.title, albumItem: item, isVideo: false };
 }
 
-// 每个视频 slide 的 Plyr 实例(随 contentDestroy 销毁)。
-const plyrInstances = new WeakMap<HTMLElement, Plyr>();
-
 function buildVideoElement(data: PswpAlbumData): HTMLElement {
   const shell = document.createElement("div");
   shell.className = "pswp-video-shell";
@@ -117,33 +121,8 @@ function buildVideoElement(data: PswpAlbumData): HTMLElement {
     }
   });
   shell.appendChild(video);
-  // Plyr(5.2 选型):简约控制条(播放/进度/时间/静音),替换系统 controls(安卓上不可控且丑)。
-  const player = new Plyr(video, {
-    // play-large:暂停态中央常显大按钮;控制条常驻(hideControls:false)——
-    // pswp 手势层会截走「点一下唤回控制条」的 tap,自动隐藏会让用户找不到暂停。
-    controls: ["play-large", "play", "progress", "current-time", "mute"],
-    autoplay: false,
-    clickToPlay: false,
-    hideControls: false,
-    fullscreen: { enabled: false },
-    storage: { enabled: false },
-    iconUrl: undefined,
-  });
-  plyrInstances.set(shell, player);
-  // 控制条/按钮上的指针事件不再冒泡给 PhotoSwipe:否则拖进度条=拖动整个 slide、
-  // 点暂停=触发 pswp 的 tap 行为。视频画面区不拦截——滑动翻页保持可用。
-  const stopIfOnControls = (event: Event) => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest(".plyr__controls, .plyr__control")) event.stopPropagation();
-  };
-  for (const type of ["pointerdown", "pointermove", "pointerup", "touchstart", "touchmove", "touchend", "mousedown", "click"]) {
-    shell.addEventListener(type, stopIfOnControls);
-  }
   return shell;
 }
-
-const plyrOf = (element: Element | null | undefined): Plyr | undefined =>
-  element instanceof HTMLElement ? plyrInstances.get(element) : undefined;
 
 function pauseVideosExcept(root: HTMLElement | null, current?: HTMLElement | null) {
   if (!root) return;
@@ -205,19 +184,13 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
   lightbox.on("contentActivate", (e) => {
     const data = e.content.data as PswpAlbumData;
     if (data.isVideo) {
-      const player = plyrOf(e.content.element);
-      if (player) {
-        void Promise.resolve(player.play()).catch(() => undefined);
-      } else {
-        const video = e.content.element?.querySelector?.("video");
-        void (video as HTMLVideoElement | null)?.play?.()?.catch?.(() => undefined);
-      }
+      const video = e.content.element?.querySelector?.("video");
+      void (video as HTMLVideoElement | null)?.play?.()?.catch?.(() => undefined);
     }
   });
   lightbox.on("contentDeactivate", (e) => {
     const data = e.content.data as PswpAlbumData;
     if (data.isVideo) {
-      try { plyrOf(e.content.element)?.pause(); } catch { /* 已分离 */ }
       const video = e.content.element?.querySelector?.("video");
       try { (video as HTMLVideoElement | null)?.pause?.(); } catch { /* 元素可能已分离 */ }
     }
@@ -227,7 +200,6 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
   lightbox.on("contentDestroy", (e) => {
     const data = e.content.data as PswpAlbumData;
     if (data.isVideo) {
-      try { plyrOf(e.content.element)?.destroy(); } catch { /* 已拆 */ }
       const video = e.content.element?.querySelector?.("video");
       if (video instanceof HTMLVideoElement) {
         try {
@@ -364,6 +336,99 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
       }
       rawClose();
     };
+  });
+
+  // 视频控制条(5.2 终版):挂在 pswp 的 UI 层(与关闭/菜单按钮同层)。
+  // 教训:任何放在 slide 内容里的控件(含 Plyr)都会与 pswp 手势层抢触摸——
+  // 拖进度=拖页、tap 被截走;UI 层元素不经过手势系统,关闭键已在真机验证可点。
+  lightbox.on("uiRegister", () => {
+    const pswp = lightbox.pswp;
+    if (!pswp?.ui) return;
+    pswp.ui.registerElement({
+      name: "video-bar",
+      appendTo: "wrapper",
+      onInit: (el) => {
+        el.className += " pswp-video-bar";
+        el.innerHTML =
+          `<button type="button" class="pswp-vb-toggle" aria-label="播放/暂停">${ICON_PLAY}${ICON_PAUSE}</button>` +
+          `<span class="pswp-vb-time pswp-vb-cur">0:00</span>` +
+          `<input class="pswp-vb-progress" type="range" min="0" max="1000" step="1" value="0" aria-label="播放进度" />` +
+          `<span class="pswp-vb-time pswp-vb-dur">0:00</span>` +
+          `<button type="button" class="pswp-vb-mute" aria-label="静音切换">${ICON_VOLUME}${ICON_MUTED}</button>`;
+        const toggle = el.querySelector(".pswp-vb-toggle") as HTMLButtonElement;
+        const progress = el.querySelector(".pswp-vb-progress") as HTMLInputElement;
+        const curText = el.querySelector(".pswp-vb-cur") as HTMLElement;
+        const durText = el.querySelector(".pswp-vb-dur") as HTMLElement;
+        const muteBtn = el.querySelector(".pswp-vb-mute") as HTMLButtonElement;
+
+        // 控制条整体不把指针事件交给下层(双保险;本层本就在手势系统之外)。
+        for (const type of ["pointerdown", "pointermove", "pointerup", "touchstart", "touchmove", "touchend", "mousedown", "click"]) {
+          el.addEventListener(type, (event) => event.stopPropagation());
+        }
+
+        const fmt = (seconds: number) => {
+          if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+          const total = Math.round(seconds);
+          return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+        };
+
+        let video: HTMLVideoElement | null = null;
+        let scrubbing = false;
+        const sync = () => {
+          if (!video) return;
+          el.classList.toggle("is-playing", !video.paused);
+          el.classList.toggle("is-muted", video.muted);
+          const duration = video.duration;
+          durText.textContent = fmt(duration);
+          curText.textContent = fmt(video.currentTime);
+          if (!scrubbing && Number.isFinite(duration) && duration > 0) {
+            progress.value = String(Math.round((video.currentTime / duration) * 1000));
+          }
+        };
+        const events = ["timeupdate", "durationchange", "play", "pause", "volumechange", "loadedmetadata"];
+        const unbind = () => {
+          if (!video) return;
+          for (const name of events) video.removeEventListener(name, sync);
+          video = null;
+        };
+        const rebind = () => {
+          unbind();
+          const data = pswp.currSlide?.data as PswpAlbumData | undefined;
+          const next = data?.isVideo ? pswp.currSlide?.content?.element?.querySelector?.("video") : null;
+          el.classList.toggle("is-video", Boolean(next));
+          if (next instanceof HTMLVideoElement) {
+            video = next;
+            for (const name of events) video.addEventListener(name, sync);
+            sync();
+          }
+        };
+
+        toggle.addEventListener("click", () => {
+          if (!video) return;
+          if (video.paused) void video.play().catch(() => undefined);
+          else video.pause();
+        });
+        muteBtn.addEventListener("click", () => {
+          if (video) video.muted = !video.muted;
+        });
+        const seekTo = (raw: string) => {
+          if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+          video.currentTime = (Number(raw) / 1000) * video.duration;
+        };
+        progress.addEventListener("pointerdown", () => { scrubbing = true; });
+        progress.addEventListener("input", () => { if (video) { seekTo(progress.value); curText.textContent = fmt(video.currentTime); } });
+        const endScrub = () => { scrubbing = false; };
+        progress.addEventListener("pointerup", endScrub);
+        progress.addEventListener("pointercancel", endScrub);
+        progress.addEventListener("change", () => { seekTo(progress.value); endScrub(); });
+
+        pswp.on("change", rebind);
+        // 首帧内容可能晚于 change 就绪:contentActivate 后再绑一次。
+        pswp.on("contentActivate", () => setTimeout(rebind, 0));
+        pswp.on("close", unbind);
+        rebind();
+      },
+    });
   });
 
   lightbox.on("change", () => {

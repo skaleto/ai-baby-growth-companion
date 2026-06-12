@@ -287,6 +287,7 @@ try {
   await page.getByRole("button", { name: "预览 横图无尺寸" }).click();
   await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });
   await new Promise((r) => setTimeout(r, 900)); // 等 loadComplete 尺寸精修
+  assert.equal(await page.locator(".pswp-video-bar.is-video").count(), 0, "图片 slide 不应显示视频控制条");
   const box = await page.locator(".pswp__item:not([aria-hidden='true']) .pswp__img").first().boundingBox();
   assert.ok(box, "横图的 .pswp__img 应可见");
   const displayRatio = box.width / box.height;
@@ -302,7 +303,11 @@ try {
   assert.ok(vbox && vbox.width >= 300, `视频应铺满宽度(≥300px),实际 ${vbox?.width}`);
   const placeholders = await page.locator(".pswp__item:not([aria-hidden='true']) .pswp__img--placeholder").count();
   assert.equal(placeholders, 0, "视频 slide 的占位层必须被移除(否则盖住视频=黑屏)");
-  console.log("[I] video slide: placeholder removed, video element laid out ✔");
+  // 控制条挂 pswp UI 层(教训:slide 内控件与手势层抢触摸)——视频页必须可见,含播放/进度控件。
+  await page.locator(".pswp-video-bar.is-video").waitFor({ state: "visible", timeout: 3000 });
+  assert.ok(await page.locator(".pswp-video-bar .pswp-vb-toggle").isVisible(), "视频控制条应有播放/暂停按钮");
+  assert.ok(await page.locator(".pswp-video-bar .pswp-vb-progress").isVisible(), "视频控制条应有进度条");
+  console.log("[I] video slide: placeholder removed, video laid out, UI-layer control bar visible ✔");
   await closePreview(page);
 
   // ---- L. 预加载的相邻视频绝不自播:无 autoplay、保持暂停(后台漏音回归) ----

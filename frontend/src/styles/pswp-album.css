@@ -159,3 +159,78 @@
   object-fit: contain;
   background: #000;
 }
+
+/* 视频控制条(pswp UI 层,与顶栏同层——不经过手势系统,触摸独占)。 */
+.pswp-video-bar {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 6px);
+  z-index: 12;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(20, 24, 22, 0.72);
+  color: #fff;
+}
+
+.pswp-video-bar.is-video {
+  display: flex;
+}
+
+.pswp-vb-toggle,
+.pswp-vb-mute {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+}
+
+.pswp-vb-icn {
+  width: 22px;
+  height: 22px;
+}
+
+.pswp-video-bar .pswp-vb-icn-pause,
+.pswp-video-bar.is-playing .pswp-vb-icn-play {
+  display: none;
+}
+
+.pswp-video-bar.is-playing .pswp-vb-icn-pause {
+  display: block;
+}
+
+.pswp-video-bar .pswp-vb-icn-muted,
+.pswp-video-bar.is-muted .pswp-vb-icn-vol {
+  display: none;
+}
+
+.pswp-video-bar.is-muted .pswp-vb-icn-muted {
+  display: block;
+}
+
+.pswp-vb-time {
+  flex: none;
+  min-width: 36px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  opacity: 0.92;
+}
+
+.pswp-vb-progress {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  margin: 0;
+  accent-color: #ffd27d;
+  touch-action: none;
+}
