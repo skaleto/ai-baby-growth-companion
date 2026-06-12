@@ -5,7 +5,7 @@
 import { memo, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type RefObject } from "react";
 import { Camera as CameraIcon, Image as ImageIcon, Video } from "lucide-react";
 import type { AlbumItem, Attachment, AlbumItemCategory } from "../types";
-import { ALBUM_CATEGORIES, attachmentListSrc, distributeIntoColumns } from "../albumDomain";
+import { attachmentListSrc, distributeIntoColumns } from "../albumDomain";
 import { albumCategoryIconSrc } from "./albumIcons";
 import { AlbumVideoThumbnail } from "./AlbumVideoThumbnail";
 import { CachedImg } from "./CachedMedia";
@@ -27,16 +27,13 @@ type AlbumGroup = { key: string; label: string; items: AlbumItem[] };
 export type AlbumScreenProps = {
   canCaregive: boolean;
   isUploadingAlbumMedia: boolean;
-  albumItemCount: number;
   albumStats: { media: number; videos: number; categories: number };
-  albumCategory: AlbumItemCategory | "all";
   albumUploadItems: AlbumUploadListItem[];
   albumGroups: AlbumGroup[];
   albumFileInputRef: RefObject<HTMLInputElement | null>;
   albumTileAspect: (item: AlbumItem) => number;
   onPickFiles: (event: ChangeEvent<HTMLInputElement>) => void;
   onOpenPicker: () => void;
-  onSelectCategory: (category: AlbumItemCategory | "all") => void;
   onOpenPreview: (event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => void;
   onRecordRatio: (attachmentId: string, ratio: number) => void;
 };
@@ -141,16 +138,13 @@ const AlbumPhotoTile = memo(function AlbumPhotoTile({
 export const AlbumScreen = memo(function AlbumScreen({
   canCaregive,
   isUploadingAlbumMedia,
-  albumItemCount,
   albumStats,
-  albumCategory,
   albumUploadItems,
   albumGroups,
   albumFileInputRef,
   albumTileAspect,
   onPickFiles,
   onOpenPicker,
-  onSelectCategory,
   onOpenPreview,
   onRecordRatio,
 }: AlbumScreenProps) {
@@ -187,7 +181,6 @@ export const AlbumScreen = memo(function AlbumScreen({
             disabled={!canCaregive || isUploadingAlbumMedia}
             onChange={onPickFiles}
           />
-          <span className="screen-pill">{albumItemCount} 项素材</span>
           {canCaregive ? (
             <button
               type="button"
@@ -218,20 +211,6 @@ export const AlbumScreen = memo(function AlbumScreen({
         </span>
       </div>
 
-      <div className="album-category-row" role="tablist" aria-label="相册分类">
-        {ALBUM_CATEGORIES.map((category) => (
-          <button
-            type="button"
-            className={albumCategory === category.id ? "active" : ""}
-            aria-selected={albumCategory === category.id}
-            role="tab"
-            key={category.id}
-            onClick={() => onSelectCategory(category.id)}
-          >
-            {category.label}
-          </button>
-        ))}
-      </div>
 
       {albumUploadItems.length ? (
         <div className="album-upload-list" aria-live="polite">

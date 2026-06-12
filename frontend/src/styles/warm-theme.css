@@ -33,6 +33,12 @@ body {
   box-shadow: 0 22px 70px rgba(106, 78, 48, 0.16);
 }
 
+/* 启动页(auth-splash)是纯极光场景:主壳的气泡/小丘装饰不渲染(曾有绿色块压住极光)。 */
+.app-shell.auth-splash::before,
+.app-shell.auth-splash::after {
+  content: none;
+}
+
 .app-shell::before {
   position: absolute;
   top: 18px;

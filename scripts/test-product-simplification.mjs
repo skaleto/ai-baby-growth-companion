@@ -224,7 +224,9 @@ assert.match(ledgerViewSource, /拍照\/上传小票/, "ledger view should expos
 
 const albumScreenSource = readFileSync("frontend/src/components/AlbumScreen.tsx", "utf8");
 assert.match(albumScreenSource, /<section className="album-screen tab-content-enter" aria-label="相册">/, "album screen section should live in AlbumScreen component");
-assert.match(albumScreenSource, /album-category-row/, "album screen should keep category navigation");
+// 2026-06-12 产品决定:相册去掉分类 tabs(全部/成长/喂养…),不得回潮。
+assert.doesNotMatch(albumScreenSource, /album-category-row/, "album category tabs were removed by product decision (2026-06-12)");
+assert.doesNotMatch(albumScreenSource, /screen-pill/, "album top-right count pill was removed by product decision (2026-06-12)");
 assert.match(appSource, /<AlbumScreen\b/, "App should mount the extracted AlbumScreen");
 
 // D11 端口层守护:业务壳不得裸引 Capacitor,平台差异只从 platform.ts/六个原生封装进出。

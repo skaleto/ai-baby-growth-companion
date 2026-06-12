@@ -132,6 +132,7 @@ async function installMocks(page) {
     window.localStorage.setItem("baby-companion-auth-token", "gesture-test-token");
     window.localStorage.setItem("baby-companion-consent-v1", JSON.stringify(true));
     window.__COUNT_ALBUM_RENDERS = true;
+    window.__PSWP_TEST_HOOK = true;
   });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -173,6 +174,9 @@ async function installMocks(page) {
 }
 
 const previewTitle = (page) => page.locator(".pswp-album-info strong").first();
+// 箭头按钮已按产品决定移除(触屏滑动翻页);测试经 __PSWP_TEST_HOOK 直接驱动实例翻页。
+const pswpNext = (page) => page.evaluate(() => window.__pswpLightbox?.pswp?.next());
+const pswpPrev = (page) => page.evaluate(() => window.__pswpLightbox?.pswp?.prev());
 
 async function openFirstTile(page) {
   await page.locator(".album-photo-thumb").first().click();
@@ -217,7 +221,7 @@ try {
   await openFirstTile(page);
   assert.match(await previewTitle(page).innerText(), /第五张照片/, "相册倒序:打开第一个 tile 应是最新的第 5 张");
   for (let i = 0; i < 3; i++) {
-    await page.locator(".pswp__button--arrow--next").click({ timeout: 2000 });
+    await pswpNext(page);
     await new Promise((r) => setTimeout(r, 150)); // 不等动画走完就下一次
   }
   await new Promise((r) => setTimeout(r, 500));
@@ -226,7 +230,7 @@ try {
   console.log("[B] 3 rapid next => exactly +3 pages, title in sync ✔");
 
   // ---- D. 反向翻页恰好回到上一张 ----
-  await page.locator(".pswp__button--arrow--prev").click({ timeout: 2000 });
+  await pswpPrev(page);
   await new Promise((r) => setTimeout(r, 500));
   const afterBack = await previewTitle(page).innerText();
   assert.match(afterBack, /第三张照片/, `反向翻页应回到第 3 张,实际「${afterBack}」`);
@@ -261,7 +265,7 @@ try {
 
   // ---- K. 相邻图无缝贴合:slide 间距必须 == 视口宽(spacing:0),不得有黑边间隔 ----
   await openFirstTile(page);
-  await page.locator(".pswp__button--arrow--next").click({ timeout: 2000 }); // 让三个 holder 都就位
+  await pswpNext(page); // 让三个 holder 都就位
   await new Promise((r) => setTimeout(r, 500));
   // 读内联 style.transform(setTransform 对 display:none 的侧边 holder 也会写),避免 computed 取不到。
   const holderX = await page.$$eval(".pswp__item", (els) =>
@@ -308,9 +312,9 @@ try {
     assert.equal(v.paused, true, "未激活的预加载视频必须处于暂停态");
   }
   // 划到视频再划走:被划过的视频也必须停。
-  await page.locator(".pswp__button--arrow--prev").click({ timeout: 2000 }); // 到视频
+  await pswpPrev(page); // 到视频
   await new Promise((r) => setTimeout(r, 400));
-  await page.locator(".pswp__button--arrow--next").click({ timeout: 2000 }); // 划走
+  await pswpNext(page); // 划走
   await new Promise((r) => setTimeout(r, 500));
   const passedByState = await page.evaluate(() =>
     Array.from(document.querySelectorAll(".pswp video")).map((v) => v.paused));

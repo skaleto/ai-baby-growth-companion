@@ -2258,7 +2258,6 @@ function App() {
   const [milestonesViewOpen, setMilestonesViewOpen] = useState(false);
   const [growthEntryOpen, setGrowthEntryOpen] = useState(false);
   const [reminderManagementOpen, setReminderManagementOpen] = useState(false);
-  const [albumCategory, setAlbumCategory] = useState<AlbumItemCategory | "all">("all");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
   const [isProfileEditing, setIsProfileEditing] = useState(false);
@@ -3073,8 +3072,8 @@ function App() {
     [storedAlbumItemsNormalized, derivedAlbumItems],
   );
   const filteredAlbumItems = useMemo(
-    () => albumItems.filter((item) => albumCategory === "all" || item.category === albumCategory),
-    [albumItems, albumCategory],
+    () => albumItems,
+    [albumItems],
   );
   const albumGroups = useMemo(() => {
     const groups = new Map<string, AlbumItem[]>();
@@ -8567,16 +8566,13 @@ function App() {
         <AlbumScreen
           canCaregive={canCaregive}
           isUploadingAlbumMedia={isUploadingAlbumMedia}
-          albumItemCount={albumItems.length}
           albumStats={albumStats}
-          albumCategory={albumCategory}
           albumUploadItems={albumUploadItems}
           albumGroups={albumGroups}
           albumFileInputRef={albumFileInputRef}
           albumTileAspect={albumTileAspect}
           onPickFiles={albumScreenHandlers.onPickFiles}
           onOpenPicker={albumScreenHandlers.onOpenPicker}
-          onSelectCategory={setAlbumCategory}
           onOpenPreview={albumScreenHandlers.onOpenPreview}
           onRecordRatio={recordAlbumRatio}
         />

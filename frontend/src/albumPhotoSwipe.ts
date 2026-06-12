@@ -136,10 +136,13 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
     // 相邻图无缝贴合:默认 spacing 0.1(=10% 视口宽)就是滑动时看到的那条黑边间隔。
     spacing: 0,
     wheelToZoom: true,
-    arrowPrev: true,
-    arrowNext: true,
+    // 触屏产品:滑动即翻页,不要桌面式左右箭头(部分安卓 WebView 误报有鼠标导致箭头出现)。
+    arrowPrev: false,
+    arrowNext: false,
     zoom: false,
     counter: true,
+    // 首尾不循环:第一张往前/最后一张往后就是划不动(到边即止)。
+    loop: false,
     // 翻页/缩放归位用 iOS 式减速长尾(拖拽松手是内部弹簧,此项主要影响箭头导航与开合)。
     easing: "cubic-bezier(0.22, 1, 0.36, 1)",
     errorMsg: "这张媒体加载失败了,稍后再试。",
@@ -340,6 +343,10 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
 
   // 预览期间挂起网格视频解码:被盖住的网格视频继续播放会拖低滑动帧率。
   suspendAlbumVideos();
+  // 测试钩子(默认关闭零成本):DOM 测试经 __PSWP_TEST_HOOK 取实例驱动翻页(箭头已移除)。
+  if ((window as unknown as { __PSWP_TEST_HOOK?: boolean }).__PSWP_TEST_HOOK) {
+    (window as unknown as { __pswpLightbox?: unknown }).__pswpLightbox = lightbox;
+  }
   lightbox.init();
   lightbox.loadAndOpen(startIndex);
 }
