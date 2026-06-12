@@ -227,6 +227,10 @@ assert.match(albumScreenSource, /<section className="album-screen tab-content-en
 assert.match(albumScreenSource, /album-category-row/, "album screen should keep category navigation");
 assert.match(appSource, /<AlbumScreen\b/, "App should mount the extracted AlbumScreen");
 
+// D11 端口层守护:业务壳不得裸引 Capacitor,平台差异只从 platform.ts/六个原生封装进出。
+assert.doesNotMatch(appSource, /Capacitor\./, "App.tsx must not call Capacitor directly (use platform.ts port layer, tech-debt D11)");
+assert.doesNotMatch(appSource, /from "@capacitor\/core"/, "App.tsx must not import @capacitor/core directly (tech-debt D11)");
+
 const profileStart = appSource.indexOf('<section className="profile-screen');
 const profileEnd = appSource.indexOf('<aside className="right-rail"', profileStart);
 assert.ok(profileStart >= 0 && profileEnd > profileStart, "profile screen block should be findable");

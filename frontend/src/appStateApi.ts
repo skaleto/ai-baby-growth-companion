@@ -1,5 +1,7 @@
 import { AiUsageSummary, AppStateSnapshot, Attachment, AttachmentKind, ProTrialStatus } from "./types";
 import { apiBaseUrl, apiFetch, authHeaders, parseError, withAuthQuery } from "./authApi";
+import { normalizeAppStateResponse } from "./appStateContract";
+import { reportClientError } from "./errorReporting";
 
 export type AppStateCollection =
   | "profile"
@@ -79,10 +81,31 @@ const withAbsoluteAttachmentUrls = <T>(value: T): T => {
 };
 
 
+// D10 契约防护:所有 app/state 形态的响应统一过归一化(白屏防护),
+// 偏离契约时上报一次 state_contract_drift(同类漂移会话内去重,避免刷量)。
+const reportedDriftSignatures = new Set<string>();
+
+async function parseAppStateResponse(response: Response): Promise<AppStateResponse> {
+  const { value, problems } = normalizeAppStateResponse(await response.json());
+  if (problems.length) {
+    const signature = problems.slice(0, 5).join("|");
+    if (!reportedDriftSignatures.has(signature)) {
+      reportedDriftSignatures.add(signature);
+      reportClientError({
+        kind: "state_contract_drift",
+        message: `app/state 契约漂移:${problems.slice(0, 8).join("; ")}`,
+        page: "appStateApi",
+      });
+    }
+  }
+  return withAbsoluteAttachmentUrls(value as AppStateResponse);
+}
+
+
 export async function readAppState(): Promise<AppStateResponse> {
   const response = await apiFetch(`${apiBaseUrl}/api/app/state`, { headers: authHeaders() });
   if (!response.ok) throw new Error(await parseError(response, `读取本地数据失败（${response.status}）`));
-  return withAbsoluteAttachmentUrls((await response.json()) as AppStateResponse);
+  return parseAppStateResponse(response);
 }
 
 export async function saveAppState(state: AppStateSnapshot): Promise<AppStateResponse> {
@@ -92,7 +115,7 @@ export async function saveAppState(state: AppStateSnapshot): Promise<AppStateRes
     body: JSON.stringify(state),
   });
   if (!response.ok) throw new Error(await parseError(response, `保存本地数据失败（${response.status}）`));
-  return withAbsoluteAttachmentUrls((await response.json()) as AppStateResponse);
+  return parseAppStateResponse(response);
 }
 
 export async function importAppState(state: AppStateSnapshot): Promise<AppStateResponse> {
@@ -102,7 +125,7 @@ export async function importAppState(state: AppStateSnapshot): Promise<AppStateR
     body: JSON.stringify(state),
   });
   if (!response.ok) throw new Error(await parseError(response, `导入本地数据失败（${response.status}）`));
-  return withAbsoluteAttachmentUrls((await response.json()) as AppStateResponse);
+  return parseAppStateResponse(response);
 }
 
 export async function upsertAppRecord<T>(
@@ -118,7 +141,7 @@ export async function upsertAppRecord<T>(
     body: JSON.stringify(item),
   });
   if (!response.ok) throw new Error(await parseError(response, `保存记录失败（${response.status}）`));
-  return withAbsoluteAttachmentUrls((await response.json()) as AppStateResponse);
+  return parseAppStateResponse(response);
 }
 
 export async function deleteAppRecord(collection: AppStateCollection, id: string): Promise<AppStateResponse> {
@@ -127,7 +150,7 @@ export async function deleteAppRecord(collection: AppStateCollection, id: string
     headers: authHeaders(),
   });
   if (!response.ok) throw new Error(await parseError(response, `删除记录失败（${response.status}）`));
-  return withAbsoluteAttachmentUrls((await response.json()) as AppStateResponse);
+  return parseAppStateResponse(response);
 }
 
 export async function deleteAttachment(id: string): Promise<AppStateResponse> {
@@ -136,7 +159,7 @@ export async function deleteAttachment(id: string): Promise<AppStateResponse> {
     headers: authHeaders(),
   });
   if (!response.ok) throw new Error(await parseError(response, `删除素材失败（${response.status}）`));
-  return withAbsoluteAttachmentUrls((await response.json()) as AppStateResponse);
+  return parseAppStateResponse(response);
 }
 
 export async function submitProTrialApplication(source: string): Promise<ProTrialStatus> {
@@ -300,7 +323,7 @@ export async function confirmPendingEffectOnServer(id: string): Promise<AppState
     headers: authHeaders(),
   });
   if (!response.ok) throw new Error(await parseError(response, `确认记录失败（${response.status}）`));
-  return withAbsoluteAttachmentUrls((await response.json()) as AppStateResponse);
+  return parseAppStateResponse(response);
 }
 
 export async function discardPendingEffectOnServer(id: string): Promise<AppStateResponse> {
@@ -309,5 +332,5 @@ export async function discardPendingEffectOnServer(id: string): Promise<AppState
     headers: authHeaders(),
   });
   if (!response.ok) throw new Error(await parseError(response, `丢弃记录失败（${response.status}）`));
-  return withAbsoluteAttachmentUrls((await response.json()) as AppStateResponse);
+  return parseAppStateResponse(response);
 }

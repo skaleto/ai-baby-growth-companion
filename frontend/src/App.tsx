@@ -38,7 +38,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { App as CapacitorApp } from "@capacitor/app";
-import { Capacitor } from "@capacitor/core";
+import { getPlatform, isAndroidPlatform, isIOSPlatform, isNativePlatform, isPluginAvailable, platformDisplayLabel } from "./platform";
 import { LocalNotifications, type ActionPerformed, type LocalNotificationSchema } from "@capacitor/local-notifications";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import {
@@ -1194,10 +1194,7 @@ const buildWeeklyCareComparison = (careLogs: CareLog[], selectedDate: string): W
   };
 };
 
-const platformLabel = () => {
-  if (!Capacitor.isNativePlatform()) return "浏览器预览";
-  return Capacitor.getPlatform() === "ios" ? "iOS App" : "Android App";
-};
+const platformLabel = () => platformDisplayLabel();
 
 type CareEventAnchor = {
   id: string;
@@ -1291,7 +1288,7 @@ const shouldUseNativeReminderScheduler = (reminder: Reminder) => {
 };
 
 const ensureReminderChannels = async () => {
-  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || reminderChannelsReady) return;
+  if (!isAndroidPlatform() || reminderChannelsReady) return;
   try {
     await Promise.all(
       LEGACY_REMINDER_CHANNELS.map((id) =>
@@ -1331,7 +1328,7 @@ const ensureReminderChannels = async () => {
 };
 
 const canScheduleExactAlarm = async () => {
-  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return true;
+  if (!isAndroidPlatform()) return true;
   try {
     const status = await LocalNotifications.checkExactNotificationSetting();
     return status.exact_alarm === "granted";
@@ -1351,7 +1348,7 @@ const scheduleNativeReminders = async (
       : prepareIntervalReminder(normalizeReminder(reminder, 0), options.careLogs ?? [], new Date()),
   );
 
-  if (!Capacitor.isNativePlatform()) {
+  if (!isNativePlatform()) {
     return prepared.map((reminder) => ({
       ...reminder,
       notificationStatus: reminder.dueAt ? "in_app_only" : "failed",
@@ -1440,7 +1437,7 @@ const scheduleNativeReminders = async (
 };
 
 const cancelNativeReminder = async (reminder: Reminder) => {
-  if (!Capacitor.isNativePlatform() || !reminder.notificationId) return;
+  if (!isNativePlatform() || !reminder.notificationId) return;
   if (shouldUseNativeReminderScheduler(reminder)) {
     try {
       await cancelAlarmReminder(reminder);
@@ -2338,8 +2335,8 @@ function App() {
     otaVersion: BUILD_OTA_VERSION || "内置包",
     nativeVersion: "检测中",
     bundleId: "检测中",
-    platform: Capacitor.getPlatform(),
-    status: Capacitor.isNativePlatform() ? "读取中" : "Web 预览",
+    platform: getPlatform(),
+    status: isNativePlatform() ? "读取中" : "Web 预览",
   }));
   const [systemWeakNotice, setSystemWeakNotice] = useState<SystemWeakNotice | null>(null);
   const [isListening, setIsListening] = useState(false);
@@ -3285,8 +3282,8 @@ function App() {
   useEffect(() => {
     let alive = true;
     const fallbackVersion = BUILD_OTA_VERSION || "内置包";
-    const platform = Capacitor.getPlatform();
-    if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable("CapacitorUpdater")) {
+    const platform = getPlatform();
+    if (!isNativePlatform() || !isPluginAvailable("CapacitorUpdater")) {
       setRuntimeVersion({
         otaVersion: fallbackVersion,
         nativeVersion: "Web",
@@ -3802,7 +3799,7 @@ function App() {
   }, [authStatus]);
 
   useEffect(() => {
-    if (authStatus !== "authenticated" || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") {
+    if (authStatus !== "authenticated" || !isIOSPlatform()) {
       return undefined;
     }
 
@@ -8794,7 +8791,7 @@ function App() {
                     </label>
                   </div>
                 )}
-                {!Capacitor.isNativePlatform() ? <p className="form-help">浏览器里只显示 App 内提醒；安装到移动 App 后会调度手机本地通知。</p> : null}
+                {!isNativePlatform() ? <p className="form-help">浏览器里只显示 App 内提醒；安装到移动 App 后会调度手机本地通知。</p> : null}
                 <div className="story-modal-actions">
                   <button type="button" className="screen-action-button quiet" onClick={closeReminderEditor}>
                     取消

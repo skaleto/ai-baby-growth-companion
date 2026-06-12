@@ -19,8 +19,8 @@
 | D7 | 共享 SQLite(主服务 + admin 同库) | 规模化 | P2 | WAL+busy_timeout 已配,带触发条件(2026-06-12 复核:触发条件均未满足,不动) |
 | D8 | 测试盲区:DOM 级测试只覆盖相册预览 | 回归风险 | P2 | **完成**(2026-06-12,核心三链路齐:聊天[N]/记录[O]/相册 gesture 套件) |
 | D9 | OSS 签名 URL 轮换 vs 一切缓存层 | 缓存正确性 | 设计约束 | 已解,须遵守 |
-| D10 | FE/BE 契约零防护网(无 codegen + 无运行时校验) | 稳定性(后端改字段→前端白屏且查不到) | **P1** | 未开工(2026-06-12 review 新发现,最高 ROI) |
-| D11 | 原生端口层泄漏(App.tsx 裸调 Capacitor 12 处) | Web↔原生边界 | P2 | 未开工(封装模块已存在,只是被绕过) |
+| D10 | FE/BE 契约零防护网(无 codegen + 无运行时校验) | 稳定性(后端改字段→前端白屏且查不到) | **P1** | **完成**(2026-06-12,appStateContract 归一化+drift 上报;守护:单测 + 核心链路 [P]) |
+| D11 | 原生端口层泄漏(App.tsx 裸调 Capacitor 12 处) | Web↔原生边界 | P2 | **完成**(2026-06-12,platform.ts 端口层收编 12 处;守护:结构测试禁裸引) |
 | D12 | 模块分类法不清(components/ 与 views/ 边界含糊) | 可维护性 | P2 | 未开工(随 D1 拆分归位) |
 | D13 | 记录类型散弹式分支(~39 处 kind 判断,违反 OCP) | 扩展性(加记录类型=改多处) | P1 | 未开工(注册表化,动 records 时顺带) |
 
@@ -111,18 +111,19 @@
 
 > **D10–D13 来自 2026-06-12 代码结构 review**(避免上帝类 / 高扩展 / 低耦合)。设计依据与目标结构见 [cross-platform-principles.md](cross-platform-principles.md);此处只列可执行债。
 
-### D10【P1,未开工】FE/BE 契约零防护网
+### D10【P1,已完成 2026-06-12】FE/BE 契约零防护网
 
 - **现状**:后端无 OpenAPI(`grep -c "springdoc\|swagger" backend/pom.xml` = 0),前端无 zod 等运行时校验;`frontend/src/types.ts`(459 行)手抄后端 DTO,`/api/app/state` 响应 `JSON.parse` 后直接 `as` 强转。后端改字段名/删字段 → 前端**静默拿到 undefined 运行时炸,且 mock 测试永远发现不了**。
-- **方案(最小、零依赖、最高 ROI)**:整个 App 从 `/api/app/state` 一个响应水合——在 `appStateApi.ts` 水合点加一个**手写校验器**(~80 行,不引 zod),响应缺关键字段时走现成 `reportClientError` 上报(kind 如 `state_contract_drift`),并安全降级而非整页崩。
-- **不做(scale 触发)**:全量 OpenAPI codegen——契约稳定时收益低、维护贵;等"契约频繁变 / 多人协作 / 接第二客户端"任一触发再上。
-- **验收**:故意给 mock 删一个关键字段,前端不白屏且产生一条 contract_drift 上报。
+- **已落地**:`frontend/src/appStateContract.ts`(纯模块,零依赖,esbuild 可打包)——10 个集合字段恒归一为数组、畸形条目过滤(白屏防护),全部偏离进 problems;`appStateApi.ts` 八个 app/state 形态响应统一收口 `parseAppStateResponse`,漂移经 `reportClientError(kind=state_contract_drift)` 上报(会话内按签名去重)。
+- **守护**:`test:app-state-contract` 单测(含「Snapshot 类型 ↔ 权威键表」一致性断言)+ 核心链路 [P](后端丢全部集合字段 → 不白屏 + 必产生 drift 上报),均入 verify:frontend。
+- **不做(scale 触发,维持原判)**:全量 OpenAPI codegen——等"契约频繁变 / 多人协作 / 接第二客户端"任一触发再上。
 
-### D11【P2,未开工】原生端口层泄漏
+### D11【P2,已完成 2026-06-12】原生端口层泄漏
 
 - **现状**:已有 6 个原生封装(nativeAlarm/nativeMediaPicker/mobileUpdates/haptics/audioPermission/errorReporting),**但 App.tsx 仍裸调 Capacitor 12 处**(`grep -n "Capacitor\." frontend/src/App.tsx`):通知渠道(1294/1334/1443 应进 nativeAlarm)、OTA 判断(3288 应进 mobileUpdates)、平台标签(1198/2341 应做成 `platform.ts`)。封装存在却被绕过 = 端口层不是唯一出入口。
-- **方案**:把这 12 处下沉到对应封装 / 新建 `platform.ts`,App 只调封装、不直接 import `@capacitor/core`。纯机械搬运。
-- **验收**:`grep -c "Capacitor\." frontend/src/App.tsx` = 0;原生差异全部在 `platform/` 与 6 个封装内。
+- **已落地**:新建 `frontend/src/platform.ts` 端口层(isNativePlatform/getPlatform/isAndroidPlatform/isIOSPlatform/isPluginAvailable/platformDisplayLabel),App.tsx 12 处裸调全部收编,`@capacitor/core` import 移除。
+- **守护**:结构测试断言 App.tsx 不得出现 `Capacitor.` 与 `from "@capacitor/core"`(test-product-simplification)。
+- **遗留(并入 Records 拆分轮)**:通知渠道/精确闹钟逻辑仍在 App.tsx 模块级(与 reminders 子系统纠缠),拆 RecordsScreen 时整体迁入 nativeAlarm.ts。
 
 ### D12【P2,未开工】模块分类法不清
 

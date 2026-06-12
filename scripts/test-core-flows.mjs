@@ -217,6 +217,59 @@ try {
   assert.ok(timelineHas150, "保存后当日时间线应显示 150ml 喂奶记录");
   console.log("[O] manual record: 150ml milk saved → careLogs persisted, timeline updated ✔");
 
+  // ---- [P] 契约漂移防护(D10):后端丢失全部集合字段 → 不白屏 + 产生 drift 上报 ----
+  const driftReports = [];
+  const driftPageErrors = [];
+  const driftContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const driftPage = await driftContext.newPage();
+  driftPage.on("pageerror", (e) => driftPageErrors.push(e.message));
+  await driftPage.addInitScript(() => {
+    window.localStorage.setItem("baby-companion-auth-token", "flow-token");
+    window.localStorage.setItem("baby-companion-consent-v1", JSON.stringify(true));
+  });
+  await driftPage.route("**/api/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const headers = {
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "*",
+      "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
+      "content-type": "application/json",
+    };
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers, body: "" });
+    if (url.pathname === "/api/client-errors") {
+      driftReports.push(JSON.parse(request.postData() || "{}"));
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ received: true }) });
+    }
+    if (url.pathname === "/api/app/state") {
+      // 漂移仿真:后端重构事故的形状——empty=false 却丢了全部集合字段。
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ empty: false, state: { profile: appState.profile } }) });
+    }
+    if (url.pathname === "/api/auth/me") {
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({
+        user: { id: "u1", phone: "13800000000", createdAt: "2026-05-01T00:00:00.000Z" },
+        family: { id: "f1", name: "小宝家" }, member: { roleName: "妈妈", caregiver: true },
+        authenticated: true, onboardingRequired: false }) });
+    }
+    if (url.pathname === "/api/pro/usage") {
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ days: 30, requestCount: 0, successfulRequestCount: 0, meteredRequestCount: 0, unmeteredRequestCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, byFeature: [], byModel: [] }) });
+    }
+    if (url.pathname === "/api/auth/family/members") {
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ members: [{ userId: "u1", roleName: "妈妈", caregiver: true, maskedPhone: "138****0000", joinedAt: "2026-05-01T00:00:00.000Z" }] }) });
+    }
+    return route.fulfill({ status: 200, headers, body: JSON.stringify({ ok: true }) });
+  });
+  await driftPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  // 白屏防护:归一化把缺失集合补成 [],App 必须照常渲染记录页。
+  await driftPage.locator(".records-screen").waitFor({ state: "visible", timeout: 30000 });
+  await driftPage.waitForTimeout(800); // 上报是 fire-and-forget
+  assert.equal(driftPageErrors.length, 0, `漂移响应不应产生未捕获异常:${driftPageErrors.join(" | ")}`);
+  const drift = driftReports.find((r) => r.kind === "state_contract_drift");
+  assert.ok(drift, `应产生 state_contract_drift 上报,实际收到:${JSON.stringify(driftReports.map((r) => r.kind))}`);
+  assert.ok(String(drift.message).includes("albumItems"), "drift 上报应包含缺失字段明细");
+  await driftContext.close();
+  console.log("[P] contract drift: collections missing → no white screen + drift reported ✔");
+
   console.log("core flow DOM smoke tests passed");
 } finally {
   if (browser) await browser.close();

@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { apiBaseUrl } from "./authApi";
 
-type ClientErrorKind = "crash" | "whitescreen" | "ota_fail" | "api_fail" | "unknown";
+type ClientErrorKind = "crash" | "whitescreen" | "ota_fail" | "api_fail" | "state_contract_drift" | "unknown";
 
 const OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined) ?? "dev";
 
