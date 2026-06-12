@@ -3553,6 +3553,10 @@ body.keyboard-open .expense-optional-fields {
   aspect-ratio: var(--aspect, 0.75);
   overflow: hidden;
   padding: 0;
+  /* 长按走自定义气泡:压掉 iOS 长按图片的系统呼出/选择。 */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   border: 1px solid rgba(234, 223, 208, 0.72);
   border-radius: 8px;
   background: #eef3ef;
@@ -3596,6 +3600,62 @@ body.keyboard-open .expense-optional-fields {
 .album-video-poster.is-hidden {
   opacity: 0;
   pointer-events: none;
+}
+
+/* 长按 tile 的编辑/删除气泡:左右排布的两枚胶囊,浮在媒体上方,与瀑布页同色系(暖白卡片)。
+   tile 自带 content-visibility(paint containment 裁掉越界内容),气泡渲染在 tile 子树外,
+   fixed 浮层定位(坐标取自长按瞬间的 tile rect,滚动即收起)。 */
+.album-tile-menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+}
+
+.album-tile-menu {
+  position: fixed;
+  display: flex;
+  gap: 10px;
+  transform: translate(-50%, -100%);
+  animation: albumTileMenuIn 140ms ease-out both;
+}
+
+/* tile 顶着屏幕顶时翻到媒体内侧。 */
+.album-tile-menu.is-below {
+  transform: translate(-50%, 0);
+}
+
+.album-tile-menu button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 1px solid rgba(234, 223, 208, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 252, 245, 0.98);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 10px 24px rgba(57, 45, 31, 0.18);
+  cursor: pointer;
+}
+
+.album-tile-menu button:active {
+  background: rgba(245, 238, 226, 0.98);
+}
+
+.album-tile-menu button.danger {
+  color: var(--danger, #c0635a);
+}
+
+@keyframes albumTileMenuIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .album-empty {

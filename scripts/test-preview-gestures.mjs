@@ -256,17 +256,53 @@ try {
   // 再点 ⋯ → 收起(切换可用)
   await page.locator(".pswp__button--album-menu").click({ timeout: 2000 });
   assert.equal(await page.locator(".pswp-album-popover").isVisible(), false, "再次点击应收起弹层");
-  // 点「编辑」→ 关闭预览(进入编辑流程),证明内层按钮点击生效(非内嵌 button 死区)
+  // 点「编辑」→ 预览必须保持打开(深色弹窗直接盖在预览上,绝不「自动返回瀑布页」),
+  // 同时证明内层按钮点击生效(非内嵌 button 死区)。
   await page.locator(".pswp__button--album-menu").click({ timeout: 2000 });
   await page.locator(".pswp-album-popover.is-open").waitFor({ state: "visible", timeout: 2000 });
   await page.locator(".pswp-album-popover button", { hasText: "编辑" }).click({ timeout: 2000 });
-  await page.locator(".pswp").waitFor({ state: "detached", timeout: 3000 });
-  // 5.1 选型后:编辑弹 antd-mobile 输入对话框(取代 window.prompt)——出现即取消,清场给后续场景。
   const admCancel = page.locator(".adm-dialog-button", { hasText: "取消" });
   await admCancel.waitFor({ state: "visible", timeout: 3000 });
+  assert.equal(await page.locator(".pswp").count(), 1, "编辑弹窗打开时预览必须保持打开(不得自动返回瀑布页)");
+  assert.equal(await page.locator(".adm-dialog-body.app-dialog-dark").count(), 1, "预览内的弹窗必须用深色变体(黑底详情页配白弹窗突兀)");
   await admCancel.click({ timeout: 2000 });
   await admCancel.waitFor({ state: "detached", timeout: 3000 });
-  console.log("[J] clean close button + ⋯ menu opens edit/delete on tap (no stuck gray box, clicks live) ✔");
+  assert.equal(await page.locator(".pswp").count(), 1, "取消编辑后必须仍停留在预览内");
+  await closePreview(page);
+  console.log("[J] clean close button + ⋯ menu edit keeps preview open w/ dark dialog ✔");
+
+  // ---- P. 瀑布页长按 tile → 浮出编辑/删除气泡(不打开预览);删除走浅色确认,取消不删 ----
+  {
+    const tilesBefore = await page.locator(".album-photo-thumb").count();
+    const thumbBox = await page.locator(".album-photo-thumb").first().boundingBox();
+    const cx = thumbBox.x + thumbBox.width / 2;
+    const cy = thumbBox.y + thumbBox.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.locator(".album-tile-menu").waitFor({ state: "visible", timeout: 2500 });
+    await page.mouse.up();
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(await page.locator(".pswp").count(), 0, "长按(及松手)不得打开全屏预览");
+    assert.equal(await page.locator(".album-tile-menu button", { hasText: "编辑" }).isVisible(), true, "气泡应有「编辑」");
+    assert.equal(await page.locator(".album-tile-menu button", { hasText: "删除" }).isVisible(), true, "气泡应有「删除」");
+    // 点空白处收起:整次点击被浮层吃掉,不得顺带打开底下 tile 的预览
+    await page.mouse.click(cx, cy + 40);
+    await page.locator(".album-tile-menu").waitFor({ state: "detached", timeout: 2000 });
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(await page.locator(".pswp").count(), 0, "点空白收起气泡不得误开预览");
+    // 再长按 → 点「删除」→ 浅色确认框(非深色变体),取消后素材仍在
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.locator(".album-tile-menu").waitFor({ state: "visible", timeout: 2500 });
+    await page.mouse.up();
+    await page.locator(".album-tile-menu button", { hasText: "删除" }).click({ timeout: 2000 });
+    await admCancel.waitFor({ state: "visible", timeout: 3000 });
+    assert.equal(await page.locator(".adm-dialog-body.app-dialog-dark").count(), 0, "瀑布页删除确认应用浅色样式(与页面统一)");
+    await admCancel.click({ timeout: 2000 });
+    await admCancel.waitFor({ state: "detached", timeout: 3000 });
+    assert.equal(await page.locator(".album-photo-thumb").count(), tilesBefore, "取消删除后素材数量不变");
+    console.log("[P] long-press tile => edit/delete bubbles, light confirm, no accidental preview ✔");
+  }
 
   // ---- K. 相邻图无缝贴合:slide 间距必须 == 视口宽(spacing:0),不得有黑边间隔 ----
   await openFirstTile(page);
@@ -306,8 +342,12 @@ try {
   // 控制条挂 pswp UI 层(教训:slide 内控件与手势层抢触摸)——视频页必须可见,含播放/进度控件。
   await page.locator(".pswp-video-bar.is-video").waitFor({ state: "visible", timeout: 3000 });
   assert.ok(await page.locator(".pswp-video-bar .pswp-vb-center").isVisible(), "暂停态应显示居中播放按钮");
-  assert.equal(await page.locator(".pswp-video-bar .pswp-vb-pause").count(), 1, "应有左下角暂停按钮(播放态显示)");
+  // 左下角切换键两态常驻(播放=暂停键/暂停=继续播放键),不许整个按钮消失导致滑轨跳长。
+  assert.ok(await page.locator(".pswp-video-bar .pswp-vb-toggle").isVisible(), "左下角播放/暂停切换键必须两态常驻");
   assert.ok(await page.locator(".pswp-video-bar .pswp-vb-progress").isVisible(), "视频控制条应有进度条");
+  // 「视频页滑不动」回归:触摸必须能穿过 <video> 到达 pswp 手势层。
+  const videoPE = await page.locator(".pswp__item:not([aria-hidden='true']) video.pswp-video").evaluate((el) => getComputedStyle(el).pointerEvents);
+  assert.equal(videoPE, "none", "video 元素必须 pointer-events:none(WebView 会吃掉落在视频上的触摸=滑不动页)");
   console.log("[I] video slide: placeholder removed, video laid out, UI-layer control bar visible ✔");
   await closePreview(page);
 

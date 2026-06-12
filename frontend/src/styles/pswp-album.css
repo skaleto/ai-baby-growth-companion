@@ -158,10 +158,15 @@
   display: block;
   object-fit: contain;
   background: #000;
+  /* 「视频页滑不动」根因:WebView 把落在 <video> 上的触摸吃掉(到不了 pswp 手势层)。
+     视频自身不需要直接接收触摸(播放/暂停走控制条,翻页/关闭走 pswp)——
+     置 none 后触摸落到父层 shell 再冒泡进手势系统,与图片 slide 行为一致。 */
+  pointer-events: none;
 }
 
-/* 视频控件(pswp UI 层,触摸独占;2026-06-13 定稿):
-   暂停态=居中播放键;播放态=中间无按钮(全屏可滑动翻页)、左下角小暂停键;
+/* 视频控件(pswp UI 层,触摸独占;2026-06-13 v2):
+   暂停态=居中播放键 + 左下角「继续播放」键;播放态=中间无按钮、左下角暂停键——
+   左下角按钮两态常驻(只换图标),进度条长度不再跳变;
    底部裸进度条(自绘细轨,无描边)+ 时间;无蒙层面板。 */
 .pswp-video-bar {
   position: absolute;
@@ -192,14 +197,16 @@
   pointer-events: auto;
 }
 
-/* 播放中:中间彻底无按钮(不挡滑动);左下角出现小暂停键。 */
+/* 播放中:中间彻底无按钮(不挡滑动)。 */
 .pswp-video-bar.is-playing .pswp-vb-center {
   display: none;
 }
 
-.pswp-vb-pause {
+/* 左下角播放/暂停切换键:两态常驻(播放=暂停键,暂停=继续播放键),
+   绝不 display:none 整个按钮——否则进度条 flex 抢位,滑轨长度跳变。 */
+.pswp-vb-toggle {
   flex: none;
-  display: none;
+  display: grid;
   place-items: center;
   width: 34px;
   height: 34px;
@@ -211,18 +218,27 @@
   pointer-events: auto;
 }
 
-.pswp-video-bar.is-playing .pswp-vb-pause {
-  display: grid;
-}
-
 .pswp-vb-center .pswp-vb-icn {
   width: 30px;
   height: 30px;
 }
 
-.pswp-vb-pause .pswp-vb-icn {
+.pswp-vb-toggle .pswp-vb-icn {
   width: 18px;
   height: 18px;
+}
+
+/* 按钮里同时挂播放/暂停两枚图标,按 .is-playing 单显其一。 */
+.pswp-vb-toggle .pswp-vb-icn-pause {
+  display: none;
+}
+
+.pswp-video-bar.is-playing .pswp-vb-toggle .pswp-vb-icn-pause {
+  display: block;
+}
+
+.pswp-video-bar.is-playing .pswp-vb-toggle .pswp-vb-icn-play {
+  display: none;
 }
 
 .pswp-vb-bottom {

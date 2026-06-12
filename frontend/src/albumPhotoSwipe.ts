@@ -32,8 +32,10 @@ export type OpenAlbumPhotoSwipeOptions = {
   items: AlbumItem[];
   startId: string;
   getThumbEl?: (itemId: string) => HTMLElement | null;
-  onEdit?: (item: AlbumItem) => void;
-  onDelete?: (item: AlbumItem) => void;
+  /** 编辑回调。预览保持打开;返回更新后的条目则就地刷新顶栏信息(取消返回 null/void)。 */
+  onEdit?: (item: AlbumItem) => Promise<AlbumItem | null | void> | AlbumItem | null | void;
+  /** 删除回调。返回 true(已删除)才关闭预览;取消(false/void)留在原地。 */
+  onDelete?: (item: AlbumItem) => Promise<boolean | void> | boolean | void;
   formatDate?: (item: AlbumItem) => string;
   formatRecordedBy?: (recordedBy?: RecordedBy) => string;
   /** 网格实测的宽高比(w/h),用于没有 width/height 的老附件——打开即正确比例,不再闪正方形。 */
@@ -276,8 +278,14 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
         onInit: (el) => {
           popover = document.createElement("div");
           popover.className = "pswp-album-popover";
-          const mk = (label: string, danger: boolean, fn?: (item: AlbumItem) => void) => {
-            if (!fn || !popover) return;
+          // 编辑/删除都不再先关预览(旧行为会「自动返回瀑布页」):弹窗(深色变体)直接盖在
+          // 预览上;取消留在原地;编辑成功就地刷新顶栏;删除确认后素材已不存在才关闭预览。
+          const pauseCurrentVideo = () => {
+            const video = pswp.currSlide?.content?.element?.querySelector?.("video");
+            try { (video as HTMLVideoElement | null)?.pause?.(); } catch { /* 已分离 */ }
+          };
+          const mk = (label: string, danger: boolean, run?: (data: PswpAlbumData) => void) => {
+            if (!run || !popover) return;
             const btn = document.createElement("button");
             btn.type = "button";
             btn.textContent = label;
@@ -287,14 +295,27 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
               popover?.classList.remove("is-open");
               const data = pswp.currSlide?.data as PswpAlbumData | undefined;
               if (data?.albumItem) {
-                pswp.close();
-                fn(data.albumItem);
+                pauseCurrentVideo();
+                run(data);
               }
             });
             popover.appendChild(btn);
           };
-          mk("编辑", false, opts.onEdit);
-          mk("删除", true, opts.onDelete);
+          mk("编辑", false, opts.onEdit && ((data) => {
+            void (async () => {
+              const next = await opts.onEdit?.(data.albumItem);
+              if (next) {
+                data.albumItem = next;
+                pswp.dispatch("change"); // album-info 订阅了 change,就地重渲染标题/日期
+              }
+            })();
+          }));
+          mk("删除", true, opts.onDelete && ((data) => {
+            void (async () => {
+              const removed = await opts.onDelete?.(data.albumItem);
+              if (removed) pswp.close();
+            })();
+          }));
           pswp.element?.appendChild(popover);
           // 翻页 / 点击空白处收起(菜单按钮自身的点击交给 onClick 切换)。
           pswp.on("change", () => popover?.classList.remove("is-open"));
@@ -333,9 +354,12 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
     };
   });
 
-  // 视频控制条(5.2 终版):挂在 pswp 的 UI 层(与关闭/菜单按钮同层)。
+  // 视频控制条(5.3):挂在 pswp 的 UI 层(与关闭/菜单按钮同层)。
   // 教训:任何放在 slide 内容里的控件(含 Plyr)都会与 pswp 手势层抢触摸——
   // 拖进度=拖页、tap 被截走;UI 层元素不经过手势系统,关闭键已在真机验证可点。
+  // 5.3:左下角播放/暂停切换键常驻(暂停时不再消失导致滑轨变长);
+  // 「播放中滑不动页」根因是 <video> 元素本身在 WebView 里吃掉触摸,
+  // 与中央按钮无关 → .pswp-video 置 pointer-events:none(见 pswp-album.css)。
   lightbox.on("uiRegister", () => {
     const pswp = lightbox.pswp;
     if (!pswp?.ui) return;
@@ -347,12 +371,12 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
         el.innerHTML =
           `<button type="button" class="pswp-vb-center" aria-label="播放">${ICON_PLAY}</button>` +
           `<div class="pswp-vb-bottom">` +
-          `<button type="button" class="pswp-vb-pause" aria-label="暂停">${ICON_PAUSE}</button>` +
+          `<button type="button" class="pswp-vb-toggle" aria-label="暂停">${ICON_PAUSE}${ICON_PLAY}</button>` +
           `<input class="pswp-vb-progress" type="range" min="0" max="1000" step="1" value="0" aria-label="播放进度" />` +
           `<span class="pswp-vb-time">0:00 / 0:00</span>` +
           `</div>`;
         const centerPlay = el.querySelector(".pswp-vb-center") as HTMLButtonElement;
-        const pauseBtn = el.querySelector(".pswp-vb-pause") as HTMLButtonElement;
+        const toggleBtn = el.querySelector(".pswp-vb-toggle") as HTMLButtonElement;
         const progress = el.querySelector(".pswp-vb-progress") as HTMLInputElement;
         const timeText = el.querySelector(".pswp-vb-time") as HTMLElement;
 
@@ -372,6 +396,8 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
         const sync = () => {
           if (!video) return;
           el.classList.toggle("is-playing", !video.paused);
+          // 左下角按钮常驻:播放=暂停键,暂停=继续播放键(图标显隐由 .is-playing CSS 切换)。
+          toggleBtn.setAttribute("aria-label", video.paused ? "继续播放" : "暂停");
           const duration = video.duration;
           timeText.textContent = `${fmt(video.currentTime)} / ${fmt(duration)}`;
           if (!scrubbing && Number.isFinite(duration) && duration > 0) {
@@ -401,8 +427,10 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
         centerPlay.addEventListener("click", () => {
           if (video?.paused) void video.play().catch(() => undefined);
         });
-        pauseBtn.addEventListener("click", () => {
-          video?.pause();
+        toggleBtn.addEventListener("click", () => {
+          if (!video) return;
+          if (video.paused) void video.play().catch(() => undefined);
+          else video.pause();
         });
         const seekTo = (raw: string) => {
           if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;

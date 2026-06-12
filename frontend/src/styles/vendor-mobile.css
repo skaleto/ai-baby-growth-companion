@@ -22,6 +22,34 @@
   background: #fbfdf9;
 }
 
+/* 深色弹窗变体(appDialogs 的 dark 选项):黑底全屏预览(pswp/媒体预览)内的编辑/删除——
+   白卡片在纯黑详情页上突兀,改用与预览顶栏菜单同色系的深灰卡片。 */
+.adm-dialog-body.app-dialog-dark {
+  --adm-color-text: #f3f0ea;
+  --adm-color-weak: rgba(235, 230, 220, 0.62);
+  --adm-color-border: rgba(255, 255, 255, 0.14);
+  background: rgba(36, 36, 38, 0.98);
+  color: #f3f0ea;
+}
+
+.adm-dialog-body.app-dialog-dark .adm-dialog-content {
+  color: rgba(238, 233, 223, 0.85);
+}
+
+.adm-dialog-body.app-dialog-dark .adm-dialog-button {
+  color: #9fd0b4;
+}
+
+.adm-dialog-body.app-dialog-dark .adm-input {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.adm-dialog-body.app-dialog-dark .adm-input-element {
+  color: #f3f0ea;
+  caret-color: #f3f0ea;
+}
+
 /* 滚轮字段(替换原生 date/time input):沿用应用输入框观感,放在原 <label> 内布局不变。 */
 .app-wheel-field {
   display: block;
