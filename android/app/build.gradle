@@ -36,6 +36,9 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // 5.3 选型:PictureSelector 自带相册 UI(华为无 GMS 也可用,图+视频混选)+ Glide 加载引擎
+    implementation 'io.github.lucksiege:pictureselector:v3.11.2'
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

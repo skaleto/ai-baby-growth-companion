@@ -1,115 +1,127 @@
 package com.xiaobao.growthcompanion;
 
-import android.app.Activity;
 import android.content.ContentResolver;
-import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
-import android.os.Build;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.webkit.MimeTypeMap;
-
-import androidx.activity.result.ActivityResult;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
-import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.luck.picture.lib.basic.PictureSelector;
+import com.luck.picture.lib.config.SelectMimeType;
+import com.luck.picture.lib.config.SelectModeConfig;
+import com.luck.picture.lib.entity.LocalMedia;
+import com.luck.picture.lib.interfaces.OnResultCallbackListener;
+import com.luck.picture.lib.language.LanguageConfig;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 import java.util.UUID;
 
+/**
+ * 相册选择(5.3 选型,2026-06-12):Android 改走 PictureSelector 自带相册 UI——
+ * 华为/鸿蒙无 GMS,系统 ACTION_PICK_IMAGES 解析不到 Activity,旧实现永远落到
+ * ACTION_OPEN_DOCUMENT(系统文件管理器,丑且交互差)。PictureSelector 自带完整
+ * 相册界面(图+视频混选/预览/张数角标),不依赖任何系统选择器组件。
+ * 返回形状与旧实现完全一致(uri/name/mimeType/kind/size/width/height/durationMs/capturedAt),
+ * Web 侧零改动;iOS 端(PHPicker)保持现状。
+ */
 @CapacitorPlugin(name = "NativeMediaPicker")
 public class NativeMediaPickerPlugin extends Plugin {
     private static final int MAX_SELECTION_LIMIT = 50;
-    private int pendingLimit = 1;
 
     @PluginMethod
     public void pickMedia(PluginCall call) {
-        pendingLimit = Math.max(1, Math.min(call.getInt("limit", 1), MAX_SELECTION_LIMIT));
-        Intent intent = createPickerIntent(pendingLimit);
+        final int limit = Math.max(1, Math.min(call.getInt("limit", 1), MAX_SELECTION_LIMIT));
         try {
-            startActivityForResult(call, intent, "pickMediaResult");
+            PictureSelector.create(getActivity())
+                .openGallery(SelectMimeType.ofAll())
+                .setImageEngine(GlideEngine.createGlideEngine())
+                .setSelectionMode(limit > 1 ? SelectModeConfig.MULTIPLE : SelectModeConfig.SINGLE)
+                .setMaxSelectNum(limit)
+                .setMaxVideoSelectNum(limit)
+                .isWithSelectVideoImage(true)
+                .setLanguage(LanguageConfig.CHINESE)
+                .isDisplayCamera(false)
+                .isGif(true)
+                .forResult(new OnResultCallbackListener<LocalMedia>() {
+                    @Override
+                    public void onResult(ArrayList<LocalMedia> result) {
+                        resolveSelection(call, result);
+                    }
+
+                    @Override
+                    public void onCancel() {
+                        JSObject response = new JSObject();
+                        response.put("items", new JSArray());
+                        call.resolve(response);
+                    }
+                });
         } catch (Exception error) {
             call.reject("Unable to open media picker", error);
         }
     }
 
-    @ActivityCallback
-    private void pickMediaResult(PluginCall call, ActivityResult result) {
-        if (call == null) return;
-        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
-            JSObject response = new JSObject();
-            response.put("items", new JSArray());
-            call.resolve(response);
-            return;
-        }
-
-        JSArray items = new JSArray();
-        Intent data = result.getData();
-        try {
-            if (data.getClipData() != null) {
-                int count = Math.min(data.getClipData().getItemCount(), pendingLimit);
-                for (int index = 0; index < count; index += 1) {
-                    JSObject item = copyPickedUri(data.getClipData().getItemAt(index).getUri());
-                    if (item != null) items.put(item);
+    /** 复制/归一化在后台线程做(大视频拷贝不卡选择器收尾动画)。 */
+    private void resolveSelection(PluginCall call, ArrayList<LocalMedia> selection) {
+        new Thread(() -> {
+            JSArray items = new JSArray();
+            try {
+                if (selection != null) {
+                    for (LocalMedia media : selection) {
+                        if (media == null) continue;
+                        JSObject item = copyLocalMedia(media);
+                        if (item != null) items.put(item);
+                    }
                 }
-            } else if (data.getData() != null) {
-                JSObject item = copyPickedUri(data.getData());
-                if (item != null) items.put(item);
+            } catch (Exception error) {
+                call.reject("Failed to read selected media", error);
+                return;
             }
-        } catch (Exception error) {
-            call.reject("Failed to read selected media", error);
-            return;
-        }
-
-        JSObject response = new JSObject();
-        response.put("items", items);
-        call.resolve(response);
+            JSObject response = new JSObject();
+            response.put("items", items);
+            call.resolve(response);
+        }, "native-media-picker-copy").start();
     }
 
-    private Intent createPickerIntent(int limit) {
-        Intent intent;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
-            if (limit > 1) {
-                intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, Math.min(limit, MediaStore.getPickImagesMaxLimit()));
-            }
-            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, limit > 1);
-            if (intent.resolveActivity(getContext().getPackageManager()) != null) {
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                return intent;
-            }
-        }
-
-        intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "image/*", "video/*" });
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, limit > 1);
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        return intent;
+    private Uri uriFor(LocalMedia media) {
+        String path = media.getAvailablePath();
+        if (path == null || path.trim().isEmpty()) path = media.getPath();
+        if (path == null || path.trim().isEmpty()) return null;
+        if (path.startsWith("content://") || path.startsWith("file://")) return Uri.parse(path);
+        return Uri.fromFile(new File(path));
     }
 
-    private JSObject copyPickedUri(Uri sourceUri) throws Exception {
-        ContentResolver resolver = getContext().getContentResolver();
-        String mimeType = resolver.getType(sourceUri);
+    private JSObject copyLocalMedia(LocalMedia media) throws Exception {
+        Uri sourceUri = uriFor(media);
+        if (sourceUri == null) return null;
+
+        String mimeType = media.getMimeType();
+        if (mimeType == null || mimeType.trim().isEmpty()) {
+            mimeType = getContext().getContentResolver().getType(sourceUri);
+        }
         if (mimeType == null || (!mimeType.startsWith("image/") && !mimeType.startsWith("video/"))) {
             return null;
         }
 
-        String displayName = displayName(sourceUri);
+        String displayName = media.getFileName();
+        if (displayName == null || displayName.trim().isEmpty()) {
+            displayName = displayName(sourceUri);
+        }
+
         boolean normalizeImage = shouldNormalizeImage(mimeType);
         if (normalizeImage) {
             mimeType = "image/jpeg";
@@ -121,6 +133,7 @@ public class NativeMediaPickerPlugin extends Plugin {
         }
         File destination = new File(cacheDir, UUID.randomUUID() + "." + extension);
 
+        ContentResolver resolver = getContext().getContentResolver();
         if (normalizeImage) {
             try (InputStream input = resolver.openInputStream(sourceUri);
                  FileOutputStream output = new FileOutputStream(destination)) {
@@ -147,9 +160,17 @@ public class NativeMediaPickerPlugin extends Plugin {
         item.put("uri", Uri.fromFile(destination).toString());
         item.put("name", normalizeDisplayName(displayName, extension));
         item.put("mimeType", mimeType);
-        item.put("kind", mimeType.startsWith("video/") ? "video" : "image");
+        boolean isVideo = mimeType.startsWith("video/");
+        item.put("kind", isVideo ? "video" : "image");
         item.put("size", destination.length());
+        if (media.getWidth() > 0) item.put("width", media.getWidth());
+        if (media.getHeight() > 0) item.put("height", media.getHeight());
+        if (isVideo && media.getDuration() > 0) item.put("durationMs", media.getDuration());
+
         String capturedAt = captureDate(sourceUri);
+        if (capturedAt == null && media.getDateAddedTime() > 0) {
+            capturedAt = localIsoString(media.getDateAddedTime() * 1000L);
+        }
         if (capturedAt != null) {
             item.put("capturedAt", capturedAt);
         }
@@ -157,6 +178,7 @@ public class NativeMediaPickerPlugin extends Plugin {
     }
 
     private String captureDate(Uri uri) {
+        if (!"content".equals(uri.getScheme())) return null;
         String[] columns = new String[] {
             "datetaken",
             MediaStore.MediaColumns.DATE_MODIFIED,
@@ -173,7 +195,7 @@ public class NativeMediaPickerPlugin extends Plugin {
             long addedSeconds = longColumn(cursor, MediaStore.MediaColumns.DATE_ADDED);
             if (addedSeconds > 0) return localIsoString(addedSeconds * 1000L);
         } catch (Exception ignored) {
-            // Some document providers do not expose media timestamps.
+            // Some providers do not expose media timestamps.
         }
         return null;
     }
@@ -193,6 +215,10 @@ public class NativeMediaPickerPlugin extends Plugin {
     }
 
     private String displayName(Uri uri) {
+        if (!"content".equals(uri.getScheme())) {
+            String last = uri.getLastPathSegment();
+            return last == null || last.trim().isEmpty() ? "media" : last.trim();
+        }
         try (Cursor cursor = getContext().getContentResolver().query(uri, null, null, null, null)) {
             if (cursor != null && cursor.moveToFirst()) {
                 int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
