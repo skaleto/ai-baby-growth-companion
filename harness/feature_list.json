@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-07",
+  "lastUpdated": "2026-06-13",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -122,7 +122,8 @@
         "2026-06-07 Records AI recent context finalized as adaptive left/right bubbles; npm run verify:frontend passed and comparison screenshots were saved under .verification/drawer-ui/.",
         "2026-06-07 Records quick prompt and drawer voice layer fix passed npm run verify:frontend plus targeted 390x844 screenshots; prompt links computed as transparent/no-shadow/0-border and the voice panel rendered above the Records drawer at z-index 3600.",
         "2026-06-07 Records AI processing input responsiveness fix passed npm run verify:frontend plus targeted slow-SSE Playwright probes; the drawer shows a three-dot `正在整理` loading state while keyboard and voice controls remain enabled during processing.",
-        "2026-06-07 Records timeline density and swipe-actions fix passed npm run verify:frontend plus targeted Playwright probes; timeline rows are low-radius rectangular two-line cards, left-swipe reveals matching edit/delete actions, delete requires confirmation, and AI processing loading renders inside the message bubble."
+        "2026-06-07 Records timeline density and swipe-actions fix passed npm run verify:frontend plus targeted Playwright probes; timeline rows are low-radius rectangular two-line cards, left-swipe reveals matching edit/delete actions, delete requires confirmation, and AI processing loading renders inside the message bubble.",
+        "2026-06-13 Album preview UX fixes (video pointer-events swipe root cause, persistent bottom play/pause toggle, in-preview dark edit/delete dialogs that no longer close pswp, waterfall long-press edit/delete bubbles) passed npm run verify:frontend incl. rewritten gesture scenario [J] and new scenario [P]."
       ],
       "notes": "Any navigation, Records, Album, Ledger, My, voice input, composer, modal, keyboard, or safe-area change needs this gate."
     },
@@ -176,7 +177,8 @@
         "2026-06-07 OTA published version 0.1.0-20260607195646; manifest checksum 5159287a66d8038c56e06fd0cc613d5bdc916fe345bcc3b54c2d56e20e246af7; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
         "2026-06-07 OTA published version 0.1.0-20260607203321; manifest checksum e4474e5ec83ac93dffc41a22db23a8e6e4978419f9f2ca8eeb69a919239b1c0e; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
         "2026-06-07 OTA published version 0.1.0-20260607210050; manifest checksum a2c9024a5691141a63b49df042a994e15ed7360ba620ffc04e1ba91d86b32ac0; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
-        "2026-06-07 OTA published version 0.1.0-20260607221114; manifest checksum f9f5cd3dde345eff3b89efcc433ca3c8b1ae723b734cdd8375cc975e1230179d; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits."
+        "2026-06-07 OTA published version 0.1.0-20260607221114; manifest checksum f9f5cd3dde345eff3b89efcc433ca3c8b1ae723b734cdd8375cc975e1230179d; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-13 OTA published version 0.1.0-20260613033445; manifest checksum 96322de989b3cf6c0a811e780d6039a4011ba76ae8fac9d92f071ac5af81bd1d; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits; live POST /api/mobile-updates/check returned the new version with signed OSS URL."
       ],
       "notes": "Browser smoke cannot prove OS notification delivery, full-screen ringing, native camera/media picker behavior, or OTA apply."
     },
