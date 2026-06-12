@@ -10,7 +10,7 @@
 
 | # | 债项 | 影响面 | 优先级 | 状态 |
 |---|------|--------|--------|------|
-| D1 | App.tsx 上帝类(9690 行 / 185 函数 / 226 hooks / 全 Tab 一棵树) | 全局性能、可维护性 | **P0** | **阶段一完成**(AlbumScreen 已拆,守卫测试 [M];余 Records/Profile,目标结构见 [cross-platform-principles.md](cross-platform-principles.md) §3) |
+| D1 | App.tsx 上帝类(9690→8959 行,持续拆解中) | 全局性能、可维护性 | **P0** | **阶段二完成**(Album/Reminders/Profile 三屏已拆至 screens/,reminderDraft 纯模块;**余 RecordsScreen**——最大单块,单独一轮做,顺带 D13/D6/D3聊天列表) |
 | D2 | ~~服务端缩略图缺失~~ 实为:app/state 读放大 + 视频封面缺失 | 状态接口延迟、相册 | **P0** | **完成**(2026-06-12,见报告;原"图片缺缩略图"前提经生产实查证伪) |
 | D3 | 长列表无 DOM 虚拟化(相册/聊天/照护记录) | 滚动性能、内存 | P1 | **相册完成**(2026-06-12,tile 视口窗口化;聊天/记录列表待 D1 拆 RecordsScreen 后做) |
 | D4 | 媒体 objectURL 会话内永不释放 + 网格首挂 IDB 事务风暴 | 内存、相册首开 | P1 | **完成**(2026-06-12,LRU 释放 + 单事务批量预查) |
