@@ -1,6 +1,6 @@
 # 架构债登记册(Tech Debt Register)
 
-> 更新:2026-06-12(P1/P2 批次完成:D3/D4/D5/D8,见 docs/verification/perf-p1p2-report-2026-06-12.md;此前 P0 见 perf-p0-report-2026-06-12.md)· 来源:2026-06-10 ~ 06-12 排障复盘
+> 更新:2026-06-12(代码结构 review 新增 D10–D13,设计依据见 [cross-platform-principles.md](cross-platform-principles.md);此前 P1/P2 批次 D3/D4/D5/D8 见 perf-p1p2-report,P0 见 perf-p0-report)· 来源:2026-06-10 ~ 06-12 排障复盘 + 结构 review
 > 读者:后续在本仓库工作的所有 agent 与开发者
 > 用法:**动手前先查本文**——「不变量」一节是红线,「已修复存档」避免重复排查,「债项清单」按优先级取活。行号会漂移,定位一律用文中的 grep 锚点。
 
@@ -10,7 +10,7 @@
 
 | # | 债项 | 影响面 | 优先级 | 状态 |
 |---|------|--------|--------|------|
-| D1 | App.tsx 单体组件(~9800 行 / 98 useState / 全 Tab 一棵树) | 全局性能、可维护性 | **P0** | **阶段一完成**(AlbumScreen 已拆,守卫测试 [M];余 Records/Profile,见报告) |
+| D1 | App.tsx 上帝类(9690 行 / 185 函数 / 226 hooks / 全 Tab 一棵树) | 全局性能、可维护性 | **P0** | **阶段一完成**(AlbumScreen 已拆,守卫测试 [M];余 Records/Profile,目标结构见 [cross-platform-principles.md](cross-platform-principles.md) §3) |
 | D2 | ~~服务端缩略图缺失~~ 实为:app/state 读放大 + 视频封面缺失 | 状态接口延迟、相册 | **P0** | **完成**(2026-06-12,见报告;原"图片缺缩略图"前提经生产实查证伪) |
 | D3 | 长列表无 DOM 虚拟化(相册/聊天/照护记录) | 滚动性能、内存 | P1 | **相册完成**(2026-06-12,tile 视口窗口化;聊天/记录列表待 D1 拆 RecordsScreen 后做) |
 | D4 | 媒体 objectURL 会话内永不释放 + 网格首挂 IDB 事务风暴 | 内存、相册首开 | P1 | **完成**(2026-06-12,LRU 释放 + 单事务批量预查) |
@@ -19,6 +19,10 @@
 | D7 | 共享 SQLite(主服务 + admin 同库) | 规模化 | P2 | WAL+busy_timeout 已配,带触发条件(2026-06-12 复核:触发条件均未满足,不动) |
 | D8 | 测试盲区:DOM 级测试只覆盖相册预览 | 回归风险 | P2 | **完成**(2026-06-12,核心三链路齐:聊天[N]/记录[O]/相册 gesture 套件) |
 | D9 | OSS 签名 URL 轮换 vs 一切缓存层 | 缓存正确性 | 设计约束 | 已解,须遵守 |
+| D10 | FE/BE 契约零防护网(无 codegen + 无运行时校验) | 稳定性(后端改字段→前端白屏且查不到) | **P1** | 未开工(2026-06-12 review 新发现,最高 ROI) |
+| D11 | 原生端口层泄漏(App.tsx 裸调 Capacitor 12 处) | Web↔原生边界 | P2 | 未开工(封装模块已存在,只是被绕过) |
+| D12 | 模块分类法不清(components/ 与 views/ 边界含糊) | 可维护性 | P2 | 未开工(随 D1 拆分归位) |
+| D13 | 记录类型散弹式分支(~39 处 kind 判断,违反 OCP) | 扩展性(加记录类型=改多处) | P1 | 未开工(注册表化,动 records 时顺带) |
 
 **平台决策(2026-06-12,与用户对齐)**:不上 React Native、不做原生相册。所有已知卡顿均为应用层架构问题(见 §3),换平台不解决。复议条件:打完 D2+D3 后,千元安卓机相册滚动仍 <55fps 或冷启动仍 >2s,才考虑「仅原生化全屏查看器」(绝不原生化网格——滚动同步/双缓存/失去 OTA,代价最高收益最低)。
 
@@ -104,6 +108,34 @@
 - **事实**:OSS 签名 URL 的 `Expires/Signature` 每次请求都变,**同一资源 URL 永不相等**。任何以完整 URL 为 key 的缓存(HTTP 缓存、IndexedDB、内存映射)都会 100% miss。
 - **既有解法**:`stableMediaKey`(剥离签名参数,`grep -n stableMediaKey frontend/src/mediaCache.ts`)。
 - **红线**:今后**任何新缓存层(含 Service Worker、原生层)必须用签名剥离后的 key**;反之,鉴权迁移到 Header/Cookie 前,不要给媒体 URL 加新的易变参数。
+
+> **D10–D13 来自 2026-06-12 代码结构 review**(避免上帝类 / 高扩展 / 低耦合)。设计依据与目标结构见 [cross-platform-principles.md](cross-platform-principles.md);此处只列可执行债。
+
+### D10【P1,未开工】FE/BE 契约零防护网
+
+- **现状**:后端无 OpenAPI(`grep -c "springdoc\|swagger" backend/pom.xml` = 0),前端无 zod 等运行时校验;`frontend/src/types.ts`(459 行)手抄后端 DTO,`/api/app/state` 响应 `JSON.parse` 后直接 `as` 强转。后端改字段名/删字段 → 前端**静默拿到 undefined 运行时炸,且 mock 测试永远发现不了**。
+- **方案(最小、零依赖、最高 ROI)**:整个 App 从 `/api/app/state` 一个响应水合——在 `appStateApi.ts` 水合点加一个**手写校验器**(~80 行,不引 zod),响应缺关键字段时走现成 `reportClientError` 上报(kind 如 `state_contract_drift`),并安全降级而非整页崩。
+- **不做(scale 触发)**:全量 OpenAPI codegen——契约稳定时收益低、维护贵;等"契约频繁变 / 多人协作 / 接第二客户端"任一触发再上。
+- **验收**:故意给 mock 删一个关键字段,前端不白屏且产生一条 contract_drift 上报。
+
+### D11【P2,未开工】原生端口层泄漏
+
+- **现状**:已有 6 个原生封装(nativeAlarm/nativeMediaPicker/mobileUpdates/haptics/audioPermission/errorReporting),**但 App.tsx 仍裸调 Capacitor 12 处**(`grep -n "Capacitor\." frontend/src/App.tsx`):通知渠道(1294/1334/1443 应进 nativeAlarm)、OTA 判断(3288 应进 mobileUpdates)、平台标签(1198/2341 应做成 `platform.ts`)。封装存在却被绕过 = 端口层不是唯一出入口。
+- **方案**:把这 12 处下沉到对应封装 / 新建 `platform.ts`,App 只调封装、不直接 import `@capacitor/core`。纯机械搬运。
+- **验收**:`grep -c "Capacitor\." frontend/src/App.tsx` = 0;原生差异全部在 `platform/` 与 6 个封装内。
+
+### D12【P2,未开工】模块分类法不清
+
+- **现状**:`components/`(含 AlbumScreen 整屏)与 `views/`(GrowthEntry/Ledger/Milestones 也是整屏)边界含糊,无规则。
+- **方案**:定一条规则——**整屏进 `features/<x>/` 或 `screens/`,`components/` 只放跨功能可复用件**;随 D1 拆分时归位,不单独开工。
+- **验收**:每个 UI 文件能按规则唯一定位;新人/agent 不靠记忆找文件。
+
+### D13【P1,未开工】记录类型散弹式分支(违反 OCP)
+
+- **现状**:`grep -c 'kind === "' frontend/src/App.tsx` ~39 处 kind 分支(含记录类型/附件类型);加一种记录类型(用药/体温…)要在多处 `if/switch` 逐个加 case,加 AI 模型要改内联 `resolveAgentModelForMessage`(App.tsx:2110)。
+- **方案(扩展性最高 ROI)**:记录类型提成数据表 `recordTypes.ts`(`RECORD_TYPES: Record<RecordKind, RecordTypeDef>`,含 label/icon/fields/toTimelineText/toAlbumCategory),分支塌缩为查表;AI 模型路由换策略表 `MODEL_POLICIES`。**加功能 = 加一条数据,不改分发逻辑**。代码骨架见 cross-platform-principles.md §4。
+- **时机**:动 records 拆分(D1)时顺带,避免二次穿行万行文件。
+- **验收**:新增一种记录类型只改 `recordTypes.ts` 一处;原 kind 分支点降到个位数。
 
 ---
 
