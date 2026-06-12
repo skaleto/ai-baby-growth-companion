@@ -5,6 +5,7 @@ declare module "plyr" {
     controls?: string[];
     autoplay?: boolean;
     clickToPlay?: boolean;
+    hideControls?: boolean;
     fullscreen?: { enabled?: boolean };
     storage?: { enabled?: boolean };
     iconUrl?: string;

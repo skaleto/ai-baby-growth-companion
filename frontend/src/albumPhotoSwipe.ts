@@ -119,14 +119,26 @@ function buildVideoElement(data: PswpAlbumData): HTMLElement {
   shell.appendChild(video);
   // Plyr(5.2 选型):简约控制条(播放/进度/时间/静音),替换系统 controls(安卓上不可控且丑)。
   const player = new Plyr(video, {
-    controls: ["play", "progress", "current-time", "mute"],
+    // play-large:暂停态中央常显大按钮;控制条常驻(hideControls:false)——
+    // pswp 手势层会截走「点一下唤回控制条」的 tap,自动隐藏会让用户找不到暂停。
+    controls: ["play-large", "play", "progress", "current-time", "mute"],
     autoplay: false,
-    clickToPlay: true,
+    clickToPlay: false,
+    hideControls: false,
     fullscreen: { enabled: false },
     storage: { enabled: false },
     iconUrl: undefined,
   });
   plyrInstances.set(shell, player);
+  // 控制条/按钮上的指针事件不再冒泡给 PhotoSwipe:否则拖进度条=拖动整个 slide、
+  // 点暂停=触发 pswp 的 tap 行为。视频画面区不拦截——滑动翻页保持可用。
+  const stopIfOnControls = (event: Event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(".plyr__controls, .plyr__control")) event.stopPropagation();
+  };
+  for (const type of ["pointerdown", "pointermove", "pointerup", "touchstart", "touchmove", "touchend", "mousedown", "click"]) {
+    shell.addEventListener(type, stopIfOnControls);
+  }
   return shell;
 }
 
