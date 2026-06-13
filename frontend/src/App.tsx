@@ -232,7 +232,7 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { CachedImg } from "./components/CachedMedia";
 import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwipeMath";
 import { openAlbumPhotoSwipe } from "./albumPhotoSwipe";
-import { appAlert, appConfirm, appPrompt } from "./components/appDialogs";
+import { appAlbumEdit, appAlert, appConfirm } from "./components/appDialogs";
 import { AppDateField, AppTimeField } from "./components/appWheelFields";
 import "./posterUpload";
 import { reportClientError } from "./errorReporting";
@@ -4330,11 +4330,6 @@ function App() {
   // 否则 App 每次渲染重建闭包,memo 形同虚设。
   const albumScreenHandlersRef = useRef({ handleAlbumFiles, openAlbumMediaPicker, openAlbumPreview });
   albumScreenHandlersRef.current = { handleAlbumFiles, openAlbumMediaPicker, openAlbumPreview };
-  // editAlbumItem/removeAlbumItem 声明在更靠后(此处引用会踩 TDZ),用单独的 ref 在定义处回填。
-  const albumItemActionsRef = useRef<{
-    editAlbumItem: (item: AlbumItem, ui?: { dark?: boolean }) => Promise<AlbumItem | null>;
-    removeAlbumItem: (item: AlbumItem, ui?: { dark?: boolean }) => Promise<boolean>;
-  } | null>(null);
   const [albumScreenHandlers] = useState(() => ({
     onPickFiles: (event: ChangeEvent<HTMLInputElement>) => {
       void albumScreenHandlersRef.current.handleAlbumFiles(event);
@@ -4344,13 +4339,6 @@ function App() {
     },
     onOpenPreview: (event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => {
       albumScreenHandlersRef.current.openAlbumPreview(event, attachment, item);
-    },
-    // 瀑布页长按气泡的编辑/删除(浅色弹窗,与页面同色系)。
-    onEditItem: (item: AlbumItem) => {
-      void albumItemActionsRef.current?.editAlbumItem(item);
-    },
-    onDeleteItem: (item: AlbumItem) => {
-      void albumItemActionsRef.current?.removeAlbumItem(item);
     },
   }));
 
@@ -5570,15 +5558,13 @@ function App() {
   const editAlbumItem = async (item: AlbumItem, ui?: { dark?: boolean }): Promise<AlbumItem | null> => {
     if (!canCaregive) return null;
     const dark = ui?.dark ?? false;
-    const title = await appPrompt({ title: "给这段回忆起个名字", defaultValue: item.title, dark });
-    if (title === null) return null;
-    const tags = await appPrompt({ title: "标签", defaultValue: item.tags.join("、"), placeholder: "用顿号或逗号分隔", dark });
-    if (tags === null) return null;
+    const edited = await appAlbumEdit({ title: item.title, tags: item.tags.join("、"), dark });
+    if (edited === null) return null;
     const nextItem = normalizeAlbumItem(
       {
         ...item,
-        title: title.trim() || item.title,
-        tags: splitListText(tags),
+        title: edited.title.trim() || item.title,
+        tags: splitListText(edited.tags),
         source: "manual",
       },
       0,
@@ -5592,7 +5578,7 @@ function App() {
   // 返回是否真的删了(取消返回 false),供全屏预览决定要不要退出;dark 同 editAlbumItem。
   const removeAlbumItem = async (item: AlbumItem, ui?: { dark?: boolean }): Promise<boolean> => {
     if (!canCaregive) return false;
-    const confirmed = await appConfirm({ title: "删除素材", content: `删除「${item.title}」？会同时删除云端/本地存储里的原始素材和缩略图。`, danger: true, dark: ui?.dark ?? false });
+    const confirmed = await appConfirm({ title: "删除素材", content: `删除「${item.title}」？会同时删除云端/本地存储里的原始素材和缩略图。`, confirmText: "删除", danger: true, dark: ui?.dark ?? false });
     if (!confirmed) return false;
     const attachmentId = item.attachmentId || item.attachment?.id || "";
     setAlbumItems((current) =>
@@ -5628,9 +5614,6 @@ function App() {
     // 本地 UI 已乐观移除(失败也有系统消息兜底),对调用方而言条目已不在。
     return true;
   };
-  // 回填给 albumScreenHandlers(声明早于此处,直接引用会踩 TDZ)。
-  albumItemActionsRef.current = { editAlbumItem, removeAlbumItem };
-
   const updateAlbumPromptStatus = (messageId: string, promptId: string, status: AlbumPrompt["status"]) => {
     const nextMessages = messages.map((message) =>
       message.id === messageId
@@ -8589,8 +8572,6 @@ function App() {
           onPickFiles={albumScreenHandlers.onPickFiles}
           onOpenPicker={albumScreenHandlers.onOpenPicker}
           onOpenPreview={albumScreenHandlers.onOpenPreview}
-          onEditItem={albumScreenHandlers.onEditItem}
-          onDeleteItem={albumScreenHandlers.onDeleteItem}
           onRecordRatio={recordAlbumRatio}
         />
         ) : null}

@@ -2,8 +2,8 @@
 // React.memo:聊天输入/其他 Tab 的任何 setState 不再重渲染整个相册网格。
 // memo 生效前提:函数 props 必须引用稳定——App 侧经 ref 包装(albumScreenHandlers),
 // 数据 props 均为 useMemo/state 产物。DOM 结构与拆分前逐字一致(CSS/手势测试不感知)。
-import { memo, useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type RefObject } from "react";
-import { Camera as CameraIcon, Image as ImageIcon, PencilLine, Trash2, Video } from "lucide-react";
+import { memo, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type RefObject } from "react";
+import { Camera as CameraIcon, Image as ImageIcon, Video } from "lucide-react";
 import type { AlbumItem, Attachment, AlbumItemCategory } from "../types";
 import { attachmentListSrc, distributeIntoColumns } from "../albumDomain";
 import { albumCategoryIconSrc } from "./albumIcons";
@@ -11,7 +11,6 @@ import { AlbumVideoThumbnail } from "./AlbumVideoThumbnail";
 import { CachedImg } from "./CachedMedia";
 import { observeViewportWindow, prefetchAlbumVideo } from "./albumVideoPlayback";
 import { preloadLocalMediaUrls } from "../mediaCache";
-import { hapticLight } from "../haptics";
 import growthIcon from "../assets/storybook-icons/growth.png";
 
 type AlbumUploadListItem = {
@@ -36,13 +35,8 @@ export type AlbumScreenProps = {
   onPickFiles: (event: ChangeEvent<HTMLInputElement>) => void;
   onOpenPicker: () => void;
   onOpenPreview: (event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => void;
-  onEditItem: (item: AlbumItem) => void;
-  onDeleteItem: (item: AlbumItem) => void;
   onRecordRatio: (attachmentId: string, ratio: number) => void;
 };
-
-/** 长按 tile 弹出的编辑/删除气泡:fixed 定位坐标在长按瞬间从 tile rect 计算。 */
-type TileMenuState = { item: AlbumItem; top: number; centerX: number; below: boolean };
 
 // 首组每列前 8 个 tile 首帧即挂媒体(约两屏),其余进入 ±150% 视口窗口才挂、离开即卸(D3)。
 const EAGER_TILES_PER_COLUMN = 8;
@@ -51,40 +45,23 @@ type AlbumPhotoTileProps = {
   item: AlbumItem;
   tileIndexSeed: number;
   eager: boolean;
-  canManage: boolean;
   albumTileAspect: (item: AlbumItem) => number;
   onOpenPreview: AlbumScreenProps["onOpenPreview"];
-  onLongPress: (item: AlbumItem, rect: DOMRect) => void;
   onRecordRatio: AlbumScreenProps["onRecordRatio"];
 };
-
-// 长按判定:480ms 内按住不动(位移 ≤10px)。要赶在浏览器原生 contextmenu(约 500ms)之前。
-const LONG_PRESS_MS = 480;
-const LONG_PRESS_SLOP_PX = 10;
 
 const AlbumPhotoTile = memo(function AlbumPhotoTile({
   item,
   tileIndexSeed,
   eager,
-  canManage,
   albumTileAspect,
   onOpenPreview,
-  onLongPress,
   onRecordRatio,
 }: AlbumPhotoTileProps) {
   const attachment = item.attachment;
   // tile 壳(article+button)常驻保证布局高度与点击目标稳定;媒体子树按视口窗口挂卸。
   const [inWindow, setInWindow] = useState(eager);
   const articleRef = useRef<HTMLElement | null>(null);
-  // fired 在长按触发后吞掉随之而来的 click(否则松手会顺带打开预览)。
-  const longPressRef = useRef<{ timer: number | null; x: number; y: number; fired: boolean }>({ timer: null, x: 0, y: 0, fired: false });
-  const cancelLongPress = () => {
-    const state = longPressRef.current;
-    if (state.timer !== null) {
-      window.clearTimeout(state.timer);
-      state.timer = null;
-    }
-  };
 
   useEffect(() => {
     const el = articleRef.current;
@@ -115,37 +92,14 @@ const AlbumPhotoTile = memo(function AlbumPhotoTile({
         type="button"
         className="album-photo-thumb"
         data-vt-item={item.id}
-        onPointerDown={(event) => {
+        onPointerDown={() => {
           if (attachment?.kind === "video") prefetchAlbumVideo(attachment.url);
-          if (!canManage || !attachment?.url) return;
-          const state = longPressRef.current;
-          cancelLongPress();
-          state.x = event.clientX;
-          state.y = event.clientY;
-          state.fired = false;
-          state.timer = window.setTimeout(() => {
-            state.timer = null;
-            state.fired = true;
-            const el = articleRef.current;
-            if (el) onLongPress(item, el.getBoundingClientRect());
-          }, LONG_PRESS_MS);
         }}
-        onPointerMove={(event) => {
-          const state = longPressRef.current;
-          if (state.timer === null) return;
-          if (Math.hypot(event.clientX - state.x, event.clientY - state.y) > LONG_PRESS_SLOP_PX) cancelLongPress();
-        }}
-        onPointerUp={cancelLongPress}
-        onPointerCancel={cancelLongPress}
         onContextMenu={(event) => {
-          // 长按走自定义气泡,压掉浏览器原生长按菜单(保存图片等)。
-          if (canManage) event.preventDefault();
+          // 压掉浏览器原生长按菜单(保存图片等);瀑布页长按不再有任何动作。
+          event.preventDefault();
         }}
         onClick={(event) => {
-          if (longPressRef.current.fired) {
-            longPressRef.current.fired = false;
-            return;
-          }
           if (attachment) onOpenPreview(event, attachment, item);
         }}
         aria-label={`预览 ${item.title}`}
@@ -196,31 +150,8 @@ export const AlbumScreen = memo(function AlbumScreen({
   onPickFiles,
   onOpenPicker,
   onOpenPreview,
-  onEditItem,
-  onDeleteItem,
   onRecordRatio,
 }: AlbumScreenProps) {
-  // 长按 tile 的编辑/删除气泡。注意:tile 有 content-visibility(自带 paint containment,
-  // 越界内容会被裁掉),气泡必须渲染在 tile 子树之外、用 fixed 浮层定位。
-  const [tileMenu, setTileMenu] = useState<TileMenuState | null>(null);
-  const openTileMenu = useCallback((item: AlbumItem, rect: DOMRect) => {
-    hapticLight();
-    const below = rect.top < 96; // 贴近屏幕顶时翻到媒体内侧,避免被顶栏裁掉
-    setTileMenu({
-      item,
-      below,
-      centerX: rect.left + rect.width / 2,
-      top: below ? rect.top + 10 : rect.top - 10,
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!tileMenu) return;
-    // 气泡坐标是长按瞬间快照,页面一滚就漂——滚动即收起。
-    const close = () => setTileMenu(null);
-    window.addEventListener("scroll", close, { capture: true, passive: true });
-    return () => window.removeEventListener("scroll", close, { capture: true });
-  }, [tileMenu]);
   // 测试探针(默认关闭零开销):window.__COUNT_ALBUM_RENDERS 置位时统计渲染次数,
   // 守护 memo 的 props 稳定性(gesture 测试 [M]:打字期间渲染数必须为 0)。
   if (typeof window !== "undefined" && (window as unknown as { __COUNT_ALBUM_RENDERS?: boolean }).__COUNT_ALBUM_RENDERS) {
@@ -321,10 +252,8 @@ export const AlbumScreen = memo(function AlbumScreen({
                         item={item}
                         tileIndexSeed={groupIndex * 7 + columnIndex * 3 + itemIndex}
                         eager={groupIndex === 0 && itemIndex < EAGER_TILES_PER_COLUMN}
-                        canManage={canCaregive}
                         albumTileAspect={albumTileAspect}
                         onOpenPreview={onOpenPreview}
-                        onLongPress={openTileMenu}
                         onRecordRatio={onRecordRatio}
                       />
                     ))}
@@ -348,43 +277,6 @@ export const AlbumScreen = memo(function AlbumScreen({
         </div>
       )}
 
-      {tileMenu ? (
-        // 收起用 click 而非 pointerdown:浮层若在 pointerdown 即卸载,随后的 click 会落到
-        // 底下的 tile 上顺带打开预览;click 收起则整次点击都被浮层吃掉。
-        <div className="album-tile-menu-layer" onClick={() => setTileMenu(null)}>
-          <div
-            className={`album-tile-menu${tileMenu.below ? " is-below" : ""}`}
-            style={{ top: tileMenu.top, left: `clamp(96px, ${tileMenu.centerX}px, calc(100vw - 96px))` } as CSSProperties}
-            onClick={(event) => event.stopPropagation()}
-            role="menu"
-            aria-label={`${tileMenu.item.title} 的操作`}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setTileMenu(null);
-                onEditItem(tileMenu.item);
-              }}
-            >
-              <PencilLine size={14} />
-              编辑
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="danger"
-              onClick={() => {
-                setTileMenu(null);
-                onDeleteItem(tileMenu.item);
-              }}
-            >
-              <Trash2 size={14} />
-              删除
-            </button>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 });

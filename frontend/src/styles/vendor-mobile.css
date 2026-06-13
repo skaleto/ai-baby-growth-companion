@@ -5,49 +5,193 @@
   --adm-color-success: #4d7d60;
   --adm-color-danger: #e2624b;
   --adm-font-family: inherit;
-  --adm-center-popup-border-radius: 16px;
+  --adm-center-popup-border-radius: 20px;
 }
 
-.adm-dialog-content {
-  font-size: 14px;
+/* ── 弹窗(2026-06-13「暗夜毛玻璃」定稿)────────────────────────────
+   一套语言通吃浅色(App 内通用确认/编辑)与深色(黑底大图预览内)。
+   结构:图标 chip 头 + 标题 + 正文/表单 + 并排胶囊按钮(取消=描边、确定=实心 sage、删除=实心 coral)。
+   bodyClassName=.app-dialog(深色再叠 .app-dialog-dark)。按钮样式挂稳定自定义 class,
+   不依赖 antd 的 bold/danger(其 danger 是行内 color,会盖住实心底上的白字)。 */
+.adm-dialog-body.app-dialog {
+  background: #fffdf8;
+}
+
+.app-dialog .adm-dialog-header {
+  padding-top: 18px;
+}
+
+/* 编辑表单的头:图标 chip + 标题,左对齐成一行。 */
+.app-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.app-dialog-head b {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2f2a22;
+}
+
+.app-dialog-icn {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.app-dialog-icn-edit {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(77, 125, 96, 0.14);
+  color: #3f7a5f;
+}
+
+/* 删除确认:珊瑚色圆形图标居中。 */
+.app-dialog-icn-danger {
+  width: 46px;
+  height: 46px;
+  margin: 2px auto 0;
+  border-radius: 50%;
+  background: rgba(226, 98, 75, 0.13);
+  color: #d9543c;
+}
+
+.app-dialog .adm-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2f2a22;
+}
+
+.app-dialog .adm-dialog-content {
+  font-size: 13.5px;
   line-height: 1.6;
-  color: #5d5546;
+  color: #6b6354;
 }
 
-.adm-dialog .adm-input {
-  margin-top: 4px;
-  padding: 10px 12px;
+/* 编辑表单:名称 + 标签两段(合并自旧的连弹两次 prompt)。 */
+.app-dialog-form {
+  display: grid;
+  gap: 12px;
+  text-align: left;
+}
+
+.app-dialog-field span {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: #8a8270;
+}
+
+.app-dialog-field .adm-input {
+  padding: 9px 11px;
   border: 1px solid rgba(190, 225, 211, 0.95);
   border-radius: 10px;
   background: #fbfdf9;
 }
 
-/* 深色弹窗变体(appDialogs 的 dark 选项):黑底全屏预览(pswp/媒体预览)内的编辑/删除——
-   白卡片在纯黑详情页上突兀,改用与预览顶栏菜单同色系的深灰卡片。 */
-.adm-dialog-body.app-dialog-dark {
-  --adm-color-text: #f3f0ea;
-  --adm-color-weak: rgba(235, 230, 220, 0.62);
-  --adm-color-border: rgba(255, 255, 255, 0.14);
-  background: rgba(36, 36, 38, 0.98);
-  color: #f3f0ea;
+/* 底部:并排胶囊按钮。前缀 .adm-dialog-body 拔高优先级——antd 的样式在本表之后注入,
+   等优先级会输,必须多压一个 class 才能盖掉它的分隔细线/行布局/圆角。 */
+.adm-dialog-body.app-dialog .adm-dialog-footer {
+  padding: 14px 16px 16px;
+  border-top: 0;
 }
 
-.adm-dialog-body.app-dialog-dark .adm-dialog-content {
-  color: rgba(238, 233, 223, 0.85);
+.adm-dialog-body.app-dialog .adm-dialog-action-row {
+  display: flex;
+  gap: 10px;
+  border: 0;
 }
 
-.adm-dialog-body.app-dialog-dark .adm-dialog-button {
+/* antd 在内容与按钮间画的整条分隔线(action-row 顶边):一并抹掉。 */
+.adm-dialog-body.app-dialog .adm-dialog-footer .adm-dialog-action-row {
+  border-top: 0;
+}
+
+.adm-dialog-body.app-dialog .adm-dialog-action-row > .adm-dialog-button {
+  flex: 1;
+  padding: 11px 0;
+  border: 0;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.adm-dialog-body.app-dialog .adm-dialog-button.app-dlg-cancel {
+  background: transparent;
+  border: 1px solid rgba(120, 95, 60, 0.20);
+  color: #6b6354;
+}
+
+.adm-dialog-body.app-dialog .adm-dialog-button.app-dlg-primary {
+  background: #4d7d60;
+  border: 0;
+  color: #fff;
+}
+
+.adm-dialog-body.app-dialog .adm-dialog-button.app-dlg-danger {
+  background: #e2624b;
+  border: 0;
+  color: #fff;
+}
+
+.adm-dialog-body.app-dialog .adm-dialog-button:active {
+  opacity: 0.86;
+}
+
+/* ── 深色变体:黑底大图预览内 ──────────────────────────────── */
+.adm-dialog-body.app-dialog.app-dialog-dark {
+  background: rgba(38, 38, 42, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.app-dialog-dark .adm-dialog-title,
+.app-dialog-dark .app-dialog-head b {
+  color: #f4f1ea;
+}
+
+.app-dialog-dark .adm-dialog-content {
+  color: rgba(238, 233, 223, 0.72);
+}
+
+.app-dialog-dark .app-dialog-icn-edit {
+  background: rgba(94, 145, 115, 0.22);
   color: #9fd0b4;
 }
 
-.adm-dialog-body.app-dialog-dark .adm-input {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
+.app-dialog-dark .app-dialog-icn-danger {
+  background: rgba(224, 97, 74, 0.18);
+  color: #ef8a76;
 }
 
-.adm-dialog-body.app-dialog-dark .adm-input-element {
+.app-dialog-dark .app-dialog-field span {
+  color: rgba(236, 231, 221, 0.6);
+}
+
+.app-dialog-dark .app-dialog-field .adm-input {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-dialog-dark .adm-input-element {
   color: #f3f0ea;
   caret-color: #f3f0ea;
+}
+
+.adm-dialog-body.app-dialog-dark .adm-dialog-button.app-dlg-cancel {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f4f1ea;
+}
+
+.adm-dialog-body.app-dialog-dark .adm-dialog-button.app-dlg-primary {
+  background: #5e9173;
+}
+
+.adm-dialog-body.app-dialog-dark .adm-dialog-button.app-dlg-danger {
+  background: #e0614a;
 }
 
 /* 滚轮字段(替换原生 date/time input):沿用应用输入框观感,放在原 <label> 内布局不变。 */

@@ -271,37 +271,21 @@ try {
   await closePreview(page);
   console.log("[J] clean close button + ⋯ menu edit keeps preview open w/ dark dialog ✔");
 
-  // ---- P. 瀑布页长按 tile → 浮出编辑/删除气泡(不打开预览);删除走浅色确认,取消不删 ----
+  // 瀑布页长按气泡已彻底移除(编辑/删除仅保留在详情页 ⋯ 菜单,见 [J])——长按不再有任何动作。
   {
-    const tilesBefore = await page.locator(".album-photo-thumb").count();
     const thumbBox = await page.locator(".album-photo-thumb").first().boundingBox();
     const cx = thumbBox.x + thumbBox.width / 2;
     const cy = thumbBox.y + thumbBox.height / 2;
     await page.mouse.move(cx, cy);
     await page.mouse.down();
-    await page.locator(".album-tile-menu").waitFor({ state: "visible", timeout: 2500 });
+    await new Promise((r) => setTimeout(r, 700)); // 远超旧 480ms 长按阈值,仍按住
+    assert.equal(await page.locator(".album-tile-menu").count(), 0, "瀑布页长按不得再浮出任何气泡(特性已移除)");
+    // 移开再松手:避免原地松手被判定为一次点击而打开预览,保持 [K] 的干净起点。
+    await page.mouse.move(cx, cy + 220);
     await page.mouse.up();
-    await new Promise((r) => setTimeout(r, 120));
-    assert.equal(await page.locator(".pswp").count(), 0, "长按(及松手)不得打开全屏预览");
-    assert.equal(await page.locator(".album-tile-menu button", { hasText: "编辑" }).isVisible(), true, "气泡应有「编辑」");
-    assert.equal(await page.locator(".album-tile-menu button", { hasText: "删除" }).isVisible(), true, "气泡应有「删除」");
-    // 点空白处收起:整次点击被浮层吃掉,不得顺带打开底下 tile 的预览
-    await page.mouse.click(cx, cy + 40);
-    await page.locator(".album-tile-menu").waitFor({ state: "detached", timeout: 2000 });
-    await new Promise((r) => setTimeout(r, 200));
-    assert.equal(await page.locator(".pswp").count(), 0, "点空白收起气泡不得误开预览");
-    // 再长按 → 点「删除」→ 浅色确认框(非深色变体),取消后素材仍在
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    await page.locator(".album-tile-menu").waitFor({ state: "visible", timeout: 2500 });
-    await page.mouse.up();
-    await page.locator(".album-tile-menu button", { hasText: "删除" }).click({ timeout: 2000 });
-    await admCancel.waitFor({ state: "visible", timeout: 3000 });
-    assert.equal(await page.locator(".adm-dialog-body.app-dialog-dark").count(), 0, "瀑布页删除确认应用浅色样式(与页面统一)");
-    await admCancel.click({ timeout: 2000 });
-    await admCancel.waitFor({ state: "detached", timeout: 3000 });
-    assert.equal(await page.locator(".album-photo-thumb").count(), tilesBefore, "取消删除后素材数量不变");
-    console.log("[P] long-press tile => edit/delete bubbles, light confirm, no accidental preview ✔");
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(await page.locator(".pswp").count(), 0, "长按后不应有任何预览残留");
+    console.log("[P] masonry long-press is inert (no bubble) ✔");
   }
 
   // ---- K. 相邻图无缝贴合:slide 间距必须 == 视口宽(spacing:0),不得有黑边间隔 ----
