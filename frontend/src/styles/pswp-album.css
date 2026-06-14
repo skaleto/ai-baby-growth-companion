@@ -180,6 +180,18 @@
   display: block;
 }
 
+/* 真根:pswp 给所有注册 UI 元素加 .pswp__hide-on-close,并在 .pswp--ui-visible 下
+   强制 pointer-events:auto(优先级 0,2,0,盖过我们单类的 none)——于是这条 inset:0
+   的全屏视频条变成可点,把每一次横滑都吞了(「视频页滑不动」反复发作的真正源头)。
+   用更高优先级把整条压回 none,交互只留给下面显式 auto 的 .pswp-vb-* 子元素。 */
+.pswp--ui-visible .pswp-video-bar.pswp__hide-on-close {
+  pointer-events: none;
+}
+
+/* 中央播放标识:纯视觉(pointer-events:none)——绝不拦截横滑。
+   「视频页滑不动」的真凶就是它:自动播放被拦→视频停在暂停态→这枚 64px 圆钮
+   常驻屏幕正中,而横滑起手恰落在正中,被它吃掉,pswp 收不到拖拽。
+   播放/暂停改由 pswp 的 tap 系统驱动(tap 翻页二选一,库自带 tap/drag 区分)。 */
 .pswp-vb-center {
   position: absolute;
   left: 50%;
@@ -194,7 +206,7 @@
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.36);
   color: #fff;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 /* 播放中:中间彻底无按钮(不挡滑动)。 */

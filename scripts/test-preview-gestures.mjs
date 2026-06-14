@@ -335,6 +335,31 @@ try {
   console.log("[I] video slide: placeholder removed, video laid out, UI-layer control bar visible ✔");
   await closePreview(page);
 
+  // ---- Q. 视频 slide 真·横滑必须翻页(回归:pswp 给注册 UI 元素加 .pswp__hide-on-close 并在
+  //        .pswp--ui-visible 下强制 pointer-events:auto〔0,2,0〕,盖过视频条单类 none,让 inset:0
+  //        的全屏条吞掉每次横滑 → 视频页滑不动。此前只有程序翻页〔pswp.next()〕测试,漏掉真滑。 ----
+  await page.getByRole("button", { name: "预览 测试视频" }).click();
+  await page.locator(".pswp").waitFor({ state: "visible", timeout: 4000 });
+  await page.locator(".pswp__item:not([aria-hidden='true']) video.pswp-video").waitFor({ state: "visible", timeout: 3000 });
+  await page.locator(".pswp-video-bar.is-video").waitFor({ state: "visible", timeout: 3000 });
+  // 复现「自动播放被拦→停在暂停态、中央 ▶ 常驻」的真机情形,这正是最易被吞滑动的状态。
+  await page.evaluate(() => { const v = window.__pswpLightbox?.pswp?.currSlide?.content?.element?.querySelector?.("video"); if (v) v.pause(); });
+  await new Promise((r) => setTimeout(r, 400)); // 等开场动画结束、.pswp--ui-visible 与内容布局就位
+  // 中央那个点必须穿过视频条落到 slide 内容(条若可点=吞滑动)。
+  const hit = await page.evaluate(() => { const el = document.elementFromPoint(195, 420); return { ok: !!el?.closest(".pswp-video-shell"), tag: el ? `${el.tagName}.${el.className || ""}`.slice(0, 70) : "null" }; });
+  assert.ok(hit.ok, `视频条必须 pointer-events:none——中央点应命中 slide 内容而非全屏条本身(否则吞横滑);实际命中 ${hit.tag}`);
+  const vIdxBefore = await page.evaluate(() => window.__pswpLightbox.pswp.currIndex);
+  // 真·拖拽(向右=prev;视频非最新张,prev 必有邻居),而非 pswp.prev() 程序翻页。
+  await page.mouse.move(150, 420);
+  await page.mouse.down();
+  for (let x = 150; x <= 330; x += 12) { await page.mouse.move(x, 420); await new Promise((r) => setTimeout(r, 8)); }
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 500));
+  const vIdxAfter = await page.evaluate(() => window.__pswpLightbox.pswp.currIndex);
+  assert.notEqual(vIdxAfter, vIdxBefore, `视频页中央真·横滑必须翻页(${vIdxBefore}->${vIdxAfter} 未动=「视频页滑不动」BUG 回归)`);
+  console.log("[Q] real drag across video slide changes page (full-screen bar no longer eats swipes) ✔");
+  await closePreview(page);
+
   // ---- L. 预加载的相邻视频绝不自播:无 autoplay、保持暂停(后台漏音回归) ----
   // 横图(05-30)的相邻 slide 是测试视频(05-31):打开横图,PhotoSwipe 会预加载视频内容。
   await page.getByRole("button", { name: "预览 横图无尺寸" }).click();

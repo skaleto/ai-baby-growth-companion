@@ -375,14 +375,16 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
           `<input class="pswp-vb-progress" type="range" min="0" max="1000" step="1" value="0" aria-label="播放进度" />` +
           `<span class="pswp-vb-time">0:00 / 0:00</span>` +
           `</div>`;
-        const centerPlay = el.querySelector(".pswp-vb-center") as HTMLButtonElement;
         const toggleBtn = el.querySelector(".pswp-vb-toggle") as HTMLButtonElement;
         const progress = el.querySelector(".pswp-vb-progress") as HTMLInputElement;
         const timeText = el.querySelector(".pswp-vb-time") as HTMLElement;
+        const bottom = el.querySelector(".pswp-vb-bottom") as HTMLElement;
 
-        // 控制条整体不把指针事件交给下层(双保险;本层本就在手势系统之外)。
+        // 只让底部控制条(暂停键 + 进度条)吞自身触摸,避免拖进度被 pswp 当成横滑翻页。
+        // 中央及其余全屏区域全程 pointer-events:none,横滑直接穿透到 pswp 手势层——
+        // 绝不再在整条 el 上拦截(那正是「视频页滑不动」反复发作的根)。
         for (const type of ["pointerdown", "pointermove", "pointerup", "touchstart", "touchmove", "touchend", "mousedown", "click"]) {
-          el.addEventListener(type, (event) => event.stopPropagation());
+          bottom.addEventListener(type, (event) => event.stopPropagation());
         }
 
         const fmt = (seconds: number) => {
@@ -424,9 +426,6 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
           }
         };
 
-        centerPlay.addEventListener("click", () => {
-          if (video?.paused) void video.play().catch(() => undefined);
-        });
         toggleBtn.addEventListener("click", () => {
           if (!video) return;
           if (video.paused) void video.play().catch(() => undefined);
@@ -450,6 +449,20 @@ export async function openAlbumPhotoSwipe(opts: OpenAlbumPhotoSwipeOptions): Pro
         rebind();
       },
     });
+  });
+
+  // 视频页:轻点(非滑动)切换播放/暂停。pswp 的 tap 系统自带 tap↔drag 区分——
+  // 滑动只翻页、轻点才 toggle;中央播放键因此能纯视觉(pointer-events:none)不挡横滑。
+  lightbox.on("tapAction", (e) => {
+    const pswp = lightbox.pswp;
+    const data = pswp?.currSlide?.data as PswpAlbumData | undefined;
+    if (!data?.isVideo) return; // 图片维持默认行为(toggle-controls)
+    e.preventDefault();
+    const video = pswp?.currSlide?.content?.element?.querySelector?.("video");
+    if (video instanceof HTMLVideoElement) {
+      if (video.paused) void video.play().catch(() => undefined);
+      else video.pause();
+    }
   });
 
   lightbox.on("change", () => {
