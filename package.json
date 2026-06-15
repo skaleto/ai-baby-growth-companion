@@ -51,6 +51,7 @@
     "@capacitor/ios": "^8.3.1",
     "@capacitor/local-notifications": "^8.0.2",
     "@capgo/capacitor-updater": "^8.45.11",
+    "@mediagrid/capacitor-native-audio": "^3.0.0",
     "@vitejs/plugin-react": "^5.0.4",
     "antd-mobile": "^5.42.3",
     "lucide-react": "^0.468.0",
