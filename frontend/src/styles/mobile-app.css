@@ -5836,3 +5836,144 @@ body.keyboard-open .expense-optional-fields {
   content-visibility: auto;
   contain-intrinsic-size: auto 220px;
 }
+
+/* 喂奶闹钟卡片(记录页顶部)。暖色,视觉后续由 codex 出图打磨。 */
+.feeding-alarm-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(190, 225, 211, 0.9);
+  border-radius: 16px;
+  background: #fffdf8;
+}
+
+.feeding-alarm-card.is-due {
+  border-color: rgba(236, 143, 125, 0.7);
+  background: #fff6ef;
+}
+
+.feeding-alarm-card .fa-orb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(77, 125, 96, 0.12);
+  color: #4d7d60;
+}
+
+.feeding-alarm-card.is-due .fa-orb {
+  background: rgba(236, 143, 125, 0.16);
+  color: #d9543c;
+}
+
+.feeding-alarm-card .fa-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.feeding-alarm-card .fa-label {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #7d8585);
+}
+
+.feeding-alarm-card.is-due .fa-label {
+  color: #d9543c;
+}
+
+.feeding-alarm-card .fa-count {
+  margin: 1px 0 2px;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink, #2d3137);
+}
+
+.feeding-alarm-card.is-due .fa-count {
+  color: #d9543c;
+}
+
+.feeding-alarm-card .fa-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #7d8585);
+}
+
+.feeding-alarm-card .fa-fed,
+.feeding-alarm-card .fa-setup {
+  flex: none;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #4d7d60;
+  color: #fff;
+}
+
+.feeding-alarm-card.is-due .fa-fed {
+  background: #e2624b;
+}
+
+.feeding-alarm-card .fa-setup {
+  background: transparent;
+  border: 1px solid rgba(120, 95, 60, 0.2);
+  color: #6b6354;
+}
+
+/* 已喂快速奶量 sheet */
+.fa-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(28, 24, 18, 0.32);
+}
+
+.fa-sheet {
+  width: 100%;
+  max-width: 460px;
+  margin: 0 8px calc(env(safe-area-inset-bottom) + 12px);
+  padding: 16px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(57, 45, 31, 0.22);
+}
+
+.fa-sheet-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink, #2d3137);
+}
+
+.fa-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fa-chip {
+  border: 1px solid rgba(190, 225, 211, 0.9);
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-size: 14px;
+  color: var(--ink, #2d3137);
+  background: #fffdf9;
+}
+
+.fa-chip.alt {
+  color: #4d7d60;
+  border-color: rgba(77, 125, 96, 0.35);
+  background: rgba(77, 125, 96, 0.08);
+}
+
+.fa-chip.more {
+  color: var(--muted, #7d8585);
+}
