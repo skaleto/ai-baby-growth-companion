@@ -73,3 +73,5 @@ scripts/deploy-aliyun-ecs.sh
 ```
 
 The OSS upload script reads the current bundle name from `backend/data/mobile-updates/manifest.json`, uploads that zip under `baby-companion/mobile-updates/`, and rewrites the manifest with an `ossObjectKey`. The backend signs a fresh temporary OSS download URL on every `/api/mobile-updates/check`, so the bucket can remain private.
+
+> ⚠️ **下载来源护栏(2026-06-14)**：`deploy-aliyun-ecs.sh` 在同步 manifest 到生产前会校验下载来源。后端 `resolveBundleUrl` 的回退顺序是 `ossObjectKey → url(oss://) → url(http) → 后端单机直供 zip`。最后一档(`ossObjectKey` 与 `url` 都空)会让后端那台 ECS 自己吐 3.3M 的包,带宽小、多人抢 = **OTA 下载很慢**——历史上「漏跑 `upload-mobile-update-oss.sh` 就静默变慢」就是踩这里。所以**先 `upload-mobile-update-oss.sh` 再 sync 的顺序是硬要求**:manifest 没有 OSS/外链地址时同步会直接 `exit 1` 报错。确需后端直供(本地联调 / 无 OSS 环境)显式设 `ALLOW_BACKEND_DIRECT_OTA=1` 放行。

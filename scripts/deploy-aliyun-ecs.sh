@@ -287,6 +287,25 @@ fi
 
 LOCAL_UPDATE_DIR="$LOCAL_DATA_DIR/mobile-updates"
 if [[ "$SYNC_MOBILE_UPDATES" == "1" && -d "$LOCAL_UPDATE_DIR" ]]; then
+  # 护栏(2026-06-14):推 manifest 到生产前,确认下载会走 OSS。后端 resolveBundleUrl 的回退
+  # 顺序是 ossObjectKey → url(oss://) → url(http) → 后端单机直供 zip(慢)。最后一档正是
+  # 「漏跑 upload-mobile-update-oss.sh → ossObjectKey 空 → OTA 静默变慢」的故障点,这里硬卡死。
+  # 确需后端直供(本地/无 OSS 环境)显式设 ALLOW_BACKEND_DIRECT_OTA=1 放行。
+  ALLOW_BACKEND_DIRECT_OTA="${ALLOW_BACKEND_DIRECT_OTA:-0}"
+  if [[ -f "$LOCAL_UPDATE_DIR/manifest.json" ]]; then
+    OTA_DELIVERY="$(node -e "const fs=require('node:fs');const m=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));const k=((m.ossObjectKey||'')+'').trim();const u=((m.url||'')+'').trim();process.stdout.write(k?'oss':(u.startsWith('oss://')?'oss':(u?'external-url':'backend-direct')));" "$LOCAL_UPDATE_DIR/manifest.json" 2>/dev/null || echo parse-error)"
+    if [[ "$OTA_DELIVERY" == "oss" || "$OTA_DELIVERY" == "external-url" ]]; then
+      echo "OTA 下载来源校验通过:$OTA_DELIVERY ✓"
+    elif [[ "$ALLOW_BACKEND_DIRECT_OTA" == "1" ]]; then
+      echo "WARN: OTA manifest 无 OSS/外链地址($OTA_DELIVERY),将走后端单机直供(慢);ALLOW_BACKEND_DIRECT_OTA=1 已放行。" >&2
+    else
+      echo "ERROR: OTA manifest 的 ossObjectKey 为空($OTA_DELIVERY)—— 后端会回退到单机直供 zip,下载很慢。" >&2
+      echo "       多半是漏跑了 OSS 上传步骤。先执行:" >&2
+      echo "         ECS_HOST=$ECS_HOST SSH_KEY=\$HOME/.ssh/ai_baby_aliyun scripts/upload-mobile-update-oss.sh" >&2
+      echo "       再重跑本同步;确需后端直供(无 OSS)显式设 ALLOW_BACKEND_DIRECT_OTA=1。" >&2
+      exit 1
+    fi
+  fi
   if [[ "$SYNC_MOBILE_UPDATE_MANIFEST_ONLY" == "1" ]]; then
     if [[ ! -f "$LOCAL_UPDATE_DIR/manifest.json" ]]; then
       echo "Mobile update manifest was not found under $LOCAL_UPDATE_DIR." >&2
