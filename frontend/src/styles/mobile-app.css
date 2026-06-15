@@ -5977,3 +5977,29 @@ body.keyboard-open .expense-optional-fields {
 .fa-chip.more {
   color: var(--muted, #7d8585);
 }
+
+/* 哄睡音乐入口卡片(记录页) */
+.sleep-entry-card { display: flex; align-items: center; gap: 13px; width: 100%; margin: 0 0 12px; padding: 14px 16px; border: 1px solid rgba(120, 130, 170, 0.28); border-radius: 16px; background: #f4f5fb; text-align: left; }
+.sleep-entry-orb { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(94, 110, 160, 0.16); color: #5e6ea0; }
+.sleep-entry-body { display: grid; gap: 2px; }
+.sleep-entry-title { font-size: 15px; font-weight: 600; color: var(--ink, #2d3137); }
+.sleep-entry-sub { font-size: 12px; color: var(--muted, #7d8585); }
+
+/* 暗色全屏播放页 */
+.sleep-screen { position: fixed; inset: 0; z-index: 1300; display: flex; flex-direction: column; gap: 14px; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); background: #171b26; color: #e9ecf2; overflow-y: auto; }
+.sleep-top { display: flex; align-items: center; justify-content: space-between; }
+.sleep-top b { font-size: 16px; font-weight: 600; }
+.sleep-x { border: 0; background: transparent; color: #98a2b6; padding: 4px; }
+.sleep-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sleep-tile { display: grid; justify-items: center; gap: 5px; padding: 13px 6px; border: 1px solid #2d3446; border-radius: 13px; background: #222a3a; color: #e9ecf2; }
+.sleep-tile span { font-size: 12px; }
+.sleep-tile.on { background: #233a30; border-color: #345f4b; color: #8fc6a8; }
+.sleep-now { display: flex; align-items: center; justify-content: space-between; gap: 11px; padding: 11px 13px; border-radius: 15px; background: #2b3446; }
+.sleep-now span { font-size: 13px; }
+.sleep-pp { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 0; background: #8fc6a8; color: #13241b; }
+.sleep-timerrow { display: grid; gap: 8px; }
+.sleep-tl { font-size: 12px; color: #98a2b6; }
+.sleep-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sleep-chip { border: 1px solid #2f3850; border-radius: 999px; padding: 7px 13px; font-size: 12px; color: #98a2b6; background: transparent; }
+.sleep-chip.on { background: #8fc6a8; color: #13241b; border-color: #8fc6a8; }
+.sleep-stop { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 12px; border: 1px solid #34405a; border-radius: 13px; background: transparent; color: #e9ecf2; font-size: 13px; }

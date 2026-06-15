@@ -234,6 +234,8 @@ import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwip
 import { openAlbumPhotoSwipe } from "./albumPhotoSwipe";
 import { appAlbumEdit, appAlert, appConfirm, appPrompt } from "./components/appDialogs";
 import { FeedingAlarmCard } from "./components/FeedingAlarmCard";
+import { SleepMusicScreen } from "./screens/SleepMusicScreen";
+import { SleepMusicCard } from "./components/SleepMusicCard";
 import { AppDateField, AppTimeField } from "./components/appWheelFields";
 import "./posterUpload";
 import { reportClientError } from "./errorReporting";
@@ -5992,6 +5994,10 @@ function App() {
     };
   }, [reminders]);
 
+  // 哄睡音乐:全屏播放页开关(入口在记录页喂奶卡之下)。
+  const [sleepMusicOpen, setSleepMusicOpen] = useState(false);
+  const [sleepMusicHandlers] = useState(() => ({ open: () => setSleepMusicOpen(true), close: () => setSleepMusicOpen(false) }));
+
   const careEventForRecord = (record: RecordEvent) => {
     const log = careLogs.find((item) => item.id === record.careLogId);
     if (!log) return undefined;
@@ -7832,6 +7838,10 @@ function App() {
             onPickOther={feedingAlarmHandlers.onPickOther}
             onSetup={feedingAlarmHandlers.onSetup}
           />
+
+          <SleepMusicCard onOpen={sleepMusicHandlers.open} />
+
+          {sleepMusicOpen ? createPortal(<SleepMusicScreen onClose={sleepMusicHandlers.close} />, document.body) : null}
 
           {canCaregive && recordsEntryDrawer
             ? createPortal(
