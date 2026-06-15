@@ -25,6 +25,7 @@
     "test:voice-capture-panel": "node scripts/test-voice-capture-panel.mjs",
     "test:care-log-stats": "node scripts/test-care-log-stats.mjs",
     "test:feeding-alarm-view": "node scripts/test-feeding-alarm-view.mjs",
+    "gen:sleep-noise": "node scripts/gen-sleep-noise.mjs",
     "test:media-cache": "node scripts/test-media-cache.mjs",
     "test:app-state-contract": "node scripts/test-app-state-contract.mjs",
     "test:preview-swipe-math": "node scripts/test-preview-swipe-math.mjs",
