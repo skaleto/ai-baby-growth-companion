@@ -56,6 +56,31 @@ export function appAlert(content: string, title?: string): Promise<void> {
   });
 }
 
+// 通用单字段输入(取消返回 null)。沿用新弹窗样式族。
+export function appPrompt(options: { title: string; placeholder?: string; defaultValue?: string; dark?: boolean }): Promise<string | null> {
+  return new Promise((resolve) => {
+    let value = options.defaultValue ?? "";
+    Dialog.show({
+      ...baseProps(options.dark),
+      title: options.title,
+      content: (
+        <div className="app-dialog-form">
+          <label className="app-dialog-field">
+            <Input autoFocus defaultValue={value} placeholder={options.placeholder} onChange={(next) => { value = next; }} />
+          </label>
+        </div>
+      ),
+      closeOnAction: true,
+      closeOnMaskClick: true,
+      onClose: () => resolve(null),
+      actions: [[
+        { key: "cancel", text: "取消", className: "app-dlg-cancel", onClick: () => resolve(null) },
+        { key: "confirm", text: "确定", className: "app-dlg-primary", onClick: () => resolve(value) },
+      ]],
+    });
+  });
+}
+
 // 相册「编辑回忆」:名称 + 标签并入一张表单(替代旧的连弹两次 prompt)。
 export function appAlbumEdit(options: { title: string; tags: string; dark?: boolean }): Promise<{ title: string; tags: string } | null> {
   return new Promise((resolve) => {

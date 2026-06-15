@@ -232,7 +232,8 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { CachedImg } from "./components/CachedMedia";
 import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwipeMath";
 import { openAlbumPhotoSwipe } from "./albumPhotoSwipe";
-import { appAlbumEdit, appAlert, appConfirm } from "./components/appDialogs";
+import { appAlbumEdit, appAlert, appConfirm, appPrompt } from "./components/appDialogs";
+import { FeedingAlarmCard } from "./components/FeedingAlarmCard";
 import { AppDateField, AppTimeField } from "./components/appWheelFields";
 import "./posterUpload";
 import { reportClientError } from "./errorReporting";
@@ -5904,6 +5905,93 @@ function App() {
     hapticSuccess();
   };
 
+  // ── 喂奶闹钟(复用 interval-milk 提醒引擎 + 原生响铃)────────────────────────
+  // 「已喂」一键:落一条 milk careLog 事件(今天·现在),触发现有 latestMilkAnchor
+  // useEffect 自动重锚下次闹钟。
+  const recordQuickMilk = (amountMl: number | null) => {
+    if (!canCaregive) return;
+    const baseLog =
+      careLogs.find((log) => log.date === todayDate) ??
+      normalizeCareLog({ id: makeId("care"), date: todayDate, solids: [], notes: [], events: [] }, 0);
+    const nextEvent = normalizeCareLogEvent(
+      {
+        id: makeId("care-event"),
+        type: "milk",
+        date: todayDate,
+        time: currentClockText(),
+        title: canonicalCareEventTitle("milk"),
+        amountMl: amountMl ?? undefined,
+      },
+      (baseLog.events ?? []).length,
+      todayDate,
+    );
+    const nextLog = careLogWithEventStats({ ...baseLog, events: [...(baseLog.events ?? []), nextEvent] });
+    setCareLogs((current) => {
+      const has = current.some((item) => item.id === nextLog.id);
+      return has ? current.map((item) => (item.id === nextLog.id ? nextLog : item)) : [...current, nextLog];
+    });
+    void persistRecord("careLogs", nextLog.id, nextLog, { applyResponse: true, mode: "replace" }).catch(() =>
+      setStorageStatus("offline"),
+    );
+    hapticSuccess();
+  };
+
+  // 「其他…」自定义奶量(复用 appPrompt)。
+  const pickOtherMilkAmount = async () => {
+    const text = await appPrompt({ title: "奶量(ml)", placeholder: "例如 130" });
+    if (text == null) return;
+    const amount = Number(text.trim());
+    recordQuickMilk(Number.isFinite(amount) && amount > 0 ? Math.round(amount) : null);
+  };
+
+  // 「设置喂奶提醒」:一键建一条默认 3 小时、响铃、锚定喝奶的循环提醒(间隔可在提醒页调)。
+  const createMilkReminderShortcut = async () => {
+    if (!canCaregive) return;
+    const draft = createReminderDraft(new Date());
+    draft.title = "喂奶提醒";
+    draft.category = "care";
+    draft.scheduleMode = "interval";
+    draft.alertMode = "ringing";
+    draft.intervalMinutes = "180";
+    const baseReminder = reminderFromDraft(draft);
+    const [scheduled] = await scheduleNativeReminders([baseReminder], { careLogs });
+    const nextReminder = scheduled ?? baseReminder;
+    setReminders((current) => {
+      const byId = new Map(current.map((item) => [item.id, item]));
+      byId.set(nextReminder.id, nextReminder);
+      return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
+    });
+    void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() =>
+      setStorageStatus("offline"),
+    );
+    hapticSuccess();
+  };
+
+  // ref 稳定 handlers(memo 卡片);放在三个处理器之后避免 TDZ。
+  const feedingAlarmActionsRef = useRef({ recordQuickMilk, pickOtherMilkAmount, createMilkReminderShortcut });
+  feedingAlarmActionsRef.current = { recordQuickMilk, pickOtherMilkAmount, createMilkReminderShortcut };
+  const [feedingAlarmHandlers] = useState(() => ({
+    onFed: (amountMl: number | null) => feedingAlarmActionsRef.current.recordQuickMilk(amountMl),
+    onPickOther: () => {
+      void feedingAlarmActionsRef.current.pickOtherMilkAmount();
+    },
+    onSetup: () => {
+      void feedingAlarmActionsRef.current.createMilkReminderShortcut();
+    },
+  }));
+
+  // 选「最近 dueAt 的喂奶提醒」喂给卡片(纯原语,组件不碰 Reminder 类型)。
+  const feedingAlarm = useMemo(() => {
+    const milk = reminders
+      .filter(isIntervalMilkReminder)
+      .sort((a, b) => (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity))[0];
+    if (!milk) return { dueAtMs: null as number | null, intervalMinutes: null as number | null };
+    return {
+      dueAtMs: milk.dueAt ? Date.parse(milk.dueAt) : null,
+      intervalMinutes: milk.repeatRule?.intervalMinutes ?? null,
+    };
+  }, [reminders]);
+
   const careEventForRecord = (record: RecordEvent) => {
     const log = careLogs.find((item) => item.id === record.careLogId);
     if (!log) return undefined;
@@ -8293,6 +8381,16 @@ function App() {
             </div>
           </section>
           ) : null}
+
+          <FeedingAlarmCard
+            canCaregive={canCaregive}
+            dueAtMs={feedingAlarm.dueAtMs}
+            intervalMinutes={feedingAlarm.intervalMinutes}
+            lastMilkAtMs={latestMilkAnchor ? latestMilkAnchor.occurredAt.getTime() : null}
+            onFed={feedingAlarmHandlers.onFed}
+            onPickOther={feedingAlarmHandlers.onPickOther}
+            onSetup={feedingAlarmHandlers.onSetup}
+          />
 
           {recordView === "today" || recordView === "calendar" ? (
           <section className="day-timeline-card">
