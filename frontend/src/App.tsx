@@ -7823,6 +7823,16 @@ function App() {
           </section>
           ) : null}
 
+          <FeedingAlarmCard
+            canCaregive={canCaregive}
+            dueAtMs={feedingAlarm.dueAtMs}
+            intervalMinutes={feedingAlarm.intervalMinutes}
+            lastMilkAtMs={latestMilkAnchor ? latestMilkAnchor.occurredAt.getTime() : null}
+            onFed={feedingAlarmHandlers.onFed}
+            onPickOther={feedingAlarmHandlers.onPickOther}
+            onSetup={feedingAlarmHandlers.onSetup}
+          />
+
           {canCaregive && recordsEntryDrawer
             ? createPortal(
                 <div
@@ -8381,16 +8391,6 @@ function App() {
             </div>
           </section>
           ) : null}
-
-          <FeedingAlarmCard
-            canCaregive={canCaregive}
-            dueAtMs={feedingAlarm.dueAtMs}
-            intervalMinutes={feedingAlarm.intervalMinutes}
-            lastMilkAtMs={latestMilkAnchor ? latestMilkAnchor.occurredAt.getTime() : null}
-            onFed={feedingAlarmHandlers.onFed}
-            onPickOther={feedingAlarmHandlers.onPickOther}
-            onSetup={feedingAlarmHandlers.onSetup}
-          />
 
           {recordView === "today" || recordView === "calendar" ? (
           <section className="day-timeline-card">
