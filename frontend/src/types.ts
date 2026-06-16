@@ -119,6 +119,8 @@ export interface BabyProfile {
   birthHeight?: number;
   allergies: string[];
   caregivers: string[];
+  vaccineRegion?: string; // 接种地省码:national/BJ/SH/GD/ZJ/JS
+  vaccineRecords?: { doseId: string; date: string }[]; // 已接种记录(打钩追踪)
 }
 
 export interface ChatMessage {

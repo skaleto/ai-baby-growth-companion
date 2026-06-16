@@ -129,6 +129,16 @@ export const numberValue = (value: unknown) => (typeof value === "number" && Num
 
 export const stringList = (value: unknown) => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
 
+export const vaccineRecordList = (value: unknown): { doseId: string; date: string }[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (item): item is { doseId: string; date: string } =>
+          !!item &&
+          typeof (item as { doseId?: unknown }).doseId === "string" &&
+          typeof (item as { date?: unknown }).date === "string",
+      )
+    : [];
+
 export const stringMember = <T extends string>(values: readonly T[], value: unknown): value is T =>
   typeof value === "string" && values.includes(value as T);
 
@@ -147,6 +157,8 @@ export const normalizeBabyProfile = (value: Partial<BabyProfile> | null | undefi
   birthHeight: numericOrUndefined(value?.birthHeight),
   allergies: stringList(value?.allergies),
   caregivers: stringList(value?.caregivers),
+  vaccineRegion: textValue(value?.vaccineRegion) || undefined, // 空串/缺省=未选省→后续默认 national
+  vaccineRecords: vaccineRecordList(value?.vaccineRecords),
 });
 
 export const normalizeAttachment = (value: Partial<Attachment> | null | undefined, index: number): Attachment => ({
