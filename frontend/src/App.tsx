@@ -339,7 +339,9 @@ import {
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import { MilestonesView } from "./views/MilestonesView";
 import { VaccineView } from "./views/VaccineView";
-import { refreshVaccineData } from "./vaccineData";
+import { getVaccineDataSync, refreshVaccineData } from "./vaccineData";
+import { pendingCountForProfile } from "./vaccineStatus";
+import { monthsBetween } from "./utils/babyAge";
 import type { RegionCode } from "./data/vaccineSchedule.fallback";
 import { GrowthEntryView } from "./views/GrowthEntryView";
 import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
@@ -5458,6 +5460,14 @@ function App() {
   useEffect(() => {
     void refreshVaccineData();
   }, []);
+  // 入口角标:不打开清单也给「本阶段 N 针待安排」的轻提醒(别漏别晚)。复用纯函数,随 profile 变化重算。
+  const vaccinePending = useMemo(() => {
+    const data = getVaccineDataSync();
+    const region = (profile.vaccineRegion as RegionCode) || "national";
+    const ageMonths = monthsBetween(profile.birthDate) ?? null;
+    const doneDoseIds = new Set((profile.vaccineRecords ?? []).map((r) => r.doseId));
+    return pendingCountForProfile({ doses: data.doses, region, ageMonths, doneDoseIds });
+  }, [profile.vaccineRegion, profile.birthDate, profile.vaccineRecords]);
   const openGrowthEntry = useCallback(() => {
     setRecordsEntryDrawer(null);
     setRecordsAssistantOpen(false);
@@ -8683,6 +8693,9 @@ function App() {
                   <strong>疫苗接种</strong>
                   <small>按月龄看该打哪些苗,别漏别晚</small>
                 </span>
+                {vaccinePending > 0 ? (
+                  <span className="growth-observation-badge">{vaccinePending} 针待安排</span>
+                ) : null}
                 <ChevronRight size={16} aria-hidden="true" />
               </button>
             </section>

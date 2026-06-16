@@ -27,6 +27,8 @@ function startServer() {
 async function waitForServer(url, t = 30000) { const s = Date.now(); while (Date.now() - s < t) { try { const r = await fetch(url); if (r.ok || r.status === 404) return; } catch {} await new Promise((r) => setTimeout(r, 400)); } throw new Error("server not ready"); }
 async function installMocks(page) {
   await page.addInitScript(() => { window.localStorage.setItem("baby-companion-auth-token", "vac-token"); window.localStorage.setItem("baby-companion-consent-v1", JSON.stringify(true)); });
+  // 疫苗数据走 OSS(非 /api/):abort 掉,避免真实跨域请求;拉取失败本就回退内置兜底,断言验的就是兜底渲染。
+  await page.route(/vaccine-data\.json(\?|$)/, (route) => route.abort());
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const url = new URL(req.url());
     const headers = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS", "content-type": "application/json" };
@@ -57,7 +59,11 @@ try {
 
   // 疫苗接种入口在记录tab的"成长"子视图内,需先切换到成长子视图
   await page.getByRole("tab", { name: "成长" }).click();
-  await page.locator(".growth-observation-row", { hasText: "疫苗接种" }).click();
+  const entryRow = page.locator(".growth-observation-row", { hasText: "疫苗接种" });
+  await entryRow.waitFor({ state: "visible", timeout: 6000 });
+  assert.ok(await entryRow.locator(".growth-observation-badge").isVisible(), "入口应显示「N 针待安排」角标(别漏别晚轻提醒)");
+  console.log("[VAC0] entry shows pending badge ✔");
+  await entryRow.click();
   const screen = page.locator(".vaccine-screen");
   await screen.waitFor({ state: "visible", timeout: 6000 });
   assert.ok(await screen.getByText("接种清单").first().isVisible(), "清单页应打开");

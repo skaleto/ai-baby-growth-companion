@@ -11,7 +11,7 @@ const tempDir = await mkdtemp(path.join(tmpdir(), "xiaobao-vaccine-status-"));
 try {
   const out = path.join(tempDir, "s.mjs");
   await build({ entryPoints: [path.join(rootDir, "frontend/src/vaccineStatus.ts")], bundle: true, platform: "node", format: "esm", outfile: out, logLevel: "silent" });
-  const { computeDoseStatus, vaccineDosesForRegion, pendingCount } = await import(pathToFileURL(out).href);
+  const { computeDoseStatus, vaccineDosesForRegion, pendingCount, pendingCountForProfile } = await import(pathToFileURL(out).href);
 
   const w = { ageMonthMin: 2, ageMonthMax: 4 };
   assert.equal(computeDoseStatus({ ageMonths: 6, ...w, doneDate: "2026-06-01" }), "done", "有日期=done");
@@ -37,6 +37,26 @@ try {
   // 待安排计数 = due + closing + overdue(done/upcoming 不计)
   assert.equal(pendingCount(["done", "due", "closing", "overdue", "upcoming"]), 3, "pendingCount 计 due+closing+overdue");
   assert.equal(pendingCount(["done", "upcoming"]), 0, "无待安排=0");
+
+  // 入口角标:按 profile 直接算待安排针数(叠加区域 + done 不计 + 别省不计)
+  const pdoses = [
+    { id: "d-due", region: "national", ageMonthMin: 2, ageMonthMax: 9 },     // age3 → due
+    { id: "d-closing", region: "national", ageMonthMin: 2, ageMonthMax: 4 }, // age3 → closing
+    { id: "d-done", region: "national", ageMonthMin: 2, ageMonthMax: 4 },    // done(在 doneDoseIds)→ 不计
+    { id: "d-bj", region: "BJ", ageMonthMin: 2, ageMonthMax: 9 },            // age3 → due,但 national 下过滤掉
+  ];
+  assert.equal(
+    pendingCountForProfile({ doses: pdoses, region: "national", ageMonths: 3, doneDoseIds: new Set(["d-done"]) }),
+    2, "入口角标:national 下 due+closing=2(done 不计、别省不计)",
+  );
+  assert.equal(
+    pendingCountForProfile({ doses: pdoses, region: "BJ", ageMonths: 3, doneDoseIds: new Set(["d-done"]) }),
+    3, "入口角标:选 BJ 叠加省增补后=3",
+  );
+  assert.equal(
+    pendingCountForProfile({ doses: pdoses, region: "national", ageMonths: null, doneDoseIds: new Set() }),
+    0, "入口角标:没填生日全 upcoming → 0",
+  );
 
   console.log("vaccine status tests passed");
 } finally {
