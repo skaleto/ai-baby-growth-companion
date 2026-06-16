@@ -338,6 +338,9 @@ import {
 } from "./utils/expense";
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
 import { MilestonesView } from "./views/MilestonesView";
+import { VaccineView } from "./views/VaccineView";
+import { refreshVaccineData } from "./vaccineData";
+import type { RegionCode } from "./data/vaccineSchedule.fallback";
 import { GrowthEntryView } from "./views/GrowthEntryView";
 import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
 import {
@@ -5425,6 +5428,36 @@ function App() {
     setMilestonesViewOpen(true);
   }, []);
   const closeMilestones = useCallback(() => setMilestonesViewOpen(false), []);
+  const [vaccineViewOpen, setVaccineViewOpen] = useState(false);
+  const openVaccine = useCallback(() => {
+    setActiveMobileTab("records");
+    setRecordsAssistantOpen(false);
+    setVaccineViewOpen(true);
+  }, []);
+  const closeVaccine = useCallback(() => setVaccineViewOpen(false), []);
+  const setVaccineRegion = useCallback(
+    (code: RegionCode) => {
+      const next = { ...profile, vaccineRegion: code };
+      setProfile(next);
+      void persistRecord("profile", "default", next, { applyResponse: true }).catch(() => undefined);
+    },
+    [profile],
+  );
+  const toggleVaccineDose = useCallback(
+    (doseId: string, done: boolean) => {
+      if (!canCaregive) return;
+      const rest = (profile.vaccineRecords ?? []).filter((r) => r.doseId !== doseId);
+      const records = done ? [...rest, { doseId, date: todayISO() }] : rest;
+      const next = { ...profile, vaccineRecords: records };
+      setProfile(next);
+      void persistRecord("profile", "default", next, { applyResponse: true }).catch(() => undefined);
+      hapticSuccess();
+    },
+    [profile, canCaregive],
+  );
+  useEffect(() => {
+    void refreshVaccineData();
+  }, []);
   const openGrowthEntry = useCallback(() => {
     setRecordsEntryDrawer(null);
     setRecordsAssistantOpen(false);
@@ -7755,6 +7788,14 @@ function App() {
               onDelete={handleDeleteGrowthMeasurement}
               onClose={closeGrowthEntry}
             />
+          ) : vaccineViewOpen ? (
+            <VaccineView
+              profile={profile}
+              canCaregive={canCaregive}
+              onClose={closeVaccine}
+              onSetRegion={setVaccineRegion}
+              onToggleDose={toggleVaccineDose}
+            />
           ) : milestonesViewOpen ? (
             <MilestonesView
               profile={profile}
@@ -8631,6 +8672,16 @@ function App() {
                 <span className="growth-observation-copy">
                   <strong>成长观察</strong>
                   <small>记录宝宝最近出现的新动作和第一次</small>
+                </span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
+              <button type="button" className="growth-observation-row" onClick={openVaccine}>
+                <span className="growth-observation-icon" aria-hidden="true">
+                  <Syringe size={16} />
+                </span>
+                <span className="growth-observation-copy">
+                  <strong>疫苗接种</strong>
+                  <small>按月龄看该打哪些苗,别漏别晚</small>
                 </span>
                 <ChevronRight size={16} aria-hidden="true" />
               </button>
