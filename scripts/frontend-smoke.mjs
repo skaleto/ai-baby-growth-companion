@@ -498,6 +498,16 @@ async function installApiMocks(page) {
       body: JSON.stringify({ ok: true, empty: false, state: apiState }),
     });
   });
+
+  // 疫苗数据从 OSS(非 /api/ 路径)拉取——mock 成 200 空数据集,避免真实跨域 403 污染 console-error 断言。
+  // 线上由内容任务上传后返回真实 200;前端拉取失败本就回退内置兜底,此处只为 smoke 环境干净。
+  await page.route(/vaccine-data\.json(\?|$)/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "access-control-allow-origin": "*", "content-type": "application/json" },
+      body: JSON.stringify({ version: "smoke", asOf: "smoke", doses: [], prices: [] }),
+    });
+  });
 }
 
 async function checkLayout(page, viewportName) {
