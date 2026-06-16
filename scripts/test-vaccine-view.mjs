@@ -70,10 +70,10 @@ try {
   assert.ok((await page.locator(".vaccine-card").count()) >= 5, "应渲染多条疫苗");
   console.log("[VAC1] entry opens vaccine checklist ✔");
 
-  // 选北京 → 出现"水痘"省级增补
-  await page.locator(".vaccine-region__chip", { hasText: "北京" }).click();
+  // 选江苏 → 出现江苏省级免费水痘增补(北京已无 0-6 常规免费增补,故改用江苏验叠加)
+  await page.locator(".vaccine-region__chip", { hasText: "江苏" }).click();
   await new Promise((r) => setTimeout(r, 300));
-  assert.ok(await page.getByText("水痘", { exact: false }).first().isVisible(), "选北京应叠加水痘增补");
+  assert.ok(await page.getByText("江苏对全省适龄儿童免费", { exact: false }).first().isVisible(), "选江苏应叠加省级免费水痘");
   console.log("[VAC2] region overlay adds provincial dose ✔");
 
   // 给第一针打钩 → PUT profile 带 vaccineRecords
@@ -81,7 +81,7 @@ try {
   await new Promise((r) => setTimeout(r, 500));
   const profUpsert = [...upserts].reverse().find((u) => u.collection === "profile");
   assert.ok(profUpsert && Array.isArray(profUpsert.body.vaccineRecords) && profUpsert.body.vaccineRecords.length >= 1, "打钩应写入 profile.vaccineRecords");
-  assert.equal(profUpsert.body.vaccineRegion, "BJ", "省份应持久化为 BJ");
+  assert.equal(profUpsert.body.vaccineRegion, "JS", "省份应持久化为 JS");
   console.log("[VAC3] check-off persists to profile.vaccineRecords + region ✔");
 
   console.log("vaccine checklist DOM smoke tests passed");
