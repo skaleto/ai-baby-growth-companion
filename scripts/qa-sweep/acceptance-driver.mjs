@@ -14,7 +14,7 @@ const ASSERT_VIEWPORT = "iphone-13-390x844";
 const TABS = ["记录", "相册", "账本", "我的"];
 
 const srv = startPreview(port);
-let browser; const findings = []; const errors = [];
+let browser; const findings = []; const errors = []; const navFailures = [];
 try {
   await waitForServer(baseUrl);
   browser = await chromium.launch();
@@ -34,7 +34,7 @@ try {
 }
 
 const failed = findings.filter((f) => !f.ok);
-const summary = { generatedAt: new Date().toISOString(), seeds: SEEDS.map((s) => s.label), viewports: VIEWPORTS.map((v) => v.name), total: findings.length, failed: failed.length, findings, errors };
+const summary = { generatedAt: new Date().toISOString(), seeds: SEEDS.map((s) => s.label), viewports: VIEWPORTS.map((v) => v.name), total: findings.length, failed: failed.length, findings, errors, navFailures };
 const outDir = path.join(rootDir, ".verification/acceptance");
 await mkdir(outDir, { recursive: true });
 await writeFile(path.join(outDir, "sweep-summary.json"), JSON.stringify(summary, null, 2) + "\n");
@@ -43,6 +43,7 @@ console.log(`\n验收巡检 driver:${SEEDS.length} 种子 × ${VIEWPORTS.length}
 console.log("─".repeat(56));
 for (const f of findings) console.log(`  ${f.ok ? "✔" : "✗"} [${f.seed}] ${f.check}${f.ok ? "" : "  → " + f.detail}`);
 if (errors.length) { console.log("\n驱动异常:"); errors.forEach((e) => console.log("  ! " + e)); }
+if (navFailures.length) { console.log(`\n⚠️ tab 导航失败 ${navFailures.length} 处(截图可能失真):`); navFailures.forEach((n) => console.log("  ~ " + n)); }
 console.log(`\n断言 ${findings.length} 条,失败 ${failed.length};摘要 + 截图语料见 .verification/acceptance/`);
 process.exitCode = failed.length || errors.length ? 1 : 0;
 
@@ -56,7 +57,9 @@ async function driveOne(seed, vp) {
   await page.waitForTimeout(300);
   // 导航主屏各取一张截图(对话 tab 只读种子没有,容错)
   for (const tab of TABS) {
-    try { await page.getByRole("button", { name: tab }).last().click(); await page.waitForTimeout(200); } catch {}
+    // 切 tab 失败不中断本次驱动,但记下来——否则会静默截到错 tab、语料失真却无人知(终审防漏)。
+    try { await page.getByRole("button", { name: tab }).last().click(); await page.waitForTimeout(200); }
+    catch { navFailures.push(`${seed.label}/${vp.name}/${tab}`); }
     await captureArtifacts(page, seed.label, `${vp.name}__${tab}`, mock).catch(() => {});
   }
   return { context, page, mock };

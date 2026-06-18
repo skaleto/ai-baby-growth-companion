@@ -45,13 +45,13 @@ export async function assertViewer(page, ctx) {
   return out;
 }
 
-// 配额用尽:剩余 0 次的提示出现(在「我的」页查剩余次数指示)
+// 配额用尽:真实文案为「本月免费 AI 体验还剩 <b>N</b> / 10 次」。
+// 必须验「还剩 0」这个具体值,不能只验配额行存在——否则 N=8 的「还剩 8 / 10 次」里的「10 次」也会被宽松正则误中(终审纠错)。
 export async function assertQuota(page, ctx) {
   const out = [];
   await gotoTab(page, "我的");
-  // 注:执行时若文案不符,跑一次看真实 copy 再调下面正则(这是确定性断言,不是占位)。
-  const quotaHint = await visibleText(page, /剩余\s*0|0\s*次|免费次数.*0|额度|本月剩余/);
-  out.push(F("free-quota-exhausted", "我的页-配额指示", quotaHint, "freeCallsRemaining=0 应有剩余次数/额度提示"));
+  const exhausted = await visibleText(page, /还剩\s*0\b/);
+  out.push(F("free-quota-exhausted", "我的页-剩余次数=0", exhausted, "freeCallsRemaining=0 应显示「还剩 0 …次」"));
   return out;
 }
 

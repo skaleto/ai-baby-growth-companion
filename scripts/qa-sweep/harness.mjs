@@ -31,6 +31,9 @@ export async function installMocks(page, seed) {
   page.on("pageerror", (e) => ctx.pageErrors.push(e.message));
   page.on("requestfinished", (req) => { try { const u = new URL(req.url()); if (u.pathname.startsWith("/api/")) ctx.requests.push({ method: req.method(), path: u.pathname }); } catch {} });
   await page.addInitScript(() => { window.localStorage.setItem("baby-companion-auth-token", "qa-token"); window.localStorage.setItem("baby-companion-consent-v1", JSON.stringify(true)); });
+  // 疫苗数据走 OSS(非 /api/),mock 成空集——否则真实跨域 403 会污染每条 trace 的 consoleErrors
+  // (该 trace 语料是后续视觉层 + console-clean 断言的输入,必须干净)。参照 frontend-smoke 的同款处理。
+  await page.route(/vaccine-data\.json(\?|$)/, (route) => route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: JSON.stringify({ version: "qa", asOf: "qa", doses: [], prices: [] }) }));
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const url = new URL(req.url()); const method = req.method();
     const headers = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS", "content-type": "application/json" };
@@ -40,6 +43,8 @@ export async function installMocks(page, seed) {
     if (url.pathname === "/api/auth/me") return json(seed.authMe);
     if (url.pathname === "/api/pro/usage") return json({ days: 30, requestCount: 0, byFeature: [], byModel: [] });
     if (url.pathname === "/api/auth/family/members") return json({ members: [{ userId: "u1", roleName: seed.authMe.member.roleName, caregiver: seed.authMe.member.caregiver, maskedPhone: "138****0000", joinedAt: "2026-05-01T00:00:00.000Z" }] });
+    if (url.pathname.startsWith("/api/uploads/")) return route.fulfill({ status: 200, headers: { ...headers, "content-type": "application/octet-stream" }, body: "" });
+    // 写入回写 state + 记 upserts:当前驱动只读导航不触发写入,此能力为后续「写入型断言」(打钩/记一笔→验真入库)预留。
     if (url.pathname === "/api/app/state") {
       if (method === "PUT") { const body = parseBody(); ctx.upserts.push({ collection: "(full-state)", id: "default", body }); Object.assign(state, body); }
       return json({ empty: false, state });
