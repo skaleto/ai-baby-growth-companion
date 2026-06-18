@@ -29,12 +29,15 @@ export async function assertEmpty(page, ctx) {
   return out;
 }
 
-// 只读:对话 tab 隐藏 + 写入入口不可见(抽查)
+// 只读:手动/AI记录入口隐藏 + 写入入口不可见(抽查)
+// 校准说明:app 的移动端导航栏无独立「对话」tab(对话面板在桌面左栏),
+// 实际区分照护人 vs 仅查看的是:记录页写入按钮(手动记录/AI 自动记录)是否存在。
 export async function assertViewer(page, ctx) {
   const out = [];
-  // 对话 tab:照护人才有;仅查看应无。用 button 名「对话」是否存在判断。
-  const chatBtnCount = await page.getByRole("button", { name: "对话" }).count();
-  out.push(F("viewer-readonly", "对话入口隐藏", chatBtnCount === 0, `对话按钮数=${chatBtnCount}(应为 0)`));
+  // 记录页写入按钮:照护人有「手动记录」「AI 自动记录」;仅查看应无。
+  await gotoTab(page, "记录");
+  const writeRecordCount = await page.getByRole("button", { name: /手动记录|AI 自动记录/ }).count();
+  out.push(F("viewer-readonly", "记录写入入口隐藏", writeRecordCount === 0, `手动/AI记录按钮数=${writeRecordCount}(仅查看应为 0)`));
   await gotoTab(page, "账本");
   const addExpense = await page.getByRole("button", { name: /记一笔支出|记一笔/ }).count();
   out.push(F("viewer-readonly", "账本写入入口隐藏", addExpense === 0, `记一笔按钮数=${addExpense}(应为 0)`));
