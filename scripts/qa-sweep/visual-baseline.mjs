@@ -14,6 +14,10 @@ const manifestPath = path.join(baselineDir, "baseline-manifest.json");
 const changedDir = path.join(corpusDir, "_changed");
 const AHASH_THRESHOLD = Number(process.env.QA_VISUAL_AHASH || 6);   // 汉明距离 > 此值算"变了"
 const PIXEL_THRESHOLD = Number(process.env.QA_VISUAL_PIXEL || 0.02); // 像素 diff 比例 > 此值算"变了"
+// 模式只认 accept / 空;打错(如 accpet)不能静默跑成 diff——否则你以为签了基线其实没签。
+if (process.argv[2] !== undefined && process.argv[2] !== "accept") {
+  console.error(`未知模式:${process.argv[2]};用法:node scripts/qa-sweep/visual-baseline.mjs [accept]`); process.exit(1);
+}
 const mode = process.argv[2] === "accept" ? "accept" : "diff";
 
 // 递归收集所有 screen.png,key = 相对 corpus 的路径(如 caregiver-rich/iphone-13-390x844__记录/screen.png)
@@ -30,6 +34,14 @@ const flatName = (rel) => rel.replace(/[\\/]/g, "__");
 
 const shots = await collect(corpusDir);
 if (!shots.length) { console.error("没有截图语料,先 npm run qa:sweep"); process.exit(1); }
+
+// flatName 碰撞防护:不同源路径压平后同名会静默覆盖基线/变更副本 → 显性报错,绝不悄悄损坏。
+const flatSeen = new Map();
+for (const rel of shots) {
+  const f = flatName(rel);
+  if (flatSeen.has(f)) { console.error(`flatName 碰撞:${rel} 与 ${flatSeen.get(f)} 压平同名 ${f},请改 flatName 分隔符`); process.exit(1); }
+  flatSeen.set(f, rel);
+}
 
 if (mode === "accept") {
   await rm(baselineDir, { recursive: true, force: true });
@@ -73,6 +85,14 @@ for (const rel of shots) {
   }
 }
 
+// 基线里有、当前语料没有的 → 截图消失了(tab 被删/种子改名)。对回归闸门也是"变更",显性化(无图可送 LLM,但必须让人看见)。
+if (manifest) {
+  const shotSet = new Set(shots);
+  for (const rel of Object.keys(manifest.entries)) {
+    if (!shotSet.has(rel)) rows.push({ rel, status: "deleted", detail: "基线有此图,当前语料缺失" });
+  }
+}
+
 const tally = rows.reduce((a, r) => ((a[r.status] = (a[r.status] || 0) + 1), a), {});
 await writeFile(path.join(corpusDir, "visual-diff.json"), JSON.stringify({ generatedAt: new Date().toISOString(), threshold: { aHash: AHASH_THRESHOLD, pixel: PIXEL_THRESHOLD }, tally, rows }, null, 2) + "\n");
 
@@ -82,5 +102,7 @@ console.log("分布:", Object.entries(tally).map(([k, v]) => `${k}=${v}`).join("
 const forLLM = rows.filter((r) => ["new", "changed", "no-baseline"].includes(r.status));
 console.log(`送 LLM 复审(变更/新增):${forLLM.length} 张 → ${path.relative(rootDir, changedDir)}/`);
 for (const r of forLLM.slice(0, 20)) console.log(`  · [${r.status}] ${r.rel}${r.detail ? "  " + r.detail : ""}`);
+const deleted = rows.filter((r) => r.status === "deleted");
+if (deleted.length) { console.log(`\n⚠️ 基线里有、当前缺失 ${deleted.length} 张(tab 删了/种子改名?):`); deleted.forEach((r) => console.log("  − " + r.rel)); }
 if (!manifest) console.log("\n⚠️ 还没有基线:全部视为新增。请先人工眼过 .verification/acceptance/ 截图,确认无误后 `npm run qa:baseline:accept` 签基线。");
 process.exitCode = 0; // diff 本身不判失败;失败由后续 vision-review 决定
