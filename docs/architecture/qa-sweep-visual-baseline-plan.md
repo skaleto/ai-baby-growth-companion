@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development(推荐)或 superpowers:executing-plans 逐任务实现。步骤用 `- [ ]` 勾选。
 
-**Goal:** 给验收巡检补上「签名基线 + 感知 diff 闸门」——把 ROI#2 产出的截图语料先和**人工签过的基线**做 pHash/像素 diff,**只把"变了的/新的"截图喂给已有的 `vision-review.mjs`(LLM)**,避免每次重判全图、防审美结论飘。这是 4 层 oracle 的第②层(程序化视觉)+ 把第③层(LLM)接成"相对基线"而非"绝对评分"。
+**Goal:** 给验收巡检补上「签名基线 + 感知 diff 闸门」——把 ROI#2 产出的截图语料先和**人工签过的基线**做 aHash/像素 diff,**只把"变了的/新的"截图喂给已有的 `vision-review.mjs`(LLM)**,避免每次重判全图、防审美结论飘。这是 4 层 oracle 的第②层(程序化视觉)+ 把第③层(LLM)接成"相对基线"而非"绝对评分"。
 
-**Architecture:** 纯前端测试基建。新增一个**纯函数图像模块**(pHash + sha256 + 像素 diff,基于 pure-JS 的 pngjs+pixelmatch,无原生编译)+ 一个**基线/diff 驱动**(accept 模式签基线、diff 模式产出"变更集")。**复用现成的 `scripts/vision-review.mjs`** 评变更集,不重造 LLM 层。**首版不让 LLM 当硬门禁**(vision-review 的 fail-on 保持咨询),先把基线+diff 跑通。
+**Architecture:** 纯前端测试基建。新增一个**纯函数图像模块**(aHash + sha256 + 像素 diff,基于 pure-JS 的 pngjs+pixelmatch,无原生编译)+ 一个**基线/diff 驱动**(accept 模式签基线、diff 模式产出"变更集")。**复用现成的 `scripts/vision-review.mjs`** 评变更集,不重造 LLM 层。**首版不让 LLM 当硬门禁**(vision-review 的 fail-on 保持咨询),先把基线+diff 跑通。
 
 **Tech Stack:** Node ESM、pngjs(纯 JS PNG 编解码)、pixelmatch(纯 JS 像素 diff)、现有 vision-review.mjs(Claude vision)。
 
@@ -22,7 +22,7 @@
 | 文件 | 职责 | 动作 |
 |---|---|---|
 | `package.json` | 加 pngjs+pixelmatch 依赖、`qa:visual` / `qa:baseline:accept` 命令 | 修改 |
-| `scripts/qa-sweep/image-hash.mjs` | 纯函数:`sha256` / `pHash`(8×8 灰度感知哈希)/ `hamming` / `pixelDiffRatio` | 新建 |
+| `scripts/qa-sweep/image-hash.mjs` | 纯函数:`sha256` / `aHash`(8×8 灰度平均哈希)/ `hamming` / `pixelDiffRatio` | 新建 |
 | `scripts/test-qa-image-hash.mjs` | image-hash 单测(自生成 PNG,确定性) | 新建 |
 | `scripts/qa-sweep/visual-baseline.mjs` | accept(签基线)/ diff(对比产变更集)两模式 | 新建 |
 | `.gitignore` | 确认 `.verification/` 已忽略(基线产物不入库) | 核对 |
@@ -46,7 +46,7 @@ Expected:装上(纯 JS,无原生编译)。若离线/装不上 → STOP 上报(�
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
-import { sha256, pHash, hamming, pixelDiffRatio } from "./qa-sweep/image-hash.mjs";
+import { sha256, aHash, hamming, pixelDiffRatio } from "./qa-sweep/image-hash.mjs";
 
 // 自生成两张 16x16 PNG:全黑,以及"右下角一块变白"。
 function solid(w, h, r, g, b) {
@@ -64,9 +64,9 @@ const patchedBuf = toBuf(patched);
 // sha256:同内容同哈希,改了就变。
 assert.equal(sha256(blackBuf), sha256(toBuf(solid(16, 16, 0, 0, 0))), "同图 sha256 相等");
 assert.notEqual(sha256(blackBuf), sha256(patchedBuf), "改了 sha256 不等");
-// pHash:同图距离 0,改了距离 > 0。
-assert.equal(hamming(pHash(blackBuf), pHash(blackBuf)), 0, "同图 pHash 距离 0");
-assert.ok(hamming(pHash(blackBuf), pHash(patchedBuf)) > 0, "右下变白 pHash 距离 > 0");
+// aHash:同图距离 0,改了距离 > 0。
+assert.equal(hamming(aHash(blackBuf), aHash(blackBuf)), 0, "同图 aHash 距离 0");
+assert.ok(hamming(aHash(blackBuf), aHash(patchedBuf)) > 0, "右下变白 aHash 距离 > 0");
 // 像素 diff:同图 0,改了约 25%(64/256),尺寸不同视为全变 1。
 assert.equal(pixelDiffRatio(blackBuf, blackBuf), 0, "同图像素 diff 0");
 const ratio = pixelDiffRatio(blackBuf, patchedBuf);
@@ -83,15 +83,15 @@ Expected: FAIL(找不到 `image-hash.mjs`)。
 - [ ] **Step 4: 写实现** `scripts/qa-sweep/image-hash.mjs`
 
 ```javascript
-// 纯函数图像指纹:sha256(精确相等)、pHash(8×8 灰度感知哈希,抗微小渲染抖动)、像素 diff 比例。
+// 纯函数图像指纹:sha256(精确相等)、aHash(8×8 灰度平均哈希,抗微小渲染抖动)、像素 diff 比例。
 import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
 
 export function sha256(buf) { return createHash("sha256").update(buf).digest("hex"); }
 
-// pHash:解码 → 缩到 8×8 灰度均值 → 高于均值=1。返回 16 位十六进制(64 bit)。
-export function pHash(pngBuf) {
+// aHash:解码 → 缩到 8×8 灰度均值 → 高于均值=1。返回 16 位十六进制(64 bit)。
+export function aHash(pngBuf) {
   const png = PNG.sync.read(pngBuf);
   const N = 8;
   const cells = new Array(N * N).fill(0);
@@ -141,7 +141,7 @@ Expected: PASS `qa image-hash tests passed`。
 
 ```bash
 git add scripts/qa-sweep/image-hash.mjs scripts/test-qa-image-hash.mjs package.json package-lock.json
-git commit -m "feat(qa-sweep): 纯图像指纹模块 image-hash(sha256/pHash/像素diff)+ 单测"
+git commit -m "feat(qa-sweep): 纯图像指纹模块 image-hash(sha256/aHash/像素diff)+ 单测"
 ```
 
 ---
@@ -162,14 +162,14 @@ git commit -m "feat(qa-sweep): 纯图像指纹模块 image-hash(sha256/pHash/像
 import { readdir, readFile, writeFile, mkdir, copyFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sha256, pHash, hamming, pixelDiffRatio } from "./image-hash.mjs";
+import { sha256, aHash, hamming, pixelDiffRatio } from "./image-hash.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const corpusDir = path.join(rootDir, ".verification/acceptance");
 const baselineDir = path.join(rootDir, ".verification/acceptance-baseline");
 const manifestPath = path.join(baselineDir, "baseline-manifest.json");
 const changedDir = path.join(corpusDir, "_changed");
-const PHASH_THRESHOLD = Number(process.env.QA_VISUAL_PHASH || 6);   // 汉明距离 > 此值算"变了"
+const AHASH_THRESHOLD = Number(process.env.QA_VISUAL_AHASH || 6);   // 汉明距离 > 此值算"变了"
 const PIXEL_THRESHOLD = Number(process.env.QA_VISUAL_PIXEL || 0.02); // 像素 diff 比例 > 此值算"变了"
 const mode = process.argv[2] === "accept" ? "accept" : "diff";
 
@@ -194,7 +194,7 @@ if (mode === "accept") {
   const manifest = { acceptedAt: new Date().toISOString(), acceptedBy: "human", entries: {} };
   for (const rel of shots) {
     const buf = await readFile(path.join(corpusDir, rel));
-    manifest.entries[rel] = { sha256: sha256(buf), pHash: pHash(buf) };
+    manifest.entries[rel] = { sha256: sha256(buf), aHash: aHash(buf) };
     await copyFile(path.join(corpusDir, rel), path.join(baselineDir, flatName(rel)));
   }
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
@@ -211,18 +211,18 @@ await mkdir(changedDir, { recursive: true });
 const rows = [];
 for (const rel of shots) {
   const buf = await readFile(path.join(corpusDir, rel));
-  const cur = { sha256: sha256(buf), pHash: pHash(buf) };
+  const cur = { sha256: sha256(buf), aHash: aHash(buf) };
   const base = manifest?.entries?.[rel];
   let status, detail = "";
   if (!manifest) { status = "no-baseline"; }
   else if (!base) { status = "new"; }
   else if (base.sha256 === cur.sha256) { status = "unchanged"; }
   else {
-    const ham = hamming(base.pHash, cur.pHash);
+    const ham = hamming(base.aHash, cur.aHash);
     const baseBuf = await readFile(path.join(baselineDir, flatName(rel))).catch(() => null);
     const pix = baseBuf ? pixelDiffRatio(baseBuf, buf) : 1;
-    detail = `pHash距离=${ham} 像素diff=${(pix * 100).toFixed(1)}%`;
-    status = ham > PHASH_THRESHOLD || pix > PIXEL_THRESHOLD ? "changed" : "unchanged-minor";
+    detail = `aHash距离=${ham} 像素diff=${(pix * 100).toFixed(1)}%`;
+    status = ham > AHASH_THRESHOLD || pix > PIXEL_THRESHOLD ? "changed" : "unchanged-minor";
   }
   rows.push({ rel, status, detail });
   if (status === "new" || status === "changed" || status === "no-baseline") {
@@ -231,7 +231,7 @@ for (const rel of shots) {
 }
 
 const tally = rows.reduce((a, r) => ((a[r.status] = (a[r.status] || 0) + 1), a), {});
-await writeFile(path.join(corpusDir, "visual-diff.json"), JSON.stringify({ generatedAt: new Date().toISOString(), threshold: { pHash: PHASH_THRESHOLD, pixel: PIXEL_THRESHOLD }, tally, rows }, null, 2) + "\n");
+await writeFile(path.join(corpusDir, "visual-diff.json"), JSON.stringify({ generatedAt: new Date().toISOString(), threshold: { aHash: AHASH_THRESHOLD, pixel: PIXEL_THRESHOLD }, tally, rows }, null, 2) + "\n");
 
 console.log(`\n视觉基线 diff:${shots.length} 张`);
 console.log("─".repeat(56));
@@ -259,7 +259,7 @@ Expected:第二次 `分布: unchanged=64`、`送 LLM 复审…0 张`(签完没�
 
 ```bash
 git add scripts/qa-sweep/visual-baseline.mjs
-git commit -m "feat(qa-sweep): 视觉基线闸门(accept 签基线 / diff 产变更集,pHash+像素双阈值)"
+git commit -m "feat(qa-sweep): 视觉基线闸门(accept 签基线 / diff 产变更集,aHash+像素双阈值)"
 ```
 
 ---
@@ -303,7 +303,7 @@ git commit -m "chore(qa-sweep): qa:visual(基线 diff→只评变更集)+ qa:bas
 
 ## Self-Review
 
-- **Spec 覆盖**:pHash+sha256+像素 diff 纯模块(T1)✓;签基线 accept(T2)✓;diff 产变更集 + 双阈值 + 报告(T2)✓;只把变更/新增喂 LLM、复用 vision-review 不重造(T3)✓;首版 LLM 不当硬门禁(T3 注)✓;基线是本地工件不入库(T3 注)✓;无基线时的 bootstrap 提示人工签(T2 diff 分支)✓。4 层 oracle:本计划补第②层 + 把第③层接成"相对基线只评变更"。
+- **Spec 覆盖**:aHash+sha256+像素 diff 纯模块(T1)✓;签基线 accept(T2)✓;diff 产变更集 + 双阈值 + 报告(T2)✓;只把变更/新增喂 LLM、复用 vision-review 不重造(T3)✓;首版 LLM 不当硬门禁(T3 注)✓;基线是本地工件不入库(T3 注)✓;无基线时的 bootstrap 提示人工签(T2 diff 分支)✓。4 层 oracle:本计划补第②层 + 把第③层接成"相对基线只评变更"。
 - **占位扫描**:T3 步骤 4 的"vision-review 对空目录的行为按真实调"是带"跑一次看真实行为再定"的明确确定性步骤,非 TODO 占位。
-- **类型一致**:`sha256/pHash/hamming/pixelDiffRatio` 在 T1 定义,T2 一致 import 调用;`baseline-manifest.entries[rel] = {sha256,pHash}` T2 accept 写、diff 读一致;`flatName(rel)` 在 accept(写副本)与 diff(读副本)一致;阈值 env `QA_VISUAL_PHASH/PIXEL` 单处定义。
-- **已知边界**:像素 diff 要求基线与当前同尺寸(尺寸变=全变 1,合理);pHash 8×8 抗微抖但对细微文案改不敏感——所以保留 sha256 精确相等做"完全没变"快判 + 像素 diff 兜细节,双阈值取或。未做"LLM 当 CI 硬门禁"(刻意,留稳定后)。
+- **类型一致**:`sha256/aHash/hamming/pixelDiffRatio` 在 T1 定义,T2 一致 import 调用;`baseline-manifest.entries[rel] = {sha256,aHash}` T2 accept 写、diff 读一致;`flatName(rel)` 在 accept(写副本)与 diff(读副本)一致;阈值 env `QA_VISUAL_AHASH/PIXEL` 单处定义。
+- **已知边界**:像素 diff 要求基线与当前同尺寸(尺寸变=全变 1,合理);aHash 8×8 抗微抖但对细微文案改不敏感——所以保留 sha256 精确相等做"完全没变"快判 + 像素 diff 兜细节,双阈值取或。未做"LLM 当 CI 硬门禁"(刻意,留稳定后)。
