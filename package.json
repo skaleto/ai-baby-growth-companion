@@ -41,6 +41,7 @@
     "qa:plan": "node scripts/qa-sweep/plan-from-inventory.mjs",
     "test:qa-seed-matrix": "node scripts/test-qa-seed-matrix.mjs",
     "qa:sweep": "node scripts/qa-sweep/acceptance-driver.mjs",
+    "test:qa-image-hash": "node scripts/test-qa-image-hash.mjs",
     "verify:frontend": "npm run test:chat-quick-actions && npm run test:product-simplification && npm run test:voice-capture-panel && npm run test:care-log-stats && npm run test:feeding-alarm-view && npm run test:sleep-catalog && npm run test:sleep-controller && npm run test:vaccine-fallback && npm run test:vaccine-status && npm run test:media-cache && npm run test:app-state-contract && npm run test:preview-swipe-math && npm run build && npm run smoke:frontend && npm run test:preview-gestures && npm run test:core-flows && npm run test:feeding-alarm && npm run test:sleep-music && npm run test:vaccine-view",
     "build:mobile:update": "bash scripts/build-mobile-update.sh",
     "build:android:debug": "bash scripts/build-android-debug.sh",
@@ -75,6 +76,8 @@
     "@anthropic-ai/sdk": "^0.96.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "playwright": "^1.60.0"
+    "pixelmatch": "^6.0.0",
+    "playwright": "^1.60.0",
+    "pngjs": "^7.0.0"
   }
 }
