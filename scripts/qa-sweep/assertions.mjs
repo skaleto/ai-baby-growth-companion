@@ -15,6 +15,8 @@ export async function assertRich(page, ctx) {
   out.push(F("caregiver-rich", "账本-数据可见", await visibleText(page, /奶粉|268/), "种子里有一笔奶粉支出"));
   await gotoTab(page, "记录");
   out.push(F("caregiver-rich", "无页面级 JS 错误", ctx.pageErrors.length === 0, ctx.pageErrors.join("; ")));
+  // console 错误也要真断言——否则上面注释里「无 console 错」只是空话(终审补:harness 采了 consoleErrors 却没人校验)。
+  out.push(F("caregiver-rich", "无 console 错误", ctx.consoleErrors.length === 0, ctx.consoleErrors.join("; ")));
   return out;
 }
 
