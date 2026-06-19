@@ -12,4 +12,5 @@ try { pngs = (await readdir(changedDir)).filter((f) => f.endsWith(".png")); } ca
 if (!pngs.length) { console.log("变更集为空(无截图变化),跳过 LLM 视觉复审。"); process.exit(0); }
 console.log(`变更集 ${pngs.length} 张,送 vision-review 复审…`);
 const child = spawn("node", [path.join(rootDir, "scripts/vision-review.mjs"), changedDir], { stdio: "inherit" });
+child.on("error", (err) => { console.error("vision-review 启动失败:", err.message); process.exit(1); });
 child.on("exit", (code) => process.exit(code ?? 0));
