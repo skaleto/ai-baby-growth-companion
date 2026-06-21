@@ -28,9 +28,6 @@
   --btn-primary-edge: inset 0 1px 0 rgba(255, 255, 255, .35);
 }
 
-/* 临时让 Step 2 测试的 feeding --glow 断言通过;Task 4 会换成正式门面规则 */
-.feeding-alarm-card { --glow: radial-gradient(150px 105px at 82% 8%, rgba(223, 169, 71, .22), rgba(236, 143, 125, .10) 48%, transparent 72%); }
-
 /* ===== 标准层卡片:渐变 + 高光边 + --elev-card ===== */
 .summary-card,
 .ledger-card,
@@ -80,3 +77,22 @@
   border: 1px solid #3d8268;
   color: #fffaf1;
 }
+
+/* ===== 门面层:全套 C1(暖表面 + 光晕 + 高光边 + --elev-hero + 大圆角) ===== */
+.feeding-alarm-card,
+.sleep-entry-card,
+.growth-entry-card,
+.vaccine-card,
+.ledger-ai-entry-card {
+  position: relative;
+  border-radius: var(--r-hero);
+  background: var(--glow), var(--surface-hero);
+  box-shadow: var(--edge-light), var(--elev-hero);
+  border: 1px solid rgba(234, 223, 208, .85);
+}
+/* 品类光色(随域) */
+.feeding-alarm-card   { --glow: radial-gradient(150px 105px at 82% 8%, rgba(223, 169, 71, .22), rgba(236, 143, 125, .10) 48%, transparent 72%); } /* 喂养=琥珀 */
+.sleep-entry-card     { --glow: radial-gradient(150px 105px at 82% 8%, rgba(106, 164, 217, .20), rgba(117, 168, 142, .08) 48%, transparent 72%); } /* 睡眠=天蓝 */
+.growth-entry-card    { --glow: radial-gradient(150px 105px at 82% 8%, rgba(236, 143, 125, .20), rgba(223, 169, 71, .08) 48%, transparent 72%); } /* 成长=珊瑚 */
+.vaccine-card         { --glow: radial-gradient(150px 105px at 82% 8%, rgba(216, 120, 149, .18), rgba(236, 143, 125, .08) 48%, transparent 72%); } /* 疫苗=玫瑰 */
+.ledger-ai-entry-card { --glow: radial-gradient(150px 105px at 82% 8%, rgba(223, 169, 71, .20), rgba(236, 143, 125, .08) 48%, transparent 72%); } /* 账本=琥珀 */

@@ -10,8 +10,11 @@ for (const t of ["--r-chip","--r-card","--r-hero","--elev-list","--elev-card","-
   assert.ok(css.includes(t + ":"), `premium-depth.css 应定义 ${t}`);
 }
 
-// 2) 5 张门面卡各自设了品类 --glow(Task 4 满足;此处先放宽到"至少 feeding 定义",Task 4 收紧)
-assert.ok(/\.feeding-alarm-card[^{]*\{[^}]*--glow\s*:/.test(css), ".feeding-alarm-card 应设置自己的 --glow");
+// 2) 5 张门面卡各自设了品类 --glow
+for (const h of [".feeding-alarm-card",".sleep-entry-card",".growth-entry-card",".vaccine-card",".ledger-ai-entry-card"]) {
+  const re = new RegExp(h.replace(/[.\-]/g, "\\$&") + "[^,{][^{]*\\{[^}]*--glow\\s*:");
+  assert.ok(re.test(css), `${h} 应设置自己的品类 --glow`);
+}
 
 // 3) premium-depth.css 必须是最后一个 @import(覆盖一切)
 const imports = [...styles.matchAll(/@import\s+["']([^"']+)["']/g)].map((m) => m[1]);
