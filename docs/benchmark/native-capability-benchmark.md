@@ -10,7 +10,7 @@
 | `local-notifications` | 普通照护提醒、Pro 今日小结提醒 | Capacitor LocalNotifications 配置、前端调度/cancel 路径、Android 通知权限、iOS UNNotificationRequest | OS 权限弹窗、通知送达、点击动作、exact alarm 降级 |
 | `full-screen-ringing` | 闹铃式提醒、全屏提醒页、循环铃声、关闭后续排 | AlarmReminder 插件、Android full-screen intent 权限、AlarmReceiver、AlarmRingingActivity、iOS 本地通知插件 | 锁屏唤醒、后台启动限制、铃声音频焦点、interval reschedule |
 | `haptics` | 语音、保存、确认、失败/警告的触感反馈 | `frontend/src/haptics.ts` 封装 Capacitor Haptics，App 内调用成功/警告/选择反馈 | 真实触感强弱、频率是否打扰、低端 Android 支持情况 |
-| `native-media-picker` | 原生相册选择照片/视频，进入聊天和相册链路 | NativeMediaPicker TS/Android/iOS 插件、Android Photo Picker/OpenDocument、iOS PHPicker、媒体权限声明 | 真机选择/取消、视频元数据、本地 URI 转 File、大文件上传 |
+| `native-media-picker` | 原生相册选择照片/视频，进入聊天和相册链路 | NativeMediaPicker TS/Android/iOS 插件、Android PictureSelector、iOS PHPicker、媒体权限声明 | 真机选择/取消、视频元数据、本地 URI 转 File、大文件上传 |
 | `ota-updater` | 移动 OTA 检查、下载、校验、应用 | CapacitorUpdater 配置、runtime check/download/set、build-mobile-update checksum | 真实下载进度、应用 bundle、回滚、up-to-date 状态 |
 | `safe-area-keyboard` | 移动 WebView 安全区、键盘遮挡、底部 tab、表单弹层 | `useStableViewport`、safe-area CSS、iOS WebView inset 禁用、Android adjustResize | iOS visualViewport、系统键盘、输入聚焦/收起、页面跳动 |
 

@@ -54,7 +54,10 @@ try {
   const screen = page.locator(".sleep-screen");
   await screen.waitFor({ state: "visible", timeout: 6000 });
   assert.ok(await screen.getByText("哄睡音乐").first().isVisible(), "播放页应打开");
-  console.log("[SM1] entry opens sleep player ✔");
+  const closeButton = screen.getByRole("button", { name: "关闭" });
+  const closeBox = await closeButton.boundingBox();
+  assert.ok(closeBox && closeBox.width >= 44 && closeBox.height >= 44, "关闭按钮触摸目标至少 44px");
+  console.log("[SM1] entry opens sleep player and close target is tappable ✔");
 
   await screen.locator(".sleep-tile", { hasText: "白噪音" }).click();
   await page.locator(".sleep-now").waitFor({ state: "visible", timeout: 4000 });
@@ -69,6 +72,10 @@ try {
   await new Promise((r) => setTimeout(r, 200));
   assert.equal(await page.locator(".sleep-now").count(), 0, "停止后 now-playing 应消失");
   console.log("[SM3] timer select + stop ✔");
+
+  await closeButton.click();
+  await screen.waitFor({ state: "hidden", timeout: 4000 });
+  console.log("[SM4] close button dismisses sleep player ✔");
 
   console.log("sleep music DOM smoke tests passed");
 } finally {

@@ -1,5 +1,4 @@
-// 哄睡音频端口层:原生用 @mediagrid/capacitor-native-audio(后台 + 锁屏控制),
-// Web 用 <audio> 回退(无后台,仅供开发/测 UI)。上层只认本接口,不直接碰插件。
+// 哄睡音频端口层:上层只认本接口,不直接碰插件。
 import { AudioPlayer } from "@mediagrid/capacitor-native-audio";
 import { isNativePlatform, isPluginAvailable } from "./platform";
 import { resolveSleepAudioSource } from "./sleepAudioSource";
@@ -16,7 +15,12 @@ export interface SleepAudioPort {
   onInterruptionPause(cb: () => void): () => void; // 失去音频焦点 → 暂停
 }
 
-export const isSleepAudioNative = () => isNativePlatform() && isPluginAvailable("AudioPlayer");
+// @mediagrid/capacitor-native-audio expects a concrete URL/URI. Our tracks are
+// bundled Vite public assets, and passing "public/sleep-audio/*.wav" leaves
+// AVPlayer/ExoPlayer with an unresolved relative URI. Keep native disabled for
+// these local tracks until a file:// bridge is added.
+const ENABLE_NATIVE_SLEEP_AUDIO = false;
+export const isSleepAudioNative = () => ENABLE_NATIVE_SLEEP_AUDIO && isNativePlatform() && isPluginAvailable("AudioPlayer");
 
 const AUDIO_ID = "sleep-music";
 

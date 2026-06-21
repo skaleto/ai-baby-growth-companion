@@ -73,7 +73,7 @@ export const nativeCapabilityAudit = [
     staticEvidence: [
       { path: "frontend/src/nativeMediaPicker.ts", includes: 'registerPlugin<NativeMediaPickerPlugin>("NativeMediaPicker")' },
       { path: "android/app/src/main/java/com/xiaobao/growthcompanion/MainActivity.java", includes: "registerPlugin(NativeMediaPickerPlugin.class)" },
-      { path: "android/app/src/main/java/com/xiaobao/growthcompanion/NativeMediaPickerPlugin.java", includes: "MediaStore.ACTION_PICK_IMAGES" },
+      { path: "android/app/src/main/java/com/xiaobao/growthcompanion/NativeMediaPickerPlugin.java", includes: "PictureSelector.create" },
       { path: "ios/App/App/AppViewController.swift", includes: "registerPluginInstance(NativeMediaPickerPlugin())" },
       { path: "ios/App/App/NativeMediaPickerPlugin.swift", includes: "PHPickerViewController" },
       { path: "android/app/src/main/AndroidManifest.xml", includes: "android.permission.READ_MEDIA_IMAGES" },

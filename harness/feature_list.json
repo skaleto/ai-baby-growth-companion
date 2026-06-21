@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-13",
+  "lastUpdated": "2026-06-21",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -83,7 +83,9 @@
         "Current design note: docs/architecture/agent-design.md",
         "2026-06-07 implemented backend action tools under backend/src/main/java/com/xiaobao/babycompanion/agent/action/ and AgentMutationService.",
         "2026-06-07 deleted production RecordSignalExtractor, EffectPolicy, and CareEventCompletenessPolicy classes and their legacy tests.",
-        "2026-06-07 verification passed: targeted Maven action-tool tests, full backend mvn test (177 tests), npm run test:agent-benchmark, npm run test:agent-l2:unit, npm run verify:frontend."
+        "2026-06-07 verification passed: targeted Maven action-tool tests, full backend mvn test (177 tests), npm run test:agent-benchmark, npm run test:agent-l2:unit, npm run verify:frontend.",
+        "2026-06-21 diagnosed production AI unavailable prompt: Pro trial expired and free AI quota was exhausted; fixed SSE quota errors to return 403/PRO_QUOTA_EXCEEDED JSON instead of failing content negotiation, verified with AgentProGateTests.",
+        "2026-06-21 deployed the SSE quota error fix to ECS; service health passed. Live over-quota probe was not repeated because the affected family had already been renewed to Pro and no active over-quota Free session was available without mutating production data."
       ],
       "notes": "P0 scope is records and ledger only. Delivered tools: feeding, sleep, diaper, temperature, growth measurement pending, milestone pending, and expense pending. AI reminder/todo tools remain disabled."
     },
@@ -123,7 +125,9 @@
         "2026-06-07 Records quick prompt and drawer voice layer fix passed npm run verify:frontend plus targeted 390x844 screenshots; prompt links computed as transparent/no-shadow/0-border and the voice panel rendered above the Records drawer at z-index 3600.",
         "2026-06-07 Records AI processing input responsiveness fix passed npm run verify:frontend plus targeted slow-SSE Playwright probes; the drawer shows a three-dot `正在整理` loading state while keyboard and voice controls remain enabled during processing.",
         "2026-06-07 Records timeline density and swipe-actions fix passed npm run verify:frontend plus targeted Playwright probes; timeline rows are low-radius rectangular two-line cards, left-swipe reveals matching edit/delete actions, delete requires confirmation, and AI processing loading renders inside the message bubble.",
-        "2026-06-13 Album preview UX fixes (video pointer-events swipe root cause, persistent bottom play/pause toggle, in-preview dark edit/delete dialogs that no longer close pswp, waterfall long-press edit/delete bubbles) passed npm run verify:frontend incl. rewritten gesture scenario [J] and new scenario [P]."
+        "2026-06-13 Album preview UX fixes (video pointer-events swipe root cause, persistent bottom play/pause toggle, in-preview dark edit/delete dialogs that no longer close pswp, waterfall long-press edit/delete bubbles) passed npm run verify:frontend incl. rewritten gesture scenario [J] and new scenario [P].",
+        "2026-06-21 Sleep music fix: close button now has a 44px tappable target with top safe-area padding, and local bundled wav playback uses the WebView audio path in native shells instead of the unresolved native public/ URI; npm run verify:frontend passed including sleep music smoke [SM1-SM4].",
+        "2026-06-21 reverted the exploratory album video color native-player/native-thumbnail path after user confirmed the source capture itself is gray and WeChat playback likely applies different display/color handling; Album video playback and upload thumbnails are back on the existing WebView/canvas path, and npm run verify:frontend passed."
       ],
       "notes": "Any navigation, Records, Album, Ledger, My, voice input, composer, modal, keyboard, or safe-area change needs this gate."
     },
@@ -149,7 +153,9 @@
         "2026-06-07 Records adaptive bubble context deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607195646 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
         "2026-06-07 Records quick prompt and drawer voice layer fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607203321 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
         "2026-06-07 Records AI processing input responsiveness fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607210050 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
-        "2026-06-07 Records timeline density and swipe-actions fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607221114 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification."
+        "2026-06-07 Records timeline density and swipe-actions fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607221114 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
+        "2026-06-21 deployed backend plus OTA with SYNC_DATA=0, SYNC_MOBILE_UPDATES=1, SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1; live health ok, systemd active, and POST /api/mobile-updates/check returned OTA 0.1.0-20260621163720 with signed OSS URL.",
+        "2026-06-21 published rollback OTA 0.1.0-20260621212644 by uploading bundle to OSS and replacing only the production mobile-updates manifest; live POST /api/mobile-updates/check from 0.1.0-20260621174319 returned the rollback version with signed OSS URL, while the same check from 0.1.0-20260621212644 returned updateAvailable=false."
       ],
       "notes": "Do not sync or reset production data unless explicitly requested."
     },
@@ -178,7 +184,11 @@
         "2026-06-07 OTA published version 0.1.0-20260607203321; manifest checksum e4474e5ec83ac93dffc41a22db23a8e6e4978419f9f2ca8eeb69a919239b1c0e; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
         "2026-06-07 OTA published version 0.1.0-20260607210050; manifest checksum a2c9024a5691141a63b49df042a994e15ed7360ba620ffc04e1ba91d86b32ac0; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
         "2026-06-07 OTA published version 0.1.0-20260607221114; manifest checksum f9f5cd3dde345eff3b89efcc433ca3c8b1ae723b734cdd8375cc975e1230179d; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
-        "2026-06-13 OTA published version 0.1.0-20260613033445; manifest checksum 96322de989b3cf6c0a811e780d6039a4011ba76ae8fac9d92f071ac5af81bd1d; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits; live POST /api/mobile-updates/check returned the new version with signed OSS URL."
+        "2026-06-13 OTA published version 0.1.0-20260613033445; manifest checksum 96322de989b3cf6c0a811e780d6039a4011ba76ae8fac9d92f071ac5af81bd1d; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits; live POST /api/mobile-updates/check returned the new version with signed OSS URL.",
+        "2026-06-21 Sleep music native-risk verification passed: npm run mobile:sync, npm run build:ios:debug, and npm run build:android:debug after switching bundled wav playback to WebView audio in native shells.",
+        "2026-06-21 OTA published version 0.1.0-20260621163720; manifest checksum d488957e5d6034cd8492bdfb172e70e7e643198cb5c78b7ec0ca1b4c09b57eae; bundle uploaded to OSS object baby-companion/mobile-updates/app-0.1.0-20260621163720.zip; downloaded bundle checksum matched and contained production API base URL with 0 localhost hits.",
+        "2026-06-21 rollback OTA published version 0.1.0-20260621212644; manifest checksum b430a1906bdc57406fc20f69b2af79a1fd49e349a3fc49003364cd2897bded78; bundle uploaded to OSS object baby-companion/mobile-updates/app-0.1.0-20260621212644.zip; downloaded live signed bundle checksum matched, contained production API base URL with 0 localhost hits, and had 0 NativeMediaViewer/nativeVideoThumbnailDataUrl hits.",
+        "2026-06-21 album video color rollback native-risk verification passed: VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run mobile:sync, npm run build:ios:debug, and npm run build:android:debug; Capacitor sync/build output listed the expected 5 plugins with no NativeMediaViewer."
       ],
       "notes": "Browser smoke cannot prove OS notification delivery, full-screen ringing, native camera/media picker behavior, or OTA apply."
     },

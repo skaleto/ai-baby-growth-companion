@@ -30,7 +30,7 @@ try {
   await build({ entryPoints: [path.join(rootDir, "frontend/src/sleepAudioSource.ts")], bundle: true, platform: "node", format: "esm", outfile: sout, logLevel: "silent" });
   const s = await import(pathToFileURL(sout).href);
   assert.equal(s.resolveSleepAudioSource("white", false), "/sleep-audio/white.wav", "web 源");
-  assert.equal(s.resolveSleepAudioSource("white", true), "public/sleep-audio/white.wav", "native 源");
+  assert.equal(s.resolveSleepAudioSource("white", true), "/sleep-audio/white.wav", "native 壳内本地音源仍走 WebView 可解析路径");
 
   console.log("sleep audio catalog tests passed");
 } finally {
