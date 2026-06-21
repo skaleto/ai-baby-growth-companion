@@ -108,6 +108,20 @@ class AgentProGateTests {
     }
 
     @Test
+    void streamOverMonthlyQuotaStillReturnsJsonProQuotaErrorForSseAccept() throws Exception {
+        LoginResult caregiver = login();
+        seedTopLevelAiCalls(caregiver, 10);
+
+        mockMvc.perform(post("/api/agent/chat/stream")
+                        .header(HttpHeaders.AUTHORIZATION, caregiver.bearer())
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(CHAT_BODY))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PRO_QUOTA_EXCEEDED"));
+    }
+
+    @Test
     void proFamilyBypassesMonthlyQuota() throws Exception {
         LoginResult caregiver = login();
         seedTopLevelAiCalls(caregiver, 10);

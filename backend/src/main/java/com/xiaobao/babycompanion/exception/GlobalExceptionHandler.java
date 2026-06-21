@@ -4,6 +4,7 @@ import java.time.Instant;
 
 import com.xiaobao.babycompanion.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -18,48 +19,47 @@ public class GlobalExceptionHandler {
                 .findFirst()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .orElse("Invalid request");
-        return ResponseEntity.badRequest().body(new ErrorResponse("VALIDATION_ERROR", message, Instant.now()));
+        return error(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", message);
     }
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException exception) {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(new ErrorResponse("SERVICE_UNAVAILABLE", exception.getMessage(), Instant.now()));
+        return error(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", exception.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest()
-                .body(new ErrorResponse("BAD_REQUEST", exception.getMessage(), Instant.now()));
+        return error(HttpStatus.BAD_REQUEST, "BAD_REQUEST", exception.getMessage());
     }
 
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<ErrorResponse> handleAuth(AuthException exception) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new ErrorResponse("AUTH_FAILED", exception.getMessage(), Instant.now()));
+        return error(HttpStatus.UNAUTHORIZED, "AUTH_FAILED", exception.getMessage());
     }
 
     @ExceptionHandler(ProQuotaExceededException.class)
     public ResponseEntity<ErrorResponse> handleProQuota(ProQuotaExceededException exception) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(new ErrorResponse("PRO_QUOTA_EXCEEDED", exception.getMessage(), Instant.now()));
+        return error(HttpStatus.FORBIDDEN, "PRO_QUOTA_EXCEEDED", exception.getMessage());
     }
 
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException exception) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(new ErrorResponse("FORBIDDEN", exception.getMessage(), Instant.now()));
+        return error(HttpStatus.FORBIDDEN, "FORBIDDEN", exception.getMessage());
     }
 
     @ExceptionHandler(ModelApiException.class)
     public ResponseEntity<ErrorResponse> handleModelApi(ModelApiException exception) {
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(new ErrorResponse("MODEL_API_ERROR", exception.getMessage(), Instant.now()));
+        return error(HttpStatus.BAD_GATEWAY, "MODEL_API_ERROR", exception.getMessage());
     }
 
     @ExceptionHandler(AgentResponseParseException.class)
     public ResponseEntity<ErrorResponse> handleAgentResponseParse(AgentResponseParseException exception) {
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(new ErrorResponse("AGENT_RESPONSE_PARSE_ERROR", exception.getMessage(), Instant.now()));
+        return error(HttpStatus.BAD_GATEWAY, "AGENT_RESPONSE_PARSE_ERROR", exception.getMessage());
+    }
+
+    private ResponseEntity<ErrorResponse> error(HttpStatus status, String code, String message) {
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ErrorResponse(code, message, Instant.now()));
     }
 }
