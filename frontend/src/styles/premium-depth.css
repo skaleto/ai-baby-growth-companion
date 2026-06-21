@@ -63,3 +63,20 @@
   border-radius: var(--r-chip);
   box-shadow: var(--edge-light), var(--elev-list);
 }
+
+/* ===== 主按钮:鼠尾草立体渐变 + 内高光 + 柔阴影 ===== */
+.send-button,
+.auth-form > button,
+.onboarding-actions button,
+.empty-state button,
+.profile-edit-button,
+.save-profile-button,
+.pending-effect-actions button,
+.inline-edit-button,
+.care-log-form button {
+  border-radius: var(--r-chip);
+  background: var(--btn-primary-bg);
+  box-shadow: var(--btn-primary-edge), var(--elev-btn);
+  border: 1px solid #3d8268;
+  color: #fffaf1;
+}
