@@ -30,3 +30,36 @@
 
 /* 临时让 Step 2 测试的 feeding --glow 断言通过;Task 4 会换成正式门面规则 */
 .feeding-alarm-card { --glow: radial-gradient(150px 105px at 82% 8%, rgba(223, 169, 71, .22), rgba(236, 143, 125, .10) 48%, transparent 72%); }
+
+/* ===== 标准层卡片:渐变 + 高光边 + --elev-card ===== */
+.summary-card,
+.ledger-card,
+.ledger-summary-card,
+.calendar-card,
+.trend-card,
+.album-overview-card,
+.app-profile-card,
+.profile-detail-card,
+.profile-form,
+.reminder-group,
+.ledger-manual-cta {
+  border-radius: var(--r-card);
+  background: var(--surface-card);
+  box-shadow: var(--edge-light), var(--elev-card);
+  border: 1px solid rgba(234, 223, 208, .9);
+}
+
+/* ===== 列表层卡片:只给微深度 + 顶部高光,不换底色(密集列表保持克制) ===== */
+.record-event-card,
+.day-timeline-card,
+.expense-item,
+.expense-row {
+  border-radius: var(--r-card);
+  box-shadow: var(--edge-light), var(--elev-list);
+}
+
+/* ===== 次级按钮:升级圆角 + 微深度,保留原浅底/描边气质 ===== */
+.screen-action-button {
+  border-radius: var(--r-chip);
+  box-shadow: var(--edge-light), var(--elev-list);
+}
