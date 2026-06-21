@@ -1,0 +1,32 @@
+/* 高级感视觉打磨(#37)暖晨光 C1 全局深度体系。最后加载、覆盖一切。
+   性能红线:零 backdrop-filter / blur;深度只用渐变 + 纯色 box-shadow。 */
+:root {
+  /* 圆角层级 */
+  --r-chip: 12px;
+  --r-card: 16px;
+  --r-hero: 20px;
+  --r-modal: 22px;
+
+  /* 阴影分层(暖棕,与现状 --shadow-soft 同源,分三档强度) */
+  --elev-list: 0 4px 12px rgba(106, 78, 48, .05);
+  --elev-card: 0 10px 26px rgba(106, 78, 48, .08), 0 3px 8px rgba(106, 78, 48, .05);
+  --elev-hero: 0 18px 40px rgba(106, 78, 48, .12), 0 5px 14px rgba(106, 78, 48, .06);
+  --elev-btn: 0 8px 18px rgba(55, 123, 100, .30);
+
+  /* 顶部高光边 + 底部暖边(立体感来源,纯 inset 阴影) */
+  --edge-light: inset 0 1px 0 rgba(255, 255, 255, .7), inset 0 -1px 0 rgba(234, 223, 208, .55);
+
+  /* 暖色表面渐变 */
+  --surface-card: linear-gradient(145deg, #fffaf1 0%, #fffaf1 52%, #f7ecd9 100%);
+  --surface-hero: linear-gradient(145deg, #fffdf8 0%, #fffaf1 54%, #f6ead7 100%);
+
+  /* 径向光晕:门面卡用,默认琥珀,品类色由各卡覆盖(Task 4) */
+  --glow: radial-gradient(150px 105px at 82% 8%, rgba(223, 169, 71, .22), rgba(236, 143, 125, .10) 48%, transparent 72%);
+
+  /* 按钮系统 */
+  --btn-primary-bg: linear-gradient(135deg, #7bb295 0%, #3d8268 72%);
+  --btn-primary-edge: inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+
+/* 临时让 Step 2 测试的 feeding --glow 断言通过;Task 4 会换成正式门面规则 */
+.feeding-alarm-card { --glow: radial-gradient(150px 105px at 82% 8%, rgba(223, 169, 71, .22), rgba(236, 143, 125, .10) 48%, transparent 72%); }
