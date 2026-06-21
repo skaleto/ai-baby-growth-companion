@@ -96,3 +96,17 @@
 .growth-entry-card    { --glow: radial-gradient(150px 105px at 82% 8%, rgba(236, 143, 125, .20), rgba(223, 169, 71, .08) 48%, transparent 72%); } /* 成长=珊瑚 */
 .vaccine-card         { --glow: radial-gradient(150px 105px at 82% 8%, rgba(216, 120, 149, .18), rgba(236, 143, 125, .08) 48%, transparent 72%); } /* 疫苗=玫瑰 */
 .ledger-ai-entry-card { --glow: radial-gradient(150px 105px at 82% 8%, rgba(223, 169, 71, .20), rgba(236, 143, 125, .08) 48%, transparent 72%); } /* 账本=琥珀 */
+
+/* ===== 门面卡主题点睛(A 版,右上角水印;背景层=永远在内容之下,不挡字) ===== */
+.feeding-alarm-card,
+.sleep-entry-card,
+.growth-entry-card,
+.vaccine-card,
+.ledger-ai-entry-card {
+  background: var(--accent, none) no-repeat right 11px top 9px / 52px, var(--glow), var(--surface-hero);
+}
+.feeding-alarm-card { --accent: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2048%2048'%20fill='none'%20stroke='%23dfa947'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%20stroke-opacity='0.32'%3E%3Cpath%20d='M19%205h10v8l4%205v20a6%206%200%200%201-6%206h-6a6%206%200%200%201-6-6V18l4-5V5z'/%3E%3Cpath%20d='M19%2013h10'/%3E%3Cpath%20d='M24%2024c3%204%205%207%205%2010a5%205%200%200%201-10%200c0-3%202-6%205-10z'/%3E%3C/svg%3E"); }
+.sleep-entry-card { --accent: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2048%2048'%20fill='none'%20stroke='%236aa4d9'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%20stroke-opacity='0.32'%3E%3Cpath%20d='M31%205a17%2017%200%201%200%2012%2029A19%2019%200%200%201%2031%205z'/%3E%3Cpath%20d='M15%209v6M12%2012h6'/%3E%3Cpath%20d='M39%2010v4M37%2012h4'/%3E%3C/svg%3E"); }
+.growth-entry-card { --accent: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2048%2048'%20fill='none'%20stroke='%23ec8f7d'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%20stroke-opacity='0.32'%3E%3Cpath%20d='M24%2043V25'/%3E%3Cpath%20d='M24%2025C15%2024%209%2018%208%209c9%201%2015%207%2016%2016z'/%3E%3Cpath%20d='M24%2025c9-1%2015-7%2016-16-9%201-15%207-16%2016z'/%3E%3Cpath%20d='M14%2043h20'/%3E%3C/svg%3E"); }
+.vaccine-card { --accent: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2048%2048'%20fill='none'%20stroke='%23d87895'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%20stroke-opacity='0.32'%3E%3Cpath%20d='M24%205l15%206v11c0%2011-6%2018-15%2022C15%2040%209%2033%209%2022V11l15-6z'/%3E%3Cpath%20d='M24%2031c-5-3-9-7-9-12%200-4%205-6%209-2%204-4%209-2%209%202%200%205-4%209-9%2012z'/%3E%3C/svg%3E"); }
+.ledger-ai-entry-card { --accent: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2048%2048'%20fill='none'%20stroke='%23dfa947'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%20stroke-opacity='0.32'%3E%3Cpath%20d='M13%205h22v38l-5-3-4%203-4-3-4%203-5-3V5z'/%3E%3Cpath%20d='M19%2016h10'/%3E%3Cpath%20d='M19%2024h14'/%3E%3Cpath%20d='M19%2032h8'/%3E%3C/svg%3E"); }
