@@ -75,8 +75,8 @@ SYNC_DATA=0 ECS_HOST=120.55.188.242 npm run deploy:aliyun
 
 - Production evidence should include service health plus persisted behavior when relevant; `/api/health` alone does not prove Agent, reminder, media, or state persistence behavior.
 - **⚠️ 移动热更新（OTA）发布是高危操作，必须显式注入 API base URL（2026-06-05 生产事故教训）。** 构建 OTA 包时若不设 `VITE_AGENT_API_BASE_URL`，前端会静默 fallback 到 `http://localhost:8080`，导致**所有更新到该包的 App 全量 `load failed`**——而且 OTA check 也走同一个 base URL，中招用户连修复包都拉不到（只能重装），没中招用户会继续 check 到坏包跟着中招、故障扩散。硬性规则：
-  - 构建 OTA 必须传生产地址：`VITE_AGENT_API_BASE_URL=http://120.55.188.242:8300 npm run build:mobile:update`。`scripts/build-mobile-update.sh` 已加防护——base URL 为空时报错退出，不再静默 fallback。
-  - 发布后**必须验证 base URL**：解压 bundle 用 `grep` 确认编译进去的是 `120.55.188.242:8300` 而非 `localhost:8080`，再确认 OTA check API 返回正确 url+checksum，且下载的 bundle checksum 匹配。
+  - 构建 OTA 必须传生产地址：`VITE_AGENT_API_BASE_URL=https://skbaby.top npm run build:mobile:update`。`scripts/build-mobile-update.sh` 已加防护——base URL 为空时报错退出，不再静默 fallback。（生产 API 自 2026-06-26 起走 HTTPS 域名 `https://skbaby.top`，经 nginx 443 反代到 8300；裸 IP `120.55.188.242:8300` 仅作旧版兼容保留，新包不得再编入。）
+  - 发布后**必须验证 base URL**：解压 bundle 用 `grep` 确认编译进去的是 `https://skbaby.top`，且 `120.55.188.242` 与 `localhost:8080` 命中均为 0，再确认 OTA check API 返回正确 url+checksum，且下载的 bundle checksum 匹配。
   - OTA 只升不降：发了坏包要回滚，必须构建一个**版本号更高**的正确包覆盖，不能简单把 manifest 指回旧版本（已更新的设备不会降级）。
   - 紧急止扩散：第一时间把生产 `mobile-updates/manifest.json` 的 `enabled` 置 false，阻止未中招设备继续更新到坏包。
   - **native app 内置包同理**：`build:ios:debug` / `build:android:debug` / `mobile:sync` 内部的 `npm run build` 同样会 fallback 到 localhost。这些脚本已改为默认注入生产 base URL（可被 `VITE_AGENT_API_BASE_URL` override，本地联调时设 localhost）。Xcode / Android Studio 直接 build 前，务必先用注入了生产 URL 的命令 `npm run build && npx cap sync` 刷新内置包，并确认 `ios/App/App/public/assets/*.js`（或 android assets）里的 base URL 是生产地址，否则真机装上去也是 `load failed`。
