@@ -3896,12 +3896,19 @@ function App() {
         return;
       }
       try {
-        const me = await readCurrentUser();
+        // auth/me 与 app/state 互不依赖(app/state 用存储里的 token、不用 me 的返回),
+        // 并发拉取省掉一个串行往返——真机网络下冷启动到可交互明显更快(大头 app/state 的
+        // 下载与 auth/me 的往返重叠)。onboardingRequired 仍以服务端 me 判定为准,
+        // loadState 内部的 profile 兜底只在并发期作临时值(此时 authStatus 仍为 checking,不渲染)。
+        const [me] = await Promise.all([
+          readCurrentUser(),
+          loadStateFromBackend({ importLegacy: false }),
+        ]);
         if (cancelled) return;
         setAuthUser(me.user);
         setAuthFamily(me.family);
         setAuthMember(me.member);
-        await loadStateFromBackend({ importLegacy: false, onboardingRequired: me.onboardingRequired });
+        if (me.onboardingRequired !== undefined) setOnboardingRequired(me.onboardingRequired);
         setAuthStatus("authenticated");
       } catch {
         clearAuthToken();
