@@ -563,31 +563,7 @@ type PendingEffectDraft = {
   expenses: ExpenseDraft[];
 };
 
-type CareTrendPoint = {
-  date: string;
-  label: string;
-  value: number | undefined;
-  height: number;
-  selected: boolean;
-};
 
-type CareTrendMetric = {
-  key: string;
-  label: string;
-  currentLabel: string;
-  deltaLabel: string;
-  averageLabel: string;
-  trendClass: "up" | "down" | "flat" | "muted";
-  points: CareTrendPoint[];
-};
-
-type CareTrendDefinition = {
-  key: string;
-  label: string;
-  unit: string;
-  decimals?: number;
-  getValue: (log?: CareLog) => number | undefined;
-};
 
 type GrowthTrendMetric = {
   key: GrowthMeasurementType;
@@ -799,106 +775,7 @@ const buildRecordEvents = (
 
 // careAlbumCategory + careAlbumTitle moved to ./utils/careLogHelpers
 
-const formatTrendValue = (value: number | undefined, unit: string, decimals = 0) => {
-  if (value === undefined || !Number.isFinite(value)) return "未记录";
-  const text = decimals > 0 ? value.toFixed(decimals).replace(/\.0$/, "") : `${Math.round(value)}`;
-  return unit ? `${text} ${unit}` : text;
-};
 
-const careTrendDefinitions: CareTrendDefinition[] = [
-  {
-    key: "milkMl",
-    label: "奶量",
-    unit: "ml",
-    getValue: (log?: CareLog) => (log?.milkMl && log.milkMl > 0 ? log.milkMl : undefined),
-  },
-  {
-    key: "milkTimes",
-    label: "喝奶次数",
-    unit: "次",
-    getValue: (log?: CareLog) => (log?.milkTimes !== undefined ? log.milkTimes : undefined),
-  },
-  {
-    key: "sleepHours",
-    label: "睡眠",
-    unit: "h",
-    decimals: 1,
-    getValue: (log?: CareLog) => (log?.sleepHours && log.sleepHours > 0 ? log.sleepHours : undefined),
-  },
-  {
-    key: "wakes",
-    label: "夜醒",
-    unit: "次",
-    getValue: (log?: CareLog) => (log?.wakes !== undefined ? log.wakes : undefined),
-  },
-  {
-    key: "temperature",
-    label: "体温",
-    unit: "°C",
-    decimals: 1,
-    getValue: (log?: CareLog) => (log?.temperature && log.temperature > 0 ? log.temperature : undefined),
-  },
-  {
-    key: "poop",
-    label: "便便",
-    unit: "次",
-    getValue: (log?: CareLog) => {
-      if (!log) return undefined;
-      const eventCount = log.events.filter((event) => event.type === "poop").length;
-      if (eventCount > 0) return eventCount;
-      return log.poop ? 1 : undefined;
-    },
-  },
-];
-
-const buildCareTrendMetrics = (careLogs: CareLog[], selectedDate: string): CareTrendMetric[] => {
-  const logByDate = new Map(careLogs.map((log) => [log.date, log]));
-  const dates = Array.from({ length: 7 }, (_, index) => addDays(selectedDate, index - 6));
-
-  return careTrendDefinitions
-    .map((definition) => {
-      const values = dates.map((date) => definition.getValue(logByDate.get(date)));
-      const recordedValues = values.filter((value): value is number => value !== undefined && Number.isFinite(value));
-      if (!recordedValues.length) return null;
-
-      const maxValue = Math.max(...recordedValues, 1);
-      const current = values[values.length - 1];
-      const previous = values[values.length - 2];
-      const average = recordedValues.reduce((total, value) => total + value, 0) / recordedValues.length;
-      const decimals = definition.decimals ?? 0;
-      const delta = current !== undefined && previous !== undefined ? current - previous : undefined;
-      const trendClass: CareTrendMetric["trendClass"] =
-        delta === undefined ? "muted" : delta > 0 ? "up" : delta < 0 ? "down" : "flat";
-      const deltaLabel =
-        delta === undefined
-          ? current === undefined
-            ? "当天待记录"
-            : "前日待记录"
-          : delta === 0
-            ? "较前日持平"
-            : `较前日 ${delta > 0 ? "+" : ""}${formatTrendValue(delta, definition.unit, decimals)}`;
-
-      return {
-        key: definition.key,
-        label: definition.label,
-        currentLabel: formatTrendValue(current, definition.unit, decimals),
-        deltaLabel,
-        averageLabel: `近7天均值 ${formatTrendValue(average, definition.unit, decimals)}`,
-        trendClass,
-        points: dates.map((date, index) => {
-          const value = values[index];
-          return {
-            date,
-            label: date === todayISO() ? "今" : `${Number(date.slice(-2))}`,
-            value,
-            height: value === undefined ? 0 : Math.max(10, Math.round((value / maxValue) * 100)),
-            selected: date === selectedDate,
-          };
-        }),
-      };
-    })
-    .filter((metric): metric is CareTrendMetric => Boolean(metric));
-};
 
 const compactValue = (value: number | undefined, unit: string, decimals = 0) => {
   if (value === undefined) return "未记录";
