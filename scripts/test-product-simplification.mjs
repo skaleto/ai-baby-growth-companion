@@ -10,6 +10,16 @@ const legacyCss = readFileSync("frontend/src/styles/legacy-responsive.css", "utf
 const mobileCss = readFileSync("frontend/src/styles/mobile-app.css", "utf8");
 const warmCss = readFileSync("frontend/src/styles/warm-theme.css", "utf8");
 
+// ── 架构债 D1 防回涨棘轮:App.tsx 行数硬上限,只许降不许升。
+//    每从上帝类拆出一块,就把这个数调到新行数;确需新增功能而涨,请在同一改动里有意识上调并注明。
+//    专治「拆完又被新功能堆回 9000+ 行」的复发(2026-06 实测:9690→8959→又涨回 9132)。见 cross-platform-principles.md §5。
+const APP_TSX_LINE_CEILING = 9125;
+const appTsxLines = appSource.split("\n").length;
+assert.ok(
+  appTsxLines <= APP_TSX_LINE_CEILING,
+  `App.tsx 现 ${appTsxLines} 行 > 棘轮上限 ${APP_TSX_LINE_CEILING}(D1:上帝类只许瘦不许胖)。拆出代码后请下调本上限;确需扩张则在此处有意识上调并注明原因。`,
+);
+
 const cssBlock = (source, selector) => {
   const start = source.indexOf(selector);
   assert.ok(start >= 0, `${selector} CSS block should exist`);

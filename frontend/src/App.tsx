@@ -295,6 +295,7 @@ import reminderIcon from "./assets/storybook-icons/reminder.png";
 import sleepIcon from "./assets/storybook-icons/sleep.png";
 import solidIcon from "./assets/storybook-icons/solid.png";
 import temperatureIcon from "./assets/storybook-icons/temperature.png";
+import { recordEventIconSrc } from "./recordIcons";
 import alarmSceneImage from "./assets/alarm/alarm-scene.webp";
 import emptyRemindersImg from "./assets/illustrations/empty-reminders.png";
 import {
@@ -781,16 +782,7 @@ const buildRecordEvents = (
   );
 };
 
-const recordEventIconSrc = (event: RecordEvent) => {
-  if (event.kind === "milk") return milkIcon;
-  if (event.kind === "sleep" || event.kind === "wake" || event.kind === "soothing") return sleepIcon;
-  if (event.kind === "poop") return poopIcon;
-  if (event.kind === "solid") return solidIcon;
-  if (event.kind === "temperature") return temperatureIcon;
-  if (event.kind === "growth") return growthIcon;
-  if (event.kind === "reminder") return reminderIcon;
-  return recordsIcon;
-};
+// recordEventIconSrc 已迁出到 ./recordIcons(D13:由 recordTypes 注册表驱动,消灭 kind 散弹分支)。
 
 // reminder labels moved to ./utils/reminderLabels
 
@@ -8500,7 +8492,7 @@ function App() {
                           }}
                         >
                           <span className="record-event-icon" aria-hidden="true">
-                            <img src={recordEventIconSrc(event)} alt="" />
+                            <img src={recordEventIconSrc(event.kind)} alt="" />
                           </span>
                           <div className="record-event-copy">
                             <div className="record-event-primary">
