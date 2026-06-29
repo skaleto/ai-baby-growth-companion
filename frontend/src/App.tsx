@@ -298,6 +298,15 @@ import sleepIcon from "./assets/storybook-icons/sleep.png";
 import solidIcon from "./assets/storybook-icons/solid.png";
 import temperatureIcon from "./assets/storybook-icons/temperature.png";
 import { recordEventIconSrc } from "./recordIcons";
+import {
+  careEventsByKind,
+  countForLog,
+  positiveNumber,
+  segmentValuesForLog,
+  splitEvenSegments,
+  sumValues,
+  totalForLog,
+} from "./recordsDomain";
 import alarmSceneImage from "./assets/alarm/alarm-scene.webp";
 import emptyRemindersImg from "./assets/illustrations/empty-reminders.png";
 import {
@@ -891,11 +900,6 @@ const buildCareTrendMetrics = (careLogs: CareLog[], selectedDate: string): CareT
     .filter((metric): metric is CareTrendMetric => Boolean(metric));
 };
 
-const positiveNumber = (value: number | undefined) =>
-  value !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
-
-const sumValues = (values: number[]) => values.reduce((total, value) => total + value, 0);
-
 const compactValue = (value: number | undefined, unit: string, decimals = 0) => {
   if (value === undefined) return "未记录";
   const text = decimals > 0 ? value.toFixed(decimals).replace(/\.0$/, "") : `${Math.round(value)}`;
@@ -1050,42 +1054,6 @@ const buildGrowthCurveData = (measurements: GrowthMeasurement[], type: GrowthMea
     maxLabel: formatGrowthMeasurementValue(maxValue, type),
     latestLabel: `${latest.date === todayISO() ? "今天" : formatDate(latest.date)} ${formatGrowthMeasurementValue(latest.value, type)}`,
   };
-};
-
-const careEventValue = (event: CareLogEvent, kind: "milk" | "sleep") =>
-  kind === "milk" ? positiveNumber(event.amountMl) : positiveNumber(event.durationHours);
-
-const careEventsByKind = (log: CareLog | undefined, kind: "milk" | "sleep") =>
-  (log?.events ?? [])
-    .filter((event) => event.type === kind)
-    .map((event) => ({ event, value: careEventValue(event, kind) }))
-    .filter((item): item is { event: CareLogEvent; value: number } => item.value !== undefined)
-    .sort((left, right) => parseTimeSort(left.event.time, 0) - parseTimeSort(right.event.time, 0));
-
-const splitEvenSegments = (total: number | undefined, count: number | undefined) => {
-  if (!total || total <= 0) return [];
-  const segmentCount = Math.min(12, Math.max(1, Math.round(count ?? 1)));
-  return Array.from({ length: segmentCount }, () => total / segmentCount);
-};
-
-const segmentValuesForLog = (log: CareLog | undefined, kind: "milk" | "sleep") => {
-  const eventValues = careEventsByKind(log, kind).map((item) => item.value);
-  if (eventValues.length) return eventValues;
-  if (kind === "milk") return splitEvenSegments(positiveNumber(log?.milkMl), log?.milkTimes);
-  return splitEvenSegments(positiveNumber(log?.sleepHours), undefined);
-};
-
-const totalForLog = (log: CareLog | undefined, kind: "milk" | "sleep") => {
-  const direct = kind === "milk" ? positiveNumber(log?.milkMl) : positiveNumber(log?.sleepHours);
-  return direct ?? positiveNumber(sumValues(careEventsByKind(log, kind).map((item) => item.value)));
-};
-
-const countForLog = (log: CareLog | undefined, kind: "milk" | "sleep") => {
-  if (kind === "milk") {
-    return log?.milkTimes ?? (careEventsByKind(log, "milk").length || undefined);
-  }
-  const sleepEventCount = careEventsByKind(log, "sleep").length;
-  return sleepEventCount || undefined;
 };
 
 const buildDailyCareBreakdowns = (log: CareLog | undefined): DailyCareBreakdown[] => {
