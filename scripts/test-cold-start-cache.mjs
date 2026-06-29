@@ -25,9 +25,10 @@ const CACHE_STORE = "snapshots";
 const CACHE_ACCOUNT_LS_KEY = "baby-companion-app-state-cache-account";
 const NETWORK_DELAY_MS = 1200;
 
-const today = new Date();
-const todayText = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-const utcTodayText = new Date().toISOString().slice(0, 10);
+// careLog 日期必须与 app 的 todayISO() 同源——后者取 UTC(toISOString().slice(0,10))。
+// 若用本地日期,跨 UTC 午夜(本地日 ≠ UTC 日,如 UTC+8 的凌晨/夜晚)今日视图会把这条记录滤掉,
+// 秒开断言「首页显示 250ml」就会误红(2026-06-30 实测踩中)。
+const todayText = new Date().toISOString().slice(0, 10);
 
 // 完整 profile(hasCompleteProfile 通过才会越过 onboarding,直接秒开首页)。
 const profile = { nickname: "小宝", birthDate: "2026-02-01", caregivers: ["妈妈"] };
@@ -189,14 +190,12 @@ try {
     // 秒开断言:底栏「相册」按钮必须在网络返回「之前」可见(给足渲染余量但远小于 1200ms)。
     await page.locator(".mobile-tabbar").getByRole("button", { name: "相册" }).waitFor({ state: "visible", timeout: NETWORK_DELAY_MS - 400 });
     const albumVisibleAt = Date.now();
-    // 缓存里的 250ml 记录也应即时出现在首页(证明是「数据秒开」而非空壳)。
-    const cached250Visible = await page
-      .locator(".records-screen")
-      .getByText(/250\s*ml/i)
-      .first()
-      .isVisible()
-      .catch(() => false);
-    assert.ok(cached250Visible, "秒开时首页应立即显示缓存里的 250ml 喂奶记录");
+    // 缓存里的 250ml 记录也应在网络返回「之前」出现(证明是「数据秒开」而非空壳)。
+    // 用 waitFor(上限仍 < NETWORK_DELAY)而非瞬时 isVisible:壳已现、内容晚一帧的渲染抖动在重载机器上会误报。
+    const cached250 = page.locator(".records-screen").getByText(/250\s*ml/i).first();
+    await cached250.waitFor({ state: "visible", timeout: NETWORK_DELAY_MS - 200 }).catch(() => {});
+    const cached250Visible = await cached250.isVisible().catch(() => false);
+    assert.ok(cached250Visible, "秒开时首页应在网络返回前显示缓存里的 250ml 喂奶记录");
 
     // 关键时序断言:首页可见时,两个被延迟的网络请求都还没返回 —— 证明没等网络。
     assert.equal(meResolvedAt, 0, `首页应在 /api/auth/me 返回前就可见(秒开),但 me 已于 ${meResolvedAt} 返回`);
