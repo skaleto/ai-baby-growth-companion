@@ -101,6 +101,8 @@ import {
   upsertAppRecord,
   uploadFileAttachment,
 } from "./appStateApi";
+import { clearCachedSnapshot, readCachedSnapshotForBoot, writeCachedSnapshot } from "./appStateCache";
+import { normalizeAppStateResponse } from "./appStateContract";
 import { AsrStreamController, runAsrStream } from "./asrApi";
 import {
   AUTH_EXPIRED_EVENT,
@@ -3579,8 +3581,21 @@ function App() {
     });
   };
 
+  // 冷启动秒开缓存键(架构债 D11):按账号(user id 优先,退化到 family id)分键,绝不跨账号。
+  // 启动时优先用入参 accountKey(此刻 React 的 authUser 尚未 flush),其次读已落定的 state。
+  const resolveCacheAccountKey = (explicit?: string | null): string | null =>
+    explicit || authUser?.id || authFamily?.id || null;
+
+  // 把刚成功拉到并应用的后端 state 写进本地缓存(下次冷启动据此秒开)。fire-and-forget,
+  // 失败仅退化为无秒开;只缓存非空 state(空账号无可秒开内容,也避免覆盖有效缓存)。
+  const cacheBackendState = (state: Partial<AppStateSnapshot>, accountKey?: string | null) => {
+    const key = resolveCacheAccountKey(accountKey);
+    if (!key) return;
+    void writeCachedSnapshot(key, state);
+  };
+
   const loadStateFromBackend = async (
-    options: { importLegacy: boolean; onboardingRequired?: boolean } = { importLegacy: false },
+    options: { importLegacy: boolean; onboardingRequired?: boolean; accountKey?: string | null } = { importLegacy: false },
   ) => {
     setStorageStatus("loading");
     const response = await readAppState();
@@ -3590,6 +3605,7 @@ function App() {
         applyAppSnapshot(imported.state);
         setOnboardingRequired(options.onboardingRequired ?? !hasCompleteProfile(imported.state.profile as BabyProfile | undefined));
         markLegacyImported();
+        cacheBackendState(imported.state, options.accountKey);
       } else {
         applyEmptyAppSnapshot();
         setOnboardingRequired(options.onboardingRequired ?? true);
@@ -3597,9 +3613,11 @@ function App() {
     } else {
       applyAppSnapshot(response.state);
       setOnboardingRequired(options.onboardingRequired ?? !hasCompleteProfile(response.state.profile as BabyProfile | undefined));
+      cacheBackendState(response.state, options.accountKey);
     }
     backendReadyRef.current = true;
     setStorageStatus("ready");
+    return response;
   };
 
   const applyStateResponse = (response: { state: Partial<AppStateSnapshot> }) => {
@@ -3887,12 +3905,30 @@ function App() {
         setAuthStatus("unauthenticated");
         return;
       }
+      // 冷启动秒开(架构债 D11):有 token 且命中本地缓存时,先用缓存即时渲染首页,
+      // 不等网络;随后照常跑 readCurrentUser + loadStateFromBackend 在后台刷新对账。
+      // 损坏缓存必须按未命中处理(normalizeAppStateResponse 兜底),绝不白屏。
+      let paintedFromCache = false;
+      try {
+        const cached = await readCachedSnapshotForBoot();
+        if (!cancelled && cached) {
+          const { value } = normalizeAppStateResponse({ empty: false, state: cached.snapshot });
+          if (!value.empty && hasCompleteProfile((value.state as Partial<AppStateSnapshot>).profile as BabyProfile | undefined)) {
+            applyAppSnapshot(value.state as Partial<AppStateSnapshot>);
+            setOnboardingRequired(false);
+            setAuthStatus("authenticated");
+            paintedFromCache = true;
+          }
+        }
+      } catch {
+        // 读缓存失败仅退化为无秒开,继续走网络路径。
+      }
       try {
         // auth/me 与 app/state 互不依赖(app/state 用存储里的 token、不用 me 的返回),
         // 并发拉取省掉一个串行往返——真机网络下冷启动到可交互明显更快(大头 app/state 的
         // 下载与 auth/me 的往返重叠)。onboardingRequired 仍以服务端 me 判定为准,
         // loadState 内部的 profile 兜底只在并发期作临时值(此时 authStatus 仍为 checking,不渲染)。
-        const [me] = await Promise.all([
+        const [me, loadResult] = await Promise.all([
           readCurrentUser(),
           loadStateFromBackend({ importLegacy: false }),
         ]);
@@ -3901,9 +3937,23 @@ function App() {
         setAuthFamily(me.family);
         setAuthMember(me.member);
         if (me.onboardingRequired !== undefined) setOnboardingRequired(me.onboardingRequired);
+        // 用权威 user id 把刚拉到的 state 写进本地缓存(下次冷启动秒开)。单次抓取——不再二次
+        // loadStateFromBackend:boot 期 authUser 尚未 flush,resolveCacheAccountKey 拿不到 id,故在此显式补 key。
+        if (loadResult && !loadResult.empty) cacheBackendState(loadResult.state, me.user.id);
         setAuthStatus("authenticated");
       } catch {
+        if (cancelled) return;
+        // 已秒开则容忍后台刷新失败(弱网/离线):保留缓存视图,标记存储离线,不踢回登录。
+        // 真正的 token 失效是 401——apiFetch 会独立清 token 并派发 AUTH_EXPIRED_EVENT
+        // (其处理函数会清缓存并转未登录),不依赖这里。
+        if (paintedFromCache) {
+          backendReadyRef.current = false;
+          setStorageStatus("offline");
+          return;
+        }
+        // 未秒开:沿用原行为按未登录处理,并清掉无效 token 与缓存。
         clearAuthToken();
+        void clearCachedSnapshot();
         backendReadyRef.current = false;
         setAuthStatus("unauthenticated");
         setStorageStatus("loading");
@@ -3919,6 +3969,8 @@ function App() {
     if (typeof window === "undefined") return;
     const handleExpired = () => {
       backendReadyRef.current = false;
+      // token 失效:清掉秒开缓存,避免下次冷启动用上一个账号的脏快照(账号隔离红线)。
+      void clearCachedSnapshot();
       setAuthUser(null);
       setAuthFamily(null);
       setAuthMember(null);
@@ -6232,6 +6284,7 @@ function App() {
       await loadStateFromBackend({
         importLegacy: response.member.caregiver && response.legacyImportAllowed && legacyLocalStateRef.current,
         onboardingRequired: response.onboardingRequired,
+        accountKey: response.user.id,
       });
       setAuthStatus("authenticated");
       setActiveMobileTab("records");
@@ -6264,6 +6317,7 @@ function App() {
     setOnboardingFamilyName(suggestedFamilyName(initialProfile.nickname));
     onboardingFamilyNameTouchedRef.current = false;
     clearLocalAppState();
+    void clearCachedSnapshot(); // 退出登录清秒开缓存(账号隔离红线:下一个登录账号不得看到上一个的快照)
     legacyLocalStateRef.current = false;
     applyEmptyAppSnapshot();
   };
