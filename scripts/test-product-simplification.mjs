@@ -15,7 +15,8 @@ const warmCss = readFileSync("frontend/src/styles/warm-theme.css", "utf8");
 //    专治「拆完又被新功能堆回 9000+ 行」的复发(2026-06 实测:9690→8959→又涨回 9132)。见 cross-platform-principles.md §5。
 //    2026-06-29:D13 注册表先减到 9124;冷启动缓存秒开加钩子 → 9179;Records 轮①(care-log 数值层进 recordsDomain)→ 9148;②删死代码 care-trend → 9024;③ daily/weekly 护理聚合 + compactValue 进 recordsDomain → 8871。
 //    2026-06-30:加 records 子树渲染探针(+9,测打字重渲基线)→ 8880;随后抽 memo 化 RecordsScreen 时探针随 JSX 移出,App.tsx 应大幅回落。
-const APP_TSX_LINE_CEILING = 8880;
+//    2026-06-30:Records 轮④ 抽出 React.memo 化 RecordsScreen(screens/RecordsScreen.tsx)——记录屏 JSX 整体移出 + composer 抽屉提升为兄弟节点(打字逐键 setState 不再重渲记录树,records_renders_on_typing 30→0)→ 8459。
+const APP_TSX_LINE_CEILING = 8459;
 const appTsxLines = appSource.split("\n").length;
 assert.ok(
   appTsxLines <= APP_TSX_LINE_CEILING,
@@ -67,10 +68,20 @@ assert.doesNotMatch(frontendSmokeSource, /"聊天"/, "frontend smoke should not 
 assert.doesNotMatch(appSource, /<DailySummaryView\b/, "records today view should not render DailySummaryView");
 assert.doesNotMatch(appSource, /接收每日小结提醒|整理今天|重新整理|小宝今日观察/, "UI should not expose today-summary sorting/reminder copy");
 
-const recordsStart = appSource.indexOf('<section className="records-screen');
-const recordsEnd = appSource.indexOf("<AlbumScreen", recordsStart);
-assert.ok(recordsStart >= 0 && recordsEnd > recordsStart, "records screen block should be findable");
-const recordsBlock = appSource.slice(recordsStart, recordsEnd);
+// D1/Records 轮:记录页 JSX 已抽成 React.memo 的 RecordsScreen(screens/RecordsScreen.tsx);
+// 打字所在的 AI/手动 composer 抽屉 createPortal 后从记录区提升为 <RecordsScreen/> 的兄弟节点(仍在 App.tsx)。
+// 故结构断言的检索面 = RecordsScreen 全文 + App.tsx 里「<RecordsScreen … /> → <AlbumScreen>」之间的挂载+提升出来的抽屉块;
+// 二者拼接后既覆盖记录屏 JSX,又覆盖留在 App 的 composer 抽屉,原有所有 recordsBlock 断言无需改写。
+const recordsScreenSource = readFileSync("frontend/src/screens/RecordsScreen.tsx", "utf8");
+assert.ok(
+  recordsScreenSource.indexOf('<section className="records-screen') >= 0,
+  "records screen JSX should live in screens/RecordsScreen.tsx after the D1 memo split",
+);
+const recordsMountStart = appSource.indexOf("<RecordsScreen");
+const recordsMountEnd = appSource.indexOf("<AlbumScreen", recordsMountStart);
+assert.ok(recordsMountStart >= 0 && recordsMountEnd > recordsMountStart, "records screen mount block should be findable in App.tsx");
+const recordsMountAndDrawerBlock = appSource.slice(recordsMountStart, recordsMountEnd);
+const recordsBlock = `${recordsScreenSource}\n${recordsMountAndDrawerBlock}`;
 assert.ok(
   recordsBlock.indexOf('className="segmented-tabs record-tabs"') >= 0,
   "records screen should keep primary record navigation",
