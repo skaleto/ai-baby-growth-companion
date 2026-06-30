@@ -13,8 +13,9 @@ const warmCss = readFileSync("frontend/src/styles/warm-theme.css", "utf8");
 // ── 架构债 D1 防回涨棘轮:App.tsx 行数硬上限,只许降不许升。
 //    每从上帝类拆出一块,就把这个数调到新行数;确需新增功能而涨,请在同一改动里有意识上调并注明。
 //    专治「拆完又被新功能堆回 9000+ 行」的复发(2026-06 实测:9690→8959→又涨回 9132)。见 cross-platform-principles.md §5。
-//    2026-06-29:D13 注册表先减到 9124;冷启动缓存秒开加钩子 → 9179;Records 轮①(care-log 数值层进 recordsDomain)→ 9148;②删死代码 care-trend → 9024;③ daily/weekly 护理聚合 + compactValue 进 recordsDomain → 8871。继续下探。
-const APP_TSX_LINE_CEILING = 8871;
+//    2026-06-29:D13 注册表先减到 9124;冷启动缓存秒开加钩子 → 9179;Records 轮①(care-log 数值层进 recordsDomain)→ 9148;②删死代码 care-trend → 9024;③ daily/weekly 护理聚合 + compactValue 进 recordsDomain → 8871。
+//    2026-06-30:加 records 子树渲染探针(+9,测打字重渲基线)→ 8880;随后抽 memo 化 RecordsScreen 时探针随 JSX 移出,App.tsx 应大幅回落。
+const APP_TSX_LINE_CEILING = 8880;
 const appTsxLines = appSource.split("\n").length;
 assert.ok(
   appTsxLines <= APP_TSX_LINE_CEILING,

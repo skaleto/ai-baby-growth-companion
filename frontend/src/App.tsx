@@ -7529,6 +7529,15 @@ function App() {
         </section>
 
         <section className="records-screen tab-content-enter" aria-label="记录">
+          {((): null => {
+            // 渲染探针(默认关闭零开销):__COUNT_RECORDS_RENDERS 置位时统计记录子树渲染次数。
+            // D1 核心指标——拆出 memo 化 RecordsScreen 前,打字会逐键重渲整棵记录树;拆后应≈0。
+            if (typeof window !== "undefined" && (window as unknown as { __COUNT_RECORDS_RENDERS?: boolean }).__COUNT_RECORDS_RENDERS) {
+              const w = window as unknown as { __recordsRenders?: number };
+              w.__recordsRenders = (w.__recordsRenders || 0) + 1;
+            }
+            return null;
+          })()}
           {growthEntryOpen ? (
             <GrowthEntryView
               profile={profile}
