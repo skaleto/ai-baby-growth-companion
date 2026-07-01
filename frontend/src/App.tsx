@@ -17,10 +17,8 @@ import {
   Mic,
   Milk,
   Moon,
-  MoreHorizontal,
   Music2,
   PartyPopper,
-  PencilLine,
   ReceiptText,
   RefreshCw,
   Save,
@@ -29,12 +27,10 @@ import {
   Smartphone,
   Sparkles,
   Syringe,
-  Trash2,
   UserRound,
   Users,
   Video,
   WalletCards,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import { App as CapacitorApp } from "@capacitor/app";
@@ -42,11 +38,8 @@ import "./styles/vendor-mobile.css";
 import { getPlatform, isAndroidPlatform, isIOSPlatform, isNativePlatform, isPluginAvailable, platformDisplayLabel } from "./platform";
 import {
   createReminderDraft,
-  dateFromReminderPostponeDraft,
   reminderDraftFromReminder,
-  reminderPostponeDraftFromReminder,
   type ReminderDraft,
-  type ReminderPostponeDraft,
 } from "./reminderDraft";
 import { LocalNotifications, type ActionPerformed, type LocalNotificationSchema } from "@capacitor/local-notifications";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
@@ -55,7 +48,6 @@ import {
   type CSSProperties,
   FormEvent,
   KeyboardEvent,
-  type SetStateAction,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -63,70 +55,44 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { createPortal } from "react-dom";
 import { prefetchAlbumVideo } from "./components/albumVideoPlayback";
 import { AgentApiError, compressConversationSummary, runAgentChatStream, type AgentStreamStatusType } from "./agentApi";
 import {
   ALBUM_CATEGORIES,
   albumCategoryFromTags,
   albumCategoryLabel,
-  albumMonthLabel,
   albumItemFromDecision,
   albumItemFromStandaloneAttachment,
   albumPromptFromDecision,
   albumPromptFromEffectDecision,
-  attachmentAspectRatio,
   attachmentListSrc,
-  buildDerivedAlbumItems,
   decideAlbumMedia,
   dedupeAlbumItems,
   distributeIntoColumns,
-  isVisibleAlbumMedia,
   resolveAlbumEffectTarget,
   type AlbumMediaDecision,
 } from "./albumDomain";
 import { ensureMicrophonePermission } from "./audioPermission";
 import {
   confirmPendingEffectOnServer,
-  deleteAttachment,
   deleteAppRecord,
   discardPendingEffectOnServer,
-  importAppState,
-  readAppState,
-  readAiUsageSummary,
-  redeemProCode,
-  submitProTrialApplication,
-  type AppStateCollection,
   type AppStateResponse,
-  upsertAppRecord,
   uploadFileAttachment,
 } from "./appStateApi";
-import { clearCachedSnapshot, readCachedSnapshotForBoot, writeCachedSnapshot } from "./appStateCache";
+import { clearCachedSnapshot, readCachedSnapshotForBoot } from "./appStateCache";
 import { normalizeAppStateResponse } from "./appStateContract";
 import { AsrStreamController, runAsrStream } from "./asrApi";
 import {
   AUTH_EXPIRED_EVENT,
-  AuthFamily,
-  AuthMember,
-  AuthUser,
   apiBaseUrl,
   clearAuthToken,
   getAuthToken,
-  readInviteRoleOptions,
-  loginWithInvite,
-  logoutCurrentUser,
   readCurrentUser,
-  readFamilyMembers,
   refreshAccessToken,
-  removeFamilyMember,
-  resetFamilyInviteCode,
-  updateFamilyMemberCaregiver,
-  updateFamilyName,
-  type FamilyMember,
-  type FamilyMembersResponse,
 } from "./authApi";
 import {
-  initialProfile,
   makeId,
   todayISO,
 } from "./data";
@@ -150,7 +116,6 @@ import {
   EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_COLORS,
   EXPENSE_CATEGORY_OPTIONS,
-  FEEDING_SELECT_OPTIONS,
   GROWTH_MEASUREMENT_META,
   GROWTH_MEASUREMENT_TYPES,
   LEDGER_VIEWS,
@@ -158,16 +123,10 @@ import {
   MOBILE_TABS,
   MIN_INTERVAL_MINUTES,
   RECORD_VIEWS,
-  REGION_SELECT_OPTIONS,
   REMINDER_ALERT_MODE_OPTIONS,
   REMINDER_CATEGORY_OPTIONS,
   REMINDER_SCHEDULE_MODE_OPTIONS,
   REMINDER_SOUND_OPTIONS,
-  GENDER_SELECT_OPTIONS,
-  ROLE_OPTIONS,
-  ROLE_SELECT_OPTIONS,
-  STAGE_SELECT_OPTIONS,
-  UNIQUE_ROLE_OPTIONS,
   type LedgerView as LedgerViewId,
   type MobileTab,
   type RecordView,
@@ -177,13 +136,10 @@ import {
   addMonths,
   ageLabel,
   babyProfileForAgent,
-  blankProfile,
   calendarDatesForMonth,
   canonicalCareEventTitle,
-  clearLocalAppState,
   creatorMetaText,
   currentClockText,
-  dedupeCareLogs,
   displayProfileValue,
   formatDate,
   formatExpenseDateLabel,
@@ -196,22 +152,11 @@ import {
   isIntervalReminder,
   localDateKey,
   localTimeKey,
-  markLegacyImported,
-  mergeAlbumItemsFromSnapshot,
   monthTitle,
-  normalizeAlbumItem,
-  normalizeBabyProfile,
   normalizeCareLog,
   normalizeCareLogEvent,
-  normalizeChatMessage,
   normalizeClockText,
-  normalizeConversationSummary,
-  normalizeExpenseItem,
-  normalizeGrowthEvent,
-  normalizeGrowthMeasurement,
   normalizeMemoryCategory,
-  normalizeMemoryItem,
-  normalizePendingEffect,
   normalizeProTrialStatus,
   normalizeReminder,
   normalizeReminderAlertMode,
@@ -221,32 +166,28 @@ import {
   parseReminderDueAt,
   reminderNotificationId,
   reminderTimezone,
-  resolveStateAction,
   splitListText,
   stageLabel,
   stripAttachmentUrlForStorage,
-  suggestedFamilyName,
 } from "./appStateDomain";
 import { AlbumVideoThumbnail } from "./components/AlbumVideoThumbnail";
 import { AlbumScreen } from "./components/AlbumScreen";
 import { RemindersScreen } from "./screens/RemindersScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { RecordsScreen, type RecordsScreenHandlers } from "./screens/RecordsScreen";
-import { CachedImg } from "./components/CachedMedia";
-import { captureBaseOffset, resolveSwipeOutcome } from "./components/previewSwipeMath";
-import { openAlbumPhotoSwipe } from "./albumPhotoSwipe";
-import { appAlbumEdit, appAlert, appConfirm, appPrompt } from "./components/appDialogs";
+import { ChatScreen, type ChatScreenHandlers } from "./screens/ChatScreen";
+import { AppDialogs, type AppDialogsHandlers } from "./screens/AppDialogs";
+import { RecordsEntryDrawer, type RecordsEntryDrawerHandlers } from "./screens/RecordsEntryDrawer";
+import { AuthSplash, LoginScreen, OnboardingScreen } from "./screens/AuthScreens";
+import { PreviewOverlay, type PreviewOverlayHandlers } from "./screens/PreviewOverlay";
+import { appAlert, appPrompt } from "./components/appDialogs";
 import { FeedingAlarmCard } from "./components/FeedingAlarmCard";
 import { SleepMusicScreen } from "./screens/SleepMusicScreen";
 import { SleepMusicCard } from "./components/SleepMusicCard";
 import { AppDateField, AppTimeField } from "./components/appWheelFields";
 import "./posterUpload";
 import { reportClientError } from "./errorReporting";
-import { PreviewVideoPlayer } from "./components/PreviewVideoPlayer";
-import { StorySelect, selectOptionsWithCurrent } from "./components/StorySelect";
-import { AuthScene } from "./components/AuthScene";
-import { StorybookScene } from "./components/StorybookScene";
-import { AuthBrand } from "./components/AuthBrand";
+import { StorySelect } from "./components/StorySelect";
 import { ConsentGate } from "./components/ConsentGate";
 import { AiDataNotice } from "./components/AiDataNotice";
 import { LegalDocModal } from "./components/LegalDocModal";
@@ -254,7 +195,6 @@ import type { LegalDocId } from "./legalContent";
 import {
   AgentChatResponse,
   AgentModelId,
-  AiUsageSummary,
   AlbumPrompt,
   AlbumItem,
   AlbumItemCategory,
@@ -267,16 +207,12 @@ import {
   CareLogEvent,
   CareLogEventType,
   ChatMessage,
-  ConversationSummary,
   EffectDecision,
   ExpenseCategory,
-  ExpenseItem,
   GrowthEvent,
   GrowthMeasurement,
   GrowthMeasurementType,
-  MemoryItem,
   PendingEffect,
-  ProTrialStatus,
   RecordedBy,
   Reminder,
   ReminderKind,
@@ -287,6 +223,24 @@ import {
   SafetyAlert,
   ToolActivity,
 } from "./types";
+// 共享契约类型现居叶子模块 ./appContracts;此处仅 type-only import 回 App.tsx 仍会用到的那几个
+//(编译期擦除,零运行时依赖)。其余(AuthStatus / AiUsageStatus / CompressionStatus /
+// MediaUploadItem / RecordsEntryDrawer 类型 / PendingEffectDraft 等)App 已不再直接引用,故不 import。
+import type {
+  CareEventDraft,
+  ComposerMode,
+  GrowthCurveData,
+  GrowthTrendMetric,
+  ManualNumericDraftKey,
+  ManualRecordKind,
+  ManualRecordTypeOption,
+  MediaUploadStatus,
+  PendingCareDraft,
+  PendingGrowthDraft,
+  PendingGrowthMeasurementDraft,
+  RecordEvent,
+  RuntimeVersionInfo,
+} from "./appContracts";
 import companionAvatarIcon from "./assets/storybook-icons/companion-avatar.png";
 import companionIcon from "./assets/storybook-icons/companion.png";
 import growthIcon from "./assets/storybook-icons/growth.png";
@@ -337,7 +291,6 @@ import {
 import {
   LEGACY_REMINDER_CHANNELS,
   REMINDER_CHANNELS,
-  REMINDER_QUICK_ACTIONS,
   REMINDER_SOUND_FILES,
   REMINDER_WEB_SOUND_URLS,
 } from "./utils/reminderAssets";
@@ -353,14 +306,33 @@ import {
   type ExpenseMonthGroup,
 } from "./utils/expense";
 import { LedgerView, type LedgerStats } from "./views/LedgerView";
+import {
+  createExpenseDraft,
+  expenseDraftFromExpense,
+  expenseFromDraft,
+  useLedgerState,
+  type ExpenseDraft,
+  type LedgerMutators,
+} from "./features/ledger/useLedgerState";
+import { useRemindersState, type RemindersMutators } from "./features/reminders/useRemindersState";
+import {
+  useRecordsState,
+  type RecordsMutators,
+  type RecordsLateDeps,
+} from "./features/records/useRecordsState";
+import { usePendingEffects, type PendingEffectsLateDeps } from "./features/pendingEffects/usePendingEffects";
+import { useAlbumState, type AlbumLateDeps } from "./features/album/useAlbumState";
+import { usePreviewState, PREVIEW_VT } from "./features/preview/usePreviewState";
+import { useSessionState, type SessionLateDeps } from "./features/session/useSessionState";
+import { useAppStore, type StoreLateDeps } from "./features/store/useAppStore";
+import { useChatState, type ChatLateDeps } from "./features/chat/useChatState";
+import { composerInput, composerInputRef, ComposerTextarea } from "./features/chat/composerInput";
+import { hasCareLogContent, isAgentProgressActivity } from "./utils/agentChatShared";
 import { MilestonesView } from "./views/MilestonesView";
 import { VaccineView } from "./views/VaccineView";
-import { getVaccineDataSync, refreshVaccineData } from "./vaccineData";
-import { pendingCountForProfile } from "./vaccineStatus";
-import { monthsBetween } from "./utils/babyAge";
-import type { RegionCode } from "./data/vaccineSchedule.fallback";
+// getVaccineDataSync / refreshVaccineData / pendingCountForProfile / monthsBetween / RegionCode /
+// GrowthMilestone / milestoneTag 已随 records 一族迁入 features/records/useRecordsState。
 import { GrowthEntryView } from "./views/GrowthEntryView";
-import { type GrowthMilestone, milestoneTag } from "./data/growthMilestones";
 import {
   careAlbumCategory,
   careAlbumTitle,
@@ -372,7 +344,7 @@ import {
   recordTimeLabel,
   soothingText,
 } from "./utils/careLogHelpers";
-import { careLogWithEventStats, careLogsWithEventStats } from "./utils/careLogStats";
+import { careLogWithEventStats } from "./utils/careLogStats";
 import {
   formatIntervalText,
   reminderAlertLabel,
@@ -388,27 +360,14 @@ import {
 
 const BUILD_OTA_VERSION = (import.meta.env.VITE_MOBILE_UPDATE_VERSION as string | undefined)?.trim() ?? "";
 
-export type ComposerMode = "keyboard" | "voice";
+// App 各子系统之间共享的契约类型(ComposerMode / Auth·AiUsageStatus / CompressionStatus /
+// MediaUploadItem·MediaUploadStatus / RuntimeVersionInfo / RecordEvent·RecordEventType /
+// CareEventDraft / RecordsEntryDrawer / Manual* / Pending* / GrowthTrendMetric·GrowthCurveData)
+// 已抽到叶子模块 ./appContracts —— feature hooks / screens 直接从那里 import,不再反向依赖 App。
+// App.tsx 仍会用到的那几个,在上方 import 区从 "./appContracts" type-only import 回来。
+// 下面仅保留纯 App 内部私有、外部无人 import 的类型。
 
 type VoiceStatus = "idle" | "connecting" | "listening" | "processing" | "unsupported" | "error";
-
-type AuthStatus = "checking" | "authenticated" | "unauthenticated";
-type AiUsageStatus = "idle" | "loading" | "ready" | "error";
-
-type CompressionStatus = "idle" | "checking" | "compressing" | "done" | "failed";
-
-type MediaUploadStatus = "preparing" | "uploading" | "processing" | "done" | "failed";
-type MediaUploadTarget = "chat" | "album";
-
-type MediaUploadItem = {
-  id: string;
-  name: string;
-  kind: AttachmentKind;
-  target: MediaUploadTarget;
-  status: MediaUploadStatus;
-  progress: number;
-  message?: string;
-};
 
 type QueuedMediaFile = {
   id: string;
@@ -416,53 +375,9 @@ type QueuedMediaFile = {
   kind: AttachmentKind;
 };
 
-type PreviewMotion = "opening" | "idle" | "closing";
-
-// Rect of the tapped thumbnail, so the preview can morph (FLIP) out of / back
-// into that exact thumbnail instead of a generic center zoom.
-type PreviewOriginRect = { top: number; left: number; width: number; height: number };
-const previewOriginFromRect = (rect: DOMRect): PreviewOriginRect => ({
-  top: rect.top,
-  left: rect.left,
-  width: rect.width,
-  height: rect.height,
-});
-
-// View Transitions API (Chromium WebView 111+, iOS 18+ WKWebView) gives a native
-// container-transform morph between the tapped thumbnail and the fullscreen media.
-// Older WebViews fall back to the FLIP animation.
-const supportsViewTransition = (): boolean =>
-  typeof document !== "undefined" &&
-  typeof (document as Document & { startViewTransition?: unknown }).startViewTransition === "function";
-
-const PREVIEW_VT = supportsViewTransition();
-
-const startViewTransition = (callback: () => void): { finished: Promise<unknown> } => {
-  const vt = (
-    document as unknown as {
-      startViewTransition: (cb: () => void) => { finished: Promise<unknown>; skipTransition?: () => void };
-    }
-  ).startViewTransition(callback);
-  // 看门狗:VT 偶发挂起时整页被伪元素层盖住、所有交互被吞(线上「点开卡在过渡态然后卡死」)。
-  // 动画名义时长 ~350ms,800ms 未结案就强制跳过,UI 立即落到终态,页面绝不允许卡死。
-  const watchdog = window.setTimeout(() => {
-    try {
-      vt.skipTransition?.();
-    } catch {
-      // skip 失败也无碍:finished 仍会由浏览器结案或被下一次交互覆盖。
-    }
-  }, 800);
-  void vt.finished.finally(() => window.clearTimeout(watchdog));
-  return vt;
-};
-
-export type RuntimeVersionInfo = {
-  otaVersion: string;
-  nativeVersion: string;
-  bundleId: string;
-  platform: string;
-  status: string;
-};
+// 预览子系统的类型/常量(PreviewMotion / PreviewOriginRect / previewOriginFromRect /
+// PREVIEW_VT / startViewTransition 看门狗)已随预览态一起搬进 features/preview/usePreviewState;
+// App 仅从该 hook import PREVIEW_VT(喂 <PreviewOverlay previewVt={PREVIEW_VT}/>)。
 
 type SystemWeakNotice = {
   id: number;
@@ -472,205 +387,9 @@ type SystemWeakNotice = {
   progressMode?: MobileUpdateNoticeDetail["progressMode"];
 };
 
-export type RecordEventType = "care" | "growth" | "reminder";
-
-export type RecordEvent = {
-  id: string;
-  date: string;
-  timeLabel: string;
-  sortValue: number;
-  type: RecordEventType;
-  kind: CareLogEventType | "growth" | "reminder";
-  title: string;
-  body: string;
-  tags: string[];
-  careLogId?: string;
-  careEventId?: string;
-  recordedBy?: RecordedBy;
-};
-
-export type CareEventDraft = {
-  type: CareLogEventType;
-  time: string;
-  amountMl: string;
-  durationHours: string;
-  temperature: string;
-  note: string;
-};
-
-export type RecordsEntryDrawer = "ai" | "manual" | null;
-
-type ManualRecordKind = Extract<CareLogEventType, "milk" | "sleep" | "poop" | "temperature" | "solid">;
-type ManualNumericDraftKey = "amountMl" | "durationHours" | "temperature";
-
-type ManualRecordTypeOption = {
-  type: ManualRecordKind;
-  label: string;
-  hint: string;
-};
-
-type ExpenseDraft = {
-  title: string;
-  amount: string;
-  category: ExpenseCategory;
-  date: string;
-  quantity: string;
-  unitPrice: string;
-  merchant: string;
-  note: string;
-  brand: string;
-  spec: string;
-  source: ExpenseItem["source"];
-};
-
-type PendingReminderDraft = {
-  id: string;
-  draft: ReminderDraft;
-};
-
-type PendingMemoryDraft = {
-  id: string;
-  text: string;
-};
-
-type PendingGrowthDraft = {
-  title: string;
-  date: string;
-  summary: string;
-};
-
-type PendingGrowthMeasurementDraft = {
-  id: string;
-  type: GrowthMeasurementType;
-  value: string;
-  date: string;
-  note: string;
-};
-
-type PendingCareDraft = {
-  date: string;
-  milkMl: string;
-  milkTimes: string;
-  sleepHours: string;
-  wakes: string;
-  poop: string;
-  temperature: string;
-  notes: string;
-};
-
-type PendingEffectDraft = {
-  growthEvent?: PendingGrowthDraft;
-  growthMeasurements: PendingGrowthMeasurementDraft[];
-  careLogPatch?: PendingCareDraft;
-  reminders: PendingReminderDraft[];
-  memories: PendingMemoryDraft[];
-  expenses: ExpenseDraft[];
-};
-
-
-
-export type GrowthTrendMetric = {
-  key: GrowthMeasurementType;
-  label: string;
-  valueLabel: string;
-  deltaLabel: string;
-  dateLabel: string;
-  hasData: boolean;
-};
-
-type GrowthCurvePoint = {
-  id: string;
-  date: string;
-  label: string;
-  valueLabel: string;
-  x: number;
-  y: number;
-};
-
-export type GrowthCurveData = {
-  points: GrowthCurvePoint[];
-  polyline: string;
-  minLabel: string;
-  maxLabel: string;
-  latestLabel: string;
-};
-
-const extractCareEventsFromText = (text: string, date: string) =>
-  text
-    .split(/[。；;\n]/)
-    .flatMap((sentence) => sentence.split(/(?=(?:凌晨|早上|上午|中午|下午|晚上)?\s*\d{1,2}\s*(?:点|:|：))/))
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part): CareLogEvent | null => {
-      const type = inferCareEventType(part);
-      const explicitTime = normalizeClockText(part);
-      const time = explicitTime ?? (/刚刚|刚才|现在/.test(part) ? currentClockText() : undefined);
-      if (!time || type === "note") return null;
-      const amountText = part.match(/(\d+(?:\.\d+)?)\s*(?:ml|毫升)/i)?.[1];
-      const durationText = part.match(/(\d+(?:\.\d+)?)\s*(?:小时|h)/i)?.[1];
-      const temperatureText = part.match(/体温\s*(\d+(?:\.\d+)?)/)?.[1];
-      return {
-        id: makeId("care-event"),
-        type,
-        date,
-        time,
-        title: careEventTitleMap[type],
-        amountMl: amountText ? Number(amountText) : undefined,
-        durationHours: durationText ? Number(durationText) : undefined,
-        temperature: temperatureText ? Number(temperatureText) : undefined,
-        note: part,
-        tags: [careEventTitleMap[type]],
-      };
-    })
-    .filter((event): event is CareLogEvent => Boolean(event))
-    .slice(0, 12);
-
-const hasExplicitCareRecordSignal = (text: string) => {
-  const events = extractCareEventsFromText(text, todayISO());
-  if (
-    events.some((event) => {
-      if (event.type === "milk") return positiveNumber(event.amountMl) !== undefined;
-      if (event.type === "sleep") return positiveNumber(event.durationHours) !== undefined;
-      if (event.type === "temperature") return positiveNumber(event.temperature) !== undefined;
-      return event.type === "poop" || event.type === "solid" || event.type === "wake" || event.type === "soothing";
-    })
-  ) {
-    return true;
-  }
-  return /喝奶\s*\d+\s*次|奶量\s*\d+|睡眠\s*\d+(?:\.\d+)?\s*(?:小时|h)|夜醒\s*\d+\s*次|体温\s*\d+(?:\.\d+)?/.test(text);
-};
-
-const hasExplicitStructuredActionSignal = (text: string) =>
-  hasExplicitCareRecordSignal(text) ||
-  /(提醒|记得|待办|复诊|保存到相册|存到相册|加入相册|留念|纪念|第一次|里程碑|满月|百天|生日|疫苗本|接种证|体检报告|医生通知|病历)/.test(text);
-
-const emptyStructuredResponse = (response: AgentChatResponse): AgentChatResponse => ({
-  ...response,
-  growthEvent: null,
-  careLogPatch: null,
-  reminders: [],
-  memories: [],
-  effectDecisions: [],
-});
-
-const suppressImageOnlyCareEffects = (
-  response: AgentChatResponse,
-  parentText: string,
-  attachments: Attachment[],
-  albumDecisions: AlbumMediaDecision[] = [],
-): AgentChatResponse => {
-  if (!attachments.some((item) => item.kind === "image" || item.kind === "video")) return response;
-  const screenshotDescriptionOnly =
-    albumDecisions.some((decision) => decision.mode === "ignore" && decision.tags.includes("截图")) &&
-    !hasExplicitStructuredActionSignal(parentText);
-  if (screenshotDescriptionOnly) return emptyStructuredResponse(response);
-  if (hasExplicitCareRecordSignal(parentText)) return response;
-  return {
-    ...response,
-    careLogPatch: null,
-    effectDecisions: (response.effectDecisions ?? []).filter((decision) => decision.type !== "careLog"),
-  };
-};
+// extractCareEventsFromText / hasExplicitCareRecordSignal / hasExplicitStructuredActionSignal /
+// emptyStructuredResponse / suppressImageOnlyCareEffects 随 submitComposerMessage 一族迁入
+// features/chat/useChatState(它们只被该提交流用)。
 
 // careLog + reminder helpers moved to ./utils/careLogHelpers and ./utils/reminderLabels
 
@@ -1189,220 +908,14 @@ function reminderFromDraft(draft: ReminderDraft, existing?: Reminder): Reminder 
   return normalizeReminderSchedule(base);
 }
 
-function createExpenseDraft(baseDate = todayISO()): ExpenseDraft {
-  return {
-    title: "",
-    amount: "",
-    category: "other",
-    date: baseDate,
-    quantity: "",
-    unitPrice: "",
-    merchant: "",
-    note: "",
-    brand: "",
-    spec: "",
-    source: "manual",
-  };
-}
+// pending-effect 纯 draft/effect 构造器(pendingDraftFromEffect / selectedDateFallback /
+// growthEventFromPendingDraft / growthMeasurementsFromPendingDraft / careLogPatchFromPendingDraft /
+// remindersFromPendingDraft / memoriesFromPendingDraft / expensesFromPendingDraft +
+// pendingExpenseDraftFromExpense)只被 pending-effect 处理函数使用,已随之迁入
+// features/pendingEffects/usePendingEffects(reminderFromDraft 因也被留在 App 的代码复用,经参数注入)。
 
-function expenseDraftFromExpense(expense: ExpenseItem): ExpenseDraft {
-  return {
-    title: expense.title,
-    amount: expense.amount ? String(expense.amount) : "",
-    category: expense.category,
-    date: expense.date,
-    quantity: expense.quantity ? String(expense.quantity) : "",
-    unitPrice: expense.unitPrice ? String(expense.unitPrice) : "",
-    merchant: expense.merchant ?? "",
-    note: expense.note ?? "",
-    brand: expense.brand ?? "",
-    spec: expense.spec ?? "",
-    source: expense.source,
-  };
-}
-
-function expenseFromDraft(draft: ExpenseDraft, existing?: ExpenseItem): ExpenseItem {
-  const now = new Date().toISOString();
-  const amount = Number(draft.amount);
-  const quantity = draft.quantity ? Number(draft.quantity) : undefined;
-  const unitPrice = draft.unitPrice ? Number(draft.unitPrice) : undefined;
-  return normalizeExpenseItem(
-    {
-      id: existing?.id ?? makeId("expense"),
-      title: draft.title.trim() || "小宝支出",
-      amount: Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0,
-      currency: "CNY",
-      category: draft.category,
-      date: draft.date || todayISO(),
-      quantity: quantity && Number.isFinite(quantity) ? quantity : undefined,
-      unitPrice: unitPrice && Number.isFinite(unitPrice) ? Math.round(unitPrice * 100) / 100 : undefined,
-      merchant: draft.merchant.trim() || undefined,
-      note: draft.note.trim() || undefined,
-      brand: draft.brand.trim() || undefined,
-      spec: draft.spec.trim() || undefined,
-      attachmentIds: existing?.attachmentIds ?? [],
-      attachments: existing?.attachments,
-      source: draft.source,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      recordedBy: existing?.recordedBy,
-      createdByUserId: existing?.createdByUserId,
-    },
-    0,
-  );
-}
-
-const pendingExpenseDraftFromExpense = (expense: ExpenseItem): ExpenseDraft => expenseDraftFromExpense(expense);
-
-const pendingDraftFromEffect = (effect: PendingEffect): PendingEffectDraft => ({
-  growthEvent: effect.growthEvent
-    ? {
-        title: effect.growthEvent.title ?? "",
-        date: effect.growthEvent.date ?? todayISO(),
-        summary: effect.growthEvent.summary ?? "",
-      }
-    : undefined,
-  growthMeasurements: (effect.growthMeasurements ?? []).map((measurement) => ({
-    id: measurement.id,
-    type: measurement.type,
-    value: measurement.value ? String(measurement.value) : "",
-    date: measurement.date || selectedDateFallback(effect),
-    note: measurement.note ?? "",
-  })),
-  careLogPatch: effect.careLogPatch
-    ? {
-        date: effect.careLogPatch.date ?? selectedDateFallback(effect),
-        milkMl: effect.careLogPatch.milkMl ? String(effect.careLogPatch.milkMl) : "",
-        milkTimes: effect.careLogPatch.milkTimes ? String(effect.careLogPatch.milkTimes) : "",
-        sleepHours: effect.careLogPatch.sleepHours ? String(effect.careLogPatch.sleepHours) : "",
-        wakes: effect.careLogPatch.wakes ? String(effect.careLogPatch.wakes) : "",
-        poop: effect.careLogPatch.poop ?? "",
-        temperature: effect.careLogPatch.temperature ? String(effect.careLogPatch.temperature) : "",
-        notes: effect.careLogPatch.notes?.join("、") ?? "",
-      }
-    : undefined,
-  reminders: (effect.reminders ?? []).map((reminder) => ({
-    id: reminder.id,
-    draft: reminderDraftFromReminder(reminder),
-  })),
-  memories: (effect.memories ?? []).map((memory) => ({
-    id: memory.id,
-    text: memory.text,
-  })),
-  expenses: (effect.expenses ?? []).map(pendingExpenseDraftFromExpense),
-});
-
-const selectedDateFallback = (effect: PendingEffect) =>
-  effect.createdAt ? effect.createdAt.slice(0, 10) : todayISO();
-
-const growthEventFromPendingDraft = (effect: PendingEffect, draft: PendingGrowthDraft | undefined) =>
-  effect.growthEvent && draft
-    ? normalizeGrowthEvent({
-        ...effect.growthEvent,
-        title: draft.title.trim() || effect.growthEvent.title,
-        date: draft.date || effect.growthEvent.date,
-        summary: draft.summary.trim() || effect.growthEvent.summary,
-      }, 0)
-    : undefined;
-
-const growthMeasurementsFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
-  (effect.growthMeasurements ?? []).map((measurement, index) => {
-    const nextDraft = draft.growthMeasurements.find((item) => item.id === measurement.id);
-    if (!nextDraft) return measurement;
-    const numericValue = Number(nextDraft.value);
-    return normalizeGrowthMeasurement({
-      ...measurement,
-      type: nextDraft.type,
-      value: Number.isFinite(numericValue) ? numericValue : measurement.value,
-      date: nextDraft.date || measurement.date,
-      note: nextDraft.note.trim() || undefined,
-    }, index);
-  });
-
-const careLogPatchFromPendingDraft = (effect: PendingEffect, draft: PendingCareDraft | undefined): Partial<CareLog> | undefined =>
-  effect.careLogPatch && draft
-    ? {
-        ...effect.careLogPatch,
-        date: draft.date || effect.careLogPatch.date,
-        milkMl: draft.milkMl ? Number(draft.milkMl) : undefined,
-        milkTimes: draft.milkTimes ? Number(draft.milkTimes) : undefined,
-        sleepHours: draft.sleepHours ? Number(draft.sleepHours) : undefined,
-        wakes: draft.wakes ? Number(draft.wakes) : undefined,
-        poop: draft.poop.trim() || undefined,
-        temperature: draft.temperature ? Number(draft.temperature) : undefined,
-        notes: splitListText(draft.notes),
-      }
-    : undefined;
-
-const remindersFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
-  (effect.reminders ?? []).map((reminder) => {
-    const nextDraft = draft.reminders.find((item) => item.id === reminder.id)?.draft;
-    return nextDraft ? reminderFromDraft(nextDraft, reminder) : reminder;
-  });
-
-const memoriesFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
-  (effect.memories ?? []).map((memory) => {
-    const nextDraft = draft.memories.find((item) => item.id === memory.id);
-    return nextDraft ? { ...memory, text: nextDraft.text.trim() || memory.text } : memory;
-  });
-
-const expensesFromPendingDraft = (effect: PendingEffect, draft: PendingEffectDraft) =>
-  (effect.expenses ?? []).map((expense, index) => {
-    const nextDraft = draft.expenses[index];
-    return nextDraft ? expenseFromDraft(nextDraft, expense) : expense;
-  });
-
-const normalizeSoothing = (value: CareLog["soothing"] | undefined): CareLog["soothing"] | undefined => {
-  if (value === "easy" || value === "normal" || value === "hard") return value;
-  return undefined;
-};
-
-const hasCareLogContent = (patch: Partial<CareLog>) =>
-  Boolean(
-    patch.milkMl ||
-      patch.milkTimes ||
-      patch.sleepHours ||
-      patch.wakes ||
-      patch.soothing ||
-      patch.solids?.length ||
-      patch.poop ||
-      patch.temperature ||
-      patch.events?.length ||
-      patch.notes?.length,
-  );
-
-const mergeCareEventsWithInferred = (modelEvents: CareLogEvent[], inferredEvents: CareLogEvent[]) => {
-  if (!modelEvents.length) return inferredEvents;
-
-  const usedInferredIndexes = new Set<number>();
-  const merged = modelEvents.map((event, index) => {
-    const inferredIndex = inferredEvents.findIndex(
-      (candidate, candidateIndex) =>
-        !usedInferredIndexes.has(candidateIndex) &&
-        (candidate.type === event.type || !event.time || candidate.note === event.note || candidate.title === event.title),
-    );
-    const inferred = inferredEvents[inferredIndex >= 0 ? inferredIndex : index];
-    if (inferredIndex >= 0) usedInferredIndexes.add(inferredIndex);
-
-    return {
-      ...event,
-      id: event.id || inferred?.id || makeId("care-event"),
-      time: event.time ?? inferred?.time,
-      amountMl: event.amountMl ?? inferred?.amountMl,
-      durationHours: event.durationHours ?? inferred?.durationHours,
-      temperature: event.temperature ?? inferred?.temperature,
-      note: event.note ?? inferred?.note,
-      tags: event.tags?.length ? event.tags : inferred?.tags,
-    };
-  });
-
-  const extras = inferredEvents.filter(
-    (candidate, index) =>
-      !usedInferredIndexes.has(index) &&
-      !merged.some((event) => event.type === candidate.type && event.time === candidate.time && event.note === candidate.note),
-  );
-  return [...merged, ...extras].slice(0, 12);
-};
+// normalizeSoothing / mergeCareEventsWithInferred 随 normalizeAgentResponse 迁入
+// features/chat/useChatState;hasCareLogContent 下沉到 ./utils/agentChatShared(本文件与 hook 共用,见顶部 import)。
 
 const hasConcreteCareEventTime = (patch: Partial<CareLog> | undefined) =>
   Boolean(patch?.events?.some((event) => event.time && event.type !== "note"));
@@ -1427,139 +940,8 @@ const isAutoRecordableCareLog = (patch: Partial<CareLog> | undefined, alerts: Sa
       !alerts.some((alert) => alert.level === "urgent"),
   );
 
-const normalizeAgentResponse = (result: AgentChatResponse, parentText: string) => {
-  const now = new Date().toISOString();
-  const growthEvent: GrowthEvent | undefined =
-    result.growthEvent && (result.growthEvent.title || result.growthEvent.summary)
-      ? {
-          id: result.growthEvent.id ?? makeId("growth"),
-          type: result.growthEvent.type ?? "daily_growth",
-          title: result.growthEvent.title ?? "新的成长瞬间",
-          date: result.growthEvent.date ?? todayISO(),
-          summary: result.growthEvent.summary ?? `${parentText}。`,
-          firstTime: Boolean(result.growthEvent.firstTime),
-          mediaKind: result.growthEvent.mediaKind,
-          tags: result.growthEvent.tags ?? ["成长"],
-        }
-      : undefined;
-
-  const careLogPatch =
-    result.careLogPatch && hasCareLogContent(result.careLogPatch)
-      ? (() => {
-          const date = result.careLogPatch?.date ?? todayISO();
-          const modelEvents = (result.careLogPatch?.events ?? []).map((item, index) => ({
-            ...normalizeCareLogEvent(item, index, date),
-            id: item.id || makeId("care-event"),
-          }));
-          const inferredEvents = extractCareEventsFromText(parentText, date);
-          const events = mergeCareEventsWithInferred(modelEvents, inferredEvents);
-          return {
-            ...result.careLogPatch,
-            date,
-            soothing: normalizeSoothing(result.careLogPatch.soothing),
-            solids: result.careLogPatch.solids ?? [],
-            events,
-            notes: result.careLogPatch.notes?.length ? result.careLogPatch.notes : [parentText],
-          };
-        })()
-      : undefined;
-
-  const reminders: Reminder[] = (result.reminders ?? [])
-    .filter((item) => item.title || item.dueText)
-    .map((item, index) =>
-      normalizeReminder(
-        {
-          id: item.id ?? makeId("reminder"),
-          title: item.title ?? "新的照护提醒",
-          reminderKind: item.reminderKind,
-          dueText: item.dueText ?? "待确认时间",
-          dueAt: item.dueAt,
-          timeSourceText: item.timeSourceText,
-          timezone: item.timezone,
-          notificationId: item.notificationId,
-          notificationStatus: item.notificationStatus,
-          notificationError: item.notificationError,
-          category: item.category,
-          recurrence: item.recurrence,
-          scheduleMode: item.scheduleMode,
-          alertMode: item.alertMode,
-          repeatRule: item.repeatRule,
-          soundId: item.soundId,
-          lastAnchorEventId: item.lastAnchorEventId,
-          lastAnchorAt: item.lastAnchorAt,
-          status: item.status,
-          createdAt: item.createdAt ?? now,
-          history: item.history ?? [],
-        },
-        index,
-      ),
-    );
-
-  const memories: MemoryItem[] = (result.memories ?? [])
-    .filter((item) => item.text?.trim())
-    .map((item) => ({
-      id: item.id ?? makeId("memory"),
-      text: item.text!.trim(),
-      category: normalizeMemoryCategory(item.category),
-      confidence: item.confidence ?? 0.72,
-      updatedAt: item.updatedAt ?? now,
-    }));
-
-  const expenses: ExpenseItem[] = (result.expenses ?? [])
-    .filter((item) => item.title?.trim() || item.amount)
-    .map((item, index) =>
-      normalizeExpenseItem(
-        {
-          ...item,
-          id: item.id ?? makeId("expense"),
-          date: item.date || todayISO(),
-          source: "agent",
-          createdAt: item.createdAt ?? now,
-          updatedAt: item.updatedAt ?? now,
-        },
-        index,
-      ),
-    );
-
-  return {
-    aiText: result.aiText,
-    tags: result.tags ?? [],
-    growthEvent,
-    careLogPatch,
-    reminders,
-    memories,
-    expenses,
-    sources: normalizeSources(result.sources ?? []),
-    safetyAlerts: normalizeSafetyAlerts(result.safetyAlerts),
-    effectDecisions: result.effectDecisions ?? [],
-  };
-};
-
-const normalizeSources = (sources: AgentSource[]) =>
-  sources
-    .filter((source) => source.title?.trim() && source.url?.trim())
-    .map((source) => ({
-      title: source.title.trim(),
-      url: source.url.trim(),
-      snippet: source.snippet?.trim() ?? "",
-    }))
-    .slice(0, 5);
-
-const normalizeSafetyAlerts = (alerts: SafetyAlert[] | null | undefined): SafetyAlert[] =>
-  (alerts ?? [])
-    .filter((alert) => alert.message?.trim())
-    .map((alert) => {
-      const level: SafetyAlert["level"] = alert.level === "urgent" ? "urgent" : "notice";
-      const category: SafetyAlert["category"] = alert.category ?? "general";
-
-      return {
-        level,
-        category,
-        message: alert.message,
-        recommendedAction: alert.recommendedAction ?? "请结合宝宝状态，必要时咨询医生。",
-      };
-    })
-    .slice(0, 3);
+// normalizeAgentResponse / normalizeSources / normalizeSafetyAlerts 随 submitComposerMessage 一族迁入
+// features/chat/useChatState(只被该提交流用)。
 
 const pendingEffectSummary = (effect: PendingEffect) => [
   effect.growthEvent ? `成长：${effect.growthEvent.title}` : "",
@@ -1626,17 +1008,8 @@ const hostLabel = (url: string) => {
 
 // expense helpers moved to ./utils/expense
 
-const upsertToolActivity = (items: ToolActivity[] | undefined, activity: ToolActivity) => {
-  const current = items ?? [];
-  if (current.some((item) => item.id === activity.id)) {
-    return current.map((item) => (item.id === activity.id ? activity : item));
-  }
-  return [...current, activity];
-};
-
-const isAgentProgressActivity = (activity: ToolActivity) => activity.toolId === "agent-progress";
-
-const VOICE_CANCEL_DISTANCE_PX = 76;
+// upsertToolActivity / VOICE_CANCEL_DISTANCE_PX 随 chat 一族迁入 features/chat/useChatState;
+// isAgentProgressActivity 下沉到 ./utils/agentChatShared(本文件作为 ChatScreen prop 与 hook 共用,见顶部 import)。
 
 const visibleToolActivitiesForMessage = (message: ChatMessage) => {
   const activities = message.toolActivities ?? [];
@@ -1644,339 +1017,91 @@ const visibleToolActivitiesForMessage = (message: ChatMessage) => {
   return activities.filter((activity) => activity.status !== "completed");
 };
 
-const failedRunningActivities = (items: ToolActivity[]) =>
-  items.map((item) => (item.status === "running" ? { ...item, status: "failed" as const } : item));
-
-const fetchAsDataUrl = async (url: string) => {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`无法读取附件内容（${response.status}）`);
-  const blob = await response.blob();
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read attachment"));
-    reader.readAsDataURL(blob);
-  });
-};
-
-const dataUrlWithinAgentLimit = (dataUrl?: string) =>
-  dataUrl && dataUrl.length <= MAX_AGENT_ATTACHMENT_DATA_URL_CHARS ? dataUrl : undefined;
-
-const agentImageTargetChars = (visualCount: number) => {
-  if (visualCount >= 6) return AGENT_IMAGE_TARGET_CHARS_LARGE_BATCH;
-  if (visualCount >= 3) return AGENT_IMAGE_TARGET_CHARS_SMALL_BATCH;
-  return AGENT_IMAGE_TARGET_CHARS_SINGLE;
-};
-
-const agentImageMaxEdge = (visualCount: number) =>
-  visualCount >= 3 ? AGENT_IMAGE_MAX_EDGE_BATCH : AGENT_IMAGE_MAX_EDGE_SINGLE;
-
-const resizeImageDataUrlForAgent = async (dataUrl?: string, visualCount = 1) => {
-  if (!dataUrl?.startsWith("data:image/")) return dataUrlWithinAgentLimit(dataUrl);
-  if (typeof window === "undefined" || typeof document === "undefined") return dataUrlWithinAgentLimit(dataUrl);
-
-  const targetChars = agentImageTargetChars(visualCount);
-  const baseMaxEdge = agentImageMaxEdge(visualCount);
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const nextImage = new window.Image();
-    nextImage.onload = () => resolve(nextImage);
-    nextImage.onerror = () => reject(new Error("无法读取图片内容"));
-    nextImage.src = dataUrl;
-  });
-  const sourceWidth = image.naturalWidth || image.width;
-  const sourceHeight = image.naturalHeight || image.height;
-  if (!sourceWidth || !sourceHeight) return dataUrlWithinAgentLimit(dataUrl);
-  if (Math.max(sourceWidth, sourceHeight) <= baseMaxEdge && dataUrl.length <= targetChars) {
-    return dataUrlWithinAgentLimit(dataUrl);
-  }
-
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (!context) return dataUrlWithinAgentLimit(dataUrl);
-
-  const attempts = [
-    { edge: baseMaxEdge, quality: 0.82 },
-    { edge: Math.round(baseMaxEdge * 0.88), quality: 0.78 },
-    { edge: Math.round(baseMaxEdge * 0.76), quality: 0.74 },
-    { edge: Math.round(baseMaxEdge * 0.64), quality: 0.72 },
-  ];
-  let smallest = dataUrl;
-
-  for (const attempt of attempts) {
-    const scale = Math.min(1, attempt.edge / Math.max(sourceWidth, sourceHeight));
-    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const compressed = canvas.toDataURL("image/jpeg", attempt.quality);
-    if (compressed.length < smallest.length) smallest = compressed;
-    if (compressed.length <= targetChars) return dataUrlWithinAgentLimit(compressed);
-  }
-
-  return dataUrlWithinAgentLimit(smallest);
-};
-
-const agentStatusTag = (type: AgentStreamStatusType) => {
-  if (type === "planning") return "理解中";
-  if (type === "retrieving_context") return "查找中";
-  if (type === "analyzing_media") return "分析中";
-  return "生成中";
-};
-
-const formatAgentFailureMessage = (error: unknown, attachments: Attachment[]) => {
-  const message = error instanceof Error ? error.message.trim() : "";
-  if (error instanceof AgentApiError && error.code === "PRO_QUOTA_EXCEEDED") {
-    return message || "本月免费 AI 体验次数已用完，申请 Pro 内测后即可不限次使用。";
-  }
-  const hasVisualAttachments = attachments.some((attachment) => attachment.kind === "image" || attachment.kind === "video");
-  if (/图片分析超时|AI 响应超时/.test(message)) return message;
-  if (/timeout|timed out|超时/i.test(message)) {
-    return hasVisualAttachments
-      ? "图片分析超时了：我已尝试分批处理，但模型没有及时返回。请稍后重试；如果仍失败，可以先减少图片数量或分开发送。"
-      : "AI 响应超时了：模型没有及时返回，请稍后重试。";
-  }
-  if (message) return `AI 服务暂时不可用：${message}`;
-  return "AI 服务暂时不可用，请稍后再试。";
-};
-
-const isVisualAttachment = (attachment: Attachment) => attachment.kind === "image" || attachment.kind === "video";
-
-const VISUAL_AGENT_MODEL: AgentModelId = "doubao-seed-2.0-pro";
-
-const simpleCareRecordPattern =
-  /(喝|奶|母乳|配方奶|睡|醒|拉|尿|便便|辅食|体温|发烧|身高|体重|头围|ml|毫升|cm|kg|记一下|记录|提醒|花了|买了|记账)/i;
-
-const thinkingIntentPattern =
-  /(为什么|怎么|怎么办|原因|分析|评估|对比|规划|计划|方案|建议|趋势|复盘|总结|是否|要不要|可不可以|需不需要|如何)/;
-
-const resolveAgentModelForMessage = (text: string, messageAttachments: Attachment[]): AgentModelId => {
-  if (messageAttachments.some(isVisualAttachment)) return VISUAL_AGENT_MODEL;
-  return DEFAULT_MODEL;
-};
-
-const resolveThinkingForMessage = (text: string, messageAttachments: Attachment[]) => {
-  if (messageAttachments.some(isVisualAttachment)) return false;
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  if (simpleCareRecordPattern.test(trimmed) && trimmed.length < 80) return false;
-  return trimmed.length >= 120 || thinkingIntentPattern.test(trimmed);
-};
-
-const resolveLowLatencyForMessage = (model: AgentModelId, messageAttachments: Attachment[]) =>
-  model.startsWith("doubao-") && messageAttachments.some(isVisualAttachment);
-
-const mergeVoiceText = (baseText: string, transcript: string) => {
-  const base = baseText.trim();
-  const text = transcript.trim();
-  if (!base) return text;
-  if (!text) return base;
-  return `${base}${/[，。！？,.!?]$/.test(base) ? "" : " "}${text}`;
-};
-
-const downsampleAudio = (input: Float32Array, inputRate: number, outputRate: number) => {
-  if (inputRate === outputRate) return input;
-  const ratio = inputRate / outputRate;
-  const outputLength = Math.floor(input.length / ratio);
-  const output = new Float32Array(outputLength);
-
-  for (let index = 0; index < outputLength; index += 1) {
-    const start = Math.floor(index * ratio);
-    const end = Math.min(Math.floor((index + 1) * ratio), input.length);
-    let sum = 0;
-    for (let cursor = start; cursor < end; cursor += 1) {
-      sum += input[cursor];
-    }
-    output[index] = sum / Math.max(1, end - start);
-  }
-
-  return output;
-};
-
-const pcm16FromFloat32 = (input: Float32Array) => {
-  const output = new Uint8Array(input.length * 2);
-  const view = new DataView(output.buffer);
-  input.forEach((sample, index) => {
-    const value = Math.max(-1, Math.min(1, sample));
-    view.setInt16(index * 2, value < 0 ? value * 0x8000 : value * 0x7fff, true);
-  });
-  return output;
-};
-
-const rmsLevel = (input: Float32Array) => {
-  if (!input.length) return 0;
-  const sum = input.reduce((total, sample) => total + sample * sample, 0);
-  return Math.min(1, Math.sqrt(sum / input.length) * 6);
-};
-
-const extractAiTextPreview = (jsonContent: string) => {
-  const keyIndex = jsonContent.indexOf('"aiText"');
-  if (keyIndex < 0) return "";
-
-  const colonIndex = jsonContent.indexOf(":", keyIndex);
-  if (colonIndex < 0) return "";
-
-  const quoteIndex = jsonContent.indexOf('"', colonIndex + 1);
-  if (quoteIndex < 0) return "";
-
-  let value = "";
-  let escaping = false;
-  for (let index = quoteIndex + 1; index < jsonContent.length; index += 1) {
-    const char = jsonContent[index];
-    if (escaping) {
-      value += char === "n" ? "\n" : char === "t" ? "\t" : char;
-      escaping = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaping = true;
-      continue;
-    }
-    if (char === '"') return value;
-    value += char;
-  }
-
-  return value;
-};
+// failedRunningActivities / fetchAsDataUrl / resizeImageDataUrlForAgent(及其私有 helper)/ agentStatusTag /
+// formatAgentFailureMessage / isVisualAttachment / VISUAL_AGENT_MODEL / resolve*ForMessage / mergeVoiceText /
+// downsampleAudio / pcm16FromFloat32 / rmsLevel / extractAiTextPreview 随 chat 一族迁入 features/chat/useChatState。
 
 function App() {
+  // 性能探针:统计打字时 App 本体重渲次数(镜像 RecordsScreen 的 __recordsRenders);仅 benchmark 置 flag 时计数,生产惰性。
+  if (typeof window !== "undefined" && (window as unknown as { __COUNT_APP_RENDERS?: boolean }).__COUNT_APP_RENDERS) {
+    const probe = window as unknown as { __appRenders?: number };
+    probe.__appRenders = (probe.__appRenders || 0) + 1;
+  }
   useStableViewport();
   const legacyLocalStateRef = useRef(hasLegacyLocalState());
-  const [storedProfile, setStoredProfile] = useStoredState("baby-companion-profile", blankProfile);
-  const [storedMessages, setStoredMessages] = useStoredState<ChatMessage[]>("baby-companion-messages", []);
-  const [storedGrowthEvents, setStoredGrowthEvents] = useStoredState<GrowthEvent[]>("baby-companion-growth", []);
-  const [storedGrowthMeasurements, setStoredGrowthMeasurements] = useStoredState<GrowthMeasurement[]>("baby-companion-growth-measurements", []);
-  const [storedCareLogs, setStoredCareLogs] = useStoredState<CareLog[]>("baby-companion-care", []);
-  const [storedReminders, setStoredReminders] = useStoredState<Reminder[]>("baby-companion-reminders", []);
-  const [storedMemories, setStoredMemories] = useStoredState<MemoryItem[]>("baby-companion-memories", []);
-  const [storedPendingEffects, setStoredPendingEffects] = useStoredState<PendingEffect[]>("baby-companion-pending-effects", []);
-  const [storedAlbumItems, setStoredAlbumItems] = useStoredState<AlbumItem[]>("baby-companion-album-items", []);
-  const [storedExpenses, setStoredExpenses] = useStoredState<ExpenseItem[]>("baby-companion-expenses", []);
-  const [storedConversationSummary, setStoredConversationSummary] = useStoredState<ConversationSummary | null>(
-    "baby-companion-conversation-summary",
-    null,
-  );
-  // 首登知情同意：勾选一次后记住，不再弹。
+  // 中央服务端状态 STORE(13 个 collection 集合 + 归一化 memo + setX 包装 + 持久化/同步函数)已抽到
+  // useAppStore。它被 session 与每个 feature hook 消费,故在**最顶部**调用,返回值解构回与原来同名的
+  // 局部变量(profile / messages / careLogs / setMessages / persistRecord / applyAppSnapshot …),
+  // 故 App 其余引用(feature hooks 的 deps、各 mutatorsRef.current、boot 编排)一律照常。
+  // 排序约束:本 hook 调用最早,但其函数依赖的 setProTrial / setOnboardingRequired / authUser /
+  // authFamily / proTrial(来自更晚调用的 useSessionState)与 setStorageStatus / backendReadyRef
+  // (App-local,定义在本调用点之后)全部经 storeLateRef 注入(镜像 sessionLateRef 模式);App 在它们
+  // 都就绪后每次渲染无条件刷新该 ref(见下方 storeLateRef.current = {...})。这些函数只在事件/effect/
+  // boot 回调里触发时读取,call-time 不需要,故迟绑定不改运行时语义。
+  const storeLateRef = useRef<StoreLateDeps>({
+    setProTrial: () => undefined,
+    setOnboardingRequired: () => undefined,
+    authUser: null,
+    authFamily: null,
+    proTrial: normalizeProTrialStatus(null),
+    setStorageStatus: () => undefined,
+    backendReadyRef: { current: false },
+  });
+  const {
+    profile,
+    setProfile,
+    messages,
+    setMessages,
+    growthEvents,
+    setGrowthEvents,
+    growthMeasurements,
+    setGrowthMeasurements,
+    careLogs,
+    setCareLogs,
+    reminders,
+    setReminders,
+    memories,
+    setMemories,
+    pendingEffects,
+    setPendingEffects,
+    storedAlbumItemsNormalized,
+    setAlbumItems,
+    expenses,
+    setExpenses,
+    conversationSummary,
+    setConversationSummary,
+    pendingPersistAlbumIdsRef,
+    buildAppSnapshot,
+    applyAppSnapshot,
+    applyEmptyAppSnapshot,
+    cacheBackendState,
+    loadStateFromBackend,
+    applyStateResponse,
+    persistRecord,
+  } = useAppStore({ lateRef: storeLateRef });
+  // 首登知情同意：勾选一次后记住，不再弹。（不是 server collection，是 consent UI，留在 App。）
   const [consentGiven, setConsentGiven] = useStoredState("baby-companion-consent-v1", false);
   // 设置页里点开的隐私/协议/儿童信息静态页。
   const [settingsLegalDoc, setSettingsLegalDoc] = useState<LegalDocId | null>(null);
-  const profile = useMemo(() => normalizeBabyProfile(storedProfile), [storedProfile]);
-  const messages = useMemo(() => storedMessages.map(normalizeChatMessage), [storedMessages]);
-  const growthEvents = useMemo(() => storedGrowthEvents.map(normalizeGrowthEvent), [storedGrowthEvents]);
-  const growthMeasurements = useMemo(() => storedGrowthMeasurements.map(normalizeGrowthMeasurement), [storedGrowthMeasurements]);
-  const careLogs = useMemo(() => careLogsWithEventStats(dedupeCareLogs(storedCareLogs.map(normalizeCareLog))), [storedCareLogs]);
-  const reminders = useMemo(() => storedReminders.map(normalizeReminder), [storedReminders]);
-  const memories = useMemo(() => storedMemories.map(normalizeMemoryItem), [storedMemories]);
-  const pendingEffects = useMemo(() => storedPendingEffects.map(normalizePendingEffect), [storedPendingEffects]);
-  const storedAlbumItemsNormalized = useMemo(() => storedAlbumItems.map(normalizeAlbumItem), [storedAlbumItems]);
-  const expenses = useMemo(() => storedExpenses.map(normalizeExpenseItem), [storedExpenses]);
-  const conversationSummary = useMemo(
-    () => normalizeConversationSummary(storedConversationSummary),
-    [storedConversationSummary],
-  );
-  const setProfile = (action: SetStateAction<BabyProfile>) =>
-    setStoredProfile((current) => normalizeBabyProfile(resolveStateAction(action, normalizeBabyProfile(current))));
-  const setMessages = (action: SetStateAction<ChatMessage[]>) =>
-    setStoredMessages((current) => resolveStateAction(action, current.map(normalizeChatMessage)).map(normalizeChatMessage));
-  const setGrowthEvents = (action: SetStateAction<GrowthEvent[]>) =>
-    setStoredGrowthEvents((current) => resolveStateAction(action, current.map(normalizeGrowthEvent)).map(normalizeGrowthEvent));
-  const setGrowthMeasurements = (action: SetStateAction<GrowthMeasurement[]>) =>
-    setStoredGrowthMeasurements((current) => resolveStateAction(action, current.map(normalizeGrowthMeasurement)).map(normalizeGrowthMeasurement));
-  const setCareLogs = (action: SetStateAction<CareLog[]>) =>
-    setStoredCareLogs((current) => resolveStateAction(action, current.map(normalizeCareLog)).map(normalizeCareLog));
-  const setReminders = (action: SetStateAction<Reminder[]>) =>
-    setStoredReminders((current) => resolveStateAction(action, current.map(normalizeReminder)).map(normalizeReminder));
-  const setMemories = (action: SetStateAction<MemoryItem[]>) =>
-    setStoredMemories((current) => resolveStateAction(action, current.map(normalizeMemoryItem)).map(normalizeMemoryItem));
-  const setPendingEffects = (action: SetStateAction<PendingEffect[]>) =>
-    setStoredPendingEffects((current) =>
-      resolveStateAction(action, current.map(normalizePendingEffect)).map(normalizePendingEffect),
-    );
-  const setAlbumItems = (action: SetStateAction<AlbumItem[]>) =>
-    setStoredAlbumItems((current) => resolveStateAction(action, current.map(normalizeAlbumItem)).map(normalizeAlbumItem));
-  const setExpenses = (action: SetStateAction<ExpenseItem[]>) =>
-    setStoredExpenses((current) => resolveStateAction(action, current.map(normalizeExpenseItem)).map(normalizeExpenseItem));
-  const setConversationSummary = (action: SetStateAction<ConversationSummary | null>) =>
-    setStoredConversationSummary((current) =>
-      normalizeConversationSummary(resolveStateAction(action, normalizeConversationSummary(current))),
-    );
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => (getAuthToken() ? "checking" : "unauthenticated"));
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [authFamily, setAuthFamily] = useState<AuthFamily | null>(null);
-  const [authMember, setAuthMember] = useState<AuthMember | null>(null);
-  const [proTrial, setProTrial] = useState<ProTrialStatus>(() => normalizeProTrialStatus(null));
-  const [aiUsageSummary, setAiUsageSummary] = useState<AiUsageSummary | null>(null);
-  const [aiUsageStatus, setAiUsageStatus] = useState<AiUsageStatus>("idle");
-  const [familyMembers, setFamilyMembers] = useState<FamilyMembersResponse | null>(null);
-  const [familyMembersStatus, setFamilyMembersStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [familyMemberBusyUserId, setFamilyMemberBusyUserId] = useState<string | null>(null);
-  const [resetInviteCodeValue, setResetInviteCodeValue] = useState<string | null>(null);
-  const [isApplyingProTrial, setIsApplyingProTrial] = useState(false);
-  const [redeemCodeInput, setRedeemCodeInput] = useState("");
-  const [isRedeemingProCode, setIsRedeemingProCode] = useState(false);
-  const [onboardingRequired, setOnboardingRequired] = useState(false);
-  const [loginPhone, setLoginPhone] = useState("");
-  const [loginInviteCode, setLoginInviteCode] = useState("");
-  const [loginRoleName, setLoginRoleName] = useState<"" | (typeof ROLE_OPTIONS)[number]>("");
-  const [loginCaregiver, setLoginCaregiver] = useState<boolean | null>(null);
-  const [loginExistingMember, setLoginExistingMember] = useState<AuthMember | null>(null);
-  const [loginError, setLoginError] = useState("");
-  const [occupiedInviteRoles, setOccupiedInviteRoles] = useState<string[]>([]);
-  const [inviteRoleHint, setInviteRoleHint] = useState("");
-  const [inviteFamilyName, setInviteFamilyName] = useState("");
-  const [isCheckingInviteRoles, setIsCheckingInviteRoles] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState(0);
-  const [onboardingDraft, setOnboardingDraft] = useState<BabyProfile>({
-    ...blankProfile,
-    allergies: ["暂未发现"],
-    caregivers: initialProfile.caregivers,
-  });
-  const [onboardingFamilyName, setOnboardingFamilyName] = useState(suggestedFamilyName(initialProfile.nickname));
-  const onboardingFamilyNameTouchedRef = useRef(false);
-  const [onboardingAllergiesText, setOnboardingAllergiesText] = useState("暂未发现");
+  // session 一族(auth/login/onboarding/profile-edit/family-member/proTrial/aiUsage)的 state/effect/handlers
+  // 已抽到 useSessionState(下方在 canCaregive 后提前调用,返回值解构回同名变量)。
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("records");
   // 性能:没访问过的 Tab 不渲染(冷启动只渲染首 Tab;访问过后保持挂载,行为与从前一致)。
   const visitedMobileTabsRef = useRef<Set<MobileTab>>(new Set());
   visitedMobileTabsRef.current.add(activeMobileTab);
-  const [recordView, setRecordView] = useState<RecordView>("today");
-  const [recordsEntryDrawer, setRecordsEntryDrawer] = useState<RecordsEntryDrawer>(null);
-  const [recordsEntryDrawerClosing, setRecordsEntryDrawerClosing] = useState(false);
-  const [recordsAssistantOpen, setRecordsAssistantOpen] = useState(false);
-  const [ledgerView, setLedgerView] = useState<LedgerViewId>("month");
-  const [expenseEditorOpen, setExpenseEditorOpen] = useState(false);
-  const [editingExpenseId, setEditingExpenseId] = useState("");
-  const [expenseDraft, setExpenseDraft] = useState<ExpenseDraft>(() => createExpenseDraft());
-  const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<ExpenseItem | null>(null);
-  const [expenseBulkMode, setExpenseBulkMode] = useState(false);
-  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(() => new Set());
-  const [collapsedExpenseMonths, setCollapsedExpenseMonths] = useState<Set<string>>(() => new Set());
-  const [bulkDeleteExpensesOpen, setBulkDeleteExpensesOpen] = useState(false);
-  const [milestonesViewOpen, setMilestonesViewOpen] = useState(false);
-  const [growthEntryOpen, setGrowthEntryOpen] = useState(false);
-  const [reminderManagementOpen, setReminderManagementOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(todayISO());
-  const [calendarMonth, setCalendarMonth] = useState(todayISO().slice(0, 7));
-  const [isProfileEditing, setIsProfileEditing] = useState(false);
-  const [profileDraft, setProfileDraft] = useState<BabyProfile>(profile);
-  const [allergiesText, setAllergiesText] = useState(profile.allergies.join("、"));
-  const [composerMode, setComposerMode] = useState<ComposerMode>("keyboard");
-  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
-  const [voiceLevel, setVoiceLevel] = useState(0);
-  const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [voiceCancelArmed, setVoiceCancelArmed] = useState(false);
-  const [voiceError, setVoiceError] = useState("");
-  const [input, setInput] = useState("");
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isAttachmentTrayExpanded, setIsAttachmentTrayExpanded] = useState(false);
-  const [mediaUploadItems, setMediaUploadItems] = useState<MediaUploadItem[]>([]);
-  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
-  const [previewAlbumItem, setPreviewAlbumItem] = useState<AlbumItem | null>(null);
-  const [previewMotion, setPreviewMotion] = useState<PreviewMotion>("idle");
-  const [previewOriginRect, setPreviewOriginRect] = useState<PreviewOriginRect | null>(null);
-  const [previewActionsOpen, setPreviewActionsOpen] = useState(false);
-  const [previewTransform, setPreviewTransform] = useState({ scale: 1, x: 0, y: 0 });
+  // records 一族的 state/refs/handlers 已抽到 useRecordsState(下方在 canCaregive 后提前调用)。
+  // isProfileEditing / profileDraft / allergiesText 已抽到 useSessionState(同上)。
+  // chat 一族(composerMode / voice* / attachments / isAttachmentTrayExpanded / mediaUploadItems /
+  // isListening / isSubmitting / compressionStatus + refs/handlers/派生)已抽到 useChatState
+  // (下方在 useAlbumState 之前提前调用;它产出 album 依赖的 mediaUploadItems / processSelectedMediaFiles)。
+  // input 由独立 external store 持有(见 features/chat/composerInput),打字不再重渲 App 本体;
+  // setInput / inputValueRef 留在 App 供 openRecordsAssistant 写入草稿(都走同一 store,语义不变)。
+  const setInput = composerInput.set;
+  const inputValueRef = composerInputRef;
+  // 预览子系统的 state(previewAttachment / previewAlbumItem / previewMotion / previewOriginRect /
+  // previewActionsOpen / previewTransform)与全部 preview refs 已抽到 features/preview/usePreviewState;
+  // 下方在 useAlbumState **之前**调用该 hook(它产出 useAlbumState 消费的 setPreview* / previewAlbumItemsRef),
+  // 返回值解构回同名变量,故 App 其余引用照常。
   const [runtimeVersion, setRuntimeVersion] = useState<RuntimeVersionInfo>(() => ({
     otaVersion: BUILD_OTA_VERSION || "内置包",
     nativeVersion: "检测中",
@@ -1985,76 +1110,25 @@ function App() {
     status: isNativePlatform() ? "读取中" : "Web 预览",
   }));
   const [systemWeakNotice, setSystemWeakNotice] = useState<SystemWeakNotice | null>(null);
-  const [isListening, setIsListening] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // isListening / isSubmitting / compressionStatus 已抽到 useChatState。
   const [storageStatus, setStorageStatus] = useState<"loading" | "ready" | "offline">("loading");
-  const [compressionStatus, setCompressionStatus] = useState<CompressionStatus>("idle");
-  const [editingPendingId, setEditingPendingId] = useState("");
-  const [pendingDraft, setPendingDraft] = useState<PendingEffectDraft | null>(null);
-  const [confirmingPendingEffectIds, setConfirmingPendingEffectIds] = useState<string[]>([]);
+  // editingPendingId / pendingDraft / confirmingPendingEffectIds 已抽到 usePendingEffects(下方在 canCaregive 后提前调用)。
   const [manualRecordKind, setManualRecordKind] = useState<ManualRecordKind>("milk");
-  const [editingCareEventId, setEditingCareEventId] = useState("");
-  const [swipedTimelineEventId, setSwipedTimelineEventId] = useState("");
-  const [deleteCareEventTarget, setDeleteCareEventTarget] = useState<RecordEvent | null>(null);
-  const [careEventDraft, setCareEventDraft] = useState<CareEventDraft>(() => createCareEventDraft("milk"));
-  const [growthCurveType, setGrowthCurveType] = useState<GrowthMeasurementType>("height");
-  const [growthMeasurementDraft, setGrowthMeasurementDraft] = useState<{
-    type: GrowthMeasurementType;
-    value: string;
-    date: string;
-    note: string;
-  }>({
-    type: "height",
-    value: "",
-    date: todayISO(),
-    note: "",
-  });
-  const [editingGrowthMeasurementId, setEditingGrowthMeasurementId] = useState("");
-  const [reminderEditorOpen, setReminderEditorOpen] = useState(false);
-  const [editingReminderId, setEditingReminderId] = useState("");
-  const [reminderDraft, setReminderDraft] = useState<ReminderDraft>(() => createReminderDraft());
-  const [completeReminderTarget, setCompleteReminderTarget] = useState<Reminder | null>(null);
-  const [postponeReminderTarget, setPostponeReminderTarget] = useState<Reminder | null>(null);
-  const [postponeReminderDraft, setPostponeReminderDraft] = useState<ReminderPostponeDraft>(() => reminderPostponeDraftFromReminder());
-  const [deleteReminderTarget, setDeleteReminderTarget] = useState<Reminder | null>(null);
+  // editingCareEventId / swipedTimelineEventId / deleteCareEventTarget / careEventDraft /
+  // growthCurveType / growthMeasurementDraft / editingGrowthMeasurementId 已抽到 useRecordsState。
   const [ringingReminder, setRingingReminder] = useState<Reminder | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const albumFileInputRef = useRef<HTMLInputElement>(null);
-  const expenseEditorBodyRef = useRef<HTMLDivElement>(null);
-  const expenseOptionalPanelRef = useRef<HTMLDetailsElement>(null);
+  // fileInputRef / asr/audio/voice 一族 ref / isSubmittingRef / submitComposerMessageRef 已抽到 useChatState。
+  // albumFileInputRef 已抽到 useAlbumState(下方在 canCaregive 后提前调用)。
+  // messageListRef / hasPositionedMessageListRef / messageScrollSignatureRef 随 messageList 自动滚动 useLayoutEffect 留在 App(布局编排)。
   const messageListRef = useRef<HTMLDivElement>(null);
-  const asrControllerRef = useRef<AsrStreamController | null>(null);
-  const voiceStandbyStreamRef = useRef<MediaStream | null>(null);
-  const voiceStandbyPromiseRef = useRef<Promise<MediaStream> | null>(null);
-  const voicePreparingRef = useRef(false);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const silentGainRef = useRef<GainNode | null>(null);
-  const voiceBaseTextRef = useRef("");
-  const voiceSampleBufferRef = useRef<number[]>([]);
-  const voiceSessionRef = useRef(0);
-  const voiceShouldStopRef = useRef(false);
-  const voiceEndedRef = useRef(false);
-  const voiceAsrReadyRef = useRef(false);
-  const voiceAutoSubmitRef = useRef(false);
-  const voicePressingRef = useRef(false);
-  const voicePointerRef = useRef<{ pointerId: number; startY: number; canceling: boolean } | null>(null);
-  const voicePointerCleanupRef = useRef<(() => void) | null>(null);
-  const voiceAutoSubmitTimerRef = useRef<number | null>(null);
-  const inputValueRef = useRef(input);
+  // closeRecordsEntryDrawer / openManualRecordDrawer 留在 App(见 useRecordsState 偏差④),故其计时器 ref 也留在此。
   const recordsEntryDrawerCloseTimerRef = useRef<number | null>(null);
-  const timelineSwipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
-  const isSubmittingRef = useRef(isSubmitting);
-  const submitComposerMessageRef = useRef<((textOverride?: string, options?: { skipVoiceStop?: boolean }) => Promise<void>) | null>(null);
+  // timelineSwipeStartRef 已抽到 useRecordsState。
   const hasPositionedMessageListRef = useRef(false);
   const messageScrollSignatureRef = useRef("");
   const backendReadyRef = useRef(false);
-  // Album items whose optimistic persistRecord has not yet succeeded. While an id
-  // is here, applyAppSnapshot must not let a backend snapshot that omits it drop
-  // the item (production data-loss guard). Removed on persist success.
-  const pendingPersistAlbumIdsRef = useRef<Set<string>>(new Set());
+  // pendingPersistAlbumIdsRef(乐观相册项防快照覆盖的 data-loss guard)已随 STORE 迁入 useAppStore,
+  // 上方解构回同名 ref(applyAppSnapshot / persistAlbumItemOptimistic / album hook 仍照常读写它)。
   const compressionInFlightRef = useRef(false);
   const compressionResetTimerRef = useRef<number | null>(null);
   const intervalReminderRescheduleRef = useRef("");
@@ -2062,31 +1136,8 @@ function App() {
   const handledNativeNotificationKeysRef = useRef<Set<string>>(new Set());
   const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
   const systemWeakNoticeTimerRef = useRef<number | null>(null);
-  const previewPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const previewLastPointRef = useRef({ x: 0, y: 0 });
-  const previewPinchRef = useRef<{ distance: number; scale: number } | null>(null);
-  const previewSwipeRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    lastX: number;
-    lastY: number;
-    lastTime: number;
-    velocityX: number;
-    baseOffset: number;
-  } | null>(null);
-  const previewDragOffsetRef = useRef(0);
-  const previewTapGuardRef = useRef(false);
-  const previewCarouselTrackRef = useRef<HTMLDivElement | null>(null);
-  const previewSwipeSettleTimerRef = useRef<number | null>(null);
-  // 进行中的翻页(动画未 settle):被新手势抓住时必须先「落账」该次翻页,否则连续快滑会被吞张。
-  const previewPendingPageRef = useRef<{ item: AlbumItem; attachment: Attachment; direction: 1 | -1 } | null>(null);
-  const previewSwipeSettleCleanupRef = useRef<(() => void) | null>(null);
-  const previewAlbumItemsRef = useRef<AlbumItem[]>([]);
-  const previewAlbumItemRef = useRef<AlbumItem | null>(null);
-  const previewOpenTimerRef = useRef<number | null>(null);
-  const previewCloseTimerRef = useRef<number | null>(null);
-  const previewVideoCleanupRef = useRef<(() => void) | null>(null);
+  // 全部 preview refs(手势指针/捏合/滑动/翻页 settle/轮播 track/共享可预览列表 previewAlbumItemsRef 等)
+  // 已随预览态搬进 features/preview/usePreviewState(下方 hook 返回值解构回同名 ref)。
   const appPlatform = platformLabel();
   const babyNickname = profile.nickname.trim() || "小宝";
   const familySpeakerName = `${babyNickname}家`;
@@ -2094,66 +1145,547 @@ function App() {
     (text: string) => text.split("小宝").join(babyNickname),
     [babyNickname],
   );
-  const settleExpenseOptionalPanel = useCallback(() => {
-    const body = expenseEditorBodyRef.current;
-    const panel = expenseOptionalPanelRef.current;
-    if (!body || !panel || !panel.open) return;
-    const target = panel.querySelector("textarea") ?? panel;
-    const alignTarget = () => {
-      const bodyRect = body.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      const safeBottom = bodyRect.bottom - 22;
-      const safeTop = bodyRect.top + 12;
-      if (targetRect.bottom > safeBottom) {
-        body.scrollTop += targetRect.bottom - safeBottom;
-      } else if (targetRect.top < safeTop) {
-        body.scrollTop -= safeTop - targetRect.top;
-      }
-    };
-    window.requestAnimationFrame(alignTarget);
-    window.setTimeout(alignTarget, 90);
-    window.setTimeout(alignTarget, 240);
-  }, []);
+  // session 一族(auth/login/onboarding/profile-edit/family-member/proTrial/aiUsage)抽到 useSessionState。
+  // 本 hook 必须在 canCaregive **之前**调用:它产出 authMember,而 canCaregive 读 authMember,且 canCaregive
+  // 又被下方 ledger/reminders/records/album 各 hook 消费(排序约束见 useSessionState 顶部注释)。
+  // 因此「在本调用点之后才定义」的依赖(canCaregive 本身、records hook 的 setRecordsEntryDrawer /
+  // setRecordsAssistantOpen、reminders hook 的 openReminderManagement,以及 showSystemWeakNotice /
+  // persistRecord / loadStateFromBackend / applyEmptyAppSnapshot)经 sessionLateRef 注入,在下方
+  // mutators 赋值点统一刷新(沿用 records 的 recordsLateRef 模式)。
+  const sessionLateRef = useRef<SessionLateDeps>({
+    canCaregive: true,
+    setRecordsEntryDrawer: () => undefined,
+    setRecordsAssistantOpen: () => undefined,
+    openReminderManagement: () => undefined,
+    showSystemWeakNotice: () => undefined,
+    persistRecord: (() => {
+      throw new Error("persistRecord not ready");
+    }) as SessionLateDeps["persistRecord"],
+    loadStateFromBackend: (() => {
+      throw new Error("loadStateFromBackend not ready");
+    }) as SessionLateDeps["loadStateFromBackend"],
+    applyEmptyAppSnapshot: () => undefined,
+  });
+  const {
+    authStatus,
+    setAuthStatus,
+    authUser,
+    setAuthUser,
+    authFamily,
+    setAuthFamily,
+    authMember,
+    setAuthMember,
+    proTrial,
+    setProTrial,
+    aiUsageSummary,
+    setAiUsageSummary,
+    aiUsageStatus,
+    setAiUsageStatus,
+    familyMembers,
+    setFamilyMembers,
+    familyMembersStatus,
+    setFamilyMembersStatus,
+    familyMemberBusyUserId,
+    setFamilyMemberBusyUserId,
+    resetInviteCodeValue,
+    setResetInviteCodeValue,
+    isApplyingProTrial,
+    setIsApplyingProTrial,
+    redeemCodeInput,
+    setRedeemCodeInput,
+    isRedeemingProCode,
+    setIsRedeemingProCode,
+    onboardingRequired,
+    setOnboardingRequired,
+    loginPhone,
+    setLoginPhone,
+    loginInviteCode,
+    setLoginInviteCode,
+    loginRoleName,
+    setLoginRoleName,
+    loginCaregiver,
+    setLoginCaregiver,
+    loginExistingMember,
+    setLoginExistingMember,
+    loginError,
+    setLoginError,
+    occupiedInviteRoles,
+    setOccupiedInviteRoles,
+    inviteRoleHint,
+    setInviteRoleHint,
+    inviteFamilyName,
+    setInviteFamilyName,
+    isCheckingInviteRoles,
+    setIsCheckingInviteRoles,
+    isLoggingIn,
+    setIsLoggingIn,
+    onboardingStep,
+    setOnboardingStep,
+    onboardingDraft,
+    setOnboardingDraft,
+    onboardingFamilyName,
+    setOnboardingFamilyName,
+    onboardingFamilyNameTouchedRef,
+    onboardingAllergiesText,
+    setOnboardingAllergiesText,
+    isProfileEditing,
+    setIsProfileEditing,
+    profileDraft,
+    setProfileDraft,
+    allergiesText,
+    setAllergiesText,
+    loginRoleOptions,
+    loginSelectedRoleOccupied,
+    loginCredentialsReady,
+    loginReady,
+    refreshAiUsageSummary,
+    refreshFamilyMembers,
+    handleToggleMemberCaregiver,
+    handleRemoveFamilyMember,
+    handleResetFamilyInviteCode,
+    applyForProTrial,
+    redeemProTrialCode,
+    handleProfileSubmit,
+    handleLoginSubmit,
+    handleLogout,
+    saveOnboardingProfile,
+    resetProfileDraft,
+    startProfileEditing,
+    cancelProfileEditing,
+    profileScreenHandlers,
+  } = useSessionState({
+    profile,
+    setProfile,
+    setStorageStatus,
+    setActiveMobileTab,
+    backendReadyRef,
+    legacyLocalStateRef,
+    lateRef: sessionLateRef,
+  });
   const canCaregive = authMember?.caregiver ?? true;
-  const visibleTabs = MOBILE_TABS;
+  const todayDate = todayISO();
+  // hasAiQuota / canAttachVisuals 上移到此(原在 useAlbumState 之后):useChatState 需要它们,且必须排在
+  // useAlbumState 之前(产出 album 依赖的 mediaUploadItems / processSelectedMediaFiles)。只依赖 proTrial(已就绪)/ canCaregive。
   const freeAiCallsRemaining = proTrial.freeCallsRemaining;
   // 统一边界：Pro 不限次；Free 在每月免费额度内也可用 AI（含图片/视频整理）。剩余未知时不前置拦截，由服务端兜底。
   const hasAiQuota = proTrial.enabled || freeAiCallsRemaining == null || freeAiCallsRemaining > 0;
   const canAttachVisuals = canCaregive && hasAiQuota;
+  // useChatState 的迟绑定依赖:persistRecord / applyStateResponse / persistAlbumItemOptimistic /
+  // showSystemWeakNotice / applyForProTrial / buildAgentPageContext / messageForStorage 都在本 hook 调用点之后才定义,
+  // 经此 ref 注入(沿用 records/album 的 lateRef 模式);在下方它们都就绪后同处刷新。
+  const chatLateRef = useRef<ChatLateDeps>({
+    persistRecord: (() => {
+      throw new Error("persistRecord not ready");
+    }) as ChatLateDeps["persistRecord"],
+    applyStateResponse: () => undefined,
+    persistAlbumItemOptimistic: (() => {
+      throw new Error("persistAlbumItemOptimistic not ready");
+    }) as ChatLateDeps["persistAlbumItemOptimistic"],
+    showSystemWeakNotice: () => undefined,
+    applyForProTrial: () => undefined,
+    buildAgentPageContext: (() => {
+      throw new Error("buildAgentPageContext not ready");
+    }) as ChatLateDeps["buildAgentPageContext"],
+    messageForStorage: (() => {
+      throw new Error("messageForStorage not ready");
+    }) as ChatLateDeps["messageForStorage"],
+  });
+  // persistRecord / deleteAppRecord 在下方才定义,故经 ref 注入(沿用本文件 remindersHandlersRef 的间接模式);
+  // 定义后每次渲染都无条件刷新这个 ref(见 deleteAppRecord 定义处的赋值)。
+  const ledgerMutatorsRef = useRef<LedgerMutators>({
+    persistRecord: (() => {
+      throw new Error("persistRecord not ready");
+    }) as LedgerMutators["persistRecord"],
+    deleteAppRecord: (() => {
+      throw new Error("deleteAppRecord not ready");
+    }) as LedgerMutators["deleteAppRecord"],
+  });
+  const remindersMutatorsRef = useRef<RemindersMutators>({
+    persistRecord: (() => {
+      throw new Error("persistRecord not ready");
+    }) as RemindersMutators["persistRecord"],
+    deleteAppRecord: (() => {
+      throw new Error("deleteAppRecord not ready");
+    }) as RemindersMutators["deleteAppRecord"],
+    latestMilkAnchor: null,
+  });
+  const recordsMutatorsRef = useRef<RecordsMutators>({
+    persistRecord: (() => {
+      throw new Error("persistRecord not ready");
+    }) as RecordsMutators["persistRecord"],
+    deleteAppRecord: (() => {
+      throw new Error("deleteAppRecord not ready");
+    }) as RecordsMutators["deleteAppRecord"],
+  });
+  // handleAddGrowthMeasurement 用的 showSystemWeakNotice 的 useCallback 定义在 hook 调用点之后才就绪,
+  // 经此迟绑定 ref 注入;在下方 mutators 赋值点同处刷新(那时它已就绪)。
+  const recordsLateRef = useRef<RecordsLateDeps>({
+    showSystemWeakNotice: () => undefined,
+  });
+  // usePendingEffects 的迟绑定依赖:persistRecord / applyAppSnapshot / persistAlbumItemOptimistic /
+  // showSystemWeakNotice / messageForStorage 都在本 hook 调用点之后才定义,经此 ref 注入
+  // (沿用 records 的 recordsLateRef 模式);在下方它们都就绪后同处刷新。
+  const pendingEffectsLateRef = useRef<PendingEffectsLateDeps>({
+    persistRecord: (() => {
+      throw new Error("persistRecord not ready");
+    }) as PendingEffectsLateDeps["persistRecord"],
+    applyAppSnapshot: () => undefined,
+    persistAlbumItemOptimistic: (() => {
+      throw new Error("persistAlbumItemOptimistic not ready");
+    }) as PendingEffectsLateDeps["persistAlbumItemOptimistic"],
+    showSystemWeakNotice: () => undefined,
+    messageForStorage: (message) => message,
+  });
+  // useAlbumState 的迟绑定依赖:persistAlbumItemOptimistic / applyStateResponse /
+  // showSystemWeakNotice / processSelectedMediaFiles 都在本 hook 调用点之后才定义,
+  // 经此 ref 注入(沿用 records 的 recordsLateRef 模式);在下方它们都就绪后同处刷新。
+  const albumLateRef = useRef<AlbumLateDeps>({
+    showSystemWeakNotice: () => undefined,
+    applyStateResponse: () => undefined,
+    persistAlbumItemOptimistic: (() => {
+      throw new Error("persistAlbumItemOptimistic not ready");
+    }) as AlbumLateDeps["persistAlbumItemOptimistic"],
+    processSelectedMediaFiles: (() => {
+      throw new Error("processSelectedMediaFiles not ready");
+    }) as AlbumLateDeps["processSelectedMediaFiles"],
+    isUploadingAlbumMedia: false,
+  });
+  const {
+    ledgerView,
+    setLedgerView,
+    expenseEditorOpen,
+    setExpenseEditorOpen,
+    editingExpenseId,
+    setEditingExpenseId,
+    expenseDraft,
+    setExpenseDraft,
+    deleteExpenseTarget,
+    setDeleteExpenseTarget,
+    expenseBulkMode,
+    setExpenseBulkMode,
+    selectedExpenseIds,
+    setSelectedExpenseIds,
+    collapsedExpenseMonths,
+    setCollapsedExpenseMonths,
+    bulkDeleteExpensesOpen,
+    setBulkDeleteExpensesOpen,
+    expenseEditorBodyRef,
+    expenseOptionalPanelRef,
+    settleExpenseOptionalPanel,
+    ledgerMonthKey,
+    ledgerYearKey,
+    sortedExpenses,
+    expenseMonthGroups,
+    monthExpenses,
+    yearExpenses,
+    ledgerStats,
+    openNewExpenseEditor,
+    openEditExpenseEditor,
+    closeExpenseEditor,
+    saveExpenseDraft,
+    requestDeleteExpense,
+    closeDeleteExpenseConfirm,
+    confirmDeleteExpense,
+    exitExpenseBulkMode,
+    toggleExpenseBulkMode,
+    toggleExpenseSelection,
+    toggleExpenseMonthCollapse,
+    requestBulkDeleteExpenses,
+    closeBulkDeleteExpenses,
+    confirmBulkDeleteExpenses,
+  } = useLedgerState({ expenses, setExpenses, canCaregive, todayDate, setStorageStatus, mutatorsRef: ledgerMutatorsRef });
+  const {
+    reminderManagementOpen,
+    setReminderManagementOpen,
+    reminderEditorOpen,
+    setReminderEditorOpen,
+    editingReminderId,
+    setEditingReminderId,
+    reminderDraft,
+    setReminderDraft,
+    completeReminderTarget,
+    setCompleteReminderTarget,
+    postponeReminderTarget,
+    setPostponeReminderTarget,
+    postponeReminderDraft,
+    setPostponeReminderDraft,
+    deleteReminderTarget,
+    setDeleteReminderTarget,
+    openNewReminderEditor,
+    openReminderQuickDraft,
+    openEditReminderEditor,
+    closeReminderEditor,
+    saveReminderDraft,
+    completeReminder,
+    requestCompleteReminder,
+    closeCompleteReminderConfirm,
+    confirmCompleteReminder,
+    requestPostponeReminder,
+    closePostponeReminderConfirm,
+    confirmPostponeReminder,
+    requestDeleteReminder,
+    closeDeleteReminderConfirm,
+    confirmDeleteReminder,
+    openReminderManagement,
+    closeReminderManagement,
+    remindersScreenHandlers,
+  } = useRemindersState({
+    canCaregive,
+    careLogs,
+    reminders,
+    setReminders,
+    setStorageStatus,
+    babyNickname,
+    withBabyNickname,
+    setActiveMobileTab,
+    scheduleNativeReminders,
+    cancelNativeReminder,
+    reminderFromDraft,
+    addReminderHistory,
+    mutatorsRef: remindersMutatorsRef,
+  });
+  const {
+    recordView,
+    setRecordView,
+    recordsEntryDrawer,
+    setRecordsEntryDrawer,
+    recordsEntryDrawerClosing,
+    setRecordsEntryDrawerClosing,
+    recordsAssistantOpen,
+    setRecordsAssistantOpen,
+    milestonesViewOpen,
+    setMilestonesViewOpen,
+    growthEntryOpen,
+    setGrowthEntryOpen,
+    selectedDate,
+    setSelectedDate,
+    calendarMonth,
+    setCalendarMonth,
+    vaccineViewOpen,
+    setVaccineViewOpen,
+    editingCareEventId,
+    setEditingCareEventId,
+    swipedTimelineEventId,
+    setSwipedTimelineEventId,
+    deleteCareEventTarget,
+    setDeleteCareEventTarget,
+    careEventDraft,
+    setCareEventDraft,
+    growthCurveType,
+    setGrowthCurveType,
+    growthMeasurementDraft,
+    setGrowthMeasurementDraft,
+    editingGrowthMeasurementId,
+    setEditingGrowthMeasurementId,
+    timelineSwipeStartRef,
+    vaccinePending,
+    openMilestones,
+    closeMilestones,
+    openVaccine,
+    closeVaccine,
+    setVaccineRegion,
+    toggleVaccineDose,
+    openGrowthEntry,
+    resetGrowthMeasurementDraft,
+    closeGrowthEntry,
+    achieveMilestone,
+    handleAddGrowthMeasurement,
+    handleEditGrowthMeasurement,
+    handleDeleteGrowthMeasurement,
+    beginEditCareTimelineEvent,
+    saveCareTimelineEvent,
+    canEditTimelineEvent,
+    beginTimelineEventSwipe,
+    finishTimelineEventSwipe,
+    cancelTimelineEventSwipe,
+    requestDeleteCareTimelineEvent,
+    selectRecordDate,
+  } = useRecordsState({
+    canCaregive,
+    profile,
+    setProfile,
+    growthEvents,
+    setGrowthEvents,
+    growthMeasurements,
+    setGrowthMeasurements,
+    careLogs,
+    setCareLogs,
+    setStorageStatus,
+    setActiveMobileTab,
+    createCareEventDraft,
+    mutatorsRef: recordsMutatorsRef,
+    lateRef: recordsLateRef,
+  });
+  // pending-effect(待确认副作用)/ album-prompt(相册提示)一族抽到 usePendingEffects。同 records:在 canCaregive
+  // 之后提前调用,返回值解构回与原来同名的局部变量,故 App 其余引用(chatScreenHandlers 包 / RecordsEntryDrawer props /
+  // JSX props)一律照常。reminderFromDraft / scheduleNativeReminders 是 App 模块级纯函数且也被留在 App 的代码复用,按值传入;
+  // persistRecord / applyAppSnapshot / persistAlbumItemOptimistic / showSystemWeakNotice / messageForStorage 经 lateRef 迟绑定。
+  const {
+    editingPendingId,
+    setEditingPendingId,
+    pendingDraft,
+    setPendingDraft,
+    confirmingPendingEffectIds,
+    setConfirmingPendingEffectIds,
+    updateAlbumPromptStatus,
+    saveAlbumPrompt,
+    ignoreAlbumPrompt,
+    confirmPendingEffect,
+    discardPendingEffect,
+    beginEditPendingEffect,
+    savePendingEffectDraft,
+    updatePendingGrowthDraft,
+    updatePendingGrowthMeasurementDraft,
+    updatePendingCareDraft,
+    updatePendingReminderDraft,
+    updatePendingMemoryDraft,
+    updatePendingExpenseDraft,
+  } = usePendingEffects({
+    canCaregive,
+    messages,
+    setMessages,
+    setAlbumItems,
+    setPendingEffects,
+    careLogs,
+    setStorageStatus,
+    pendingPersistAlbumIdsRef,
+    reminderFromDraft,
+    scheduleNativeReminders,
+    lateRef: pendingEffectsLateRef,
+  });
+  // chat 一族(composer/voice/agent 流式/媒体上传)抽到 useChatState。必须在 useAlbumState **之前**调用:
+  // 它产出 album 依赖的 mediaUploadItems / processSelectedMediaFiles。返回值解构回与原来同名的局部变量,
+  // 故 App 其余引用(内联 composer JSX / openRecordsAssistant / closeRecordsEntryDrawer / chatScreenHandlers 包 /
+  // ChatScreen props)一律照常。
+  const {
+    composerMode,
+    voiceStatus,
+    voiceCancelArmed,
+    voiceError,
+    attachments,
+    setAttachments,
+    isAttachmentTrayExpanded,
+    setIsAttachmentTrayExpanded,
+    mediaUploadItems,
+    setMediaUploadItems,
+    isListening,
+    isSubmitting,
+    compressionStatus,
+    fileInputRef,
+    isSubmittingRef,
+    chatUploadItems,
+    isUploadingChatMedia,
+    visibleChatAttachmentCount,
+    isChatAttachmentLimitReached,
+    chatAttachmentCountLabel,
+    chatAttachmentLimitLabel,
+    attachmentTrayMetaLabel,
+    canCollapseAttachmentTray,
+    isAttachmentTrayOpen,
+    attachmentTrayPreviewItems,
+    attachmentTrayOverflowCount,
+    visualToolTitle,
+    visualToolGated,
+    visualToolDisabled,
+    visualToolClassName,
+    canUseComposerInput,
+    voiceHoldLabel,
+    voiceButtonStyle,
+    voiceRecordingActive,
+    compressionMessage,
+    processSelectedMediaFiles,
+    handleFiles,
+    openMediaPicker,
+    toggleComposerMode,
+    startVoicePress,
+    releaseVoicePress,
+    cancelVoicePointer,
+    cancelVoiceCapture,
+    submitComposerMessage,
+    handleSubmit,
+    handleComposerKeyDown,
+  } = useChatState({
+    canCaregive,
+    hasAiQuota,
+    canAttachVisuals,
+    recordsEntryDrawerIsAi: recordsEntryDrawer === "ai",
+    messages,
+    setMessages,
+    setAlbumItems,
+    setConversationSummary,
+    profile,
+    careLogs,
+    memories,
+    setStorageStatus,
+    backendReadyRef,
+    compressionInFlightRef,
+    compressionResetTimerRef,
+    lateRef: chatLateRef,
+  });
+  // 全屏媒体预览子系统(state + 全部 preview refs + 手势/翻页/缩放 handlers + 5 个 hook 自持 effect)。
+  // 必须排在 useAlbumState **之前**:useAlbumState 消费下面解构出的 setPreviewAlbumItem / setPreviewAttachment /
+  // previewAlbumItemsRef,并回产 previewAlbumIndex / previewCarouselItems(见下)。本 hook 无外部依赖。
+  const {
+    previewAttachment,
+    setPreviewAttachment,
+    previewAlbumItem,
+    setPreviewAlbumItem,
+    previewMotion,
+    previewOriginRect,
+    previewActionsOpen,
+    setPreviewActionsOpen,
+    previewTransform,
+    previewAlbumItemsRef,
+    previewCarouselTrackRef,
+    openPreviewAttachment,
+    closePreviewAttachment,
+    handlePreviewClick,
+    bindPreviewVideo,
+    onPreviewStagePointerDown,
+    onPreviewStagePointerMove,
+    onPreviewStagePointerEnd,
+    onPreviewImagePointerDown,
+    onPreviewImagePointerMove,
+    onPreviewImagePointerEnd,
+  } = usePreviewState();
+  // 只解构 App.tsx 仍直接引用的返回值;hook 内部消费的 derivedAlbumItems / albumItems /
+  // filteredAlbumItems / albumRatioOverrides 一族 / openAlbumPreview / handleAlbumFiles /
+  // openAlbumMediaPicker 等不在此解构(它们只在 hook 内或经 albumScreenHandlers 间接使用)。
+  const {
+    albumFileInputRef,
+    albumUploadItems,
+    albumGroups,
+    albumPreviewItems,
+    recordAlbumRatio,
+    albumTileAspect,
+    previewAlbumIndex,
+    previewCarouselItems,
+    albumStats,
+    editAlbumItem,
+    removeAlbumItem,
+    albumScreenHandlers,
+  } = useAlbumState({
+    canCaregive,
+    messages,
+    storedAlbumItemsNormalized,
+    setAlbumItems,
+    mediaUploadItems,
+    previewAlbumItem,
+    setPreviewAlbumItem,
+    setPreviewAttachment,
+    setAttachments,
+    previewAlbumItemsRef,
+    setStorageStatus,
+    setMessages,
+    lateRef: albumLateRef,
+  });
+  // useSessionState 已在 canCaregive 之前调用(见上方;它产出 canCaregive 依赖的 authMember)。
+  // freeAiCallsRemaining / hasAiQuota / canAttachVisuals 已上移到 canCaregive 之后(供 useChatState 用)。
+  const visibleTabs = MOBILE_TABS;
+  // chat 附件托盘 / 语音展示 / 工具门禁 一族派生值已抽到 useChatState(上方提前调用,返回值解构回同名变量)。
+  // 仅保留 album 上传态:它由本文件 isUploadingAlbumMedia 派生并喂给 albumLateRef(album hook 的迟绑定依赖)。
   const activeUploadStatuses: MediaUploadStatus[] = ["preparing", "uploading", "processing"];
-  const chatUploadItems = mediaUploadItems.filter((item) => item.target === "chat");
-  const albumUploadItems = useMemo(
-    () => mediaUploadItems.filter((item) => item.target === "album"),
-    [mediaUploadItems],
-  );
-  const activeChatUploadItems = chatUploadItems.filter((item) => activeUploadStatuses.includes(item.status));
-  const isUploadingChatMedia = activeChatUploadItems.length > 0;
   const isUploadingAlbumMedia = albumUploadItems.some((item) => activeUploadStatuses.includes(item.status));
-  const visibleChatAttachmentCount = Math.min(MAX_CHAT_ATTACHMENTS, attachments.length + activeChatUploadItems.length);
-  const isChatAttachmentLimitReached = visibleChatAttachmentCount >= MAX_CHAT_ATTACHMENTS;
-  const chatAttachmentCountLabel = `已添加 ${visibleChatAttachmentCount}/${MAX_CHAT_ATTACHMENTS} 个素材`;
-  const chatAttachmentLimitLabel = isChatAttachmentLimitReached
-    ? `${chatAttachmentCountLabel}，已达上限`
-    : chatAttachmentCountLabel;
-  const pendingImageCount = attachments.filter((item) => item.kind === "image").length + activeChatUploadItems.filter((item) => item.kind === "image").length;
-  const pendingVideoCount = attachments.filter((item) => item.kind === "video").length + activeChatUploadItems.filter((item) => item.kind === "video").length;
-  const pendingUploadCount = activeChatUploadItems.length;
-  const attachmentTrayMetaLabel = [
-    pendingUploadCount ? `${pendingUploadCount} 个上传中` : "",
-    pendingImageCount ? `${pendingImageCount} 张照片` : "",
-    pendingVideoCount ? `${pendingVideoCount} 个视频` : "",
-  ].filter(Boolean).join(" · ");
-  const canCollapseAttachmentTray = visibleChatAttachmentCount > 2 && pendingUploadCount === 0;
-  const isAttachmentTrayOpen = !canCollapseAttachmentTray || isAttachmentTrayExpanded;
-  const attachmentTrayPreviewItems = attachments.slice(0, 3);
-  const attachmentTrayOverflowCount = Math.max(0, attachments.length - attachmentTrayPreviewItems.length);
-  const visualToolTitle = isUploadingChatMedia
-    ? "素材正在上传"
-    : hasAiQuota ? "照片或视频" : "本月免费 AI 已用完，申请 Pro 内测后不限次";
-  const visualToolGated = !hasAiQuota;
-  const visualToolDisabled = !canCaregive || isSubmitting || isUploadingChatMedia;
-  const visualToolClassName = visualToolGated ? "visual-tool-gated" : "";
-  const canUseComposerInput = !isSubmitting || recordsEntryDrawer === "ai";
   const proApplicationPending = proTrial.application?.status === "pending";
   const proStatusText = proTrial.enabled ? "Pro 内测已开通" : proApplicationPending ? "Pro 内测申请中" : "可申请 Pro 内测";
   const aiUsageTopFeatures = Array.isArray(aiUsageSummary?.byFeature) ? aiUsageSummary.byFeature.slice(0, 3) : [];
@@ -2161,21 +1693,7 @@ function App() {
   const ledgerModalOpen = expenseEditorOpen || Boolean(deleteExpenseTarget) || bulkDeleteExpensesOpen;
   const reminderModalOpen = reminderEditorOpen || Boolean(completeReminderTarget) || Boolean(postponeReminderTarget) || Boolean(deleteReminderTarget);
   const appModalOpen = Boolean(recordsEntryDrawer) || Boolean(deleteCareEventTarget) || Boolean(deleteExpenseTarget) || bulkDeleteExpensesOpen;
-  const loginRoleOptions = useMemo(
-    () =>
-      ROLE_SELECT_OPTIONS.map((option) => {
-        const occupied = option.value && occupiedInviteRoles.includes(option.value);
-        return occupied
-          ? { ...option, disabled: true, hint: "已被家庭成员使用" }
-          : option;
-      }),
-    [occupiedInviteRoles],
-  );
-  const loginSelectedRoleOccupied = Boolean(loginRoleName && occupiedInviteRoles.includes(loginRoleName));
-  const loginCredentialsReady = loginPhone.trim().replace(/\s+/g, "").length === 11 && loginInviteCode.trim().replace(/\s+/g, "").length >= 6;
-  const loginReady = loginExistingMember
-    ? loginCredentialsReady
-    : Boolean(loginCredentialsReady && loginRoleName && loginCaregiver !== null && !loginSelectedRoleOccupied);
+  // loginRoleOptions / loginSelectedRoleOccupied / loginCredentialsReady / loginReady 已抽到 useSessionState(上方提前调用,返回值解构回同名变量)。
   const switchMobileTab = (tab: MobileTab) => {
     setRecordsAssistantOpen(false);
     if (tab !== "profile") {
@@ -2200,539 +1718,15 @@ function App() {
     }, durationMs);
   }, []);
 
-  const refreshAiUsageSummary = useCallback(async (options: { quiet?: boolean } = {}) => {
-    setAiUsageStatus("loading");
-    try {
-      const summary = await readAiUsageSummary(30);
-      setAiUsageSummary(summary);
-      setAiUsageStatus("ready");
-      if (!options.quiet) showSystemWeakNotice("AI 用量已刷新。", "success");
-    } catch (error) {
-      setAiUsageStatus("error");
-      if (!options.quiet) {
-        showSystemWeakNotice(error instanceof Error ? error.message : "AI 用量读取失败。", "warning");
-      }
-    }
-  }, [showSystemWeakNotice]);
+  // refreshAiUsageSummary / refreshFamilyMembers / handleToggleMemberCaregiver / handleRemoveFamilyMember /
+  // handleResetFamilyInviteCode 已抽到 useSessionState(上方提前调用,返回值解构回同名变量)。
 
-  const refreshFamilyMembers = useCallback(async (options: { quiet?: boolean } = {}) => {
-    setFamilyMembersStatus("loading");
-    try {
-      const data = await readFamilyMembers();
-      setFamilyMembers(data);
-      setFamilyMembersStatus("ready");
-    } catch (error) {
-      setFamilyMembersStatus("error");
-      if (!options.quiet) {
-        showSystemWeakNotice(error instanceof Error ? error.message : "家庭成员读取失败。", "warning");
-      }
-    }
-  }, [showSystemWeakNotice]);
+  // 预览手势/翻页/缩放的全部处理函数(clearPreviewTimers / setPreviewCarouselTransform /
+  // openPreviewAttachment / closePreviewAttachment / handlePreviewClick / findAdjacent /
+  // showAdjacent / bindPreviewVideo / begin·update·finishPreviewSwipe / onPreviewStage·Image* 等)
+  // 及 5 个 hook 自持 effect(动作菜单开关/外点关闭/预览切换重置/卸载清理/键盘导航)已搬进
+  // features/preview/usePreviewState;上方调用点解构回同名变量,故 App 其余引用照常。
 
-  const handleToggleMemberCaregiver = async (member: FamilyMember) => {
-    if (member.self) return;
-    const next = !member.caregiver;
-    setFamilyMemberBusyUserId(member.userId);
-    try {
-      await updateFamilyMemberCaregiver(member.userId, next);
-      showSystemWeakNotice(next ? "已设为照护人。" : "已设为仅查看，对方需重新登录。", "success");
-      await refreshFamilyMembers({ quiet: true });
-    } catch (error) {
-      showSystemWeakNotice(error instanceof Error ? error.message : "权限调整失败。", "warning");
-    } finally {
-      setFamilyMemberBusyUserId(null);
-    }
-  };
-
-  const handleRemoveFamilyMember = async (member: FamilyMember) => {
-    if (member.self) return;
-    if (!(await appConfirm({ title: "移除成员", content: `确定移除「${member.roleName}」吗？对方会被退出登录，需重新用邀请码加入。`, danger: true }))) return;
-    setFamilyMemberBusyUserId(member.userId);
-    try {
-      await removeFamilyMember(member.userId);
-      showSystemWeakNotice("已移除该成员。", "success");
-      await refreshFamilyMembers({ quiet: true });
-    } catch (error) {
-      showSystemWeakNotice(error instanceof Error ? error.message : "移除失败。", "warning");
-    } finally {
-      setFamilyMemberBusyUserId(null);
-    }
-  };
-
-  const handleResetFamilyInviteCode = async () => {
-    if (!(await appConfirm({ title: "重置邀请码", content: "重置后旧邀请码立即失效（已加入的成员不受影响）。确定重置？" }))) return;
-    setFamilyMemberBusyUserId("__reset__");
-    try {
-      const result = await resetFamilyInviteCode();
-      setResetInviteCodeValue(result.inviteCode);
-      showSystemWeakNotice("邀请码已重置，请把新码发给家人。", "success");
-    } catch (error) {
-      showSystemWeakNotice(error instanceof Error ? error.message : "重置邀请码失败。", "warning");
-    } finally {
-      setFamilyMemberBusyUserId(null);
-    }
-  };
-
-  const clearPreviewTimers = useCallback(() => {
-    if (previewOpenTimerRef.current !== null) {
-      window.clearTimeout(previewOpenTimerRef.current);
-      previewOpenTimerRef.current = null;
-    }
-    if (previewCloseTimerRef.current !== null) {
-      window.clearTimeout(previewCloseTimerRef.current);
-      previewCloseTimerRef.current = null;
-    }
-    if (previewSwipeSettleTimerRef.current !== null) {
-      window.clearTimeout(previewSwipeSettleTimerRef.current);
-      previewSwipeSettleTimerRef.current = null;
-    }
-    previewSwipeSettleCleanupRef.current?.();
-    previewSwipeSettleCleanupRef.current = null;
-  }, []);
-
-  const setPreviewCarouselTransform = useCallback((offsetPx = 0, animated = false, durationMs = 220) => {
-    const track = previewCarouselTrackRef.current;
-    if (!track) return;
-    const stableOffset = Math.abs(offsetPx) < 0.4 ? 0 : offsetPx;
-    const offsetText = Math.abs(stableOffset).toFixed(2);
-    const offsetExpression = stableOffset >= 0 ? `+ ${offsetText}px` : `- ${offsetText}px`;
-    if (animated) {
-      // transition 从 none 切换到有值时,必须强制 reflow 把当前位置先落地,否则浏览器把
-      // 「设 transition + 设新 transform」合并进同一帧 → 过渡完全不播、画面瞬移(无 transitionend,
-      // settle 只能等兜底超时,期间手势全乱)。
-      void track.offsetWidth;
-      // iOS 风格减速长尾(easeOutQuint 近似):后段时间走极少路程,产生「明显减速后停住」的丝滑感。
-      track.style.transition = `transform ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
-    } else {
-      track.style.transition = "none";
-    }
-    track.style.transform = `translate3d(calc(-100vw ${offsetExpression}), 0, 0)`;
-  }, []);
-
-  const resetPreviewCarouselTransform = useCallback(() => {
-    previewDragOffsetRef.current = 0;
-    setPreviewCarouselTransform(0, false);
-  }, [setPreviewCarouselTransform]);
-
-  const preloadPreviewAttachment = useCallback(async (attachment: Attachment) => {
-    if (attachment.kind !== "image" || !attachment.url) return;
-    await new Promise<void>((resolve) => {
-      const image = new window.Image();
-      const finish = () => {
-        if (typeof image.decode === "function") {
-          image.decode().then(() => resolve()).catch(() => resolve());
-          return;
-        }
-        resolve();
-      };
-      image.onload = finish;
-      image.onerror = () => resolve();
-      image.src = attachment.url ?? "";
-      if (image.complete) finish();
-    });
-  }, []);
-
-  const openPreviewAttachment = useCallback((attachment: Attachment, albumItem?: AlbumItem | null, motion: PreviewMotion = "opening", origin: PreviewOriginRect | null = null) => {
-    clearPreviewTimers();
-    previewPointersRef.current.clear();
-    previewPinchRef.current = null;
-    previewSwipeRef.current = null;
-    previewTapGuardRef.current = false;
-    resetPreviewCarouselTransform();
-    previewAlbumItemRef.current = albumItem ?? null;
-    setPreviewTransform({ scale: 1, x: 0, y: 0 });
-    setPreviewAlbumItem(albumItem ?? null);
-    setPreviewAttachment(attachment);
-    setPreviewOriginRect(origin);
-    setPreviewMotion(motion);
-    if (motion !== "opening") return;
-    previewOpenTimerRef.current = window.setTimeout(() => {
-      setPreviewMotion("idle");
-      previewOpenTimerRef.current = null;
-    }, 260);
-  }, [clearPreviewTimers, resetPreviewCarouselTransform]);
-
-  // Album tile tap → 全屏预览,交给 PhotoSwipe(手势物理/开合 morph/缩放均由库承担;
-  // 自研轮播/手势/FLIP 已存档于 tag archive/handcrafted-preview)。
-  const openAlbumPreview = (_event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => {
-    if (!attachment.url) return;
-    void openAlbumPhotoSwipe({
-      items: previewAlbumItemsRef.current,
-      startId: item.id,
-      getThumbEl: (id) => {
-        const safe = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id;
-        return document.querySelector<HTMLElement>(`[data-vt-item="${safe}"] img, [data-vt-item="${safe}"] video`);
-      },
-      formatDate: (entry) => `${formatFullDate(entry.date)} · ${albumCategoryLabel(entry.category)}`,
-      getAspectRatio: (entry) => albumTileAspect(entry),
-      formatRecordedBy: (recordedBy) => (recordedBy ? creatorMetaText(recordedBy) : ""),
-      // 弹窗用深色变体且不关预览:编辑成功由 pswp 就地刷新顶栏,删除确认后才退出。
-      onEdit: (entry) => editAlbumItem(entry, { dark: true }),
-      onDelete: (entry) => removeAlbumItem(entry, { dark: true }),
-    });
-  };
-
-  const closePreviewAttachment = useCallback(() => {
-    clearPreviewTimers();
-    previewPointersRef.current.clear();
-    previewPinchRef.current = null;
-    previewSwipeRef.current = null;
-    previewTapGuardRef.current = false;
-    resetPreviewCarouselTransform();
-    setPreviewTransform({ scale: 1, x: 0, y: 0 });
-
-    const finalize = () => {
-      setPreviewAttachment(null);
-      setPreviewAlbumItem(null);
-      previewAlbumItemRef.current = null;
-      setPreviewMotion("idle");
-    };
-
-    if (PREVIEW_VT) {
-      // Morph the fullscreen media back into its thumbnail (if it's on screen).
-      const itemId = previewAlbumItemRef.current?.id;
-      const tileEl =
-        itemId && typeof document !== "undefined"
-          ? (document.querySelector(`[data-vt-item="${itemId}"]`) as HTMLElement | null)
-          : null;
-      const onScreen =
-        !!tileEl &&
-        (() => {
-          const r = tileEl.getBoundingClientRect();
-          return r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
-        })();
-      if (tileEl && onScreen) tileEl.style.viewTransitionName = "preview-media";
-      const vt = startViewTransition(() => {
-        flushSync(finalize);
-      });
-      vt.finished.finally(() => {
-        if (tileEl) tileEl.style.viewTransitionName = "";
-      });
-      return;
-    }
-
-    setPreviewMotion("closing");
-    previewCloseTimerRef.current = window.setTimeout(() => {
-      finalize();
-      previewCloseTimerRef.current = null;
-    }, 240);
-  }, [clearPreviewTimers, resetPreviewCarouselTransform]);
-
-  const handlePreviewClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest("figcaption, video, button")) return;
-    if (previewTapGuardRef.current) {
-      previewTapGuardRef.current = false;
-      return;
-    }
-    closePreviewAttachment();
-  }, [closePreviewAttachment]);
-
-  useEffect(() => {
-    setPreviewActionsOpen(false);
-  }, [previewAlbumItem?.id, previewAttachment?.id]);
-
-  useEffect(() => {
-    if (!previewActionsOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest(".media-preview-menu")) return;
-      setPreviewActionsOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [previewActionsOpen]);
-
-  const findAdjacentPreviewAlbumItem = useCallback((direction: -1 | 1) => {
-    const items = previewAlbumItemsRef.current;
-    const current = previewAlbumItemRef.current;
-    if (!current || !items.length) return null;
-    const currentIndex = items.findIndex((item) => item.id === current.id);
-    if (currentIndex < 0) return null;
-    const nextItem = items[currentIndex + direction];
-    return nextItem?.attachment?.url ? nextItem : null;
-  }, []);
-
-  const showAdjacentPreviewAlbumItem = useCallback((direction: -1 | 1) => {
-    const nextItem = findAdjacentPreviewAlbumItem(direction);
-    if (!nextItem?.attachment?.url) return false;
-    void preloadPreviewAttachment(nextItem.attachment).then(() => {
-      previewPointersRef.current.clear();
-      previewPinchRef.current = null;
-      previewSwipeRef.current = null;
-      previewAlbumItemRef.current = nextItem;
-      setPreviewTransform({ scale: 1, x: 0, y: 0 });
-      setPreviewAlbumItem(nextItem);
-      setPreviewAttachment(nextItem.attachment as Attachment);
-      setPreviewMotion("idle");
-    });
-    return true;
-  }, [findAdjacentPreviewAlbumItem, preloadPreviewAttachment]);
-
-  const bindPreviewVideo = useCallback(
-    (node: HTMLVideoElement | null) => {
-      previewVideoCleanupRef.current?.();
-      previewVideoCleanupRef.current = null;
-      if (!node) return;
-      const closeAfterNativeFullscreen = () => closePreviewAttachment();
-      const closeAfterStandardFullscreen = () => {
-        if (!document.fullscreenElement) closePreviewAttachment();
-      };
-      node.addEventListener("webkitendfullscreen", closeAfterNativeFullscreen);
-      document.addEventListener("fullscreenchange", closeAfterStandardFullscreen);
-      node.muted = false;
-      previewVideoCleanupRef.current = () => {
-        node.pause();
-        node.removeEventListener("webkitendfullscreen", closeAfterNativeFullscreen);
-        document.removeEventListener("fullscreenchange", closeAfterStandardFullscreen);
-      };
-    },
-    [closePreviewAttachment],
-  );
-
-  const previewDistance = (points: Array<{ x: number; y: number }>) => {
-    if (points.length < 2) return 0;
-    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
-  };
-
-  const dampPreviewSwipeOffset = (deltaX: number, hasAdjacent: boolean) => {
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
-    const sign = Math.sign(deltaX) || 1;
-    const distance = Math.abs(deltaX);
-    if (!hasAdjacent) {
-      const resisted = viewportWidth * 0.22 * (1 - Math.exp(-distance / (viewportWidth * 0.26)));
-      return sign * resisted;
-    }
-    // 有相邻图时 1:1 完全跟手(iOS 相册手感);此前的递增摩擦让手指与画面脱节,是「阻尼生硬」主因。
-    return sign * Math.min(viewportWidth, distance);
-  };
-
-  // 把「进行中的翻页」立即落账(切换 item/attachment 等状态);返回该次翻页信息,无则 null。
-  const commitPendingPreviewPage = () => {
-    const pending = previewPendingPageRef.current;
-    if (!pending) return null;
-    previewPendingPageRef.current = null;
-    previewPointersRef.current.clear();
-    previewPinchRef.current = null;
-    previewSwipeRef.current = null;
-    previewAlbumItemRef.current = pending.item;
-    setPreviewTransform({ scale: 1, x: 0, y: 0 });
-    setPreviewAlbumItem(pending.item);
-    setPreviewAttachment(pending.attachment);
-    setPreviewMotion("idle");
-    return pending;
-  };
-
-  const beginPreviewSwipe = (event: React.PointerEvent<HTMLElement>) => {
-    if (!previewAlbumItemRef.current || previewTransform.scale > 1.05) return;
-    previewSwipeSettleTimerRef.current && window.clearTimeout(previewSwipeSettleTimerRef.current);
-    previewSwipeSettleTimerRef.current = null;
-    // 接管前先摘掉上一次翻页的 transitionend 监听,避免被接管的旧动画迟到触发 settle 干扰本次拖动。
-    previewSwipeSettleCleanupRef.current?.();
-    previewSwipeSettleCleanupRef.current = null;
-    let baseOffset = 0;
-    const track = previewCarouselTrackRef.current;
-    if (track) {
-      try {
-        const matrix = new DOMMatrixReadOnly(window.getComputedStyle(track).transform);
-        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
-        const residual = matrix.m41 + viewportWidth;
-        if (previewPendingPageRef.current) {
-          // 抓住「正在翻页」的画面:先把该次翻页立即落账(否则连续快滑只有最后一次生效=吞张),
-          // 再把旧窗口坐标换算到新窗口(residual ± 一屏),视觉上画面原地不动、内容账目已切。
-          const pending = previewPendingPageRef.current;
-          flushSync(() => {
-            commitPendingPreviewPage();
-          });
-          const carried = residual + (pending.direction > 0 ? viewportWidth : -viewportWidth);
-          baseOffset = Math.max(-viewportWidth, Math.min(viewportWidth, carried));
-        } else {
-          // 无进行中的翻页(回弹动画/静止/settle 后竞态):残余在屏宽 2%~98% 才接管,
-          // ≈±一整屏意味着「已完成、React 尚未复位窗口」,绝不能当基准。
-          baseOffset = captureBaseOffset(residual, viewportWidth);
-        }
-      } catch {
-        baseOffset = 0;
-      }
-    }
-    previewDragOffsetRef.current = baseOffset;
-    setPreviewCarouselTransform(baseOffset, false);
-    previewSwipeRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      lastTime: event.timeStamp || window.performance.now(),
-      velocityX: 0,
-      baseOffset,
-    };
-  };
-
-  const updatePreviewSwipe = (event: React.PointerEvent<HTMLElement>) => {
-    const swipe = previewSwipeRef.current;
-    if (!swipe || swipe.pointerId !== event.pointerId) return;
-    const eventTime = event.timeStamp || window.performance.now();
-    const frameDeltaX = event.clientX - swipe.lastX;
-    const elapsedMs = Math.max(1, eventTime - swipe.lastTime);
-    swipe.velocityX = swipe.velocityX * 0.58 + (frameDeltaX / elapsedMs) * 0.42;
-    swipe.lastX = event.clientX;
-    swipe.lastY = event.clientY;
-    swipe.lastTime = eventTime;
-    const rawDeltaX = swipe.lastX - swipe.startX;
-    const rawDeltaY = swipe.lastY - swipe.startY;
-    // 动画中接管(baseOffset≠0)时画面已在拖拽态,跳过方向死区判定,首帧即跟手。
-    if (swipe.baseOffset === 0 && (Math.abs(rawDeltaX) < 3 || Math.abs(rawDeltaX) < Math.abs(rawDeltaY) * 0.8)) return;
-    if (Math.abs(rawDeltaX) > 8 || Math.abs(rawDeltaY) > 8) previewTapGuardRef.current = true;
-    if (event.cancelable) event.preventDefault();
-    const combinedDeltaX = swipe.baseOffset + rawDeltaX;
-    const direction = combinedDeltaX < 0 ? 1 : -1;
-    const hasAdjacent = Boolean(findAdjacentPreviewAlbumItem(direction));
-    const offset = dampPreviewSwipeOffset(combinedDeltaX, hasAdjacent);
-    previewDragOffsetRef.current = offset;
-    setPreviewCarouselTransform(offset, false);
-  };
-
-  const finishPreviewSwipe = (event: React.PointerEvent<HTMLElement>) => {
-    const swipe = previewSwipeRef.current;
-    if (!swipe || swipe.pointerId !== event.pointerId) return;
-    previewSwipeRef.current = null;
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
-    const outcome = resolveSwipeOutcome({
-      baseOffset: swipe.baseOffset,
-      fingerDeltaX: swipe.lastX - swipe.startX,
-      fingerDeltaY: swipe.lastY - swipe.startY,
-      velocityX: swipe.velocityX,
-      viewportWidth,
-      hasAdjacent: (dir) => Boolean(findAdjacentPreviewAlbumItem(dir)?.attachment?.url),
-    });
-    // 时长不随手速缩短:快甩靠曲线前段陡峭衔接手速,减速长尾保持完整(此前「越快越短」产生急停感)。
-    const durationMs = 480;
-    if (outcome.action === "snap") {
-      setPreviewCarouselTransform(0, true, 420);
-      return;
-    }
-    const direction = outcome.direction;
-    const nextItem = findAdjacentPreviewAlbumItem(direction);
-    if (!nextItem?.attachment?.url) {
-      setPreviewCarouselTransform(0, true, 420);
-      return;
-    }
-    const nextAttachment = nextItem.attachment;
-    previewTapGuardRef.current = true;
-    previewPendingPageRef.current = { item: nextItem, attachment: nextAttachment, direction };
-    setPreviewCarouselTransform(direction > 0 ? -viewportWidth : viewportWidth, true, durationMs);
-    void preloadPreviewAttachment(nextAttachment);
-    let settled = false;
-    const track = previewCarouselTrackRef.current;
-    const settle = () => {
-      if (settled) return;
-      settled = true;
-      previewSwipeSettleCleanupRef.current?.();
-      previewSwipeSettleCleanupRef.current = null;
-      commitPendingPreviewPage();
-      previewSwipeSettleTimerRef.current = null;
-    };
-    if (track) {
-      const handleTransitionEnd = (transitionEvent: TransitionEvent) => {
-        if (transitionEvent.target === track && transitionEvent.propertyName === "transform") settle();
-      };
-      track.addEventListener("transitionend", handleTransitionEnd);
-      previewSwipeSettleCleanupRef.current = () => {
-        track.removeEventListener("transitionend", handleTransitionEnd);
-        if (previewSwipeSettleTimerRef.current !== null) {
-          window.clearTimeout(previewSwipeSettleTimerRef.current);
-          previewSwipeSettleTimerRef.current = null;
-        }
-      };
-    }
-    previewSwipeSettleTimerRef.current = window.setTimeout(settle, durationMs + 120);
-  };
-
-  const onPreviewStagePointerDown = (event: React.PointerEvent<HTMLElement>) => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest("figcaption, button")) return;
-    beginPreviewSwipe(event);
-  };
-
-  const onPreviewStagePointerMove = (event: React.PointerEvent<HTMLElement>) => {
-    updatePreviewSwipe(event);
-  };
-
-  const onPreviewStagePointerEnd = (event: React.PointerEvent<HTMLElement>) => {
-    finishPreviewSwipe(event);
-  };
-
-  const onPreviewImagePointerDown = (event: React.PointerEvent<HTMLImageElement>) => {
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    beginPreviewSwipe(event);
-    const point = { x: event.clientX, y: event.clientY };
-    previewPointersRef.current.set(event.pointerId, point);
-    previewLastPointRef.current = point;
-    const points = Array.from(previewPointersRef.current.values());
-    if (points.length >= 2) {
-      previewPinchRef.current = {
-        distance: previewDistance(points),
-        scale: previewTransform.scale,
-      };
-    }
-  };
-
-  const onPreviewImagePointerMove = (event: React.PointerEvent<HTMLImageElement>) => {
-    if (!previewPointersRef.current.has(event.pointerId)) return;
-    event.stopPropagation();
-    updatePreviewSwipe(event);
-    const point = { x: event.clientX, y: event.clientY };
-    previewPointersRef.current.set(event.pointerId, point);
-    const points = Array.from(previewPointersRef.current.values());
-    if (points.length >= 2 && previewPinchRef.current) {
-      const distance = previewDistance(points);
-      if (!distance || !previewPinchRef.current.distance) return;
-      const nextScale = Math.min(4, Math.max(1, previewPinchRef.current.scale * (distance / previewPinchRef.current.distance)));
-      setPreviewTransform((current) => ({
-        ...current,
-        scale: nextScale,
-        x: nextScale === 1 ? 0 : current.x,
-        y: nextScale === 1 ? 0 : current.y,
-      }));
-      return;
-    }
-    if (points.length === 1 && previewTransform.scale > 1) {
-      const last = previewLastPointRef.current;
-      const deltaX = point.x - last.x;
-      const deltaY = point.y - last.y;
-      if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) previewTapGuardRef.current = true;
-      previewLastPointRef.current = point;
-      setPreviewTransform((current) => ({
-        ...current,
-        x: current.x + deltaX,
-        y: current.y + deltaY,
-      }));
-    }
-  };
-
-  const onPreviewImagePointerEnd = (event: React.PointerEvent<HTMLImageElement>) => {
-    event.stopPropagation();
-    finishPreviewSwipe(event);
-    previewPointersRef.current.delete(event.pointerId);
-    previewPinchRef.current = null;
-    const [remaining] = Array.from(previewPointersRef.current.values());
-    if (remaining) previewLastPointRef.current = remaining;
-  };
-
-  useLayoutEffect(() => {
-    previewPointersRef.current.clear();
-    previewPinchRef.current = null;
-    setPreviewTransform({ scale: 1, x: 0, y: 0 });
-    resetPreviewCarouselTransform();
-    return () => {
-      previewVideoCleanupRef.current?.();
-      previewVideoCleanupRef.current = null;
-    };
-  }, [previewAttachment?.id, previewAlbumItem?.id, resetPreviewCarouselTransform]);
-
-  const todayDate = todayISO();
   const todayLog = careLogs.find((item) => item.date === todayDate) ?? careLogs[careLogs.length - 1];
   const openReminders = reminders.filter((item) => item.status !== "done");
   const reminderBuckets = useMemo(() => {
@@ -2765,123 +1759,9 @@ function App() {
     () => recordEvents.filter((event) => event.date === selectedDate),
     [recordEvents, selectedDate],
   );
-  const derivedAlbumItems = useMemo(() => buildDerivedAlbumItems(messages), [messages]);
-  const albumItems = useMemo(
-    () => dedupeAlbumItems([...storedAlbumItemsNormalized, ...derivedAlbumItems]).filter(isVisibleAlbumMedia),
-    [storedAlbumItemsNormalized, derivedAlbumItems],
-  );
-  const filteredAlbumItems = useMemo(
-    () => albumItems,
-    [albumItems],
-  );
-  const albumGroups = useMemo(() => {
-    const groups = new Map<string, AlbumItem[]>();
-    filteredAlbumItems.forEach((item) => {
-      const key = (item.occurredAt ?? item.date).slice(0, 7) || "unknown";
-      groups.set(key, [...(groups.get(key) ?? []), item]);
-    });
-    return Array.from(groups.entries()).map(([key, items]) => ({
-      key,
-      label: albumMonthLabel(key),
-      items,
-    }));
-  }, [filteredAlbumItems]);
-  const albumPreviewItems = useMemo(
-    () => filteredAlbumItems.filter((item) => item.attachment?.url),
-    [filteredAlbumItems],
-  );
-  const [albumRatioOverrides, setAlbumRatioOverrides] = useState<Record<string, number>>({});
-  // 合批:相册首次加载时几十张老照片密集 onLoad,逐张 setState 会逐张重渲染整棵树。
-  // 缓冲 160ms 一次性合并提交,几十次渲染收敛为 1~2 次。
-  const pendingAlbumRatiosRef = useRef<Record<string, number>>({});
-  const albumRatioFlushTimerRef = useRef<number | null>(null);
-  const recordAlbumRatio = useCallback((attachmentId: string, ratio: number) => {
-    if (!attachmentId || !Number.isFinite(ratio) || ratio <= 0) return;
-    pendingAlbumRatiosRef.current[attachmentId] = ratio;
-    if (albumRatioFlushTimerRef.current !== null) return;
-    albumRatioFlushTimerRef.current = window.setTimeout(() => {
-      albumRatioFlushTimerRef.current = null;
-      const pending = pendingAlbumRatiosRef.current;
-      pendingAlbumRatiosRef.current = {};
-      setAlbumRatioOverrides((current) => {
-        let changed = false;
-        const next = { ...current };
-        for (const [id, value] of Object.entries(pending)) {
-          if (!next[id]) {
-            next[id] = value;
-            changed = true;
-          }
-        }
-        return changed ? next : current;
-      });
-    }, 160);
-  }, []);
-  const albumTileAspect = useCallback(
-    (item: AlbumItem) => {
-      if (!item.attachment) return 1; // category-icon placeholder → square
-      const measured = albumRatioOverrides[item.attachment.id];
-      return attachmentAspectRatio(item.attachment, measured);
-    },
-    [albumRatioOverrides],
-  );
-  const previewAlbumIndex = previewAlbumItem
-    ? albumPreviewItems.findIndex((item) => item.id === previewAlbumItem.id)
-    : -1;
-  const previewCarouselItems = previewAlbumIndex >= 0
-    ? [
-        albumPreviewItems[previewAlbumIndex - 1] ?? null,
-        previewAlbumItem,
-        albumPreviewItems[previewAlbumIndex + 1] ?? null,
-      ]
-    : [];
-  const albumStats = useMemo(
-    () => ({
-      media: albumItems.length,
-      videos: albumItems.filter((item) => item.attachment?.kind === "video").length,
-      categories: new Set(albumItems.map((item) => item.category)).size,
-    }),
-    [albumItems],
-  );
-  const ledgerMonthKey = todayDate.slice(0, 7);
-  const ledgerYearKey = todayDate.slice(0, 4);
-  const sortedExpenses = useMemo(
-    () => [...expenses].sort((left, right) => `${right.date}-${right.updatedAt}`.localeCompare(`${left.date}-${left.updatedAt}`)),
-    [expenses],
-  );
-  const expenseMonthGroups = useMemo(() => groupExpensesByMonth(sortedExpenses), [sortedExpenses]);
-  const monthExpenses = useMemo(
-    () => sortedExpenses.filter((expense) => expenseMonthKey(expense.date) === ledgerMonthKey),
-    [sortedExpenses, ledgerMonthKey],
-  );
-  const yearExpenses = useMemo(
-    () => sortedExpenses.filter((expense) => expenseYearKey(expense.date) === ledgerYearKey),
-    [sortedExpenses, ledgerYearKey],
-  );
-  const ledgerStats = useMemo(() => {
-    const categoryTotals = EXPENSE_CATEGORIES.map((category) => ({
-      ...category,
-      total: sumExpenses(monthExpenses.filter((expense) => expense.category === category.id)),
-    })).filter((item) => item.total > 0);
-    const maxCategoryTotal = Math.max(1, ...categoryTotals.map((item) => item.total));
-    const monthlyTotals = Array.from({ length: 12 }, (_, index) => {
-      const month = `${ledgerYearKey}-${String(index + 1).padStart(2, "0")}`;
-      return {
-        month,
-        label: `${index + 1}月`,
-        total: sumExpenses(yearExpenses.filter((expense) => expenseMonthKey(expense.date) === month)),
-      };
-    });
-    const maxMonthlyTotal = Math.max(1, ...monthlyTotals.map((item) => item.total));
-    return {
-      monthTotal: sumExpenses(monthExpenses),
-      yearTotal: sumExpenses(yearExpenses),
-      categoryTotals,
-      maxCategoryTotal,
-      monthlyTotals,
-      maxMonthlyTotal,
-      largest: monthExpenses.slice().sort((left, right) => right.amount - left.amount).slice(0, 3),
-    };
-  }, [ledgerYearKey, monthExpenses, yearExpenses]);
+  // derivedAlbumItems / albumItems / filteredAlbumItems / albumGroups / albumPreviewItems /
+  // albumRatioOverrides 一族 / recordAlbumRatio / albumTileAspect / previewAlbumIndex /
+  // previewCarouselItems / albumStats 已抽到 useAlbumState(上方提前调用,返回值解构回同名变量)。
   useEffect(() => {
     if (visibleChatAttachmentCount === 0 && isAttachmentTrayExpanded) {
       setIsAttachmentTrayExpanded(false);
@@ -2915,16 +1795,7 @@ function App() {
     [],
   );
 
-  useEffect(() => {
-    previewAlbumItemRef.current = previewAlbumItem;
-  }, [previewAlbumItem]);
-
-  useEffect(
-    () => () => {
-      clearPreviewTimers();
-    },
-    [clearPreviewTimers],
-  );
+  // previewAlbumItemRef 同步 + 卸载 clearPreviewTimers 两个 effect 已随预览态搬进 features/preview/usePreviewState。
 
   useEffect(() => {
     let alive = true;
@@ -3007,25 +1878,9 @@ function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!previewAttachment) return;
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closePreviewAttachment();
-        return;
-      }
-      if (event.key === "ArrowLeft") {
-        if (showAdjacentPreviewAlbumItem(-1)) event.preventDefault();
-        return;
-      }
-      if (event.key === "ArrowRight") {
-        if (showAdjacentPreviewAlbumItem(1)) event.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closePreviewAttachment, previewAttachment, showAdjacentPreviewAlbumItem]);
-
+  // 预览键盘导航(Esc 关闭 / ←→ 切相邻相册项)effect 已随预览态搬进 features/preview/usePreviewState。
+  // 下方相邻页预加载 effect 留在 App:它读 useAlbumState 输出的 albumPreviewItems / previewAlbumIndex,
+  // 需作为响应式依赖,写进本 hook 会形成对 album 产出的反向依赖(见 usePreviewState 顶注偏差②)。
   useEffect(() => {
     if (previewAlbumIndex < 0) return;
     [albumPreviewItems[previewAlbumIndex - 1], albumPreviewItems[previewAlbumIndex + 1]].forEach((item) => {
@@ -3098,13 +1953,7 @@ function App() {
     })),
   });
 
-  useEffect(() => {
-    inputValueRef.current = input;
-  }, [input]);
-
-  useEffect(() => {
-    isSubmittingRef.current = isSubmitting;
-  }, [isSubmitting]);
+  // isSubmittingRef 同步 effect 已抽到 useChatState(hook 内拥有 isSubmitting / isSubmittingRef)。
 
   useEffect(() => {
     remindersRef.current = reminders;
@@ -3136,208 +1985,46 @@ function App() {
     [],
   );
 
-  useEffect(() => {
-    const normalizedCode = loginInviteCode.trim();
-    const compactCode = normalizedCode.replace(/\s+/g, "");
-    const compactPhone = loginPhone.trim().replace(/\s+/g, "");
-    if (compactCode.length < 6) {
-      setOccupiedInviteRoles([]);
-      setInviteRoleHint("");
-      setInviteFamilyName("");
-      setLoginExistingMember(null);
-      setIsCheckingInviteRoles(false);
-      return undefined;
-    }
+  // 邀请码角色探测 / 已占用身份清空当前选择 / 引导期家庭名自动建议 三个 effect 已抽到 useSessionState
+  // (它们只读写 session 一族 state,与 boot/STORE 编排无关)。
 
-    let cancelled = false;
-    setIsCheckingInviteRoles(true);
-    const timer = window.setTimeout(() => {
-      readInviteRoleOptions(normalizedCode, compactPhone.length === 11 ? compactPhone : undefined)
-        .then((result) => {
-          if (cancelled) return;
-          const occupied = result.occupiedRoles.filter((role) =>
-            (UNIQUE_ROLE_OPTIONS as readonly string[]).includes(role),
-          );
-          const familyName = result.familyName || "小宝家";
-          setOccupiedInviteRoles(occupied);
-          setInviteFamilyName(familyName);
-          setLoginExistingMember(result.existingMember ? result.member ?? null : null);
-          if (result.existingMember && result.member) {
-            setInviteRoleHint(`已是 ${familyName} 的成员：${result.member.roleName} · ${result.member.caregiver ? "照护人" : "仅查看"}`);
-          } else {
-            setInviteRoleHint(
-              occupied.length
-                ? `${familyName} 已有：${occupied.join("、")}`
-                : `${familyName} 可选择家庭身份`,
-            );
-          }
-        })
-        .catch((error) => {
-          if (cancelled) return;
-          setOccupiedInviteRoles([]);
-          setInviteFamilyName("");
-          setLoginExistingMember(null);
-          setInviteRoleHint(error instanceof Error ? error.message : "邀请码暂时无法确认");
-        })
-        .finally(() => {
-          if (!cancelled) setIsCheckingInviteRoles(false);
-        });
-    }, 260);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [loginInviteCode, loginPhone]);
-
-  useEffect(() => {
-    if (loginRoleName && occupiedInviteRoles.includes(loginRoleName)) {
-      setLoginRoleName("");
-    }
-  }, [loginRoleName, occupiedInviteRoles]);
-
-  useEffect(() => {
-    if (!onboardingRequired || onboardingFamilyNameTouchedRef.current) return;
-    const existingFamilyName = authFamily?.name?.trim() ?? "";
-    const nextFamilyName =
-      existingFamilyName && existingFamilyName !== "小宝家"
-        ? existingFamilyName
-        : suggestedFamilyName(onboardingDraft.nickname || initialProfile.nickname);
-    setOnboardingFamilyName(nextFamilyName);
-  }, [authFamily?.name, onboardingDraft.nickname, onboardingRequired]);
-
-  const buildAppSnapshot = (): AppStateSnapshot => ({
-    profile,
-    messages,
-    growthEvents,
-    growthMeasurements,
-    careLogs,
-    reminders,
-    memories,
-    pendingEffects,
-    albumItems: storedAlbumItemsNormalized.map((item) => ({
-      ...item,
-      attachment: item.attachment ? {
-        ...item.attachment,
-        url: stripAttachmentUrlForStorage(item.attachment.url),
-        publicUrl: stripAttachmentUrlForStorage(item.attachment.publicUrl),
-      } : undefined,
-    })),
-    expenses,
-    conversationSummary,
+  // buildAppSnapshot / applyAppSnapshot / applyEmptyAppSnapshot / resolveCacheAccountKey /
+  // cacheBackendState / loadStateFromBackend / applyStateResponse / persistRecord(冷启动秒开缓存 +
+  // 后端持久化/同步一族)已随 STORE 迁入 useAppStore(上方最顶部调用,返回值解构回同名函数)。
+  // 它们依赖的 setProTrial / setOnboardingRequired / authUser / authFamily / proTrial(session 产出)与
+  // setStorageStatus / backendReadyRef(App-local)在此处都已就绪,故在此刷新 storeLateRef(与下方
+  // 其它 lateRef 刷新同处;每次渲染无条件刷新)。
+  storeLateRef.current = {
+    setProTrial,
+    setOnboardingRequired,
+    authUser,
+    authFamily,
     proTrial,
-  });
-
-  const applyAppSnapshot = (state: Partial<AppStateSnapshot>) => {
-    if ("profile" in state) setProfile((state.profile ?? blankProfile) as BabyProfile);
-    if (state.messages) setMessages(state.messages);
-    if (state.growthEvents) setGrowthEvents(state.growthEvents);
-    if (state.growthMeasurements) setGrowthMeasurements(state.growthMeasurements);
-    if (state.careLogs) setCareLogs(state.careLogs);
-    if (state.reminders) setReminders(state.reminders.map(normalizeReminder));
-    if (state.memories) setMemories(state.memories);
-    if (state.pendingEffects) setPendingEffects(state.pendingEffects);
-    if (state.albumItems) {
-      const snapshotAlbumItems = state.albumItems;
-      // Merge instead of overwrite so optimistic album items still awaiting
-      // confirmed persistence survive a snapshot that omits them (data-loss guard).
-      setAlbumItems((current) =>
-        mergeAlbumItemsFromSnapshot(current, snapshotAlbumItems, pendingPersistAlbumIdsRef.current),
-      );
-      // Any pending id the backend now reports is confirmed persisted; stop
-      // tracking it so the guard set stays bounded and later deletes propagate.
-      if (pendingPersistAlbumIdsRef.current.size) {
-        snapshotAlbumItems.forEach((item) => pendingPersistAlbumIdsRef.current.delete(item.id));
-      }
-    }
-    if (state.expenses) setExpenses(state.expenses);
-    if ("conversationSummary" in state) {
-      setConversationSummary((state.conversationSummary ?? null) as ConversationSummary | null);
-    }
-    if ("proTrial" in state) setProTrial(normalizeProTrialStatus(state.proTrial ?? null));
+    setStorageStatus,
+    backendReadyRef,
   };
-
-  const applyEmptyAppSnapshot = () => {
-    applyAppSnapshot({
-      profile: blankProfile,
-      messages: [],
-      growthEvents: [],
-      growthMeasurements: [],
-      careLogs: [],
-      reminders: [],
-      memories: [],
-      pendingEffects: [],
-      conversationSummary: null,
-      albumItems: [],
-      expenses: [],
-      proTrial: normalizeProTrialStatus(null),
-    });
-  };
-
-  // 冷启动秒开缓存键(架构债 D11):按账号(user id 优先,退化到 family id)分键,绝不跨账号。
-  // 启动时优先用入参 accountKey(此刻 React 的 authUser 尚未 flush),其次读已落定的 state。
-  const resolveCacheAccountKey = (explicit?: string | null): string | null =>
-    explicit || authUser?.id || authFamily?.id || null;
-
-  // 把刚成功拉到并应用的后端 state 写进本地缓存(下次冷启动据此秒开)。fire-and-forget,
-  // 失败仅退化为无秒开;只缓存非空 state(空账号无可秒开内容,也避免覆盖有效缓存)。
-  const cacheBackendState = (state: Partial<AppStateSnapshot>, accountKey?: string | null) => {
-    const key = resolveCacheAccountKey(accountKey);
-    if (!key) return;
-    void writeCachedSnapshot(key, state);
-  };
-
-  const loadStateFromBackend = async (
-    options: { importLegacy: boolean; onboardingRequired?: boolean; accountKey?: string | null } = { importLegacy: false },
-  ) => {
-    setStorageStatus("loading");
-    const response = await readAppState();
-    if (response.empty) {
-      if (options.importLegacy) {
-        const imported = await importAppState(buildAppSnapshot());
-        applyAppSnapshot(imported.state);
-        setOnboardingRequired(options.onboardingRequired ?? !hasCompleteProfile(imported.state.profile as BabyProfile | undefined));
-        markLegacyImported();
-        cacheBackendState(imported.state, options.accountKey);
-      } else {
-        applyEmptyAppSnapshot();
-        setOnboardingRequired(options.onboardingRequired ?? true);
-      }
-    } else {
-      applyAppSnapshot(response.state);
-      setOnboardingRequired(options.onboardingRequired ?? !hasCompleteProfile(response.state.profile as BabyProfile | undefined));
-      cacheBackendState(response.state, options.accountKey);
-    }
-    backendReadyRef.current = true;
-    setStorageStatus("ready");
-    return response;
-  };
-
-  const applyStateResponse = (response: { state: Partial<AppStateSnapshot> }) => {
-    applyAppSnapshot(response.state);
-    backendReadyRef.current = true;
-    setStorageStatus("ready");
-  };
-
-  const persistRecord = async <T,>(
-    collection: AppStateCollection,
-    id: string,
-    item: T,
-    options: { applyResponse?: boolean; mode?: "merge" | "replace" } = {},
-  ) => {
-    try {
-      const response = await upsertAppRecord(collection, id, item, { mode: options.mode });
-      if (options.applyResponse) applyStateResponse(response);
-      else {
-        backendReadyRef.current = true;
-        setStorageStatus("ready");
-      }
-      return response;
-    } catch (error) {
-      backendReadyRef.current = false;
-      setStorageStatus("offline");
-      throw error;
-    }
+  // useLedgerState 在调用点更早,经此 ref 取用 STORE 返回的 mutators;每次渲染都无条件刷新。
+  // deleteAppRecord 为模块导入(全程可用),persistRecord 在此处定义后两者皆就绪。
+  ledgerMutatorsRef.current = { persistRecord, deleteAppRecord };
+  // useRemindersState 同理在调用点更早;persistRecord / deleteAppRecord / latestMilkAnchor 在此处都已就绪。
+  remindersMutatorsRef.current = { persistRecord, deleteAppRecord, latestMilkAnchor };
+  // useRecordsState 同理在调用点更早;persistRecord / deleteAppRecord 在此处都已就绪。
+  recordsMutatorsRef.current = { persistRecord, deleteAppRecord };
+  // showSystemWeakNotice 的 useCallback 定义在 useRecordsState 调用点之后、此处之前,故在此处刷新迟绑定 ref。
+  recordsLateRef.current = { showSystemWeakNotice };
+  // useSessionState 在调用点最早(canCaregive 之前);其迟绑定依赖(canCaregive / records hook 的
+  // setRecordsEntryDrawer / setRecordsAssistantOpen / reminders hook 的 openReminderManagement /
+  // showSystemWeakNotice / persistRecord / loadStateFromBackend / applyEmptyAppSnapshot)在此处都已就绪,
+  // 每次渲染无条件刷新。
+  sessionLateRef.current = {
+    canCaregive,
+    setRecordsEntryDrawer,
+    setRecordsAssistantOpen,
+    openReminderManagement,
+    showSystemWeakNotice,
+    persistRecord,
+    loadStateFromBackend,
+    applyEmptyAppSnapshot,
   };
 
   // Persist an optimistic album item while protecting it from snapshot overwrites.
@@ -3355,34 +2042,7 @@ function App() {
     });
   };
 
-  const applyForProTrial = async (source: string) => {
-    setIsApplyingProTrial(true);
-    try {
-      const status = await submitProTrialApplication(source);
-      setProTrial(normalizeProTrialStatus(status));
-      showSystemWeakNotice("已收到 Pro 内测申请，开通后会在 App 内提示你。", "success");
-    } catch (error) {
-      showSystemWeakNotice(error instanceof Error ? error.message : "申请失败，请稍后再试。", "warning");
-    } finally {
-      setIsApplyingProTrial(false);
-    }
-  };
-
-  const redeemProTrialCode = async () => {
-    const code = redeemCodeInput.trim();
-    if (!code || isRedeemingProCode) return;
-    setIsRedeemingProCode(true);
-    try {
-      const status = await redeemProCode(code);
-      setProTrial(normalizeProTrialStatus(status));
-      setRedeemCodeInput("");
-      showSystemWeakNotice("内测码兑换成功，Pro 已开通。", "success");
-    } catch (error) {
-      showSystemWeakNotice(error instanceof Error ? error.message : "兑换失败，请稍后再试。", "warning");
-    } finally {
-      setIsRedeemingProCode(false);
-    }
-  };
+  // applyForProTrial / redeemProTrialCode 已抽到 useSessionState(上方提前调用,返回值解构回同名变量)。
 
   const applyNativeAlarmEvents = async (events: NativeAlarmEvent[]) => {
     const updates = events.flatMap((event) => {
@@ -3515,46 +2175,8 @@ function App() {
     };
   }, [authStatus]);
 
-  const scheduleCompressionStatusReset = (status: CompressionStatus, delayMs: number) => {
-    if (compressionResetTimerRef.current !== null) window.clearTimeout(compressionResetTimerRef.current);
-    compressionResetTimerRef.current = window.setTimeout(() => {
-      setCompressionStatus((current) => (current === status ? "idle" : current));
-      compressionResetTimerRef.current = null;
-    }, delayMs);
-  };
-
-  const runConversationCompression = async () => {
-    if (!backendReadyRef.current || compressionInFlightRef.current || !canCaregive) return;
-    compressionInFlightRef.current = true;
-    if (compressionResetTimerRef.current !== null) {
-      window.clearTimeout(compressionResetTimerRef.current);
-      compressionResetTimerRef.current = null;
-    }
-    setCompressionStatus("checking");
-    const compressingTimer = window.setTimeout(() => {
-      setCompressionStatus((current) => (current === "checking" ? "compressing" : current));
-    }, 250);
-
-    try {
-      const response = await compressConversationSummary();
-      window.clearTimeout(compressingTimer);
-      if (response.conversationSummary !== undefined) {
-        setConversationSummary(response.conversationSummary ?? null);
-      }
-      if (response.status === "compressed") {
-        setCompressionStatus("done");
-        scheduleCompressionStatusReset("done", 2400);
-      } else {
-        setCompressionStatus("idle");
-      }
-    } catch {
-      window.clearTimeout(compressingTimer);
-      setCompressionStatus("failed");
-      scheduleCompressionStatusReset("failed", 3600);
-    } finally {
-      compressionInFlightRef.current = false;
-    }
-  };
+  // scheduleCompressionStatusReset / runConversationCompression 随 chat 一族迁入 useChatState
+  // (提交流尾部触发;compressionInFlightRef / compressionResetTimerRef / setConversationSummary 作为 deps 传入)。
 
   const attachmentForStorage = (attachment: Attachment): Attachment => {
     const storedPublicUrl = stripAttachmentUrlForStorage(attachment.publicUrl);
@@ -3585,10 +2207,6 @@ function App() {
   const albumItemForStorage = (item: AlbumItem): AlbumItem => ({
     ...(({ recordedBy: _recordedBy, createdByUserId: _createdByUserId, ...rest }) => rest)(item),
     attachment: item.attachment ? attachmentForStorage(item.attachment) : undefined,
-  });
-
-  const expenseForStorage = (expense: ExpenseItem): ExpenseItem => ({
-    ...(({ attachments: _attachments, recordedBy: _recordedBy, createdByUserId: _createdByUserId, ...rest }) => rest)(expense),
   });
 
   useEffect(() => {
@@ -3683,15 +2301,7 @@ function App() {
     return () => window.clearInterval(interval);
   }, [authStatus]);
 
-  useEffect(() => {
-    if (authStatus !== "authenticated") {
-      setAiUsageSummary(null);
-      setAiUsageStatus("idle");
-      return;
-    }
-    void refreshAiUsageSummary({ quiet: true });
-    void refreshFamilyMembers({ quiet: true });
-  }, [authStatus, refreshAiUsageSummary, refreshFamilyMembers]);
+  // 登录态变化时刷新 AI 用量 / 家庭成员(authStatus 一族)的 effect 已抽到 useSessionState。
 
   useLayoutEffect(() => {
     const list = messageListRef.current;
@@ -3719,11 +2329,7 @@ function App() {
     hasPositionedMessageListRef.current = true;
   }, [messages, isSubmitting, activeMobileTab, recordsAssistantOpen]);
 
-  useEffect(() => {
-    if (canAttachVisuals) return;
-    setAttachments([]);
-    setMediaUploadItems([]);
-  }, [canAttachVisuals]);
+  // canAttachVisuals 变 false 时清空待发素材/上传队列的 effect 已抽到 useChatState。
 
   useEffect(() => {
     if (!canCaregive || !latestMilkAnchor) return;
@@ -3762,1213 +2368,47 @@ function App() {
     })();
   }, [canCaregive, latestMilkAnchor?.id, latestMilkAnchor?.occurredAt, reminders, careLogs]);
 
-  useEffect(() => {
-    setProfileDraft(profile);
-    setAllergiesText(profile.allergies.join("、"));
-  }, [profile]);
+  // profile 变化时同步 profileDraft / allergiesText 的 effect 已抽到 useSessionState。
 
-  const readImageDimensionsFromFile = (file: File): Promise<Pick<Attachment, "width" | "height">> =>
-    new Promise((resolve) => {
-      const image = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      const cleanup = () => URL.revokeObjectURL(objectUrl);
-      image.onload = () => {
-        cleanup();
-        resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      };
-      image.onerror = () => {
-        cleanup();
-        resolve({});
-      };
-      image.src = objectUrl;
-    });
+  // readImageDimensionsFromFile / createVideoThumbnailDataUrl / readAgentAttachmentDataUrl /
+  // 媒体上传管线(updateMediaUploadItem / uploadMediaFile / queueMediaFiles / processSelectedMediaFiles /
+  // handleFiles / openMediaPicker)已抽到 useChatState。
 
-  const createVideoThumbnailDataUrl = (file: File): Promise<string | undefined> =>
-    new Promise((resolve) => {
-      const video = document.createElement("video");
-      const objectUrl = URL.createObjectURL(file);
-      let settled = false;
-      const cleanup = () => {
-        URL.revokeObjectURL(objectUrl);
-        video.removeAttribute("src");
-        video.load();
-      };
-      const finish = (value: string | undefined) => {
-        if (settled) return;
-        settled = true;
-        window.clearTimeout(timeout);
-        cleanup();
-        resolve(value);
-      };
-      const timeout = window.setTimeout(() => finish(undefined), VIDEO_THUMBNAIL_TIMEOUT_MS);
-      video.muted = true;
-      video.playsInline = true;
-      // preload=metadata 在 Android WebView 上 seek 后经常不解码帧(onseeked 不触发/画出黑帧),
-      // 导致封面静默缺失;auto 让浏览器预取首段数据,本地文件无流量代价。
-      video.preload = "auto";
-      video.onloadedmetadata = () => {
-        const seekTime = Number.isFinite(video.duration) && video.duration > 0 ? Math.min(0.4, video.duration / 8) : 0;
-        try {
-          video.currentTime = seekTime;
-        } catch {
-          finish(undefined);
-        }
-      };
-      video.onseeked = () => {
-        try {
-          const width = video.videoWidth || 480;
-          const height = video.videoHeight || 480;
-          const scale = Math.min(1, 480 / Math.max(width, height));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, Math.round(width * scale));
-          canvas.height = Math.max(1, Math.round(height * scale));
-          const context = canvas.getContext("2d");
-          if (!context) {
-            finish(undefined);
-            return;
-          }
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-          finish(dataUrl);
-        } catch {
-          finish(undefined);
-        }
-      };
-      video.onerror = () => {
-        finish(undefined);
-      };
-      video.src = objectUrl;
-    });
-
-  const readAgentAttachmentDataUrl = async (attachment: Attachment, visualCount: number) => {
-    if (!canAttachVisuals) return undefined;
-    try {
-      if (attachment.kind === "image") {
-        const imageUrl = attachment.url ?? attachment.publicUrl;
-        const dataUrl = attachment.dataUrl ?? (imageUrl ? await fetchAsDataUrl(imageUrl) : undefined);
-        return resizeImageDataUrlForAgent(dataUrl, visualCount);
-      }
-      if (attachment.kind === "video") {
-        const thumbnailUrl = attachment.thumbnailUrl;
-        if (!thumbnailUrl) return undefined;
-        const dataUrl = thumbnailUrl.startsWith("data:image/")
-          ? thumbnailUrl
-          : await fetchAsDataUrl(thumbnailUrl);
-        return resizeImageDataUrlForAgent(dataUrl, visualCount);
-      }
-    } catch {
-      return undefined;
-    }
-    return undefined;
+  // openAlbumMediaPicker / albumScreenHandlers(memo 化 AlbumScreen 的稳定函数包)已抽到 useAlbumState。
+  // useAlbumState 的迟绑定依赖在此处都已就绪(showSystemWeakNotice / applyStateResponse /
+  // persistAlbumItemOptimistic / processSelectedMediaFiles / isUploadingAlbumMedia),每次渲染无条件刷新。
+  albumLateRef.current = {
+    showSystemWeakNotice,
+    applyStateResponse,
+    persistAlbumItemOptimistic,
+    processSelectedMediaFiles,
+    isUploadingAlbumMedia,
+  };
+  // usePendingEffects 的迟绑定依赖在此处都已就绪(persistRecord / applyAppSnapshot / persistAlbumItemOptimistic /
+  // showSystemWeakNotice / messageForStorage),每次渲染无条件刷新。
+  pendingEffectsLateRef.current = {
+    persistRecord,
+    applyAppSnapshot,
+    persistAlbumItemOptimistic,
+    showSystemWeakNotice,
+    messageForStorage,
+  };
+  // useChatState 的迟绑定依赖在此处都已就绪(persistRecord / applyStateResponse / persistAlbumItemOptimistic /
+  // showSystemWeakNotice / applyForProTrial / buildAgentPageContext / messageForStorage),每次渲染无条件刷新。
+  chatLateRef.current = {
+    persistRecord,
+    applyStateResponse,
+    persistAlbumItemOptimistic,
+    showSystemWeakNotice,
+    applyForProTrial,
+    buildAgentPageContext,
+    messageForStorage,
   };
 
-  const updateMediaUploadItem = (id: string, patch: Partial<MediaUploadItem>) => {
-    setMediaUploadItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
-  };
-
-  const removeMediaUploadItem = (id: string) => {
-    setMediaUploadItems((current) => current.filter((item) => item.id !== id));
-  };
-
-  const removeMediaUploadItemLater = (id: string, delay = 1800) => {
-    window.setTimeout(() => {
-      removeMediaUploadItem(id);
-    }, delay);
-  };
-
-  const uploadMediaFile = async (
-    id: string,
-    file: File,
-    kind: AttachmentKind,
-    dimensions?: Pick<Attachment, "width" | "height">,
-    thumbnailDataUrl?: string,
-  ): Promise<Attachment> => {
-    if (!canCaregive) throw new Error("当前身份仅可查看，不能上传附件。");
-    updateMediaUploadItem(id, { status: "uploading", progress: 1, message: "上传中" });
-    const uploaded = await uploadFileAttachment({
-      id,
-      name: file.name,
-      kind,
-      file,
-      thumbnailDataUrl,
-      onProgress: (progress) => updateMediaUploadItem(id, { status: "uploading", progress: Math.max(1, Math.min(99, progress)), message: `上传 ${progress}%` }),
-    });
-    updateMediaUploadItem(id, { status: "processing", progress: 100, message: "整理中" });
-    const capturedAt = await resolveMediaCaptureDate(file, uploaded.createdAt);
-    const attachment: Attachment = {
-      id: uploaded.id,
-      name: uploaded.name,
-      kind: uploaded.kind,
-      url: uploaded.url,
-      publicUrl: uploaded.publicUrl,
-      thumbnailUrl: uploaded.thumbnailUrl,
-      thumbnailPath: uploaded.thumbnailPath,
-      filePath: uploaded.filePath,
-      mimeType: uploaded.mimeType,
-      width: dimensions?.width,
-      height: dimensions?.height,
-      createdAt: uploaded.createdAt,
-      capturedAt,
-    };
-    return attachment;
-  };
-
-  const queueMediaFiles = (files: File[], limit: number): QueuedMediaFile[] =>
-    files
-      .filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"))
-      .slice(0, limit)
-      .map((file) => ({
-        id: makeId("attachment"),
-        file,
-        kind: file.type.startsWith("video/") ? "video" as AttachmentKind : "image" as AttachmentKind,
-      }));
-
-  const processSelectedMediaFiles = async (files: File[], target: MediaUploadTarget) => {
-    const availableSlots = target === "chat" ? Math.max(0, MAX_CHAT_ATTACHMENTS - attachments.length) : MAX_ALBUM_PICKER_ATTACHMENTS;
-    const queue = queueMediaFiles(files, availableSlots);
-    const mediaFileCount = files.filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/")).length;
-    const skippedByLimit = target === "chat" ? Math.max(0, mediaFileCount - availableSlots) : 0;
-    if (queue.length) {
-      setMediaUploadItems((current) => [
-        ...current,
-        ...queue.map(({ id, file, kind }) => ({
-          id,
-          name: file.name,
-          kind,
-          target,
-          status: "preparing" as MediaUploadStatus,
-          progress: 0,
-          message: "准备中",
-        })),
-      ]);
-    }
-
-    const failures: string[] = [];
-    for (const item of queue) {
-      const maxUploadBytes = maxMediaUploadBytes(item.kind);
-      if (item.file.size > maxUploadBytes) {
-        const message = `超过 ${formatFileSize(maxUploadBytes)} 限制`;
-        failures.push(`${item.file.name} ${message}`);
-        updateMediaUploadItem(item.id, { status: "failed", progress: 0, message });
-        removeMediaUploadItemLater(item.id, 6000);
-        continue;
-      }
-      try {
-        updateMediaUploadItem(item.id, { status: "preparing", progress: 0, message: item.kind === "video" ? "生成预览" : "读取信息" });
-        const dimensions = item.kind === "image" ? await readImageDimensionsFromFile(item.file) : {};
-        const thumbnailDataUrl = item.kind === "video" ? await createVideoThumbnailDataUrl(item.file) : undefined;
-        if (item.kind === "video" && !thumbnailDataUrl) {
-          // 封面抽帧静默失败曾导致线上视频无封面且无从排查——上报留痕(渲染端有抽帧兜底,不阻塞上传)。
-          reportClientError({
-            kind: "unknown",
-            message: `video-thumbnail-failed: ${item.file.name} (${item.file.type || "?"}, ${Math.round(item.file.size / 1024)}KB)`,
-            page: "album-upload",
-          });
-        }
-        const attachment = await uploadMediaFile(item.id, item.file, item.kind, dimensions, thumbnailDataUrl);
-        if (target === "chat") {
-          removeMediaUploadItem(item.id);
-          setAttachments((current) => [...current, attachment].slice(0, MAX_CHAT_ATTACHMENTS));
-        } else {
-          const albumItem = albumItemFromStandaloneAttachment(attachment);
-          setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
-          updateMediaUploadItem(item.id, { status: "done", progress: 100, message: "已加入相册" });
-          removeMediaUploadItemLater(item.id, 1600);
-          void persistAlbumItemOptimistic(albumItem).catch(() => undefined);
-          hapticSuccess();
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "上传失败";
-        failures.push(`${item.file.name} ${message}`);
-        updateMediaUploadItem(item.id, { status: "failed", progress: 0, message });
-        removeMediaUploadItemLater(item.id, 6000);
-      }
-    }
-    if (failures.length || (target === "chat" && (availableSlots === 0 || skippedByLimit > 0))) {
-      const limitMessage = availableSlots === 0
-        ? `最多同时添加 ${MAX_CHAT_ATTACHMENTS} 个素材，先处理当前内容后再继续添加。`
-        : `最多同时添加 ${MAX_CHAT_ATTACHMENTS} 个素材，已先添加前 ${queue.length} 个。`;
-      const message = failures.length
-        ? `${target === "album" ? "相册" : "素材"}上传失败：${failures.slice(0, 2).join("；")}${failures.length > 2 ? " 等" : ""}${target === "chat" && skippedByLimit > 0 ? `；${limitMessage}` : ""}`
-        : limitMessage;
-      setMessages((current) => [
-        ...current,
-        {
-          id: makeId("msg"),
-          role: "ai",
-          text: message,
-          createdAt: new Date().toISOString(),
-          tags: ["系统"],
-        },
-      ]);
-    }
-    if (target === "chat" && queue.length > 0 && queue.length >= availableSlots) {
-      showSystemWeakNotice(
-        `这条消息最多识别 ${MAX_CHAT_ATTACHMENTS} 个素材，本次已添加 ${queue.length} 个；更多请发送后再继续。`,
-        skippedByLimit > 0 ? "warning" : "info",
-        3600,
-      );
-    }
-  };
-
-  const handleFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!canCaregive || !canAttachVisuals || isUploadingChatMedia) {
-      event.target.value = "";
-      return;
-    }
-    await processSelectedMediaFiles(Array.from(event.target.files ?? []), "chat");
-    event.target.value = "";
-  };
-
-  const handleAlbumFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!canCaregive || isUploadingAlbumMedia) {
-      event.target.value = "";
-      return;
-    }
-    await processSelectedMediaFiles(Array.from(event.target.files ?? []), "album");
-    event.target.value = "";
-  };
-
-  const openMediaPicker = async () => {
-    if (!canCaregive || isUploadingChatMedia) return;
-    if (!hasAiQuota) {
-      showSystemWeakNotice("本月免费 AI 体验次数已用完，申请 Pro 内测后即可不限次使用图片/视频整理。", "info");
-      void applyForProTrial("visual-quota-exhausted");
-      return;
-    }
-
-    const availableSlots = Math.max(0, MAX_CHAT_ATTACHMENTS - attachments.length);
-    if (availableSlots <= 0) {
-      await processSelectedMediaFiles([], "chat");
-      return;
-    }
-
-    if (isNativeMediaPickerAvailable()) {
-      try {
-        const files = await pickNativeMediaFiles({ limit: availableSlots });
-        if (files.length) await processSelectedMediaFiles(files, "chat");
-        return;
-      } catch (error) {
-        if (isNativeMediaPickerCancel(error)) return;
-        console.warn("[native-media-picker] failed", error);
-        const message = error instanceof Error ? error.message : "无法读取已选择的素材";
-        showSystemWeakNotice(`素材选择失败：${message}`, "warning", 3600);
-        return;
-      }
-    }
-
-    fileInputRef.current?.click();
-  };
-
-  const openAlbumMediaPicker = async () => {
-    if (!canCaregive || isUploadingAlbumMedia) return;
-    if (isNativeMediaPickerAvailable()) {
-      try {
-        const files = await pickNativeMediaFiles({ limit: MAX_ALBUM_PICKER_ATTACHMENTS });
-        if (files.length) await processSelectedMediaFiles(files, "album");
-        return;
-      } catch (error) {
-        if (isNativeMediaPickerCancel(error)) return;
-        console.warn("[native-media-picker] failed", error);
-        const message = error instanceof Error ? error.message : "无法读取已选择的素材";
-        showSystemWeakNotice(`相册选择失败：${message}`, "warning", 3600);
-        return;
-      }
-    }
-    albumFileInputRef.current?.click();
-  };
-
-  // AlbumScreen(memo)的函数 props:经 ref 间接调用最新实现,引用永远稳定——
-  // 否则 App 每次渲染重建闭包,memo 形同虚设。
-  const albumScreenHandlersRef = useRef({ handleAlbumFiles, openAlbumMediaPicker, openAlbumPreview });
-  albumScreenHandlersRef.current = { handleAlbumFiles, openAlbumMediaPicker, openAlbumPreview };
-  const [albumScreenHandlers] = useState(() => ({
-    onPickFiles: (event: ChangeEvent<HTMLInputElement>) => {
-      void albumScreenHandlersRef.current.handleAlbumFiles(event);
-    },
-    onOpenPicker: () => {
-      void albumScreenHandlersRef.current.openAlbumMediaPicker();
-    },
-    onOpenPreview: (event: { currentTarget: HTMLButtonElement }, attachment: Attachment, item: AlbumItem) => {
-      albumScreenHandlersRef.current.openAlbumPreview(event, attachment, item);
-    },
-  }));
-
-  const clearVoiceAutoSubmitTimer = () => {
-    if (voiceAutoSubmitTimerRef.current !== null) {
-      window.clearTimeout(voiceAutoSubmitTimerRef.current);
-      voiceAutoSubmitTimerRef.current = null;
-    }
-  };
-
-  const runVoiceAutoSubmit = () => {
-    if (!voiceAutoSubmitRef.current || isSubmittingRef.current) return;
-
-    const text = inputValueRef.current.trim();
-    if (!text) return;
-
-    voiceAutoSubmitRef.current = false;
-    clearVoiceAutoSubmitTimer();
-    voiceSessionRef.current += 1;
-    voiceShouldStopRef.current = true;
-    asrControllerRef.current?.close();
-    asrControllerRef.current = null;
-    void submitComposerMessageRef.current?.(text, { skipVoiceStop: true });
-  };
-
-  const scheduleVoiceAutoSubmit = (delayMs = 0) => {
-    if (!voiceAutoSubmitRef.current) return;
-    clearVoiceAutoSubmitTimer();
-    voiceAutoSubmitTimerRef.current = window.setTimeout(runVoiceAutoSubmit, delayMs);
-  };
-
-  const voiceMediaConstraints: MediaStreamConstraints = {
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  };
-
-  const stopVoiceStandbyStream = () => {
-    const stream = voiceStandbyStreamRef.current;
-    voiceStandbyStreamRef.current = null;
-    stream?.getTracks().forEach((track) => track.stop());
-  };
-
-  const requestVoiceInputStream = async () => {
-    const microphoneAllowed = await ensureMicrophonePermission();
-    if (!microphoneAllowed) {
-      throw new Error("麦克风权限未开启，请在系统设置中允许录音");
-    }
-    return navigator.mediaDevices.getUserMedia(voiceMediaConstraints);
-  };
-
-  const ensureVoiceInputStream = async () => {
-    const standby = voiceStandbyStreamRef.current;
-    if (standby && standby.getTracks().some((track) => track.readyState === "live")) {
-      voiceStandbyStreamRef.current = null;
-      standby.getAudioTracks().forEach((track) => {
-        track.enabled = true;
-      });
-      return standby;
-    }
-
-    if (voiceStandbyPromiseRef.current) {
-      const stream = await voiceStandbyPromiseRef.current;
-      voiceStandbyPromiseRef.current = null;
-      stream.getAudioTracks().forEach((track) => {
-        track.enabled = true;
-      });
-      return stream;
-    }
-
-    stopVoiceStandbyStream();
-    return requestVoiceInputStream();
-  };
-
-  const prepareVoiceStandby = async () => {
-    if (!canCaregive || voicePreparingRef.current || voiceStandbyStreamRef.current || mediaStreamRef.current) return;
-    if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext && !window.webkitAudioContext) return;
-
-    voicePreparingRef.current = true;
-    try {
-      const promise = requestVoiceInputStream();
-      voiceStandbyPromiseRef.current = promise;
-      const stream = await promise;
-      if (voiceStandbyPromiseRef.current === promise) {
-        voiceStandbyPromiseRef.current = null;
-      }
-      if (voicePressingRef.current) return;
-      stream.getAudioTracks().forEach((track) => {
-        track.enabled = false;
-      });
-      voiceStandbyStreamRef.current = stream;
-      if (!voicePressingRef.current) {
-        setVoiceStatus((current) => (current === "connecting" ? "idle" : current));
-        setVoiceTranscript((current) => current || "语音已就绪，按住说话");
-      }
-    } catch (error) {
-      voiceStandbyPromiseRef.current = null;
-      const message = error instanceof Error ? error.message : "麦克风暂时不可用";
-      setVoiceStatus("error");
-      setVoiceError(message);
-    } finally {
-      voicePreparingRef.current = false;
-    }
-  };
-
-  const sendBufferedVoiceSamples = (flush = false) => {
-    const samplesPerChunk = 1600;
-    const controller = asrControllerRef.current;
-    const buffer = voiceSampleBufferRef.current;
-    if (!controller) {
-      buffer.length = 0;
-      return;
-    }
-
-    while (buffer.length >= samplesPerChunk || (flush && buffer.length > 0)) {
-      const chunkLength = buffer.length >= samplesPerChunk ? samplesPerChunk : buffer.length;
-      const chunk = new Float32Array(buffer.splice(0, chunkLength));
-      controller.sendAudio(pcm16FromFloat32(chunk));
-    }
-  };
-
-  const cleanupLocalVoiceCapture = (keepStandby = false) => {
-    const processor = scriptProcessorRef.current;
-    scriptProcessorRef.current = null;
-    if (processor) {
-      processor.onaudioprocess = null;
-      processor.disconnect();
-    }
-
-    const source = audioSourceRef.current;
-    audioSourceRef.current = null;
-    source?.disconnect();
-
-    const gain = silentGainRef.current;
-    silentGainRef.current = null;
-    gain?.disconnect();
-
-    const stream = mediaStreamRef.current;
-    mediaStreamRef.current = null;
-    if (stream) {
-      if (keepStandby) {
-        stream.getAudioTracks().forEach((track) => {
-          track.enabled = false;
-        });
-        voiceStandbyStreamRef.current = stream;
-      } else {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    }
-
-    const audioContext = audioContextRef.current;
-    audioContextRef.current = null;
-    if (audioContext && audioContext.state !== "closed") {
-      void audioContext.close().catch(() => undefined);
-    }
-
-    setIsListening(false);
-    setVoiceLevel(0);
-  };
-
-  const finishVoiceStream = () => {
-    sendBufferedVoiceSamples(true);
-    const controller = asrControllerRef.current;
-    if (!controller || voiceEndedRef.current) return;
-    voiceEndedRef.current = true;
-    controller.end();
-    setVoiceStatus("processing");
-  };
-
-  const clearVoicePointerTracking = () => {
-    voicePointerCleanupRef.current?.();
-    voicePointerCleanupRef.current = null;
-    voicePointerRef.current = null;
-    setVoiceCancelArmed(false);
-  };
-
-  const stopVoiceCapture = (autoSubmit = false, keepStandby = true) => {
-    clearVoicePointerTracking();
-    voicePressingRef.current = false;
-    if (autoSubmit) {
-      hapticSelection();
-      voiceAutoSubmitRef.current = true;
-      scheduleVoiceAutoSubmit(1200);
-    }
-    voiceShouldStopRef.current = true;
-    cleanupLocalVoiceCapture(keepStandby);
-    finishVoiceStream();
-  };
-
-  const cancelVoiceCapture = () => {
-    clearVoicePointerTracking();
-    voicePressingRef.current = false;
-    voiceSessionRef.current += 1;
-    voiceShouldStopRef.current = true;
-    voiceEndedRef.current = true;
-    voiceAutoSubmitRef.current = false;
-    clearVoiceAutoSubmitTimer();
-    const baseText = voiceBaseTextRef.current;
-    inputValueRef.current = baseText;
-    setInput(baseText);
-    setVoiceTranscript("");
-    setVoiceError("");
-    cleanupLocalVoiceCapture(true);
-    asrControllerRef.current?.close();
-    asrControllerRef.current = null;
-    setVoiceStatus("idle");
-  };
-
-  const startVoiceCapture = async () => {
-    if (!canCaregive || isSubmitting || isListening) return;
-    hapticMedium();
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setVoiceStatus("unsupported");
-      setVoiceError("当前环境无法访问麦克风");
-      hapticWarning();
-      return;
-    }
-
-    const AudioContextConstructor =
-      window.AudioContext ?? window.webkitAudioContext;
-    if (!AudioContextConstructor) {
-      setVoiceStatus("unsupported");
-      setVoiceError("当前环境不支持实时音频采集");
-      hapticWarning();
-      return;
-    }
-
-    setVoiceTranscript("");
-    setVoiceError("");
-    setVoiceLevel(0);
-    setVoiceStatus("connecting");
-
-    const sessionId = voiceSessionRef.current + 1;
-    voiceSessionRef.current = sessionId;
-    voiceShouldStopRef.current = false;
-    voiceEndedRef.current = false;
-    voiceAsrReadyRef.current = false;
-    voiceAutoSubmitRef.current = false;
-    clearVoiceAutoSubmitTimer();
-    voiceBaseTextRef.current = inputValueRef.current.trim();
-    voiceSampleBufferRef.current = [];
-
-    const controller = runAsrStream({
-      onReady: () => {
-        if (voiceSessionRef.current !== sessionId) return;
-        voiceAsrReadyRef.current = true;
-        if (mediaStreamRef.current) {
-          setVoiceStatus("listening");
-        }
-      },
-      onPartial: (text) => {
-        if (voiceSessionRef.current !== sessionId) return;
-        const merged = mergeVoiceText(voiceBaseTextRef.current, text);
-        setVoiceTranscript(text);
-        inputValueRef.current = merged;
-        setInput(merged);
-      },
-      onFinal: (text) => {
-        if (voiceSessionRef.current !== sessionId) return;
-        const merged = mergeVoiceText(voiceBaseTextRef.current, text);
-        setVoiceTranscript(text);
-        inputValueRef.current = merged;
-        setInput(merged);
-        if (voiceEndedRef.current) {
-          setVoiceStatus("idle");
-          asrControllerRef.current?.close();
-          asrControllerRef.current = null;
-          scheduleVoiceAutoSubmit(0);
-        }
-      },
-      onError: (message) => {
-        if (voiceSessionRef.current !== sessionId) return;
-        voiceShouldStopRef.current = true;
-        voiceAutoSubmitRef.current = false;
-        clearVoiceAutoSubmitTimer();
-        setVoiceError(message);
-        setVoiceStatus("error");
-        cleanupLocalVoiceCapture();
-        asrControllerRef.current?.close();
-        asrControllerRef.current = null;
-        hapticWarning();
-      },
-      onClose: () => {
-        if (voiceSessionRef.current !== sessionId) return;
-        cleanupLocalVoiceCapture();
-        asrControllerRef.current = null;
-        setVoiceStatus((current) => (current === "error" || current === "unsupported" ? current : "idle"));
-        scheduleVoiceAutoSubmit(0);
-      },
-    });
-    asrControllerRef.current = controller;
-
-    let capturedStream: MediaStream | null = null;
-    try {
-      capturedStream = await ensureVoiceInputStream();
-
-      if (voiceSessionRef.current !== sessionId || voiceShouldStopRef.current) {
-        capturedStream.getTracks().forEach((track) => track.stop());
-        finishVoiceStream();
-        return;
-      }
-
-      const audioContext = new AudioContextConstructor();
-      if (audioContext.state === "suspended") {
-        await audioContext.resume();
-      }
-      if (voiceSessionRef.current !== sessionId || voiceShouldStopRef.current) {
-        capturedStream.getTracks().forEach((track) => track.stop());
-        void audioContext.close().catch(() => undefined);
-        finishVoiceStream();
-        return;
-      }
-
-      const source = audioContext.createMediaStreamSource(capturedStream);
-      const processor = audioContext.createScriptProcessor(2048, 1, 1);
-      const gain = audioContext.createGain();
-      gain.gain.value = 0;
-
-      mediaStreamRef.current = capturedStream;
-      audioContextRef.current = audioContext;
-      audioSourceRef.current = source;
-      scriptProcessorRef.current = processor;
-      silentGainRef.current = gain;
-
-      processor.onaudioprocess = (event) => {
-        if (voiceShouldStopRef.current || voiceSessionRef.current !== sessionId) return;
-        const samples = event.inputBuffer.getChannelData(0);
-        setVoiceLevel((current) => current * 0.55 + rmsLevel(samples) * 0.45);
-
-        const downsampled = downsampleAudio(samples, audioContext.sampleRate, 16000);
-        voiceSampleBufferRef.current.push(...downsampled);
-        sendBufferedVoiceSamples(false);
-      };
-
-      source.connect(processor);
-      processor.connect(gain);
-      gain.connect(audioContext.destination);
-      setIsListening(true);
-      setVoiceStatus(voiceAsrReadyRef.current ? "listening" : "connecting");
-    } catch (error) {
-      capturedStream?.getTracks().forEach((track) => track.stop());
-      const message =
-        error instanceof DOMException && error.name === "NotAllowedError"
-          ? "麦克风权限被拒绝，请在系统设置中允许录音"
-          : error instanceof Error
-            ? error.message
-          : "无法启动麦克风，请稍后再试";
-      setVoiceError(message);
-      setVoiceStatus("error");
-      cleanupLocalVoiceCapture();
-      asrControllerRef.current?.close();
-      asrControllerRef.current = null;
-      hapticWarning();
-    }
-  };
-
-  const finishVoicePress = () => {
-    const pointer = voicePointerRef.current;
-    if (!pointer) return;
-    if (pointer.canceling) {
-      cancelVoiceCapture();
-      return;
-    }
-    stopVoiceCapture(true);
-  };
-
-  const cancelVoicePress = () => {
-    if (!voicePointerRef.current && !voicePressingRef.current) return;
-    cancelVoiceCapture();
-  };
-
-  const startVoicePress = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!canUseComposerInput || voicePointerRef.current) return;
-    event.preventDefault();
-    const button = event.currentTarget;
-    const pointerId = event.pointerId;
-    voiceBaseTextRef.current = inputValueRef.current.trim();
-    voicePointerRef.current = { pointerId, startY: event.clientY, canceling: false };
-    setVoiceCancelArmed(false);
-
-    const finishFromWindow = (pointerEvent: PointerEvent) => {
-      if (voicePointerRef.current?.pointerId !== pointerEvent.pointerId) return;
-      pointerEvent.preventDefault();
-      finishVoicePress();
-    };
-    const updateCancelFromWindow = (pointerEvent: PointerEvent) => {
-      const pointer = voicePointerRef.current;
-      if (!pointer || pointer.pointerId !== pointerEvent.pointerId) return;
-      const canceling = pointerEvent.clientY <= pointer.startY - VOICE_CANCEL_DISTANCE_PX;
-      if (pointer.canceling === canceling) return;
-      voicePointerRef.current = { ...pointer, canceling };
-      setVoiceCancelArmed(canceling);
-      if (canceling) hapticSelection();
-    };
-    const cancelFromWindow = (pointerEvent: PointerEvent) => {
-      if (voicePointerRef.current?.pointerId !== pointerEvent.pointerId) return;
-      cancelVoicePress();
-    };
-    const cancelOnBlur = () => cancelVoicePress();
-
-    window.addEventListener("pointerup", finishFromWindow, true);
-    window.addEventListener("pointermove", updateCancelFromWindow, true);
-    window.addEventListener("pointercancel", cancelFromWindow, true);
-    window.addEventListener("blur", cancelOnBlur);
-    voicePointerCleanupRef.current = () => {
-      window.removeEventListener("pointerup", finishFromWindow, true);
-      window.removeEventListener("pointermove", updateCancelFromWindow, true);
-      window.removeEventListener("pointercancel", cancelFromWindow, true);
-      window.removeEventListener("blur", cancelOnBlur);
-    };
-
-    try {
-      button.setPointerCapture(pointerId);
-    } catch {
-      // Some WebViews reject pointer capture during long-press gestures; the window listeners keep the press stable.
-    }
-    voicePressingRef.current = true;
-    void startVoiceCapture();
-  };
-
-  const releaseVoicePress = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (voicePointerRef.current?.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // The pointer may already be released when the native view cancels a gesture.
-    }
-    finishVoicePress();
-  };
-
-  const cancelVoicePointer = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (voicePointerRef.current?.pointerId !== event.pointerId) return;
-    cancelVoicePress();
-  };
-
-  useEffect(
-    () => () => {
-      voiceSessionRef.current += 1;
-      voiceShouldStopRef.current = true;
-      voiceAutoSubmitRef.current = false;
-      voicePressingRef.current = false;
-      clearVoicePointerTracking();
-      clearVoiceAutoSubmitTimer();
-      cleanupLocalVoiceCapture();
-      stopVoiceStandbyStream();
-      asrControllerRef.current?.close();
-      asrControllerRef.current = null;
-    },
-    [],
-  );
-
-  const toggleComposerMode = () => {
-    if (!canCaregive || !canUseComposerInput) return;
-    if (composerMode === "voice") {
-      stopVoiceCapture(false, false);
-      stopVoiceStandbyStream();
-      setComposerMode("keyboard");
-      return;
-    }
-
-    setComposerMode("voice");
-    setVoiceStatus("idle");
-    setVoiceTranscript("");
-    setVoiceError("");
-    void prepareVoiceStandby();
-  };
-
-  const submitComposerMessage = async (
-    textOverride?: string,
-    options: { skipVoiceStop?: boolean } = {},
-  ) => {
-    const text = (textOverride ?? inputValueRef.current).trim();
-    if (!canCaregive) return;
-    if ((!text && attachments.length === 0) || isSubmittingRef.current || isUploadingChatMedia) return;
-    hapticLight();
-
-    const submittedAttachments = attachments;
-    const agentModel = resolveAgentModelForMessage(text, submittedAttachments);
-    const agentThinkingEnabled = resolveThinkingForMessage(text, submittedAttachments);
-    const agentLowLatencyEnabled = resolveLowLatencyForMessage(agentModel, submittedAttachments);
-    const parentMessage: ChatMessage = {
-      id: makeId("msg"),
-      role: "parent",
-      text: text || "上传了新的成长素材",
-      createdAt: new Date().toISOString(),
-      attachments: submittedAttachments,
-    };
-    const albumDecisions = submittedAttachments.map((attachment) => decideAlbumMedia(parentMessage, attachment));
-    // 自动收藏：用户发到聊天的生活照/视频，发送瞬间就乐观进相册（不等 AI、不需手动点）。
-    const autoSavedAttachmentIds = new Set<string>();
-    albumDecisions
-      .filter((decision) => decision.mode === "auto_save")
-      .forEach((decision) => {
-        const attachment = submittedAttachments.find((item) => item.id === decision.attachmentId);
-        if (!attachment) return;
-        const albumItem = albumItemFromDecision(decision, parentMessage, attachment);
-        autoSavedAttachmentIds.add(decision.attachmentId);
-        setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
-        void persistAlbumItemOptimistic(albumItem).catch(() => undefined);
-      });
-    // 只有"还不确定"的素材才保留确认卡片
-    let albumPrompts = albumDecisions
-      .filter((decision) => decision.mode === "ask")
-      .map(albumPromptFromDecision);
-    const ignoredScreenshotDecision = albumDecisions.find(
-      (decision) => decision.mode === "ignore" && decision.tags.includes("截图"),
-    );
-    const pendingAiMessage: ChatMessage = {
-      id: makeId("msg"),
-      role: "ai",
-      text: "思考中",
-      createdAt: new Date().toISOString(),
-      tags: [agentThinkingEnabled ? "深度思考" : "处理中"],
-      reasoning: "",
-      isStreaming: true,
-      toolActivities: [],
-    };
-
-    setIsSubmitting(true);
-    isSubmittingRef.current = true;
-    voiceAutoSubmitRef.current = false;
-    clearVoiceAutoSubmitTimer();
-    if (!options.skipVoiceStop) stopVoiceCapture();
-    inputValueRef.current = "";
-    setInput("");
-    setVoiceTranscript("");
-    setAttachments([]);
-    setMessages((current) => [...current, parentMessage, pendingAiMessage]);
-
-    let toolActivities: ToolActivity[] = [];
-    try {
-      const agentSourceAttachments = submittedAttachments;
-      const visualAttachmentCount = agentSourceAttachments.filter(isVisualAttachment).length;
-      const agentAttachments = await Promise.all(
-        agentSourceAttachments.map(async (item) => ({
-          id: item.id,
-          name: item.kind === "video" ? `${item.name}（视频缩略图）` : item.name,
-          kind: item.kind,
-          dataUrl: await readAgentAttachmentDataUrl(item, visualAttachmentCount),
-        })),
-      );
-      let reasoningText = "";
-      let contentText = "";
-      const agentResponse = await runAgentChatStream(
-        {
-          message: parentMessage.text,
-          model: agentModel,
-          babyProfile: babyProfileForAgent(profile),
-          recentMessages: messages.slice(-12).map((message) => ({
-            ...message,
-            attachments: message.attachments?.map((attachment) => ({
-              id: attachment.id,
-              name: attachment.name,
-              kind: attachment.kind,
-            })),
-          })),
-          careLogs: careLogs.slice(-10),
-          memories: memories.slice(0, 10),
-          pageContext: buildAgentPageContext(),
-          thinkingEnabled: agentThinkingEnabled,
-          lowLatencyEnabled: agentLowLatencyEnabled,
-          attachments: agentAttachments,
-        },
-        {
-          onReasoning: (delta) => {
-            reasoningText += delta;
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === pendingAiMessage.id
-                  ? { ...message, reasoning: reasoningText, text: "思考中" }
-                  : message,
-              ),
-            );
-          },
-          onContent: (delta) => {
-            contentText += delta;
-            const preview = extractAiTextPreview(contentText);
-            if (!preview) return;
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === pendingAiMessage.id
-                  ? { ...message, text: preview, tags: ["生成中"], reasoning: reasoningText }
-                  : message,
-              ),
-            );
-          },
-          onTool: (activity) => {
-            toolActivities = upsertToolActivity(toolActivities, activity);
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === pendingAiMessage.id
-                  ? {
-                      ...message,
-                      toolActivities,
-                      text: contentText ? message.text : activity.message,
-                      tags: activity.status === "running" ? [isAgentProgressActivity(activity) ? "处理中" : "查询中"] : message.tags,
-                    }
-                  : message,
-              ),
-            );
-          },
-          onStatus: (status) => {
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === pendingAiMessage.id && !contentText
-                  ? { ...message, text: status.message, tags: [agentStatusTag(status.type)] }
-                  : message,
-              ),
-            );
-          },
-        },
-      );
-      const result = normalizeAgentResponse(
-        suppressImageOnlyCareEffects(agentResponse, parentMessage.text, submittedAttachments, albumDecisions),
-        parentMessage.text,
-      );
-      let aiText =
-        ignoredScreenshotDecision && !/不会保存到.*相册|不.*保存.*相册/.test(result.aiText)
-          ? `${result.aiText}\n\n这看起来是 App、网页或聊天截图，不会保存到成长相册。`
-          : result.aiText;
-      const serverAlbumDecisions = result.effectDecisions.filter((decision) => decision.type === "albumItem");
-      const hasServerDecisions = serverAlbumDecisions.length > 0;
-      let albumEffectMissingTarget = false;
-
-      if (hasServerDecisions) {
-        const albumEffectCandidates = [...messages, parentMessage];
-        serverAlbumDecisions.forEach((decision) => {
-          if (decision.mode === "ignore") return;
-          const target = resolveAlbumEffectTarget(decision, albumEffectCandidates);
-          if (!target) {
-            albumEffectMissingTarget = true;
-            return;
-          }
-          if (autoSavedAttachmentIds.has(target.attachment.id)) return; // 已自动进相册，不再弹确认卡
-          const prompt = albumPromptFromEffectDecision(decision, target.message, target.attachment);
-          if (!albumPrompts.some((item) => item.sourceMessageId === prompt.sourceMessageId && item.attachmentId === prompt.attachmentId)) {
-            albumPrompts = [...albumPrompts, prompt];
-          }
-        });
-      }
-
-      if (albumEffectMissingTarget) {
-        aiText = `${aiText}\n\n我没有找到要保存的照片或视频，可以重新发一下素材再告诉我保存到相册。`;
-      } else if (albumPrompts.some((prompt) => prompt.status === "pending") && !/点.*保存到相册|确认.*保存到相册|保存到相册.*确认/.test(aiText)) {
-        aiText = `${aiText}\n\n我会等你点「保存到相册」后再收藏这段素材。`;
-      }
-      if (autoSavedAttachmentIds.size > 0 && !/相册/.test(aiText)) {
-        aiText = `${aiText}\n\n照片已经放进成长相册啦，不想留的可以在相册里删掉。`;
-      }
-
-      const aiMessage: ChatMessage = {
-        id: makeId("msg"),
-        role: "ai",
-        text: aiText,
-        createdAt: new Date().toISOString(),
-        tags: result.tags,
-        reasoning: reasoningText,
-        isStreaming: false,
-        toolActivities,
-        sources: result.sources,
-        safetyAlerts: result.safetyAlerts,
-        effectDecisions: result.effectDecisions,
-        albumPrompts,
-      };
-
-      setMessages((current) =>
-        current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
-      );
-      const persistenceTasks: Array<() => Promise<unknown>> = [
-        () => persistRecord("messages", parentMessage.id, messageForStorage(parentMessage)),
-        () => persistRecord("messages", aiMessage.id, messageForStorage(aiMessage)),
-      ];
-      try {
-        for (const task of persistenceTasks) {
-          await task();
-        }
-        const refreshedState = await readAppState();
-        applyStateResponse(refreshedState);
-        void runConversationCompression();
-      } catch {
-        // Local state stays usable; the status chip tells the parent that the backend sync needs attention.
-      }
-    } catch (error) {
-      if (error instanceof AgentApiError && error.code === "PRO_QUOTA_EXCEEDED") {
-        showSystemWeakNotice(error.message, "info", 3600);
-        void applyForProTrial("ai-quota-exhausted");
-      }
-      const failedActivities = failedRunningActivities(toolActivities);
-      const aiMessage: ChatMessage = {
-        id: makeId("msg"),
-        role: "ai",
-        text: formatAgentFailureMessage(error, submittedAttachments),
-        createdAt: new Date().toISOString(),
-        tags: ["系统"],
-        isStreaming: false,
-        toolActivities: failedActivities,
-      };
-      setMessages((current) =>
-        current.map((message) => (message.id === pendingAiMessage.id ? aiMessage : message)),
-      );
-      hapticWarning();
-      try {
-        await persistRecord("messages", parentMessage.id, messageForStorage(parentMessage));
-        await persistRecord("messages", aiMessage.id, messageForStorage(aiMessage));
-      } catch {
-        // Keep the visible error message even if the backend is unreachable.
-      }
-    } finally {
-      setIsSubmitting(false);
-      isSubmittingRef.current = false;
-    }
-  };
-  submitComposerMessageRef.current = submitComposerMessage;
-
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    void submitComposerMessage();
-  };
-
-  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-
-    event.preventDefault();
-    event.currentTarget.form?.requestSubmit();
-  };
-
-  const openNewReminderEditor = () => {
-    if (!canCaregive) return;
-    setEditingReminderId("");
-    setReminderDraft(createReminderDraft());
-    setReminderEditorOpen(true);
-  };
-
-  const openReminderQuickDraft = (action: (typeof REMINDER_QUICK_ACTIONS)[number]) => {
-    if (!canCaregive) return;
-    const draft = createReminderDraft();
-    const nextDraft: ReminderDraft = {
-      ...draft,
-      title: withBabyNickname(action.prompt)
-        .replace(/提醒我|帮我设置一个|：/g, "")
-        .trim()
-        .slice(0, 24) || action.label,
-    };
-    if (action.label === "疫苗") {
-      nextDraft.title = `带${babyNickname}去社区医院打疫苗`;
-      nextDraft.category = "vaccine";
-    } else if (action.label === "体检") {
-      nextDraft.title = `带${babyNickname}去做体检`;
-      nextDraft.category = "routine";
-    } else if (action.label === "洗澡") {
-      nextDraft.title = `给${babyNickname}洗澡`;
-      nextDraft.category = "care";
-      nextDraft.dueTime = "20:00";
-    } else if (action.label === "喂奶闹钟") {
-      nextDraft.title = "喂奶提醒";
-      nextDraft.category = "care";
-      nextDraft.scheduleMode = "interval";
-      nextDraft.alertMode = "ringing";
-      nextDraft.intervalMinutes = "180";
-    } else if (action.label === "喂药") {
-      nextDraft.title = `给${babyNickname}喂药`;
-      nextDraft.category = "care";
-    } else if (action.label === "复诊") {
-      nextDraft.title = `带${babyNickname}去复诊`;
-      nextDraft.category = "routine";
-    } else if (action.label === "自定义") {
-      nextDraft.title = "";
-      nextDraft.category = "custom";
-    }
-    setEditingReminderId("");
-    setReminderDraft(nextDraft);
-    setReminderEditorOpen(true);
-  };
-
-  const openEditReminderEditor = (reminder: Reminder) => {
-    if (!canCaregive) return;
-    setEditingReminderId(reminder.id);
-    setReminderDraft(reminderDraftFromReminder(reminder));
-    setReminderEditorOpen(true);
-  };
-
-  const closeReminderEditor = () => {
-    setReminderEditorOpen(false);
-    setEditingReminderId("");
-    setReminderDraft(createReminderDraft());
-  };
-
-  const saveReminderDraft = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!canCaregive) return;
-    if (reminderDraft.scheduleMode === "once" && (!reminderDraft.dueDate || !reminderDraft.dueTime)) {
-      void appAlert("请选择提醒日期和时间。");
-      return;
-    }
-    if (reminderDraft.scheduleMode === "interval") {
-      const intervalMinutes = Number(reminderDraft.intervalMinutes);
-      if (!Number.isFinite(intervalMinutes) || intervalMinutes < MIN_INTERVAL_MINUTES || intervalMinutes > MAX_INTERVAL_MINUTES) {
-        void appAlert(`循环间隔需要在 ${formatIntervalText(MIN_INTERVAL_MINUTES)} 到 ${formatIntervalText(MAX_INTERVAL_MINUTES)} 之间。`);
-        return;
-      }
-    }
-
-    const existing = editingReminderId ? reminders.find((item) => item.id === editingReminderId) : undefined;
-    if (existing) await cancelNativeReminder(existing);
-    const baseReminder = reminderFromDraft(reminderDraft, existing);
-    const [scheduledReminder] = await scheduleNativeReminders([baseReminder], { careLogs });
-    const nextReminder = scheduledReminder ?? baseReminder;
-    setReminders((current) => {
-      const byId = new Map(current.map((item) => [item.id, item]));
-      byId.set(nextReminder.id, nextReminder);
-      return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
-    });
-    try {
-      await persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true });
-      closeReminderEditor();
-    } catch {
-      setStorageStatus("offline");
-      closeReminderEditor();
-    }
-  };
-
-  const completeReminder = async (target: Reminder) => {
-    if (!canCaregive) return;
-    await cancelNativeReminder(target);
-    if (isIntervalReminder(target) && target.repeatRule) {
-      const completedAt = new Date();
-      const nextDueAt = new Date(completedAt.getTime() + target.repeatRule.intervalMinutes * 60 * 1000);
-      const baseReminder: Reminder = addReminderHistory(
-        {
-          ...target,
-          status: "open",
-          dueAt: nextDueAt.toISOString(),
-          dueText: formatReminderDueText(nextDueAt),
-          lastAnchorEventId: target.lastAnchorEventId ?? (isIntervalMilkReminder(target) ? latestMilkAnchor?.id : undefined),
-          lastAnchorAt: target.lastAnchorAt ?? (isIntervalMilkReminder(target) ? latestMilkAnchor?.occurredAt.toISOString() : undefined) ?? completedAt.toISOString(),
-          notificationStatus: "pending",
-          notificationError: undefined,
-        },
-        `${new Intl.DateTimeFormat("zh-CN").format(completedAt)} 已完成本次，按完成时间顺延下一次`,
-      );
-      const [scheduledReminder] = await scheduleNativeReminders([baseReminder], { careLogs: [], anchorInterval: false });
-      const nextReminder = scheduledReminder ?? baseReminder;
-      setReminders((current) => current.map((item) => (item.id === target.id ? nextReminder : item)));
-      void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
-      return;
-    }
-    const nextReminder: Reminder = {
-      ...target,
-      status: "done",
-      notificationStatus: target.notificationStatus === "scheduled" ? "cancelled" : target.notificationStatus,
-      history: [`${new Intl.DateTimeFormat("zh-CN").format(new Date())} 已完成`, ...target.history],
-    };
-    setReminders((current) =>
-      current.map((item) => (item.id === target.id ? nextReminder : item)),
-    );
-    void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
-  };
-
-  const requestCompleteReminder = (target: Reminder) => {
-    if (!canCaregive) return;
-    setCompleteReminderTarget(target);
-  };
-
-  const closeCompleteReminderConfirm = () => {
-    setCompleteReminderTarget(null);
-  };
-
-  const confirmCompleteReminder = async () => {
-    if (!canCaregive || !completeReminderTarget) return;
-    const target = completeReminderTarget;
-    setCompleteReminderTarget(null);
-    await completeReminder(target);
-  };
+  // 语音自动提交 / 语音采集管线(clearVoiceAutoSubmitTimer / runVoiceAutoSubmit / prepareVoiceStandby /
+  // startVoiceCapture / stopVoiceCapture / cancelVoiceCapture / startVoicePress / releaseVoicePress /
+  // cancelVoicePointer + 卸载清理 useEffect)、toggleComposerMode、submitComposerMessage(核心 AI 提交流)、
+  // handleSubmit / handleComposerKeyDown 已抽到 useChatState。
 
   const closeRingingReminder = async () => {
     if (!ringingReminder) return;
@@ -4977,614 +2417,26 @@ function App() {
     await completeReminder(target);
   };
 
-  const requestPostponeReminder = (target: Reminder) => {
-    if (!canCaregive) return;
-    setPostponeReminderDraft(reminderPostponeDraftFromReminder(target));
-    setPostponeReminderTarget(target);
-  };
+  // openMilestones / closeMilestones / openVaccine / closeVaccine / setVaccineRegion / toggleVaccineDose /
+  // refreshVaccineData useEffect / vaccinePending useMemo / openGrowthEntry / resetGrowthMeasurementDraft /
+  // closeGrowthEntry / achieveMilestone / handleAddGrowthMeasurement / handleEditGrowthMeasurement /
+  // handleDeleteGrowthMeasurement 已抽到 useRecordsState(上方提前调用)。
 
-  const closePostponeReminderConfirm = () => {
-    setPostponeReminderTarget(null);
-  };
+  // editAlbumItem / removeAlbumItem 已抽到 useAlbumState(上方提前调用,返回值解构回同名变量;
+  // 共享的 persistAlbumItemOptimistic / applyStateResponse 经 albumLateRef 注入)。
 
-  const postponeReminder = async (target: Reminder, postponedAt: Date) => {
-    if (!canCaregive) return;
-    await cancelNativeReminder(target);
-    const baseReminder: Reminder = {
-      ...target,
-      status: "open",
-      dueAt: postponedAt.toISOString(),
-      dueText: formatReminderDueText(postponedAt),
-      notificationStatus: "pending",
-      notificationError: undefined,
-      history: [`${new Intl.DateTimeFormat("zh-CN").format(new Date())} 延后到 ${formatReminderDueText(postponedAt)}`, ...target.history],
-    };
-    const [scheduledReminder] = await scheduleNativeReminders([baseReminder], {
-      careLogs: target.scheduleMode === "interval" ? [] : careLogs,
-      anchorInterval: target.scheduleMode !== "interval",
-    });
-    const nextReminder = scheduledReminder ?? baseReminder;
-    setReminders((current) => current.map((item) => (item.id === target.id ? nextReminder : item)));
-    void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
-  };
-
-  const confirmPostponeReminder = async () => {
-    if (!canCaregive || !postponeReminderTarget) return;
-    const postponedAt = dateFromReminderPostponeDraft(postponeReminderDraft);
-    if (!postponedAt || postponedAt.getTime() <= Date.now()) {
-      void appAlert("请选择晚于现在的提醒时间。");
-      return;
-    }
-    const target = postponeReminderTarget;
-    setPostponeReminderTarget(null);
-    await postponeReminder(target, postponedAt);
-  };
-
-  const requestDeleteReminder = (target: Reminder) => {
-    if (!canCaregive) return;
-    setDeleteReminderTarget(target);
-  };
-
-  const closeDeleteReminderConfirm = () => {
-    setDeleteReminderTarget(null);
-  };
-
-  const confirmDeleteReminder = async () => {
-    if (!canCaregive || !deleteReminderTarget) return;
-    const target = deleteReminderTarget;
-    setDeleteReminderTarget(null);
-    await cancelNativeReminder(target);
-    setReminders((current) => current.filter((item) => item.id !== target.id));
-    void deleteAppRecord("reminders", target.id).catch(() => setStorageStatus("offline"));
-  };
-
-  const openNewExpenseEditor = () => {
-    if (!canCaregive) return;
-    setEditingExpenseId("");
-    setExpenseDraft(createExpenseDraft(todayDate));
-    setExpenseEditorOpen(true);
-  };
-
-  const openEditExpenseEditor = (expense: ExpenseItem) => {
-    if (!canCaregive) return;
-    setEditingExpenseId(expense.id);
-    setExpenseDraft(expenseDraftFromExpense(expense));
-    setExpenseEditorOpen(true);
-  };
-
-  const closeExpenseEditor = () => {
-    setExpenseEditorOpen(false);
-    setEditingExpenseId("");
-    setExpenseDraft(createExpenseDraft(todayDate));
-  };
-
-  const saveExpenseDraft = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!canCaregive) return;
-    const amount = Number(expenseDraft.amount);
-    if (!expenseDraft.title.trim()) {
-      void appAlert("请填写商品名或用途。");
-      return;
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      void appAlert("请填写实际支付金额。");
-      return;
-    }
-    const existing = editingExpenseId ? expenses.find((item) => item.id === editingExpenseId) : undefined;
-    if (existing) {
-      const delta = Math.abs(amount - existing.amount);
-      const needsConfirm = amount >= 1000 || (existing.amount > 0 && delta / existing.amount >= 0.5 && delta >= 100);
-      if (needsConfirm && !(await appConfirm({ title: "确认金额", content: `确认把「${existing.title}」的金额改为 ${formatMoney(amount)} 吗？` }))) return;
-    }
-    const nextExpense = expenseFromDraft(expenseDraft, existing);
-    setExpenses((current) => {
-      const withoutCurrent = current.filter((item) => item.id !== nextExpense.id);
-      return [nextExpense, ...withoutCurrent].sort((left, right) =>
-        `${right.date}-${right.updatedAt}`.localeCompare(`${left.date}-${left.updatedAt}`),
-      );
-    });
-    try {
-      await persistRecord("expenses", nextExpense.id, expenseForStorage(nextExpense), { applyResponse: true, mode: "replace" });
-      closeExpenseEditor();
-    } catch {
-      setStorageStatus("offline");
-      closeExpenseEditor();
-    }
-  };
-
-  const requestDeleteExpense = (expense: ExpenseItem) => {
-    if (!canCaregive) return;
-    setDeleteExpenseTarget(expense);
-  };
-
-  const closeDeleteExpenseConfirm = () => {
-    setDeleteExpenseTarget(null);
-  };
-
-  const confirmDeleteExpense = async () => {
-    if (!canCaregive || !deleteExpenseTarget) return;
-    const target = deleteExpenseTarget;
-    setDeleteExpenseTarget(null);
-    setExpenses((current) => current.filter((item) => item.id !== target.id));
-    try {
-      await deleteAppRecord("expenses", target.id);
-    } catch {
-      setStorageStatus("offline");
-    }
-  };
-
-  const exitExpenseBulkMode = useCallback(() => {
-    setExpenseBulkMode(false);
-    setSelectedExpenseIds(new Set());
-  }, []);
-
-  const toggleExpenseBulkMode = useCallback(() => {
-    setExpenseBulkMode((current) => {
-      if (current) setSelectedExpenseIds(new Set());
-      return !current;
-    });
-  }, []);
-
-  const toggleExpenseSelection = useCallback((id: string) => {
-    setSelectedExpenseIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const toggleExpenseMonthCollapse = useCallback((monthKey: string) => {
-    setCollapsedExpenseMonths((current) => {
-      const next = new Set(current);
-      if (next.has(monthKey)) next.delete(monthKey);
-      else next.add(monthKey);
-      return next;
-    });
-  }, []);
-
-  const requestBulkDeleteExpenses = useCallback(() => {
-    if (!canCaregive || selectedExpenseIds.size === 0) return;
-    setBulkDeleteExpensesOpen(true);
-  }, [canCaregive, selectedExpenseIds]);
-
-  const closeBulkDeleteExpenses = useCallback(() => {
-    setBulkDeleteExpensesOpen(false);
-  }, []);
-
-  const confirmBulkDeleteExpenses = useCallback(async () => {
-    if (!canCaregive || selectedExpenseIds.size === 0) return;
-    const targets = Array.from(selectedExpenseIds);
-    setBulkDeleteExpensesOpen(false);
-    setExpenses((current) => current.filter((item) => !selectedExpenseIds.has(item.id)));
-    setSelectedExpenseIds(new Set());
-    setExpenseBulkMode(false);
-    for (const id of targets) {
-      try {
-        await deleteAppRecord("expenses", id);
-      } catch {
-        setStorageStatus("offline");
-      }
-    }
-  }, [canCaregive, selectedExpenseIds]);
-
-  const openMilestones = useCallback(() => {
-    setActiveMobileTab("records");
-    setRecordsAssistantOpen(false);
-    setMilestonesViewOpen(true);
-  }, []);
-  const closeMilestones = useCallback(() => setMilestonesViewOpen(false), []);
-  const [vaccineViewOpen, setVaccineViewOpen] = useState(false);
-  const openVaccine = useCallback(() => {
-    setActiveMobileTab("records");
-    setRecordsAssistantOpen(false);
-    setVaccineViewOpen(true);
-  }, []);
-  const closeVaccine = useCallback(() => setVaccineViewOpen(false), []);
-  const setVaccineRegion = useCallback(
-    (code: RegionCode) => {
-      const next = { ...profile, vaccineRegion: code };
-      setProfile(next);
-      void persistRecord("profile", "default", next, { applyResponse: true }).catch(() => undefined);
-    },
-    [profile],
-  );
-  const toggleVaccineDose = useCallback(
-    (doseId: string, done: boolean) => {
-      if (!canCaregive) return;
-      const rest = (profile.vaccineRecords ?? []).filter((r) => r.doseId !== doseId);
-      const records = done ? [...rest, { doseId, date: todayISO() }] : rest;
-      const next = { ...profile, vaccineRecords: records };
-      setProfile(next);
-      void persistRecord("profile", "default", next, { applyResponse: true }).catch(() => undefined);
-      hapticSuccess();
-    },
-    [profile, canCaregive],
-  );
-  useEffect(() => {
-    void refreshVaccineData();
-  }, []);
-  // 入口角标:不打开清单也给「本阶段 N 针待安排」的轻提醒(别漏别晚)。复用纯函数,随 profile 变化重算。
-  const vaccinePending = useMemo(() => {
-    const data = getVaccineDataSync();
-    const region = (profile.vaccineRegion as RegionCode) || "national";
-    const ageMonths = monthsBetween(profile.birthDate) ?? null;
-    const doneDoseIds = new Set((profile.vaccineRecords ?? []).map((r) => r.doseId));
-    return pendingCountForProfile({ doses: data.doses, region, ageMonths, doneDoseIds });
-  }, [profile.vaccineRegion, profile.birthDate, profile.vaccineRecords]);
-  const openGrowthEntry = useCallback(() => {
-    setRecordsEntryDrawer(null);
-    setRecordsAssistantOpen(false);
-    setGrowthEntryOpen(true);
-  }, []);
-  const openReminderManagement = useCallback(() => {
-    setActiveMobileTab("profile");
-    setReminderManagementOpen(true);
-  }, []);
-  const closeReminderManagement = useCallback(() => setReminderManagementOpen(false), []);
-
-  // RemindersScreen(memo)的函数 props:同 albumScreenHandlers 的 ref 间接模式,引用永远稳定。
-  const remindersHandlersRef = useRef({
-    closeReminderManagement, openNewReminderEditor, openEditReminderEditor, openReminderQuickDraft,
-    closeReminderEditor, saveReminderDraft, requestCompleteReminder, confirmCompleteReminder,
-    closeCompleteReminderConfirm, requestPostponeReminder, confirmPostponeReminder,
-    closePostponeReminderConfirm, requestDeleteReminder, confirmDeleteReminder, closeDeleteReminderConfirm,
-  });
-  remindersHandlersRef.current = {
-    closeReminderManagement, openNewReminderEditor, openEditReminderEditor, openReminderQuickDraft,
-    closeReminderEditor, saveReminderDraft, requestCompleteReminder, confirmCompleteReminder,
-    closeCompleteReminderConfirm, requestPostponeReminder, confirmPostponeReminder,
-    closePostponeReminderConfirm, requestDeleteReminder, confirmDeleteReminder, closeDeleteReminderConfirm,
-  };
-  const [remindersScreenHandlers] = useState(() => ({
-    closeReminderManagement: () => remindersHandlersRef.current.closeReminderManagement(),
-    openNewReminderEditor: () => remindersHandlersRef.current.openNewReminderEditor(),
-    openEditReminderEditor: (reminder: Reminder) => remindersHandlersRef.current.openEditReminderEditor(reminder),
-    openReminderQuickDraft: (action: (typeof REMINDER_QUICK_ACTIONS)[number]) => remindersHandlersRef.current.openReminderQuickDraft(action),
-    closeReminderEditor: () => remindersHandlersRef.current.closeReminderEditor(),
-    saveReminderDraft: (event: FormEvent) => { void remindersHandlersRef.current.saveReminderDraft(event); },
-    requestCompleteReminder: (reminder: Reminder) => remindersHandlersRef.current.requestCompleteReminder(reminder),
-    confirmCompleteReminder: () => { void remindersHandlersRef.current.confirmCompleteReminder(); },
-    closeCompleteReminderConfirm: () => remindersHandlersRef.current.closeCompleteReminderConfirm(),
-    requestPostponeReminder: (reminder: Reminder) => remindersHandlersRef.current.requestPostponeReminder(reminder),
-    confirmPostponeReminder: () => { void remindersHandlersRef.current.confirmPostponeReminder(); },
-    closePostponeReminderConfirm: () => remindersHandlersRef.current.closePostponeReminderConfirm(),
-    requestDeleteReminder: (reminder: Reminder) => remindersHandlersRef.current.requestDeleteReminder(reminder),
-    confirmDeleteReminder: () => { void remindersHandlersRef.current.confirmDeleteReminder(); },
-    closeDeleteReminderConfirm: () => remindersHandlersRef.current.closeDeleteReminderConfirm(),
-  }));
-
-  const resetGrowthMeasurementDraft = useCallback(() => {
-    setEditingGrowthMeasurementId("");
-    setGrowthMeasurementDraft({
-      type: "height",
-      value: "",
-      date: todayISO(),
-      note: "",
-    });
-  }, []);
-  const closeGrowthEntry = useCallback(() => {
-    setGrowthEntryOpen(false);
-    resetGrowthMeasurementDraft();
-  }, [resetGrowthMeasurementDraft]);
-
-  const achieveMilestone = useCallback((milestone: GrowthMilestone) => {
-    if (!canCaregive) return;
-    const growth = normalizeGrowthEvent({
-      id: makeId("growth"),
-      type: "milestone",
-      title: milestone.title,
-      date: todayISO(),
-      summary: milestone.hint,
-      firstTime: true,
-      tags: [milestoneTag(milestone.id)],
-    }, 0);
-    setGrowthEvents((current) => [...current, growth]);
-    void persistRecord("growthEvents", growth.id, growth).catch(() => setStorageStatus("offline"));
-    hapticSuccess();
-  }, [canCaregive]);
-
-  const handleAddGrowthMeasurement = (event: FormEvent) => {
-    event.preventDefault();
-    if (!canCaregive) return;
-    const meta = GROWTH_MEASUREMENT_META[growthMeasurementDraft.type];
-    const numericValue = Number(growthMeasurementDraft.value);
-    if (!Number.isFinite(numericValue) || numericValue < meta.min || numericValue > meta.max) {
-      showSystemWeakNotice(`请输入 ${meta.min}-${meta.max}${meta.unit} 之间的${meta.label}。`, "warning");
-      return;
-    }
-    const existingMeasurement = editingGrowthMeasurementId
-      ? growthMeasurements.find((item) => item.id === editingGrowthMeasurementId)
-      : undefined;
-    const measurement = normalizeGrowthMeasurement(
-      {
-        ...existingMeasurement,
-        id: editingGrowthMeasurementId || makeId("growth-measurement"),
-        type: growthMeasurementDraft.type,
-        value: numericValue,
-        date: growthMeasurementDraft.date || todayISO(),
-        note: growthMeasurementDraft.note.trim() || undefined,
-      },
-      0,
-    );
-    setGrowthMeasurements((current) => {
-      if (!editingGrowthMeasurementId) return [...current, measurement];
-      let updated = false;
-      const next = current.map((item) => {
-        if (item.id !== editingGrowthMeasurementId) return item;
-        updated = true;
-        return measurement;
-      });
-      return updated ? next : [...next, measurement];
-    });
-    void persistRecord("growthMeasurements", measurement.id, measurement).catch(() => setStorageStatus("offline"));
-    if (editingGrowthMeasurementId) {
-      resetGrowthMeasurementDraft();
-    } else {
-      setGrowthMeasurementDraft((current) => ({ ...current, value: "", note: "" }));
-    }
-    hapticSuccess();
-  };
-
-  const handleEditGrowthMeasurement = (measurement: GrowthMeasurement) => {
-    if (!canCaregive) return;
-    setEditingGrowthMeasurementId(measurement.id);
-    setGrowthMeasurementDraft({
-      type: measurement.type,
-      value: String(measurement.value),
-      date: measurement.date || todayISO(),
-      note: measurement.note ?? "",
-    });
-  };
-
-  const handleDeleteGrowthMeasurement = (id: string) => {
-    if (!canCaregive) return;
-    if (editingGrowthMeasurementId === id) resetGrowthMeasurementDraft();
-    setGrowthMeasurements((current) => current.filter((item) => item.id !== id));
-    void deleteAppRecord("growthMeasurements", id).catch(() => setStorageStatus("offline"));
-  };
-
-  // 返回更新后的条目(取消返回 null),供全屏预览就地刷新顶栏;dark=黑底预览内的深色弹窗。
-  const editAlbumItem = async (item: AlbumItem, ui?: { dark?: boolean }): Promise<AlbumItem | null> => {
-    if (!canCaregive) return null;
-    const dark = ui?.dark ?? false;
-    const edited = await appAlbumEdit({ title: item.title, tags: item.tags.join("、"), dark });
-    if (edited === null) return null;
-    const nextItem = normalizeAlbumItem(
-      {
-        ...item,
-        title: edited.title.trim() || item.title,
-        tags: splitListText(edited.tags),
-        source: "manual",
-      },
-      0,
-    );
-    setAlbumItems((current) => dedupeAlbumItems([nextItem, ...current.filter((entry) => entry.id !== nextItem.id)]));
-    setPreviewAlbumItem((current) => (current?.id === nextItem.id ? nextItem : current));
-    void persistAlbumItemOptimistic(nextItem).catch(() => undefined);
-    return nextItem;
-  };
-
-  // 返回是否真的删了(取消返回 false),供全屏预览决定要不要退出;dark 同 editAlbumItem。
-  const removeAlbumItem = async (item: AlbumItem, ui?: { dark?: boolean }): Promise<boolean> => {
-    if (!canCaregive) return false;
-    const confirmed = await appConfirm({ title: "删除素材", content: `删除「${item.title}」？会同时删除云端/本地存储里的原始素材和缩略图。`, confirmText: "删除", danger: true, dark: ui?.dark ?? false });
-    if (!confirmed) return false;
-    const attachmentId = item.attachmentId || item.attachment?.id || "";
-    setAlbumItems((current) =>
-      current.filter((entry) => entry.id !== item.id && (!attachmentId || entry.attachmentId !== attachmentId)),
-    );
-    setPreviewAlbumItem((current) => (current?.id === item.id ? null : current));
-    if (attachmentId) {
-      setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
-      setPreviewAttachment((current) => (current?.id === attachmentId ? null : current));
-      setPreviewAlbumItem((current) => (current?.id === item.id || current?.attachmentId === attachmentId ? null : current));
-    }
-    try {
-      if (attachmentId) {
-        const response = await deleteAttachment(attachmentId);
-        applyStateResponse(response);
-      } else {
-        const response = await deleteAppRecord("albumItems", item.id);
-        applyStateResponse(response);
-      }
-    } catch (error) {
-      setStorageStatus("offline");
-      setMessages((current) => [
-        ...current,
-        {
-          id: makeId("msg"),
-          role: "ai",
-          text: error instanceof Error ? `素材删除失败：${error.message}` : "素材删除失败，请稍后再试。",
-          createdAt: new Date().toISOString(),
-          tags: ["系统"],
-        },
-      ]);
-    }
-    // 本地 UI 已乐观移除(失败也有系统消息兜底),对调用方而言条目已不在。
-    return true;
-  };
-  const updateAlbumPromptStatus = (messageId: string, promptId: string, status: AlbumPrompt["status"]) => {
-    const nextMessages = messages.map((message) =>
-      message.id === messageId
-        ? {
-            ...message,
-            albumPrompts: (message.albumPrompts ?? []).map((prompt) =>
-              prompt.id === promptId ? { ...prompt, status } : prompt,
-            ),
-          }
-        : message,
-    );
-    const updatedMessage = nextMessages.find((message) => message.id === messageId);
-    setMessages(nextMessages);
-    if (updatedMessage) {
-      void persistRecord("messages", updatedMessage.id, messageForStorage(updatedMessage)).catch(() => setStorageStatus("offline"));
-    }
-  };
-
-  const saveAlbumPrompt = async (messageId: string, prompt: AlbumPrompt) => {
-    if (!canCaregive) return;
-    const sourceMessage = messages.find((message) => message.id === prompt.sourceMessageId);
-    const attachment = sourceMessage?.attachments?.find((item) => item.id === prompt.attachmentId);
-    if (!sourceMessage || !attachment) {
-      updateAlbumPromptStatus(messageId, prompt.id, "ignored");
-      return;
-    }
-    const albumItem = albumItemFromDecision({ ...prompt, mode: "auto_save" }, sourceMessage, attachment);
-    setAlbumItems((current) => dedupeAlbumItems([albumItem, ...current]));
-    try {
-      await persistAlbumItemOptimistic(albumItem);
-      updateAlbumPromptStatus(messageId, prompt.id, "saved");
-      hapticSuccess();
-    } catch (error) {
-      // This manual save intentionally rolls back on failure (with a visible
-      // notice), so drop the pending guard for the item we are removing.
-      pendingPersistAlbumIdsRef.current.delete(albumItem.id);
-      setAlbumItems((current) => current.filter((item) => item.id !== albumItem.id));
-      setStorageStatus("offline");
-      showSystemWeakNotice(
-        error instanceof Error ? `保存到相册失败：${error.message}` : "保存到相册失败，请稍后再试",
-        "warning",
-        3600,
-      );
-    }
-  };
-
-  const ignoreAlbumPrompt = (messageId: string, prompt: AlbumPrompt) => {
-    updateAlbumPromptStatus(messageId, prompt.id, "ignored");
-  };
-
-  const confirmPendingEffect = async (effect: PendingEffect) => {
-    if (!canCaregive) return;
-    if (confirmingPendingEffectIds.includes(effect.id)) return;
-    setConfirmingPendingEffectIds((current) => (current.includes(effect.id) ? current : [...current, effect.id]));
-    try {
-      const response = await confirmPendingEffectOnServer(effect.id);
-      applyAppSnapshot(response.state);
-      const reminders = effect.reminders ?? [];
-      if (reminders.length) {
-        const scheduledReminders = await scheduleNativeReminders(reminders, { careLogs });
-        for (const reminder of scheduledReminders) {
-          await persistRecord("reminders", reminder.id, reminder, { applyResponse: true });
-        }
-      }
-      setEditingPendingId("");
-      setPendingDraft(null);
-    } catch (error) {
-      void appAlert(error instanceof Error ? error.message : "确认记录失败，请稍后再试。");
-    } finally {
-      setConfirmingPendingEffectIds((current) => current.filter((id) => id !== effect.id));
-    }
-  };
-
-  const discardPendingEffect = async (effect: PendingEffect) => {
-    if (!canCaregive) return;
-    try {
-      const response = await discardPendingEffectOnServer(effect.id);
-      applyAppSnapshot(response.state);
-      setEditingPendingId("");
-      setPendingDraft(null);
-    } catch (error) {
-      void appAlert(error instanceof Error ? error.message : "丢弃记录失败，请稍后再试。");
-    }
-  };
-
-  const beginEditPendingEffect = (effect: PendingEffect) => {
-    if (!canCaregive) return;
-    setEditingPendingId(effect.id);
-    setPendingDraft(pendingDraftFromEffect(effect));
-  };
-
-  const savePendingEffectDraft = async (effect: PendingEffect) => {
-    if (!canCaregive) return;
-    if (!pendingDraft) {
-      setEditingPendingId("");
-      return;
-    }
-    const nextEffect: PendingEffect = {
-      ...effect,
-      growthEvent: growthEventFromPendingDraft(effect, pendingDraft.growthEvent),
-      growthMeasurements: growthMeasurementsFromPendingDraft(effect, pendingDraft),
-      careLogPatch: careLogPatchFromPendingDraft(effect, pendingDraft.careLogPatch),
-      reminders: remindersFromPendingDraft(effect, pendingDraft),
-      memories: memoriesFromPendingDraft(effect, pendingDraft),
-      expenses: expensesFromPendingDraft(effect, pendingDraft),
-    };
-    setPendingEffects((current) =>
-      current.map((item) => (item.id === effect.id ? nextEffect : item)),
-    );
-    try {
-      await persistRecord("pendingEffects", nextEffect.id, nextEffect);
-      setEditingPendingId("");
-      setPendingDraft(null);
-    } catch {
-      void appAlert("保存待确认内容失败，请稍后再试。");
-    }
-  };
-
-  const updatePendingGrowthDraft = (patch: Partial<PendingGrowthDraft>) => {
-    setPendingDraft((current) =>
-      current?.growthEvent ? { ...current, growthEvent: { ...current.growthEvent, ...patch } } : current,
-    );
-  };
-
-  const updatePendingGrowthMeasurementDraft = (id: string, patch: Partial<PendingGrowthMeasurementDraft>) => {
-    setPendingDraft((current) =>
-      current
-        ? {
-            ...current,
-            growthMeasurements: current.growthMeasurements.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-          }
-        : current,
-    );
-  };
-
-  const updatePendingCareDraft = (patch: Partial<PendingCareDraft>) => {
-    setPendingDraft((current) =>
-      current?.careLogPatch ? { ...current, careLogPatch: { ...current.careLogPatch, ...patch } } : current,
-    );
-  };
-
-  const updatePendingReminderDraft = (id: string, updater: (draft: ReminderDraft) => ReminderDraft) => {
-    setPendingDraft((current) =>
-      current
-        ? {
-            ...current,
-            reminders: current.reminders.map((item) =>
-              item.id === id ? { ...item, draft: updater(item.draft) } : item,
-            ),
-          }
-        : current,
-    );
-  };
-
-  const updatePendingMemoryDraft = (id: string, text: string) => {
-    setPendingDraft((current) =>
-      current
-        ? {
-            ...current,
-            memories: current.memories.map((item) => (item.id === id ? { ...item, text } : item)),
-          }
-        : current,
-    );
-  };
-
-  const updatePendingExpenseDraft = (index: number, patch: Partial<ExpenseDraft>) => {
-    setPendingDraft((current) =>
-      current
-        ? {
-            ...current,
-            expenses: current.expenses.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
-          }
-        : current,
-    );
-  };
+  // updateAlbumPromptStatus / saveAlbumPrompt / ignoreAlbumPrompt / confirmPendingEffect / discardPendingEffect /
+  // beginEditPendingEffect / savePendingEffectDraft / updatePendingGrowthDraft / updatePendingGrowthMeasurementDraft /
+  // updatePendingCareDraft / updatePendingReminderDraft / updatePendingMemoryDraft / updatePendingExpenseDraft 已抽到
+  // usePendingEffects(上方提前调用,返回值解构回同名变量;persistRecord / applyAppSnapshot / persistAlbumItemOptimistic /
+  // showSystemWeakNotice / messageForStorage 经 pendingEffectsLateRef 注入,reminderFromDraft / scheduleNativeReminders 按值传入)。
 
   const selectManualRecordKind = (type: ManualRecordKind) => {
     setManualRecordKind(type);
     setCareEventDraft(createCareEventDraft(type));
   };
 
+  // 这三个与 App 侧语音捕获 / 卸载清理 effect / 手动记录草稿强耦合,留在 App;读取 useRecordsState 解构回来的同名 drawer state/setters。
   const clearRecordsEntryDrawerCloseTimer = () => {
     if (recordsEntryDrawerCloseTimerRef.current === null) return;
     window.clearTimeout(recordsEntryDrawerCloseTimerRef.current);
@@ -5785,94 +2637,10 @@ function App() {
   const [sleepMusicOpen, setSleepMusicOpen] = useState(false);
   const [sleepMusicHandlers] = useState(() => ({ open: () => setSleepMusicOpen(true), close: () => setSleepMusicOpen(false) }));
 
-  const careEventForRecord = (record: RecordEvent) => {
-    const log = careLogs.find((item) => item.id === record.careLogId);
-    if (!log) return undefined;
-    return (
-      log.events.find((item) => item.id === record.careEventId) ??
-      careEventsForLog(log).find((item) => item.id === record.careEventId)
-    );
-  };
-
-  const beginEditCareTimelineEvent = (record: RecordEvent) => {
-    if (!canCaregive || record.type !== "care" || !record.careLogId) return;
-    const event = careEventForRecord(record);
-    setSwipedTimelineEventId("");
-    setEditingCareEventId(record.id);
-    setCareEventDraft({
-      type: event?.type ?? (record.kind === "growth" || record.kind === "reminder" ? "note" : record.kind),
-      time: event?.time ?? "",
-      amountMl: event?.amountMl ? String(event.amountMl) : "",
-      durationHours: event?.durationHours ? String(event.durationHours) : "",
-      temperature: event?.temperature ? String(event.temperature) : "",
-      note: event?.note ?? record.body,
-    });
-  };
-
-  const saveCareTimelineEvent = (event: FormEvent, record: RecordEvent) => {
-    event.preventDefault();
-    if (!canCaregive || record.type !== "care" || !record.careLogId) return;
-    const currentLog = careLogs.find((item) => item.id === record.careLogId);
-    if (!currentLog) return;
-
-    const nextCareEvent = normalizeCareLogEvent(
-      {
-        id: record.careEventId || makeId("care-event"),
-        type: careEventDraft.type,
-        date: currentLog.date,
-        time: careEventDraft.time,
-        amountMl: careEventDraft.amountMl ? Number(careEventDraft.amountMl) : undefined,
-        durationHours: careEventDraft.durationHours ? Number(careEventDraft.durationHours) : undefined,
-        temperature: careEventDraft.temperature ? Number(careEventDraft.temperature) : undefined,
-        note: careEventDraft.note.trim() || undefined,
-      },
-      0,
-      currentLog.date,
-    );
-    const hasExistingEvent = currentLog.events.some((item) => item.id === nextCareEvent.id);
-    const nextLog = careLogWithEventStats({
-      ...currentLog,
-      events: hasExistingEvent
-        ? currentLog.events.map((item) => (item.id === nextCareEvent.id ? nextCareEvent : item))
-        : [...currentLog.events, nextCareEvent],
-    });
-
-    setCareLogs((current) => current.map((item) => (item.id === nextLog.id ? nextLog : item)));
-    void persistRecord("careLogs", nextLog.id, nextLog, { applyResponse: true, mode: "replace" }).catch(() => {
-      setStorageStatus("offline");
-    });
-    setEditingCareEventId("");
-    setSwipedTimelineEventId("");
-  };
-
-  const canEditTimelineEvent = (record: RecordEvent) =>
-    canCaregive && record.type === "care" && Boolean(record.careLogId && record.careEventId);
-
-  const beginTimelineEventSwipe = (event: React.PointerEvent<HTMLElement>, record: RecordEvent) => {
-    if (!canEditTimelineEvent(record)) return;
-    timelineSwipeStartRef.current = { id: record.id, x: event.clientX, y: event.clientY };
-  };
-
-  const finishTimelineEventSwipe = (event: React.PointerEvent<HTMLElement>, record: RecordEvent) => {
-    const start = timelineSwipeStartRef.current;
-    timelineSwipeStartRef.current = null;
-    if (!start || start.id !== record.id || !canEditTimelineEvent(record)) return;
-    const deltaX = event.clientX - start.x;
-    const deltaY = event.clientY - start.y;
-    if (Math.abs(deltaX) < 28 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
-    setSwipedTimelineEventId(deltaX < 0 ? record.id : "");
-  };
-
-  const cancelTimelineEventSwipe = () => {
-    timelineSwipeStartRef.current = null;
-  };
-
-  const requestDeleteCareTimelineEvent = (record: RecordEvent) => {
-    if (!canEditTimelineEvent(record)) return;
-    setDeleteCareEventTarget(record);
-    setSwipedTimelineEventId("");
-    hapticWarning();
-  };
+  // careEventForRecord / beginEditCareTimelineEvent / saveCareTimelineEvent / canEditTimelineEvent /
+  // beginTimelineEventSwipe / finishTimelineEventSwipe / cancelTimelineEventSwipe /
+  // requestDeleteCareTimelineEvent 已抽到 useRecordsState。
+  // closeDeleteCareEventConfirm / confirmDeleteCareTimelineEvent 留在 App(不在抽取范围),读取解构回来的同名 state/setter。
 
   const closeDeleteCareEventConfirm = () => {
     setDeleteCareEventTarget(null);
@@ -5926,169 +2694,11 @@ function App() {
     hapticSuccess();
   };
 
-  const selectRecordDate = (date: string) => {
-    setSelectedDate(date);
-    setCalendarMonth(date.slice(0, 7));
-    setEditingCareEventId("");
-    setSwipedTimelineEventId("");
-    setDeleteCareEventTarget(null);
-  };
+  // selectRecordDate 已抽到 useRecordsState。
 
-  const handleProfileSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!canCaregive) return;
-    const allergies = splitListText(allergiesText);
-
-    const nextProfile: BabyProfile = {
-      ...profileDraft,
-      nickname: profileDraft.nickname.trim() || initialProfile.nickname,
-      birthDate: profileDraft.birthDate || initialProfile.birthDate,
-      expectedDate: profileDraft.expectedDate || initialProfile.expectedDate,
-      region: profileDraft.region.trim(),
-      feeding: profileDraft.feeding.trim(),
-      allergies: allergies.length ? allergies : ["暂未发现"],
-      caregivers: profile.caregivers.length ? profile.caregivers : initialProfile.caregivers,
-    };
-    setProfile(nextProfile);
-    void persistRecord("profile", "default", nextProfile, { applyResponse: true }).catch(() => undefined);
-    setIsProfileEditing(false);
-    setActiveMobileTab("profile");
-  };
-
-  const handleLoginSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (isLoggingIn) return;
-    setLoginError("");
-    if (!loginExistingMember && (!loginRoleName || loginCaregiver === null)) {
-      setLoginError("请先选择家庭身份和是否照护人。");
-      return;
-    }
-    setIsLoggingIn(true);
-    try {
-      const response = await loginWithInvite(
-        loginPhone,
-        loginInviteCode,
-        loginExistingMember ? undefined : loginRoleName,
-        loginExistingMember ? undefined : loginCaregiver,
-      );
-      setAuthUser(response.user);
-      setAuthFamily(response.family);
-      setAuthMember(response.member);
-      await loadStateFromBackend({
-        importLegacy: response.member.caregiver && response.legacyImportAllowed && legacyLocalStateRef.current,
-        onboardingRequired: response.onboardingRequired,
-        accountKey: response.user.id,
-      });
-      setAuthStatus("authenticated");
-      setActiveMobileTab("records");
-      legacyLocalStateRef.current = false;
-    } catch (error) {
-      clearAuthToken();
-      setLoginError(error instanceof Error ? error.message : "登录失败，请稍后再试。");
-      setAuthStatus("unauthenticated");
-      setStorageStatus("loading");
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    await logoutCurrentUser();
-    backendReadyRef.current = false;
-    setAuthUser(null);
-    setAuthFamily(null);
-    setAuthMember(null);
-    setAuthStatus("unauthenticated");
-    setOnboardingRequired(false);
-    setStorageStatus("loading");
-    setIsProfileEditing(false);
-    setRecordsEntryDrawer(null);
-    setRecordsAssistantOpen(false);
-    setActiveMobileTab("records");
-    setInviteFamilyName("");
-    setLoginExistingMember(null);
-    setOnboardingFamilyName(suggestedFamilyName(initialProfile.nickname));
-    onboardingFamilyNameTouchedRef.current = false;
-    clearLocalAppState();
-    void clearCachedSnapshot(); // 退出登录清秒开缓存(账号隔离红线:下一个登录账号不得看到上一个的快照)
-    legacyLocalStateRef.current = false;
-    applyEmptyAppSnapshot();
-  };
-
-  const saveOnboardingProfile = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!canCaregive) return;
-    const allergies = splitListText(onboardingAllergiesText);
-    const completedProfile: BabyProfile = {
-      ...onboardingDraft,
-      nickname: onboardingDraft.nickname.trim() || "小宝",
-      birthDate: onboardingDraft.birthDate,
-      expectedDate: onboardingDraft.expectedDate,
-      region: onboardingDraft.region.trim(),
-      feeding: onboardingDraft.feeding.trim(),
-      allergies: allergies.length ? allergies : ["暂未发现"],
-      caregivers: profile.caregivers.length ? profile.caregivers : initialProfile.caregivers,
-    };
-
-    if (!hasCompleteProfile(completedProfile)) {
-      setOnboardingStep(0);
-      return;
-    }
-
-    try {
-      const nextFamilyName = (onboardingFamilyName.trim() || suggestedFamilyName(completedProfile.nickname)).slice(0, 30);
-      const updatedFamily = await updateFamilyName(nextFamilyName);
-      await persistRecord("profile", "default", completedProfile, { applyResponse: true });
-      setAuthFamily(updatedFamily);
-      setOnboardingRequired(false);
-      setActiveMobileTab("records");
-      backendReadyRef.current = true;
-      setStorageStatus("ready");
-    } catch (error) {
-      setLoginError(error instanceof Error ? error.message : "保存小宝资料失败，请稍后再试。");
-    }
-  };
-
-  const resetProfileDraft = () => {
-    setProfileDraft(profile);
-    setAllergiesText(profile.allergies.join("、"));
-  };
-
-  const startProfileEditing = () => {
-    if (!canCaregive) return;
-    resetProfileDraft();
-    setIsProfileEditing(true);
-  };
-
-  const cancelProfileEditing = () => {
-    resetProfileDraft();
-    setIsProfileEditing(false);
-  };
-
-  // ProfileScreen(memo)的函数 props:ref 间接,引用恒稳。
-  const profileHandlersRef = useRef({
-    startProfileEditing, cancelProfileEditing, handleProfileSubmit, handleLogout,
-    handleToggleMemberCaregiver, handleRemoveFamilyMember, handleResetFamilyInviteCode,
-    openReminderManagement, refreshAiUsageSummary, applyForProTrial, redeemProTrialCode,
-  });
-  profileHandlersRef.current = {
-    startProfileEditing, cancelProfileEditing, handleProfileSubmit, handleLogout,
-    handleToggleMemberCaregiver, handleRemoveFamilyMember, handleResetFamilyInviteCode,
-    openReminderManagement, refreshAiUsageSummary, applyForProTrial, redeemProTrialCode,
-  };
-  const [profileScreenHandlers] = useState(() => ({
-    startProfileEditing: () => profileHandlersRef.current.startProfileEditing(),
-    cancelProfileEditing: () => profileHandlersRef.current.cancelProfileEditing(),
-    handleProfileSubmit: (event: FormEvent) => profileHandlersRef.current.handleProfileSubmit(event),
-    handleLogout: () => { void profileHandlersRef.current.handleLogout(); },
-    handleToggleMemberCaregiver: (member: FamilyMember) => { void profileHandlersRef.current.handleToggleMemberCaregiver(member); },
-    handleRemoveFamilyMember: (member: FamilyMember) => { void profileHandlersRef.current.handleRemoveFamilyMember(member); },
-    handleResetFamilyInviteCode: () => { void profileHandlersRef.current.handleResetFamilyInviteCode(); },
-    openReminderManagement: () => profileHandlersRef.current.openReminderManagement(),
-    refreshAiUsageSummary: (options?: { quiet?: boolean }) => { void profileHandlersRef.current.refreshAiUsageSummary(options); },
-    applyForProTrial: (source: string) => { void profileHandlersRef.current.applyForProTrial(source); },
-    redeemProTrialCode: () => { void profileHandlersRef.current.redeemProTrialCode(); },
-  }));
+  // handleProfileSubmit / handleLoginSubmit / handleLogout / saveOnboardingProfile / resetProfileDraft /
+  // startProfileEditing / cancelProfileEditing 及 memo 化 <ProfileScreen/> 的稳定函数包 profileScreenHandlers
+  // 已抽到 useSessionState(上方提前调用,返回值解构回同名变量)。
 
   const openRecordsAssistant = (
     text?: string,
@@ -6234,33 +2844,237 @@ function App() {
     achieveMilestone: (milestone) => recordsScreenHandlersRef.current.achieveMilestone(milestone),
   }));
 
-  const voiceHoldLabel =
-    voiceCancelArmed
-      ? "松开取消"
-      : voiceStatus === "error"
-      ? voiceError || "语音识别暂时不可用"
-      : voiceStatus === "unsupported"
-        ? voiceError || "当前环境不支持语音输入"
-        : isListening
-          ? voiceTranscript || (voiceStatus === "connecting" ? "正在连接语音识别..." : "正在听，松开结束")
-          : voiceStatus === "processing"
-            ? voiceTranscript || "正在整理文字..."
-            : voiceTranscript || input.trim() || "按住说话";
-  const voiceButtonStyle = { "--voice-level": voiceLevel.toFixed(3) } as CSSProperties;
-  const voiceRecordingActive =
-    composerMode === "voice" &&
-    (isListening || voiceStatus === "connecting" || voiceStatus === "processing" || voiceCancelArmed);
+  // ChatScreen(memo)的函数 props:同 recordsScreenHandlers 的 ref 间接模式,引用永远稳定——
+  // 打字草稿走 composerInput external store,既不触达本 bundle 也不进 ChatScreen 数据 props。
+  const chatScreenHandlersRef = useRef({
+    handleSubmit,
+    handleFiles,
+    handleComposerKeyDown,
+    toggleComposerMode,
+    startVoicePress,
+    releaseVoicePress,
+    cancelVoicePointer,
+    openMediaPicker,
+    openPreviewAttachment,
+    quickFill,
+    saveAlbumPrompt,
+    ignoreAlbumPrompt,
+    savePendingEffectDraft,
+    confirmPendingEffect,
+    discardPendingEffect,
+    beginEditPendingEffect,
+    updatePendingGrowthDraft,
+    updatePendingGrowthMeasurementDraft,
+    updatePendingCareDraft,
+    updatePendingReminderDraft,
+    updatePendingMemoryDraft,
+    updatePendingExpenseDraft,
+  });
+  chatScreenHandlersRef.current = {
+    handleSubmit,
+    handleFiles,
+    handleComposerKeyDown,
+    toggleComposerMode,
+    startVoicePress,
+    releaseVoicePress,
+    cancelVoicePointer,
+    openMediaPicker,
+    openPreviewAttachment,
+    quickFill,
+    saveAlbumPrompt,
+    ignoreAlbumPrompt,
+    savePendingEffectDraft,
+    confirmPendingEffect,
+    discardPendingEffect,
+    beginEditPendingEffect,
+    updatePendingGrowthDraft,
+    updatePendingGrowthMeasurementDraft,
+    updatePendingCareDraft,
+    updatePendingReminderDraft,
+    updatePendingMemoryDraft,
+    updatePendingExpenseDraft,
+  };
+  const [chatScreenHandlers] = useState<ChatScreenHandlers>(() => ({
+    handleSubmit: (event) => chatScreenHandlersRef.current.handleSubmit(event),
+    handleFiles: (event) => chatScreenHandlersRef.current.handleFiles(event),
+    handleComposerKeyDown: (event) => chatScreenHandlersRef.current.handleComposerKeyDown(event),
+    toggleComposerMode: () => chatScreenHandlersRef.current.toggleComposerMode(),
+    startVoicePress: (event) => chatScreenHandlersRef.current.startVoicePress(event),
+    releaseVoicePress: (event) => chatScreenHandlersRef.current.releaseVoicePress(event),
+    cancelVoicePointer: (event) => chatScreenHandlersRef.current.cancelVoicePointer(event),
+    openMediaPicker: () => chatScreenHandlersRef.current.openMediaPicker(),
+    openPreviewAttachment: (attachment, albumItem) =>
+      chatScreenHandlersRef.current.openPreviewAttachment(attachment, albumItem),
+    quickFill: (text) => chatScreenHandlersRef.current.quickFill(text),
+    saveAlbumPrompt: (messageId, prompt) => chatScreenHandlersRef.current.saveAlbumPrompt(messageId, prompt),
+    ignoreAlbumPrompt: (messageId, prompt) => chatScreenHandlersRef.current.ignoreAlbumPrompt(messageId, prompt),
+    savePendingEffectDraft: (effect) => void chatScreenHandlersRef.current.savePendingEffectDraft(effect),
+    confirmPendingEffect: (effect) => void chatScreenHandlersRef.current.confirmPendingEffect(effect),
+    discardPendingEffect: (effect) => void chatScreenHandlersRef.current.discardPendingEffect(effect),
+    beginEditPendingEffect: (effect) => chatScreenHandlersRef.current.beginEditPendingEffect(effect),
+    updatePendingGrowthDraft: (patch) => chatScreenHandlersRef.current.updatePendingGrowthDraft(patch),
+    updatePendingGrowthMeasurementDraft: (id, patch) =>
+      chatScreenHandlersRef.current.updatePendingGrowthMeasurementDraft(id, patch),
+    updatePendingCareDraft: (patch) => chatScreenHandlersRef.current.updatePendingCareDraft(patch),
+    updatePendingReminderDraft: (id, updater) =>
+      chatScreenHandlersRef.current.updatePendingReminderDraft(id, updater),
+    updatePendingMemoryDraft: (id, text) => chatScreenHandlersRef.current.updatePendingMemoryDraft(id, text),
+    updatePendingExpenseDraft: (index, patch) => chatScreenHandlersRef.current.updatePendingExpenseDraft(index, patch),
+  }));
+
+  // AppDialogs(memo)的函数 props:同 chatScreenHandlers 的 ref 间接模式,引用永远稳定——
+  // 四个顶层对话框(支出编辑/删除支出/删除时间线记录/批量删除)的 JSX 已抽进 screens/AppDialogs.tsx。
+  const appDialogsHandlersRef = useRef<AppDialogsHandlers>({
+    closeExpenseEditor,
+    saveExpenseDraft,
+    setExpenseDraft,
+    settleExpenseOptionalPanel,
+    closeDeleteExpenseConfirm,
+    confirmDeleteExpense,
+    closeDeleteCareEventConfirm,
+    confirmDeleteCareTimelineEvent,
+    closeBulkDeleteExpenses,
+    confirmBulkDeleteExpenses,
+  });
+  appDialogsHandlersRef.current = {
+    closeExpenseEditor,
+    saveExpenseDraft,
+    setExpenseDraft,
+    settleExpenseOptionalPanel,
+    closeDeleteExpenseConfirm,
+    confirmDeleteExpense,
+    closeDeleteCareEventConfirm,
+    confirmDeleteCareTimelineEvent,
+    closeBulkDeleteExpenses,
+    confirmBulkDeleteExpenses,
+  };
+  const [appDialogsHandlers] = useState<AppDialogsHandlers>(() => ({
+    closeExpenseEditor: () => appDialogsHandlersRef.current.closeExpenseEditor(),
+    saveExpenseDraft: (event) => appDialogsHandlersRef.current.saveExpenseDraft(event),
+    setExpenseDraft: (action) => appDialogsHandlersRef.current.setExpenseDraft(action),
+    settleExpenseOptionalPanel: () => appDialogsHandlersRef.current.settleExpenseOptionalPanel(),
+    closeDeleteExpenseConfirm: () => appDialogsHandlersRef.current.closeDeleteExpenseConfirm(),
+    confirmDeleteExpense: () => void appDialogsHandlersRef.current.confirmDeleteExpense(),
+    closeDeleteCareEventConfirm: () => appDialogsHandlersRef.current.closeDeleteCareEventConfirm(),
+    confirmDeleteCareTimelineEvent: () => appDialogsHandlersRef.current.confirmDeleteCareTimelineEvent(),
+    closeBulkDeleteExpenses: () => appDialogsHandlersRef.current.closeBulkDeleteExpenses(),
+    confirmBulkDeleteExpenses: () => void appDialogsHandlersRef.current.confirmBulkDeleteExpenses(),
+  }));
+
+  // PreviewOverlay(memo)的函数 props:同 appDialogsHandlers 的 ref 间接模式,引用永远稳定——
+  // 全屏预览浮层 JSX 已抽进 screens/PreviewOverlay.tsx。手势 handler(onPreview*Pointer*)每 render 重建、
+  // editAlbumItem/removeAlbumItem 来自 useAlbumState,统一经 ref 包一层,保证 memo 的 handlers 引用不变。
+  const previewOverlayHandlersRef = useRef<PreviewOverlayHandlers>({
+    handlePreviewClick,
+    closePreviewAttachment,
+    setPreviewActionsOpen,
+    editAlbumItem,
+    removeAlbumItem,
+    bindPreviewVideo,
+    onPreviewStagePointerDown,
+    onPreviewStagePointerMove,
+    onPreviewStagePointerEnd,
+    onPreviewImagePointerDown,
+    onPreviewImagePointerMove,
+    onPreviewImagePointerEnd,
+  });
+  previewOverlayHandlersRef.current = {
+    handlePreviewClick,
+    closePreviewAttachment,
+    setPreviewActionsOpen,
+    editAlbumItem,
+    removeAlbumItem,
+    bindPreviewVideo,
+    onPreviewStagePointerDown,
+    onPreviewStagePointerMove,
+    onPreviewStagePointerEnd,
+    onPreviewImagePointerDown,
+    onPreviewImagePointerMove,
+    onPreviewImagePointerEnd,
+  };
+  const [previewOverlayHandlers] = useState<PreviewOverlayHandlers>(() => ({
+    handlePreviewClick: (event) => previewOverlayHandlersRef.current.handlePreviewClick(event),
+    closePreviewAttachment: () => previewOverlayHandlersRef.current.closePreviewAttachment(),
+    setPreviewActionsOpen: (action) => previewOverlayHandlersRef.current.setPreviewActionsOpen(action),
+    editAlbumItem: (item, ui) => previewOverlayHandlersRef.current.editAlbumItem(item, ui),
+    removeAlbumItem: (item, ui) => previewOverlayHandlersRef.current.removeAlbumItem(item, ui),
+    bindPreviewVideo: (node) => previewOverlayHandlersRef.current.bindPreviewVideo(node),
+    onPreviewStagePointerDown: (event) => previewOverlayHandlersRef.current.onPreviewStagePointerDown(event),
+    onPreviewStagePointerMove: (event) => previewOverlayHandlersRef.current.onPreviewStagePointerMove(event),
+    onPreviewStagePointerEnd: (event) => previewOverlayHandlersRef.current.onPreviewStagePointerEnd(event),
+    onPreviewImagePointerDown: (event) => previewOverlayHandlersRef.current.onPreviewImagePointerDown(event),
+    onPreviewImagePointerMove: (event) => previewOverlayHandlersRef.current.onPreviewImagePointerMove(event),
+    onPreviewImagePointerEnd: (event) => previewOverlayHandlersRef.current.onPreviewImagePointerEnd(event),
+  }));
+
+  // RecordsEntryDrawer(memo)的函数 props:同上 ref 间接模式,引用永远稳定——
+  // AI/手动 composer 抽屉的 JSX(含 createPortal)已抽进 screens/RecordsEntryDrawer.tsx。
+  const recordsEntryDrawerHandlersRef = useRef<RecordsEntryDrawerHandlers>({
+    closeRecordsEntryDrawer,
+    pendingEffectSummary,
+    confirmPendingEffect,
+    discardPendingEffect,
+    handleSubmit,
+    openMediaPicker,
+    toggleComposerMode,
+    startVoicePress,
+    releaseVoicePress,
+    cancelVoicePointer,
+    handleComposerKeyDown,
+    saveManualCareEvent,
+    selectManualRecordKind,
+    updateManualCareDraft,
+    adjustManualNumericDraft,
+    timePresetValue,
+    numericDraftText,
+    sleepDurationText,
+  });
+  recordsEntryDrawerHandlersRef.current = {
+    closeRecordsEntryDrawer,
+    pendingEffectSummary,
+    confirmPendingEffect,
+    discardPendingEffect,
+    handleSubmit,
+    openMediaPicker,
+    toggleComposerMode,
+    startVoicePress,
+    releaseVoicePress,
+    cancelVoicePointer,
+    handleComposerKeyDown,
+    saveManualCareEvent,
+    selectManualRecordKind,
+    updateManualCareDraft,
+    adjustManualNumericDraft,
+    timePresetValue,
+    numericDraftText,
+    sleepDurationText,
+  };
+  const [recordsEntryDrawerHandlers] = useState<RecordsEntryDrawerHandlers>(() => ({
+    closeRecordsEntryDrawer: () => recordsEntryDrawerHandlersRef.current.closeRecordsEntryDrawer(),
+    pendingEffectSummary: (effect) => recordsEntryDrawerHandlersRef.current.pendingEffectSummary(effect),
+    confirmPendingEffect: (effect) => void recordsEntryDrawerHandlersRef.current.confirmPendingEffect(effect),
+    discardPendingEffect: (effect) => void recordsEntryDrawerHandlersRef.current.discardPendingEffect(effect),
+    handleSubmit: (event) => recordsEntryDrawerHandlersRef.current.handleSubmit(event),
+    openMediaPicker: () => recordsEntryDrawerHandlersRef.current.openMediaPicker(),
+    toggleComposerMode: () => recordsEntryDrawerHandlersRef.current.toggleComposerMode(),
+    startVoicePress: (event) => recordsEntryDrawerHandlersRef.current.startVoicePress(event),
+    releaseVoicePress: (event) => recordsEntryDrawerHandlersRef.current.releaseVoicePress(event),
+    cancelVoicePointer: (event) => recordsEntryDrawerHandlersRef.current.cancelVoicePointer(event),
+    handleComposerKeyDown: (event) => recordsEntryDrawerHandlersRef.current.handleComposerKeyDown(event),
+    saveManualCareEvent: (event) => recordsEntryDrawerHandlersRef.current.saveManualCareEvent(event),
+    selectManualRecordKind: (type) => recordsEntryDrawerHandlersRef.current.selectManualRecordKind(type),
+    updateManualCareDraft: (patch) => recordsEntryDrawerHandlersRef.current.updateManualCareDraft(patch),
+    adjustManualNumericDraft: (field, delta, fallback, min, max, decimals) =>
+      recordsEntryDrawerHandlersRef.current.adjustManualNumericDraft(field, delta, fallback, min, max, decimals),
+    timePresetValue: (offsetMinutes) => recordsEntryDrawerHandlersRef.current.timePresetValue(offsetMinutes),
+    numericDraftText: (value, decimals) => recordsEntryDrawerHandlersRef.current.numericDraftText(value, decimals),
+    sleepDurationText: (value) => recordsEntryDrawerHandlersRef.current.sleepDurationText(value),
+  }));
+
+  // voiceHoldLabel / voiceButtonStyle / voiceRecordingActive / compressionMessage 已抽到 useChatState
+  // (上方提前调用,返回值解构回同名变量)。voicePanelLabel 只在本文件下方的 voice-recording-panel JSX 用
+  // (非 ChatScreen prop),仅依赖 hook 返回的 voiceCancelArmed,故留在 App 就地派生。
   const voicePanelLabel = voiceCancelArmed ? "松手取消" : "松手发送，上移取消";
-  const compressionMessage =
-    compressionStatus === "checking"
-      ? "正在检查是否需要整理较早聊天记录..."
-      : compressionStatus === "compressing"
-        ? "正在整理较早聊天记录，后续回答会更连贯。"
-        : compressionStatus === "done"
-          ? "较早聊天记录已整理进长期摘要。"
-          : compressionStatus === "failed"
-          ? "本次聊天记录整理未完成，不影响继续使用。"
-          : "";
   const systemWeakNoticeView = systemWeakNotice ? (
     <div
       className={`system-weak-toast ${systemWeakNotice.tone} ${systemWeakNotice.progressMode ? "with-progress" : ""}`}
@@ -6290,201 +3104,6 @@ function App() {
       ) : null}
     </div>
   ) : null;
-  const expenseEditorDialog = expenseEditorOpen ? (
-    <div className="story-modal-backdrop ledger-form-backdrop" role="presentation" onMouseDown={closeExpenseEditor}>
-      <form className="story-modal ledger-form-sheet expense-editor" onSubmit={saveExpenseDraft} onMouseDown={(event) => event.stopPropagation()}>
-        <div className="story-modal-head">
-          <div>
-            <p className="eyebrow">账本</p>
-            <h3>{editingExpenseId ? "编辑支出" : "记一笔支出"}</h3>
-          </div>
-          <button type="button" className="icon-button" onClick={closeExpenseEditor} aria-label="关闭">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="expense-editor-body" ref={expenseEditorBodyRef}>
-          <section className="expense-core-card" aria-label="支出核心信息">
-            <label className="expense-title-field">
-              商品名或用途
-              <input
-                value={expenseDraft.title}
-                onChange={(event) => setExpenseDraft((current) => ({ ...current, title: event.target.value }))}
-                placeholder="比如 奶粉、尿裤、体检"
-              />
-            </label>
-            <label className="expense-money-field">
-              金额
-              <span className="expense-money-input">
-                <span aria-hidden="true">¥</span>
-                <input
-                  inputMode="decimal"
-                  value={expenseDraft.amount}
-                  onChange={(event) => setExpenseDraft((current) => ({ ...current, amount: event.target.value }))}
-                  placeholder="0.00"
-                />
-              </span>
-            </label>
-            <div className="expense-editor-grid expense-required-grid">
-              <label>
-                分类
-                <StorySelect
-                  value={expenseDraft.category}
-                  options={EXPENSE_CATEGORY_OPTIONS}
-                  ariaLabel="支出分类"
-                  onChange={(category) => setExpenseDraft((current) => ({ ...current, category }))}
-                />
-              </label>
-              <label>
-                日期
-                <span className="expense-date-field">
-                  <span>{formatExpenseDateLabel(expenseDraft.date)}</span>
-                  <AppDateField
-                    className="expense-date-input"
-                    overlay
-                    value={expenseDraft.date}
-                    onChange={(value) => setExpenseDraft((current) => ({ ...current, date: value }))}
-                  />
-                </span>
-              </label>
-            </div>
-          </section>
-          <details
-            className="expense-optional-panel"
-            ref={expenseOptionalPanelRef}
-            onToggle={(event) => {
-              if (event.currentTarget.open) settleExpenseOptionalPanel();
-            }}
-          >
-            <summary>
-              <span>
-                <strong>补充说明</strong>
-                <small>商家、备注</small>
-              </span>
-              <ChevronDown size={17} />
-            </summary>
-            <div className="expense-optional-fields">
-              <label>
-                商家
-                <input
-                  value={expenseDraft.merchant}
-                  onFocus={settleExpenseOptionalPanel}
-                  onChange={(event) => setExpenseDraft((current) => ({ ...current, merchant: event.target.value }))}
-                  placeholder="比如 医院、母婴店、朋友代买"
-                />
-              </label>
-              <label>
-                备注
-                <textarea
-                  value={expenseDraft.note}
-                  onFocus={settleExpenseOptionalPanel}
-                  onChange={(event) => setExpenseDraft((current) => ({ ...current, note: event.target.value }))}
-                  placeholder="比如 活动价、医生建议购买"
-                />
-              </label>
-            </div>
-          </details>
-        </div>
-        <div className="story-modal-actions">
-          <button type="button" className="screen-action-button quiet" onClick={closeExpenseEditor}>
-            取消
-          </button>
-          <button type="submit" className="screen-action-button">
-            <Save size={16} />
-            保存
-          </button>
-        </div>
-      </form>
-    </div>
-  ) : null;
-  const deleteExpenseDialog = deleteExpenseTarget ? (
-    <div className="story-modal-backdrop" role="presentation" onMouseDown={closeDeleteExpenseConfirm}>
-      <div
-        className="story-modal delete-confirm-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="delete-expense-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="delete-confirm-badge" aria-hidden="true">
-          <ReceiptText size={22} />
-        </div>
-        <div className="delete-confirm-copy">
-          <p className="eyebrow">删除支出</p>
-          <h3 id="delete-expense-title">确定删除这笔支出吗？</h3>
-          <p>“{deleteExpenseTarget.title} · {formatMoney(deleteExpenseTarget.amount)}”会从家庭账本里移除。</p>
-        </div>
-        <div className="story-modal-actions delete-confirm-actions">
-          <button type="button" className="screen-action-button quiet" onClick={closeDeleteExpenseConfirm}>
-            先保留
-          </button>
-          <button type="button" className="screen-action-button danger" onClick={() => void confirmDeleteExpense()}>
-            <Trash2 size={16} />
-            删除
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
-  const deleteCareEventDialog = deleteCareEventTarget ? (
-    <div className="story-modal-backdrop" role="presentation" onMouseDown={closeDeleteCareEventConfirm}>
-      <div
-        className="story-modal delete-confirm-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="delete-care-event-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="delete-confirm-badge" aria-hidden="true">
-          <Trash2 size={22} />
-        </div>
-        <div className="delete-confirm-copy">
-          <p className="eyebrow">删除记录</p>
-          <h3 id="delete-care-event-title">确定删除这条时间线记录吗？</h3>
-          <p>“{deleteCareEventTarget.title} · {deleteCareEventTarget.body}”会从当天记录和统计里移除。</p>
-        </div>
-        <div className="story-modal-actions delete-confirm-actions">
-          <button type="button" className="screen-action-button quiet" onClick={closeDeleteCareEventConfirm}>
-            先保留
-          </button>
-          <button type="button" className="screen-action-button danger" onClick={confirmDeleteCareTimelineEvent}>
-            <Trash2 size={16} />
-            删除
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
-  const bulkDeleteExpensesDialog = bulkDeleteExpensesOpen && selectedExpenseIds.size > 0 ? (
-    <div className="story-modal-backdrop" role="presentation" onMouseDown={closeBulkDeleteExpenses}>
-      <div
-        className="story-modal delete-confirm-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="bulk-delete-expense-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="delete-confirm-badge" aria-hidden="true">
-          <ReceiptText size={22} />
-        </div>
-        <div className="delete-confirm-copy">
-          <p className="eyebrow">批量删除</p>
-          <h3 id="bulk-delete-expense-title">确定删除选中的 {selectedExpenseIds.size} 笔支出？</h3>
-          <p>选中的支出会从家庭账本里一并移除，无法撤销。</p>
-        </div>
-        <div className="story-modal-actions delete-confirm-actions">
-          <button type="button" className="screen-action-button quiet" onClick={closeBulkDeleteExpenses}>
-            先保留
-          </button>
-          <button type="button" className="screen-action-button danger" onClick={() => void confirmBulkDeleteExpenses()}>
-            <Trash2 size={16} />
-            删除 {selectedExpenseIds.size} 笔
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null;
 
   // 首登知情同意：未同意前挡住一切（登录/引导/主界面都看不到）。
   if (!consentGiven) {
@@ -6492,281 +3111,56 @@ function App() {
   }
 
   if (authStatus === "checking") {
-    return (
-      <main className="app-shell auth-shell auth-splash">
-        <AuthScene />
-        {systemWeakNoticeView}
-        <div className="auth-splash-content">
-          <AuthBrand />
-          <p className="auth-splash-status">正在确认登录状态...</p>
-          <span className="loading-stars auth-loading" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-        </div>
-      </main>
-    );
+    return <AuthSplash systemWeakNoticeView={systemWeakNoticeView} />;
   }
 
   if (authStatus === "unauthenticated") {
     return (
-      <main className="app-shell auth-shell">
-        {systemWeakNoticeView}
-        <section className="auth-panel">
-          <StorybookScene />
-          <div>
-            <p className="eyebrow">本地家庭私有部署</p>
-            <h1>欢迎回来</h1>
-            <p>用手机号和家庭邀请码登录，宝宝记录只保存在你连接的本地后端。</p>
-          </div>
-          <form className="auth-form" onSubmit={handleLoginSubmit}>
-            <label>
-              <span>手机号</span>
-              <input
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="请输入 11 位手机号"
-                value={loginPhone}
-                onChange={(event) => setLoginPhone(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>邀请码</span>
-              <input
-                autoCapitalize="characters"
-                autoComplete="one-time-code"
-                placeholder="输入家庭邀请码"
-                value={loginInviteCode}
-                onChange={(event) => setLoginInviteCode(event.target.value)}
-              />
-            </label>
-            {loginExistingMember ? (
-              <div className="auth-join-options compact" aria-label="已注册家庭身份">
-                <div>
-                  <strong>已识别家庭身份</strong>
-                  <small>
-                    {inviteRoleHint || `你已经是${inviteFamilyName || "这个家庭"}的成员，本次登录会沿用原身份。`}
-                  </small>
-                </div>
-              </div>
-            ) : (
-              <div className="auth-join-options" aria-label="加入家庭身份设置">
-                <div>
-                  <strong>加入家庭前先确认身份</strong>
-                  <small>新手机号第一次使用家庭邀请码时，会按这里的选择加入{inviteFamilyName || "对应家庭"}。</small>
-                </div>
-                <label>
-                  <span>家庭身份</span>
-                  <StorySelect
-                    ariaLabel="家庭身份"
-                    value={loginRoleName}
-                    options={loginRoleOptions}
-                    onChange={setLoginRoleName}
-                  />
-                  {isCheckingInviteRoles || inviteRoleHint ? (
-                    <small className="auth-role-hint">
-                      {isCheckingInviteRoles ? "正在确认家庭身份..." : inviteRoleHint}
-                    </small>
-                  ) : null}
-                </label>
-                <div className="auth-permission-choice">
-                  <span>权限</span>
-                  <div className="auth-choice-row" role="radiogroup" aria-label="是否照护人">
-                    <button
-                      type="button"
-                      className={loginCaregiver === true ? "selected" : ""}
-                      aria-pressed={loginCaregiver === true}
-                      onClick={() => setLoginCaregiver(true)}
-                    >
-                      <strong>照护人</strong>
-                      <small>可聊天记录、上传和完成提醒</small>
-                    </button>
-                    <button
-                      type="button"
-                      className={loginCaregiver === false ? "selected" : ""}
-                      aria-pressed={loginCaregiver === false}
-                      onClick={() => setLoginCaregiver(false)}
-                    >
-                      <strong>仅查看</strong>
-                      <small>只能查看家庭记录和提醒</small>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {loginError ? <p className="auth-error">{loginError}</p> : null}
-            <button type="submit" disabled={isLoggingIn || !loginReady}>
-              {isLoggingIn ? "登录中..." : "登录"}
-            </button>
-          </form>
-        </section>
-      </main>
+      <LoginScreen
+        systemWeakNoticeView={systemWeakNoticeView}
+        handleLoginSubmit={handleLoginSubmit}
+        loginPhone={loginPhone}
+        setLoginPhone={setLoginPhone}
+        loginInviteCode={loginInviteCode}
+        setLoginInviteCode={setLoginInviteCode}
+        loginExistingMember={loginExistingMember}
+        inviteRoleHint={inviteRoleHint}
+        inviteFamilyName={inviteFamilyName}
+        loginRoleName={loginRoleName}
+        loginRoleOptions={loginRoleOptions}
+        setLoginRoleName={setLoginRoleName}
+        isCheckingInviteRoles={isCheckingInviteRoles}
+        loginCaregiver={loginCaregiver}
+        setLoginCaregiver={setLoginCaregiver}
+        loginError={loginError}
+        isLoggingIn={isLoggingIn}
+        loginReady={loginReady}
+      />
     );
   }
 
   if (onboardingRequired) {
-    if (!canCaregive) {
-      return (
-        <main className="app-shell auth-shell">
-          {systemWeakNoticeView}
-          <section className="auth-panel onboarding-panel">
-            <StorybookScene />
-              <div className="onboarding-head">
-              <div className="brand-mark">
-                <img className="storybook-brand-icon" src={companionIcon} alt="" />
-              </div>
-              <div>
-                <p className="eyebrow">{authFamily?.name ?? "小宝家"}</p>
-                <h1>等待照护人完成设置</h1>
-              </div>
-            </div>
-            <p className="viewer-empty-copy">
-              你当前是{authMember?.roleName ?? "家庭成员"}，仅可查看家庭记录。等照护人设置好小宝资料后，你刷新就能查看记录、提醒和趋势。
-            </p>
-            <button className="profile-logout-button" type="button" onClick={() => void handleLogout()}>
-              退出登录{(authUser?.maskedPhone ?? authUser?.phone) ? `（${authUser?.maskedPhone ?? authUser?.phone}）` : ""}
-            </button>
-          </section>
-        </main>
-      );
-    }
-    const progress = onboardingStep + 1;
     return (
-      <main className="app-shell auth-shell">
-        {systemWeakNoticeView}
-        <section className="auth-panel onboarding-panel">
-          <StorybookScene />
-          <div className="onboarding-head">
-            <div className="brand-mark">
-              <img className="storybook-brand-icon" src={companionIcon} alt="" />
-            </div>
-            <div>
-              <p className="eyebrow">首次设置</p>
-              <h1>先认识一下小宝</h1>
-            </div>
-            <span>{progress}/3</span>
-          </div>
-          <form className="auth-form onboarding-form" onSubmit={saveOnboardingProfile}>
-            {onboardingStep === 0 ? (
-              <>
-                <label>
-                  <span>小宝昵称</span>
-                  <input
-                    placeholder="比如：小宝"
-                    value={onboardingDraft.nickname}
-                    onChange={(event) => setOnboardingDraft((current) => ({ ...current, nickname: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>家庭名称</span>
-                  <input
-                    placeholder="比如：芊芊家"
-                    value={onboardingFamilyName}
-                    onChange={(event) => {
-                      onboardingFamilyNameTouchedRef.current = true;
-                      setOnboardingFamilyName(event.target.value);
-                    }}
-                    onBlur={() => {
-                      if (!onboardingFamilyName.trim()) {
-                        onboardingFamilyNameTouchedRef.current = false;
-                        setOnboardingFamilyName(suggestedFamilyName(onboardingDraft.nickname || initialProfile.nickname));
-                      }
-                    }}
-                  />
-                </label>
-                <label>
-                  <span>阶段</span>
-                  <StorySelect
-                    ariaLabel="小宝阶段"
-                    value={onboardingDraft.stage}
-                    options={STAGE_SELECT_OPTIONS}
-                    onChange={(stage) =>
-                      setOnboardingDraft((current) => ({
-                        ...current,
-                        stage,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>性别</span>
-                  <StorySelect
-                    ariaLabel="小宝性别"
-                    value={onboardingDraft.gender}
-                    options={GENDER_SELECT_OPTIONS}
-                    onChange={(gender) => setOnboardingDraft((current) => ({ ...current, gender }))}
-                  />
-                </label>
-                <label>
-                  <span>{onboardingDraft.stage === "born" ? "出生日期" : "预产期"}</span>
-                  <AppDateField
-                    value={onboardingDraft.stage === "born" ? onboardingDraft.birthDate : onboardingDraft.expectedDate}
-                    onChange={(value) =>
-                      setOnboardingDraft((current) =>
-                        current.stage === "born"
-                          ? { ...current, birthDate: value }
-                          : { ...current, expectedDate: value },
-                      )
-                    }
-                  />
-                </label>
-              </>
-            ) : null}
-            {onboardingStep === 1 ? (
-              <>
-                <label>
-                  <span>所在地区</span>
-                  <StorySelect
-                    ariaLabel="所在地区"
-                    value={onboardingDraft.region}
-                    options={selectOptionsWithCurrent(REGION_SELECT_OPTIONS, onboardingDraft.region)}
-                    onChange={(region) => setOnboardingDraft((current) => ({ ...current, region }))}
-                  />
-                </label>
-                <label>
-                  <span>喂养方式</span>
-                  <StorySelect
-                    ariaLabel="喂养方式"
-                    value={onboardingDraft.feeding}
-                    options={selectOptionsWithCurrent(FEEDING_SELECT_OPTIONS, onboardingDraft.feeding)}
-                    onChange={(feeding) => setOnboardingDraft((current) => ({ ...current, feeding }))}
-                  />
-                </label>
-              </>
-            ) : null}
-            {onboardingStep === 2 ? (
-              <>
-                <label>
-                  <span>过敏信息</span>
-                  <input value={onboardingAllergiesText} onChange={(event) => setOnboardingAllergiesText(event.target.value)} />
-                </label>
-                <div className="profile-form-note">
-                  <strong>家庭照护人</strong>
-                  <span>{profile.caregivers.join("、") || "会按加入家庭的成员自动生成"}</span>
-                  <small>照护人来自家庭邀请码成员，不需要在这里手动填写。</small>
-                </div>
-                <p className="onboarding-note">这些资料会帮 AI 更稳地整理记录，你之后也能在“我的”里修改。</p>
-              </>
-            ) : null}
-            {loginError ? <p className="auth-error">{loginError}</p> : null}
-            <div className="onboarding-actions">
-              {onboardingStep > 0 ? (
-                <button type="button" className="quiet" onClick={() => setOnboardingStep((step) => Math.max(0, step - 1))}>
-                  上一步
-                </button>
-              ) : null}
-              {onboardingStep < 2 ? (
-                <button type="button" onClick={() => setOnboardingStep((step) => Math.min(2, step + 1))}>
-                  下一步
-                </button>
-              ) : (
-                <button type="submit">完成设置</button>
-              )}
-            </div>
-          </form>
-        </section>
-      </main>
+      <OnboardingScreen
+        systemWeakNoticeView={systemWeakNoticeView}
+        canCaregive={canCaregive}
+        authFamily={authFamily}
+        authMember={authMember}
+        authUser={authUser}
+        handleLogout={handleLogout}
+        onboardingStep={onboardingStep}
+        setOnboardingStep={setOnboardingStep}
+        onboardingDraft={onboardingDraft}
+        setOnboardingDraft={setOnboardingDraft}
+        onboardingFamilyName={onboardingFamilyName}
+        setOnboardingFamilyName={setOnboardingFamilyName}
+        onboardingAllergiesText={onboardingAllergiesText}
+        setOnboardingAllergiesText={setOnboardingAllergiesText}
+        onboardingFamilyNameTouchedRef={onboardingFamilyNameTouchedRef}
+        saveOnboardingProfile={saveOnboardingProfile}
+        loginError={loginError}
+        profile={profile}
+      />
     );
   }
 
@@ -6856,774 +3250,55 @@ function App() {
           </section>
         </aside>
 
-        <section className="chat-panel tab-content-enter" aria-label="每日聊天记录">
-          <div className="chat-head">
-            <div className="chat-companion-head">
-              <div className="companion-badge" aria-hidden="true">
-                <span className="companion-cloud" />
-                <img className="companion-icon-img" src={companionAvatarIcon} alt="" />
-              </div>
-              <div>
-                <p className="eyebrow">陪你记录{babyNickname}</p>
-                <h2>今天想记点什么？</h2>
-              </div>
-            </div>
-            <div className="head-actions">
-              <AiDataNotice />
-              <button
-                type="button"
-                className={`icon-button ${visualToolClassName}`.trim()}
-                title={visualToolTitle}
-                aria-disabled={visualToolGated}
-                disabled={visualToolDisabled}
-                onClick={openMediaPicker}
-              >
-                <CameraIcon size={18} />
-              </button>
-              <button
-                type="button"
-                className={`icon-button voice-toggle ${composerMode === "voice" ? "active" : ""}`}
-                title={composerMode === "voice" ? "键盘" : "语音"}
-                onClick={toggleComposerMode}
-              >
-                {composerMode === "voice" ? <KeyboardIcon size={18} /> : <Mic size={18} />}
-              </button>
-            </div>
-            <button
-              type="button"
-              className="icon-button records-assistant-close"
-              title="收起记录助手"
-              aria-label="收起记录助手"
-              onClick={() => setRecordsAssistantOpen(false)}
-            >
-              <ChevronDown size={18} />
-            </button>
-          </div>
-
-          <div className="chat-prelude">
-            {compressionMessage ? (
-              <div className={`compression-notice ${compressionStatus}`} role="status">
-                <Brain size={15} />
-                <span>{compressionMessage}</span>
-              </div>
-            ) : null}
-
-            <div className="quick-row">
-              {quickActions.map(({ label, prompt, Icon }) => (
-                <button type="button" className="quick-action" key={label} onClick={() => quickFill(prompt)}>
-                  <span className="quick-action__icon" aria-hidden="true">
-                    <Icon size={18} strokeWidth={2.2} />
-                  </span>
-                  <span className="quick-action__label">{label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="message-list" ref={messageListRef}>
-            {messages.map((message) => (
-              <article className={`message ${message.role}`} key={message.id}>
-                {message.role === "ai" ? (
-                  <span className="message-companion" aria-hidden="true">
-                    <img src={companionAvatarIcon} alt="" />
-                  </span>
-                ) : null}
-                <div className={`message-meta ${message.role === "ai" ? "message-meta-ai" : ""}`}>
-                  {message.role === "parent" ? <span>{familySpeakerName}</span> : null}
-                  <time>{formatTime(message.createdAt)}</time>
-                </div>
-                {message.role === "ai" && message.reasoning ? (
-                  <details className="reasoning-box" open={message.isStreaming}>
-                    <summary>{message.isStreaming ? "思考中" : "思考过程"}</summary>
-                    <p>{message.reasoning}</p>
-                  </details>
-                ) : null}
-                {message.role === "ai" && visibleToolActivitiesForMessage(message).length ? (
-                  <div className="tool-activity-list">
-                    {visibleToolActivitiesForMessage(message).map((activity) => (
-                      <div className={`tool-activity ${activity.status}`} key={activity.id}>
-                        {isAgentProgressActivity(activity) ? (
-                          activity.status === "completed" ? (
-                            <CheckCircle2 size={14} />
-                          ) : activity.status === "failed" ? (
-                            <X size={14} />
-                          ) : (
-                            <Clock3 size={14} />
-                          )
-                        ) : (
-                          <Globe2 size={14} />
-                        )}
-                        <span>{activity.message}</span>
-                        {activity.query ? <small>{activity.query}</small> : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {message.safetyAlerts?.length ? (
-                  <div className="safety-alert-list">
-                    {message.safetyAlerts.map((alert) => (
-                      <div className={`safety-alert ${alert.level}`} key={`${alert.category}-${alert.message}`}>
-                        <ShieldAlert size={15} />
-                        <div>
-                          <strong>{alert.message}</strong>
-                          <span>{alert.recommendedAction}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                <div className={`message-text ${message.isStreaming ? "streaming" : ""}`}>
-                  {message.isStreaming ? (
-                    <span className="loading-stars" aria-hidden="true">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  ) : null}
-                  <p>{message.text}</p>
-                </div>
-                {message.sources?.length ? (
-                  <div className="source-list" aria-label="联网查询来源">
-                    {message.sources.map((source) => (
-                      <a href={source.url} key={source.url} target="_blank" rel="noreferrer">
-                        {source.title}
-                        {hostLabel(source.url) ? <small>{hostLabel(source.url)}</small> : null}
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-                {message.attachments?.length ? (
-                  <div className="attachment-strip">
-                    {message.attachments.map((item) => (
-                      <button
-                        type="button"
-                        className="attachment-thumb"
-                        key={item.id}
-                        onClick={() => {
-                          if (!item.url) return;
-                          openPreviewAttachment(item, null);
-                        }}
-                        disabled={!item.url}
-                        title={item.url ? "查看大图" : item.name}
-                      >
-                        {item.kind === "image" && attachmentListSrc(item) ? (
-                          <img src={attachmentListSrc(item)} alt={item.name} loading="lazy" decoding="async" />
-                        ) : null}
-                        {item.kind === "video" && item.thumbnailUrl ? (
-                          <img src={item.thumbnailUrl} alt={item.name} loading="lazy" decoding="async" />
-                        ) : null}
-                        {item.kind === "video" && !item.thumbnailUrl ? <Video size={20} /> : null}
-                        {!item.url && item.kind !== "video" ? <ImageIcon size={18} /> : null}
-                        <span>{item.kind === "video" ? "视频" : item.kind === "audio" ? "语音" : "照片"}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {message.tags?.length ? (
-                  <div className="tag-row">
-                    {message.tags.map((tag) => <span key={tag}>{tag}</span>)}
-                  </div>
-                ) : null}
-                {message.role === "ai" && askDecisions(message.effectDecisions).length ? (
-                  <div className="ask-effect-list">
-                    {askDecisions(message.effectDecisions).map((decision) => (
-                      <section className="ask-effect-card" key={decision.id}>
-                        <CircleHelp size={16} />
-                        <div>
-                          <strong>需要补充一点信息</strong>
-                          <span>{decision.question}</span>
-                          {decision.missingFields.length ? (
-                            <small>还需要：{decision.missingFields.join("、")}</small>
-                          ) : null}
-                        </div>
-                      </section>
-                    ))}
-                  </div>
-                ) : null}
-                {message.role === "ai" && message.albumPrompts?.length ? (
-                  <div className="album-prompt-list">
-                    {message.albumPrompts.map((prompt) => (
-                      <section className={`album-prompt-card status-${prompt.status}`} key={prompt.id}>
-                        <ImageIcon size={16} />
-                        <div>
-                          <strong>{prompt.status === "saved" ? "已保存到相册" : prompt.status === "ignored" ? "已忽略这段素材" : "这段素材可能值得保存到相册"}</strong>
-                          <span>{prompt.status === "pending" ? "要保存吗？" : prompt.title}</span>
-                          <small>{prompt.reason}</small>
-                        </div>
-                        {prompt.status === "pending" ? (
-                          <div className="album-prompt-actions">
-                            <button type="button" onClick={() => saveAlbumPrompt(message.id, prompt)}>
-                              保存到相册
-                            </button>
-                            <button type="button" className="quiet" onClick={() => ignoreAlbumPrompt(message.id, prompt)}>
-                              忽略
-                            </button>
-                          </div>
-                        ) : null}
-                      </section>
-                    ))}
-                  </div>
-                ) : null}
-                {message.role === "ai" &&
-                pendingEffects.some((effect) => effect.messageId === message.id) ? (
-                  <div className="pending-effect-list">
-                    {pendingEffects
-                      .filter((effect) => effect.messageId === message.id)
-                      .map((effect) => {
-                        const isConfirmingEffect = confirmingPendingEffectIds.includes(effect.id);
-                        return (
-                        <section className="pending-effect-card" key={effect.id}>
-                          <div className="pending-effect-head">
-                            <div>
-                              <span>待确认记录</span>
-                              <strong>{pendingEffectSummary(effect).join(" / ")}</strong>
-                            </div>
-                            <Clock3 size={16} />
-                          </div>
-                          {editingPendingId === effect.id ? (
-                            pendingDraft ? (
-                              <div className="pending-effect-form">
-                                {pendingDraft.growthEvent ? (
-                                  <fieldset>
-                                    <legend>成长事件</legend>
-                                    <label>
-                                      标题
-                                      <input
-                                        value={pendingDraft.growthEvent.title}
-                                        onChange={(event) => updatePendingGrowthDraft({ title: event.target.value })}
-                                      />
-                                    </label>
-                                    <label>
-                                      日期
-                                      <AppDateField
-                                        value={pendingDraft.growthEvent.date}
-                                        onChange={(value) => updatePendingGrowthDraft({ date: value })}
-                                      />
-                                    </label>
-                                    <label>
-                                      摘要
-                                      <textarea
-                                        value={pendingDraft.growthEvent.summary}
-                                        onChange={(event) => updatePendingGrowthDraft({ summary: event.target.value })}
-                                      />
-                                    </label>
-                                  </fieldset>
-                                ) : null}
-                                {pendingDraft.growthMeasurements.map((measurement) => {
-                                  const meta = GROWTH_MEASUREMENT_META[measurement.type];
-                                  return (
-                                    <fieldset key={measurement.id}>
-                                      <legend>成长数据</legend>
-                                      <div className="pending-effect-grid">
-                                        <label>
-                                          类型
-                                          <StorySelect
-                                            value={measurement.type}
-                                            options={GROWTH_MEASUREMENT_TYPES.map((type) => ({
-                                              value: type,
-                                              label: GROWTH_MEASUREMENT_META[type].label,
-                                            }))}
-                                            ariaLabel="待确认成长数据类型"
-                                            onChange={(type) =>
-                                              updatePendingGrowthMeasurementDraft(measurement.id, { type: type as GrowthMeasurementType })
-                                            }
-                                          />
-                                        </label>
-                                        <label>
-                                          数值（{meta.unit}）
-                                          <input
-                                            type="number"
-                                            inputMode="decimal"
-                                            step={meta.step}
-                                            min={meta.min}
-                                            max={meta.max}
-                                            value={measurement.value}
-                                            onChange={(event) =>
-                                              updatePendingGrowthMeasurementDraft(measurement.id, { value: event.target.value })
-                                            }
-                                          />
-                                        </label>
-                                      </div>
-                                      <label>
-                                        日期
-                                        <AppDateField
-                                          value={measurement.date}
-                                          onChange={(value) =>
-                                            updatePendingGrowthMeasurementDraft(measurement.id, { date: value })
-                                          }
-                                        />
-                                      </label>
-                                      <label>
-                                        备注
-                                        <textarea
-                                          value={measurement.note}
-                                          onChange={(event) =>
-                                            updatePendingGrowthMeasurementDraft(measurement.id, { note: event.target.value })
-                                          }
-                                        />
-                                      </label>
-                                    </fieldset>
-                                  );
-                                })}
-                                {pendingDraft.careLogPatch ? (
-                                  <fieldset>
-                                    <legend>照护记录</legend>
-                                    <label>
-                                      日期
-                                      <AppDateField
-                                        value={pendingDraft.careLogPatch.date}
-                                        onChange={(value) => updatePendingCareDraft({ date: value })}
-                                      />
-                                    </label>
-                                    <div className="pending-effect-grid">
-                                      <label>
-                                        奶量 ml
-                                        <input
-                                          inputMode="numeric"
-                                          value={pendingDraft.careLogPatch.milkMl}
-                                          onChange={(event) => updatePendingCareDraft({ milkMl: event.target.value })}
-                                        />
-                                      </label>
-                                      <label>
-                                        喝奶次数
-                                        <input
-                                          inputMode="numeric"
-                                          value={pendingDraft.careLogPatch.milkTimes}
-                                          onChange={(event) => updatePendingCareDraft({ milkTimes: event.target.value })}
-                                        />
-                                      </label>
-                                      <label>
-                                        睡眠小时
-                                        <input
-                                          inputMode="decimal"
-                                          value={pendingDraft.careLogPatch.sleepHours}
-                                          onChange={(event) => updatePendingCareDraft({ sleepHours: event.target.value })}
-                                        />
-                                      </label>
-                                      <label>
-                                        夜醒次数
-                                        <input
-                                          inputMode="numeric"
-                                          value={pendingDraft.careLogPatch.wakes}
-                                          onChange={(event) => updatePendingCareDraft({ wakes: event.target.value })}
-                                        />
-                                      </label>
-                                    </div>
-                                    <label>
-                                      便便
-                                      <input
-                                        value={pendingDraft.careLogPatch.poop}
-                                        onChange={(event) => updatePendingCareDraft({ poop: event.target.value })}
-                                      />
-                                    </label>
-                                    <label>
-                                      体温
-                                      <input
-                                        inputMode="decimal"
-                                        value={pendingDraft.careLogPatch.temperature}
-                                        onChange={(event) => updatePendingCareDraft({ temperature: event.target.value })}
-                                      />
-                                    </label>
-                                    <label>
-                                      备注
-                                      <textarea
-                                        value={pendingDraft.careLogPatch.notes}
-                                        onChange={(event) => updatePendingCareDraft({ notes: event.target.value })}
-                                      />
-                                    </label>
-                                  </fieldset>
-                                ) : null}
-                                {pendingDraft.reminders.map((item) => (
-                                  <fieldset key={item.id}>
-                                    <legend>提醒</legend>
-                                    <label>
-                                      标题
-                                      <input
-                                        value={item.draft.title}
-                                        onChange={(event) =>
-                                          updatePendingReminderDraft(item.id, (draft) => ({ ...draft, title: event.target.value }))
-                                        }
-                                      />
-                                    </label>
-                                    <div className="pending-effect-grid">
-                                      <label>
-                                        时间模式
-                                        <StorySelect
-                                          value={item.draft.scheduleMode}
-                                          options={REMINDER_SCHEDULE_MODE_OPTIONS}
-                                          ariaLabel="待确认提醒时间模式"
-                                          onChange={(scheduleMode) =>
-                                            updatePendingReminderDraft(item.id, (draft) => ({ ...draft, scheduleMode }))
-                                          }
-                                        />
-                                      </label>
-                                      <label>
-                                        提醒方式
-                                        <StorySelect
-                                          value={item.draft.alertMode}
-                                          options={REMINDER_ALERT_MODE_OPTIONS}
-                                          ariaLabel="待确认提醒方式"
-                                          onChange={(alertMode) =>
-                                            updatePendingReminderDraft(item.id, (draft) => ({ ...draft, alertMode }))
-                                          }
-                                        />
-                                      </label>
-                                    </div>
-                                    <div className="pending-effect-grid">
-                                      <label>
-                                        分类
-                                        <StorySelect
-                                          value={item.draft.category}
-                                          options={REMINDER_CATEGORY_OPTIONS}
-                                          ariaLabel="待确认提醒分类"
-                                          onChange={(category) =>
-                                            updatePendingReminderDraft(item.id, (draft) => ({ ...draft, category }))
-                                          }
-                                        />
-                                      </label>
-                                      {item.draft.alertMode === "ringing" ? (
-                                        <label>
-                                          提示音
-                                          <StorySelect
-                                            value={item.draft.soundId}
-                                            options={REMINDER_SOUND_OPTIONS}
-                                            ariaLabel="待确认闹铃提示音"
-                                            onChange={(soundId) =>
-                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, soundId }))
-                                            }
-                                          />
-                                        </label>
-                                      ) : null}
-                                    </div>
-                                    {item.draft.scheduleMode === "interval" ? (
-                                      <label>
-                                        循环间隔（分钟）
-                                        <input
-                                          type="number"
-                                          min={MIN_INTERVAL_MINUTES}
-                                          max={MAX_INTERVAL_MINUTES}
-                                          step="5"
-                                          value={item.draft.intervalMinutes}
-                                          onChange={(event) =>
-                                            updatePendingReminderDraft(item.id, (draft) => ({ ...draft, intervalMinutes: event.target.value }))
-                                          }
-                                        />
-                                      </label>
-                                    ) : (
-                                      <div className="pending-effect-grid">
-                                        <label>
-                                          日期
-                                          <AppDateField
-                                            value={item.draft.dueDate}
-                                            onChange={(value) =>
-                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, dueDate: value }))
-                                            }
-                                          />
-                                        </label>
-                                        <label>
-                                          时间
-                                          <AppTimeField
-                                            value={item.draft.dueTime}
-                                            onChange={(value) =>
-                                              updatePendingReminderDraft(item.id, (draft) => ({ ...draft, dueTime: value }))
-                                            }
-                                          />
-                                        </label>
-                                      </div>
-                                    )}
-                                  </fieldset>
-                                ))}
-                                {pendingDraft.memories.map((item) => (
-                                  <fieldset key={item.id}>
-                                    <legend>记忆</legend>
-                                    <label>
-                                      内容
-                                      <textarea value={item.text} onChange={(event) => updatePendingMemoryDraft(item.id, event.target.value)} />
-                                    </label>
-                                  </fieldset>
-                                ))}
-                                {pendingDraft.expenses.map((item, index) => (
-                                  <fieldset key={`pending-expense-${index}`}>
-                                    <legend>账本支出</legend>
-                                    <label>
-                                      商品或用途
-                                      <input
-                                        value={item.title}
-                                        onChange={(event) => updatePendingExpenseDraft(index, { title: event.target.value })}
-                                      />
-                                    </label>
-                                    <div className="pending-effect-grid">
-                                      <label>
-                                        金额
-                                        <input
-                                          inputMode="decimal"
-                                          value={item.amount}
-                                          onChange={(event) => updatePendingExpenseDraft(index, { amount: event.target.value })}
-                                        />
-                                      </label>
-                                      <label>
-                                        日期
-                                        <AppDateField
-                                          value={item.date}
-                                          onChange={(value) => updatePendingExpenseDraft(index, { date: value })}
-                                        />
-                                      </label>
-                                    </div>
-                                    <div className="pending-effect-grid">
-                                      <label>
-                                        分类
-                                        <StorySelect
-                                          value={item.category}
-                                          options={EXPENSE_CATEGORY_OPTIONS}
-                                          ariaLabel="待确认支出分类"
-                                          onChange={(category) => updatePendingExpenseDraft(index, { category })}
-                                        />
-                                      </label>
-                                      <label>
-                                        商家
-                                        <input
-                                          value={item.merchant}
-                                          onChange={(event) => updatePendingExpenseDraft(index, { merchant: event.target.value })}
-                                        />
-                                      </label>
-                                    </div>
-                                    <label>
-                                      备注
-                                      <textarea
-                                        value={item.note}
-                                        onChange={(event) => updatePendingExpenseDraft(index, { note: event.target.value })}
-                                      />
-                                    </label>
-                                  </fieldset>
-                                ))}
-                              </div>
-                            ) : null
-                          ) : (
-                            <div className="pending-effect-body">
-                              {effect.growthEvent ? <p>成长：{effect.growthEvent.title}</p> : null}
-                              {(effect.growthMeasurements ?? []).map((measurement) => {
-                                const meta = GROWTH_MEASUREMENT_META[measurement.type];
-                                return (
-                                  <p key={measurement.id}>
-                                    成长数据：{meta.label} {measurement.value}{meta.unit}
-                                  </p>
-                                );
-                              })}
-                              {effect.careLogPatch ? <p>照护：{effect.careLogPatch.notes?.join("、") || "已识别照护日志"}</p> : null}
-                              {(effect.reminders ?? []).map((reminder) => (
-                                <p key={reminder.id}>提醒：{reminder.dueText} {reminder.title}</p>
-                              ))}
-                              {(effect.memories ?? []).map((memory) => (
-                                <p key={memory.id}>记忆：{memory.text}</p>
-                              ))}
-                              {(effect.expenses ?? []).map((expense) => (
-                                <p key={expense.id}>支出：{expense.title} {formatMoney(expense.amount)}</p>
-                              ))}
-                            </div>
-                          )}
-                          <div className="pending-effect-actions">
-                            {editingPendingId === effect.id ? (
-                              <>
-                                <button type="button" onClick={() => void savePendingEffectDraft(effect)}>
-                                  保存
-                                </button>
-                                <button
-                                  type="button"
-                                  className="quiet"
-                                  onClick={() => {
-                                    setEditingPendingId("");
-                                    setPendingDraft(null);
-                                  }}
-                                >
-                                  取消
-                                </button>
-                              </>
-                            ) : (
-                              <button type="button" onClick={() => beginEditPendingEffect(effect)}>
-                                编辑
-                              </button>
-                            )}
-                            {editingPendingId === effect.id ? null : (
-                              <>
-                                <button type="button" disabled={isConfirmingEffect} onClick={() => void confirmPendingEffect(effect)}>
-                                  {isConfirmingEffect ? "保存中" : "确认"}
-                                </button>
-                                <button type="button" className="quiet" disabled={isConfirmingEffect} onClick={() => void discardPendingEffect(effect)}>
-                                  丢弃
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </section>
-                        );
-                      })}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
-
-          <form className={`composer ${voiceRecordingActive ? "voice-recording-hidden" : ""}`.trim()} onSubmit={handleSubmit}>
-            {chatUploadItems.length || attachments.length ? (
-              <div className={`pending-attachments ${isAttachmentTrayOpen ? "expanded" : "collapsed"}`}>
-                <button
-                  type="button"
-                  className="pending-attachment-summary"
-                  aria-expanded={isAttachmentTrayOpen}
-                  aria-controls="pending-attachment-list"
-                  aria-label={canCollapseAttachmentTray ? (isAttachmentTrayOpen ? "收起素材清单" : "展开素材清单") : "素材清单"}
-                  title={chatAttachmentLimitLabel}
-                  onClick={() => {
-                    if (canCollapseAttachmentTray) {
-                      setIsAttachmentTrayExpanded((current) => !current);
-                    }
-                  }}
-                >
-                  <span className="pending-attachment-summary-copy">
-                    <span className="pending-attachment-count">{chatAttachmentCountLabel}</span>
-                    {attachmentTrayMetaLabel ? <small>{attachmentTrayMetaLabel}</small> : null}
-                  </span>
-                  {isChatAttachmentLimitReached ? <span className="pending-attachment-limit full">已达上限</span> : null}
-                  {attachmentTrayPreviewItems.length ? (
-                    <span className="pending-attachment-stack" aria-hidden="true">
-                      {attachmentTrayPreviewItems.map((item) => (
-                        <span className="pending-stack-thumb" key={item.id}>
-                          {item.kind === "image" && attachmentListSrc(item) ? (
-                            <img src={attachmentListSrc(item)} alt="" loading="lazy" decoding="async" />
-                          ) : item.kind === "video" && item.thumbnailUrl ? (
-                            <img src={item.thumbnailUrl} alt="" loading="lazy" decoding="async" />
-                          ) : item.kind === "video" ? (
-                            <Video size={14} />
-                          ) : (
-                            <ImageIcon size={14} />
-                          )}
-                        </span>
-                      ))}
-                      {attachmentTrayOverflowCount ? <span className="pending-stack-thumb overflow">+{attachmentTrayOverflowCount}</span> : null}
-                    </span>
-                  ) : null}
-                  {canCollapseAttachmentTray ? <ChevronDown className="pending-attachment-chevron" size={17} aria-hidden="true" /> : null}
-                </button>
-                {isAttachmentTrayOpen ? (
-                  <div className="pending-attachment-list" id="pending-attachment-list">
-                    {chatUploadItems.map((item) => (
-                      <div className={`pending-item upload-item ${item.status}`} key={item.id}>
-                        <div className="pending-preview-button upload-state-icon" aria-hidden="true">
-                          {item.kind === "video" ? <Video size={17} /> : <ImageIcon size={17} />}
-                        </div>
-                        <div className="upload-copy">
-                          <span title={item.name}>{item.name}</span>
-                          <small>{item.message ?? (item.status === "uploading" ? `上传 ${item.progress}%` : "准备中")}</small>
-                          <div className="upload-progress-track" aria-hidden="true">
-                            <div className="upload-progress-bar" style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {attachments.map((item) => (
-                      <div className="pending-item" key={item.id}>
-                        <button
-                          type="button"
-                          className="pending-preview-button"
-                          title={item.url ? "查看大图" : item.name}
-                          disabled={!item.url}
-                          onClick={() => {
-                            if (!item.url) return;
-                            openPreviewAttachment(item, null);
-                          }}
-                        >
-                          {item.kind === "image" && attachmentListSrc(item) ? (
-                            <img src={attachmentListSrc(item)} alt={item.name} loading="lazy" decoding="async" />
-                          ) : item.kind === "video" && item.thumbnailUrl ? (
-                            <img src={item.thumbnailUrl} alt={item.name} loading="lazy" decoding="async" />
-                          ) : (
-                            <Video size={18} />
-                          )}
-                        </button>
-                        <span>{item.name}</span>
-                        <button
-                          type="button"
-                          className="pending-remove-button"
-                          title="移除"
-                          aria-label={`移除 ${item.name}`}
-                          onClick={() => setAttachments((current) => current.filter((attachment) => attachment.id !== item.id))}
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            <div className="composer-row">
-              <div className="composer-tools" aria-label="输入工具">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  multiple
-                  hidden
-                  disabled={!canAttachVisuals || isSubmitting || isUploadingChatMedia}
-                  onChange={handleFiles}
-                />
-                <button
-                  type="button"
-                  className={`tool-button ${visualToolClassName}`.trim()}
-                  title={visualToolTitle}
-                  aria-disabled={visualToolGated}
-                  disabled={visualToolDisabled}
-                  onClick={openMediaPicker}
-                >
-                  <CameraIcon size={19} />
-                </button>
-                <button
-                  type="button"
-                  className={`tool-button voice-toggle ${composerMode === "voice" ? "active" : ""}`}
-                  title={composerMode === "voice" ? "切换键盘输入" : "切换语音输入"}
-                  aria-label={composerMode === "voice" ? "键盘输入" : "语音输入"}
-                  aria-pressed={composerMode === "voice"}
-                  disabled={isSubmitting}
-                  onClick={toggleComposerMode}
-                >
-                  {composerMode === "voice" ? <KeyboardIcon size={19} /> : <Mic size={19} />}
-                </button>
-              </div>
-              <div className="composer-input-line">
-                {composerMode === "voice" ? (
-                  <button
-                    type="button"
-                    className={`voice-hold-button ${isListening ? "listening" : ""} ${voiceStatus} ${voiceCancelArmed ? "canceling" : ""}`}
-                    style={voiceButtonStyle}
-                    disabled={isSubmitting}
-                    aria-label="按住说话"
-                    onPointerDown={startVoicePress}
-                    onPointerUp={releaseVoicePress}
-                    onPointerCancel={cancelVoicePointer}
-                    onContextMenu={(event) => event.preventDefault()}
-                  >
-                    <span>{voiceHoldLabel}</span>
-                  </button>
-                ) : (
-                  <textarea
-                    value={input}
-                    rows={1}
-                    onChange={(event) => {
-                      inputValueRef.current = event.target.value;
-                      setInput(event.target.value);
-                    }}
-                    onKeyDown={handleComposerKeyDown}
-                    placeholder={`记录${babyNickname}今天的新变化...`}
-                    disabled={isSubmitting}
-                  />
-                )}
-                <button className="send-button" type="submit" title={isUploadingChatMedia ? "素材上传中" : isSubmitting ? "处理中" : "发送"} disabled={isSubmitting || isUploadingChatMedia}>
-                  <Send size={19} />
-                </button>
-              </div>
-            </div>
-          </form>
-        </section>
+        <ChatScreen
+          messages={messages}
+          babyNickname={babyNickname}
+          familySpeakerName={familySpeakerName}
+          compressionMessage={compressionMessage}
+          compressionStatus={compressionStatus}
+          quickActions={quickActions}
+          pendingEffects={pendingEffects}
+          confirmingPendingEffectIds={confirmingPendingEffectIds}
+          editingPendingId={editingPendingId}
+          pendingDraft={pendingDraft}
+          composerMode={composerMode}
+          voiceHoldLabel={voiceHoldLabel}
+          voiceButtonStyle={voiceButtonStyle}
+          voiceRecordingActive={voiceRecordingActive}
+          isListening={isListening}
+          voiceStatus={voiceStatus}
+          voiceCancelArmed={voiceCancelArmed}
+          isSubmitting={isSubmitting}
+          isUploadingChatMedia={isUploadingChatMedia}
+          attachments={attachments}
+          chatUploadItems={chatUploadItems}
+          isAttachmentTrayOpen={isAttachmentTrayOpen}
+          canCollapseAttachmentTray={canCollapseAttachmentTray}
+          chatAttachmentCountLabel={chatAttachmentCountLabel}
+          chatAttachmentLimitLabel={chatAttachmentLimitLabel}
+          isChatAttachmentLimitReached={isChatAttachmentLimitReached}
+          attachmentTrayMetaLabel={attachmentTrayMetaLabel}
+          attachmentTrayPreviewItems={attachmentTrayPreviewItems}
+          attachmentTrayOverflowCount={attachmentTrayOverflowCount}
+          canAttachVisuals={canAttachVisuals}
+          visualToolClassName={visualToolClassName}
+          visualToolTitle={visualToolTitle}
+          visualToolGated={visualToolGated}
+          visualToolDisabled={visualToolDisabled}
+          messageListRef={messageListRef}
+          fileInputRef={fileInputRef}
+          visibleToolActivitiesForMessage={visibleToolActivitiesForMessage}
+          isAgentProgressActivity={isAgentProgressActivity}
+          askDecisions={askDecisions}
+          pendingEffectSummary={pendingEffectSummary}
+          hostLabel={hostLabel}
+          setRecordsAssistantOpen={setRecordsAssistantOpen}
+          setIsAttachmentTrayExpanded={setIsAttachmentTrayExpanded}
+          setAttachments={setAttachments}
+          setEditingPendingId={setEditingPendingId}
+          setPendingDraft={setPendingDraft}
+          handlers={chatScreenHandlers}
+        />
 
         <RecordsScreen
           canCaregive={canCaregive}
@@ -7673,370 +3348,46 @@ function App() {
           handlers={recordsScreenHandlers}
         />
 
-        {/* 打字所在的 AI/手动 composer 抽屉 createPortal 到 document.body,DOM 输出与拆分前一致;
+        {/* 打字所在的 AI/手动 composer 抽屉(含 createPortal 到 document.body)已抽进 screens/RecordsEntryDrawer.tsx;
             从记录区提升为 <RecordsScreen/> 的兄弟节点后,打字逐键 setState 只重渲 App,不再触达 memo 的记录树。 */}
-          {canCaregive && recordsEntryDrawer
-            ? createPortal(
-                <div
-                  className={`records-entry-scrim app-portal ${recordsEntryDrawerClosing ? "is-closing" : "is-open"}`}
-                  role="presentation"
-                  onClick={closeRecordsEntryDrawer}
-                >
-                  <section
-                    className={`records-entry-drawer ${
-                      recordsEntryDrawer === "ai" ? "records-assistant-drawer" : "records-manual-drawer"
-                    } ${recordsEntryDrawerClosing ? "is-closing" : "is-open"}`}
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label={recordsEntryDrawer === "ai" ? "AI 自动记录" : "手动记录"}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <div className="records-drawer-head">
-                      <div>
-                        <strong>{recordsEntryDrawer === "ai" ? "AI 自动记录" : "手动记录"}</strong>
-                        <small>
-                          {recordsEntryDrawer === "ai"
-                            ? "说一句或上传照片，我会整理成当天记录"
-                            : `保存到${selectedDateIsToday ? "今天" : formatDate(selectedDate)}的时间线`}
-                        </small>
-                      </div>
-                      <button type="button" aria-label="关闭" onClick={closeRecordsEntryDrawer}>
-                        <X size={18} />
-                      </button>
-                    </div>
-
-                    <div className={`records-drawer-body ${recordsEntryDrawer === "ai" ? "records-drawer-body--assistant" : "records-drawer-body--manual"}`}>
-                      {recordsEntryDrawer === "ai" ? (
-                        <>
-                          <div className="records-assistant-main">
-                            <div className="records-assistant-body">
-                              <Sparkles size={16} />
-                              <span>直接描述今天发生了什么，我会整理成记录并同步到今日、趋势和时间线。</span>
-                            </div>
-                            {pendingEffects.length ? (
-                              <div className="records-assistant-pending-list">
-                                {pendingEffects.slice(0, 2).map((effect) => {
-                                  const isConfirmingEffect = confirmingPendingEffectIds.includes(effect.id);
-                                  return (
-                                    <section className="records-assistant-pending-card" key={effect.id}>
-                                      <Clock3 size={14} />
-                                      <div>
-                                        <strong>{pendingEffectSummary(effect).join(" / ")}</strong>
-                                        <small>待确认记录</small>
-                                      </div>
-                                      <button type="button" disabled={isConfirmingEffect} onClick={() => void confirmPendingEffect(effect)}>
-                                        {isConfirmingEffect ? "保存中" : "确认"}
-                                      </button>
-                                      <button type="button" className="quiet" disabled={isConfirmingEffect} onClick={() => void discardPendingEffect(effect)}>
-                                        丢弃
-                                      </button>
-                                    </section>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                            <div className="records-assistant-thread" aria-label="最近对话">
-                              <span className="records-assistant-section-label">最近相关内容</span>
-                              {messages.slice(-3).map((message) => (
-                                <article className={`records-assistant-message ${message.role}`} key={message.id}>
-                                  <time>{formatTime(message.createdAt)}</time>
-                                  <p>{message.text}</p>
-                                </article>
-                              ))}
-                              {isSubmitting ? (
-                                <article className="records-assistant-message ai records-assistant-message--processing" role="status" aria-live="polite">
-                                  <time>处理中</time>
-                                  <p className="records-assistant-processing">
-                                    <span className="loading-stars records-assistant-loading-dots" aria-hidden="true">
-                                      <i />
-                                      <i />
-                                      <i />
-                                    </span>
-                                    <span>正在整理</span>
-                                  </p>
-                                </article>
-                              ) : null}
-                            </div>
-                            {chatUploadItems.length || attachments.length ? (
-                              <div className="records-assistant-attachments">
-                                {chatUploadItems.map((item) => (
-                                  <span className={`records-assistant-attachment ${item.status}`} key={item.id}>
-                                    {item.kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}
-                                    {item.status === "uploading" ? `上传 ${item.progress}%` : item.name}
-                                  </span>
-                                ))}
-                                {attachments.map((item) => (
-                                  <span className="records-assistant-attachment" key={item.id}>
-                                    {item.kind === "video" ? <Video size={13} /> : item.kind === "audio" ? <Mic size={13} /> : <ImageIcon size={13} />}
-                                    {item.name}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                          <form className={`records-assistant-composer ${voiceRecordingActive ? "voice-recording-hidden" : ""}`.trim()} onSubmit={handleSubmit}>
-                            <div className="records-assistant-tool-row">
-                              <button
-                                type="button"
-                                className={`records-assistant-tool ${visualToolClassName}`.trim()}
-                                title={visualToolTitle}
-                                aria-disabled={visualToolGated}
-                                disabled={visualToolDisabled}
-                                onClick={openMediaPicker}
-                              >
-                                <CameraIcon size={18} />
-                                <span>照片</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={`records-assistant-tool voice-toggle ${composerMode === "voice" ? "active" : ""}`}
-                                title={composerMode === "voice" ? "切换键盘输入" : "切换语音输入"}
-                                aria-label={composerMode === "voice" ? "键盘输入" : "语音输入"}
-                                aria-pressed={composerMode === "voice"}
-                                disabled={!canUseComposerInput}
-                                onClick={toggleComposerMode}
-                              >
-                                {composerMode === "voice" ? <KeyboardIcon size={18} /> : <Mic size={18} />}
-                                <span>{composerMode === "voice" ? "键盘" : "语音"}</span>
-                              </button>
-                            </div>
-                            <div className="records-assistant-input-line">
-                              {composerMode === "voice" ? (
-                                <button
-                                  type="button"
-                                  className={`voice-hold-button ${isListening ? "listening" : ""} ${voiceStatus} ${voiceCancelArmed ? "canceling" : ""}`}
-                                  style={voiceButtonStyle}
-                                  disabled={!canUseComposerInput}
-                                  aria-label="按住说话"
-                                  onPointerDown={startVoicePress}
-                                  onPointerUp={releaseVoicePress}
-                                  onPointerCancel={cancelVoicePointer}
-                                  onContextMenu={(event) => event.preventDefault()}
-                                >
-                                  <span>{voiceHoldLabel}</span>
-                                </button>
-                              ) : (
-                                <textarea
-                                  value={input}
-                                  rows={1}
-                                  onChange={(event) => {
-                                    inputValueRef.current = event.target.value;
-                                    setInput(event.target.value);
-                                  }}
-                                  onKeyDown={handleComposerKeyDown}
-                                  placeholder={`记录${babyNickname}今天的新变化...`}
-                                  disabled={!canUseComposerInput}
-                                />
-                              )}
-                              <button className="send-button" type="submit" title={isUploadingChatMedia ? "素材上传中" : isSubmitting ? "处理中" : "发送"} disabled={isSubmitting || isUploadingChatMedia}>
-                                <Send size={18} />
-                              </button>
-                            </div>
-                          </form>
-                        </>
-                      ) : (
-                        <form className="manual-record-form" onSubmit={saveManualCareEvent}>
-                          <div className="manual-record-type-tabs" role="tablist" aria-label="手动记录类型">
-                            {MANUAL_RECORD_TYPES.map((option) => (
-                              <button
-                                type="button"
-                                role="tab"
-                                aria-selected={manualRecordKind === option.type}
-                                className={manualRecordKind === option.type ? "active" : ""}
-                                key={option.type}
-                                onClick={() => selectManualRecordKind(option.type)}
-                              >
-                                <span>{option.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                          <p className="manual-record-type-hint">
-                            {MANUAL_RECORD_TYPES.find((option) => option.type === manualRecordKind)?.hint}
-                          </p>
-                          <div className="manual-record-fields">
-                            <fieldset className="manual-picker-field wide">
-                              <legend>时间</legend>
-                              <div className="manual-choice-grid manual-time-presets">
-                                {MANUAL_TIME_PRESETS.map((option) => {
-                                  const value = timePresetValue(option.offsetMinutes);
-                                  return (
-                                    <button
-                                      type="button"
-                                      className={careEventDraft.time === value ? "active" : ""}
-                                      key={option.label}
-                                      onClick={() => updateManualCareDraft({ time: value })}
-                                    >
-                                      {option.label}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              <label className="manual-native-picker">
-                                <span>精确时间</span>
-                                <AppTimeField
-                                  value={normalizeClockText(careEventDraft.time) ?? currentClockText()}
-                                  onChange={(value) => updateManualCareDraft({ time: value })}
-                                />
-                              </label>
-                            </fieldset>
-
-                            {manualRecordKind === "milk" ? (
-                              <>
-                                <fieldset className="manual-stepper-field">
-                                  <legend>奶量</legend>
-                                  <div className="manual-stepper">
-                                    <button type="button" aria-label="减少奶量" onClick={() => adjustManualNumericDraft("amountMl", -10, 120, 10, 300)}>
-                                      -
-                                    </button>
-                                    <strong>
-                                      {careEventDraft.amountMl || "--"}
-                                      <small>ml</small>
-                                    </strong>
-                                    <button type="button" aria-label="增加奶量" onClick={() => adjustManualNumericDraft("amountMl", 10, 120, 10, 300)}>
-                                      +
-                                    </button>
-                                  </div>
-                                  <div className="manual-choice-grid">
-                                    {MANUAL_MILK_AMOUNTS.map((amount) => (
-                                      <button
-                                        type="button"
-                                        className={careEventDraft.amountMl === String(amount) ? "active" : ""}
-                                        key={amount}
-                                        onClick={() => updateManualCareDraft({ amountMl: String(amount) })}
-                                      >
-                                        {amount}ml
-                                      </button>
-                                    ))}
-                                  </div>
-                                </fieldset>
-                                <fieldset className="manual-picker-field">
-                                  <legend>奶的类型</legend>
-                                  <div className="manual-choice-grid">
-                                    {MANUAL_MILK_NOTES.map((note) => (
-                                      <button
-                                        type="button"
-                                        className={careEventDraft.note === note ? "active" : ""}
-                                        key={note}
-                                        onClick={() => updateManualCareDraft({ note })}
-                                      >
-                                        {note}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </fieldset>
-                              </>
-                            ) : null}
-
-                            {manualRecordKind === "sleep" ? (
-                              <fieldset className="manual-stepper-field wide">
-                                <legend>睡眠时长</legend>
-                                <div className="manual-stepper">
-                                  <button type="button" aria-label="减少睡眠时长" onClick={() => adjustManualNumericDraft("durationHours", -0.25, 1, 0.25, 16, 2)}>
-                                    -
-                                  </button>
-                                  <strong>{sleepDurationText(careEventDraft.durationHours)}</strong>
-                                  <button type="button" aria-label="增加睡眠时长" onClick={() => adjustManualNumericDraft("durationHours", 0.25, 1, 0.25, 16, 2)}>
-                                    +
-                                  </button>
-                                </div>
-                                <div className="manual-choice-grid manual-choice-grid--wide">
-                                  {MANUAL_SLEEP_DURATIONS.map((duration) => (
-                                    <button
-                                      type="button"
-                                      className={careEventDraft.durationHours === duration.value ? "active" : ""}
-                                      key={duration.value}
-                                      onClick={() => updateManualCareDraft({ durationHours: duration.value })}
-                                    >
-                                      {duration.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </fieldset>
-                            ) : null}
-
-                            {manualRecordKind === "temperature" ? (
-                              <fieldset className="manual-stepper-field wide">
-                                <legend>体温</legend>
-                                <div className="manual-stepper">
-                                  <button type="button" aria-label="降低体温" onClick={() => adjustManualNumericDraft("temperature", -0.1, 36.8, 34, 42, 1)}>
-                                    -
-                                  </button>
-                                  <strong>
-                                    {careEventDraft.temperature || "未选择"}
-                                    <small>°C</small>
-                                  </strong>
-                                  <button type="button" aria-label="升高体温" onClick={() => adjustManualNumericDraft("temperature", 0.1, 36.8, 34, 42, 1)}>
-                                    +
-                                  </button>
-                                </div>
-                                <div className="manual-choice-grid manual-choice-grid--wide">
-                                  {MANUAL_TEMPERATURE_OPTIONS.map((temperature) => {
-                                    const value = numericDraftText(temperature, 1);
-                                    return (
-                                      <button
-                                        type="button"
-                                        className={careEventDraft.temperature === value ? "active" : ""}
-                                        key={value}
-                                        onClick={() => updateManualCareDraft({ temperature: value })}
-                                      >
-                                        {value}°C
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </fieldset>
-                            ) : null}
-
-                            {manualRecordKind === "poop" ? (
-                              <fieldset className="manual-picker-field wide">
-                                <legend>状态</legend>
-                                <div className="manual-choice-grid manual-choice-grid--wide">
-                                  {MANUAL_POOP_NOTES.map((note) => (
-                                    <button
-                                      type="button"
-                                      className={careEventDraft.note === note ? "active" : ""}
-                                      key={note}
-                                      onClick={() => updateManualCareDraft({ note })}
-                                    >
-                                      {note}
-                                    </button>
-                                  ))}
-                                </div>
-                              </fieldset>
-                            ) : null}
-
-                            {manualRecordKind === "solid" ? (
-                              <fieldset className="manual-picker-field wide">
-                                <legend>辅食</legend>
-                                <div className="manual-choice-grid manual-choice-grid--wide">
-                                  {MANUAL_SOLID_NOTES.map((note) => (
-                                    <button
-                                      type="button"
-                                      className={careEventDraft.note === note ? "active" : ""}
-                                      key={note}
-                                      onClick={() => updateManualCareDraft({ note })}
-                                    >
-                                      {note}
-                                    </button>
-                                  ))}
-                                </div>
-                              </fieldset>
-                            ) : null}
-                          </div>
-                          <div className="records-manual-actions">
-                            <button type="button" className="quiet" onClick={closeRecordsEntryDrawer}>
-                              取消
-                            </button>
-                            <button type="submit">保存记录</button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  </section>
-                </div>,
-                document.body,
-              )
-            : null}
+        <RecordsEntryDrawer
+          canCaregive={canCaregive}
+          recordsEntryDrawer={recordsEntryDrawer}
+          recordsEntryDrawerClosing={recordsEntryDrawerClosing}
+          selectedDate={selectedDate}
+          selectedDateIsToday={selectedDateIsToday}
+          pendingEffects={pendingEffects}
+          confirmingPendingEffectIds={confirmingPendingEffectIds}
+          messages={messages}
+          isSubmitting={isSubmitting}
+          chatUploadItems={chatUploadItems}
+          attachments={attachments}
+          voiceRecordingActive={voiceRecordingActive}
+          composerMode={composerMode}
+          canUseComposerInput={canUseComposerInput}
+          isListening={isListening}
+          voiceStatus={voiceStatus}
+          voiceCancelArmed={voiceCancelArmed}
+          voiceButtonStyle={voiceButtonStyle}
+          voiceHoldLabel={voiceHoldLabel}
+          babyNickname={babyNickname}
+          isUploadingChatMedia={isUploadingChatMedia}
+          visualToolClassName={visualToolClassName}
+          visualToolTitle={visualToolTitle}
+          visualToolGated={visualToolGated}
+          visualToolDisabled={visualToolDisabled}
+          manualRecordKind={manualRecordKind}
+          careEventDraft={careEventDraft}
+          manualRecordTypes={MANUAL_RECORD_TYPES}
+          manualTimePresets={MANUAL_TIME_PRESETS}
+          manualMilkAmounts={MANUAL_MILK_AMOUNTS}
+          manualMilkNotes={MANUAL_MILK_NOTES}
+          manualSleepDurations={MANUAL_SLEEP_DURATIONS}
+          manualTemperatureOptions={MANUAL_TEMPERATURE_OPTIONS}
+          manualPoopNotes={MANUAL_POOP_NOTES}
+          manualSolidNotes={MANUAL_SOLID_NOTES}
+          handlers={recordsEntryDrawerHandlers}
+        />
 
         {visitedMobileTabsRef.current.has("ledger") ? (
         <LedgerView
@@ -8274,10 +3625,18 @@ function App() {
             document.body,
           )
         : null}
-      {expenseEditorDialog}
-      {deleteCareEventDialog}
-      {deleteExpenseDialog}
-      {bulkDeleteExpensesDialog}
+      <AppDialogs
+        expenseEditorOpen={expenseEditorOpen}
+        editingExpenseId={editingExpenseId}
+        expenseDraft={expenseDraft}
+        expenseEditorBodyRef={expenseEditorBodyRef}
+        expenseOptionalPanelRef={expenseOptionalPanelRef}
+        deleteExpenseTarget={deleteExpenseTarget}
+        deleteCareEventTarget={deleteCareEventTarget}
+        bulkDeleteExpensesOpen={bulkDeleteExpensesOpen}
+        selectedExpenseIds={selectedExpenseIds}
+        handlers={appDialogsHandlers}
+      />
       {settingsLegalDoc ? (
         <LegalDocModal docId={settingsLegalDoc} onClose={() => setSettingsLegalDoc(null)} />
       ) : null}
@@ -8305,152 +3664,19 @@ function App() {
           </section>
         </div>
       ) : null}
-      {previewAttachment?.url ? (
-        <div
-          className={`media-preview ${previewMotion}${PREVIEW_VT ? " vt-mode" : ""}`}
-          role="dialog"
-          aria-modal="true"
-          aria-label="附件预览"
-          style={
-            previewOriginRect
-              ? ({
-                  "--preview-flip": `translate(${previewOriginRect.left}px, ${previewOriginRect.top}px) scale(${
-                    previewOriginRect.width / (window.innerWidth || 1)
-                  }, ${previewOriginRect.height / (window.innerHeight || 1)})`,
-                  "--preview-to": "top left",
-                } as CSSProperties)
-              : undefined
-          }
-          onClick={handlePreviewClick}
-        >
-          <div className="media-preview-topbar" onClick={(event) => event.stopPropagation()}>
-            <button
-              type="button"
-              className="preview-close"
-              aria-label="关闭"
-              onClick={(event) => {
-                event.stopPropagation();
-                closePreviewAttachment();
-              }}
-            >
-              <X size={20} />
-            </button>
-            {previewAlbumItem ? (
-              <div className="media-preview-topinfo">
-                <strong>{previewAlbumItem.title}</strong>
-                <span>{formatFullDate(previewAlbumItem.date)} · {albumCategoryLabel(previewAlbumItem.category)}</span>
-                {previewAlbumItem.recordedBy ? <small>{creatorMetaText(previewAlbumItem.recordedBy)}</small> : null}
-              </div>
-            ) : null}
-            {previewAlbumItem && canCaregive ? (
-              <div className="media-preview-menu">
-                <button
-                  type="button"
-                  className="preview-menu-button"
-                  aria-label="更多操作"
-                  aria-expanded={previewActionsOpen}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setPreviewActionsOpen((open) => !open);
-                  }}
-                >
-                  <MoreHorizontal size={20} />
-                </button>
-                {previewActionsOpen ? (
-                  <div className="preview-menu-popover">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setPreviewActionsOpen(false);
-                        void editAlbumItem(previewAlbumItem, { dark: true });
-                      }}
-                    >
-                      <PencilLine size={15} />
-                      编辑
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setPreviewActionsOpen(false);
-                        void removeAlbumItem(previewAlbumItem, { dark: true });
-                      }}
-                    >
-                      <Trash2 size={15} />
-                      删除
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-          <figure
-            className={previewAlbumItem ? "album-preview-figure" : undefined}
-            onPointerDown={onPreviewStagePointerDown}
-            onPointerMove={onPreviewStagePointerMove}
-            onPointerUp={onPreviewStagePointerEnd}
-            onPointerCancel={onPreviewStagePointerEnd}
-          >
-            {previewAlbumItem && previewCarouselItems.length ? (
-              <div className="media-preview-carousel">
-                <div className="media-preview-track" ref={previewCarouselTrackRef}>
-                  {previewCarouselItems.map((item, index) => {
-                    const attachment = item?.attachment;
-                    const isCurrent = item?.id === previewAlbumItem.id;
-                    return (
-                      <div className={`media-preview-slide ${isCurrent ? "current" : ""} ${attachment ? "" : "empty"}`} key={item ? `preview-slide-${item.id}` : `preview-slot-${index}`}>
-                        {attachment?.url ? (
-                          attachment.kind === "video" ? (
-                            isCurrent ? (
-                              <PreviewVideoPlayer attachment={attachment} active bindVideo={bindPreviewVideo} />
-                            ) : (
-                              <CachedImg src={attachment.thumbnailUrl || attachment.url} alt={attachment.name} draggable={false} />
-                            )
-                          ) : (
-                            <CachedImg
-                              className={isCurrent && previewTransform.scale > 1 ? "is-zoomed" : ""}
-                              src={attachment.url}
-                              alt={attachment.name}
-                              draggable={false}
-                              style={isCurrent
-                                ? {
-                                    transform: `translate3d(${previewTransform.x}px, ${previewTransform.y}px, 0) scale(${previewTransform.scale})`,
-                                  }
-                                : undefined}
-                              onPointerDown={isCurrent ? onPreviewImagePointerDown : undefined}
-                              onPointerMove={isCurrent ? onPreviewImagePointerMove : undefined}
-                              onPointerUp={isCurrent ? onPreviewImagePointerEnd : undefined}
-                              onPointerCancel={isCurrent ? onPreviewImagePointerEnd : undefined}
-                            />
-                          )
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : previewAttachment.kind === "video" ? (
-              <PreviewVideoPlayer attachment={previewAttachment} active bindVideo={bindPreviewVideo} />
-            ) : (
-              <CachedImg
-                className={previewTransform.scale > 1 ? "is-zoomed" : ""}
-                src={previewAttachment.url}
-                alt={previewAttachment.name}
-                draggable={false}
-                style={{
-                  transform: `translate3d(${previewTransform.x}px, ${previewTransform.y}px, 0) scale(${previewTransform.scale})`,
-                }}
-                onPointerDown={onPreviewImagePointerDown}
-                onPointerMove={onPreviewImagePointerMove}
-                onPointerUp={onPreviewImagePointerEnd}
-                onPointerCancel={onPreviewImagePointerEnd}
-              />
-            )}
-          </figure>
-        </div>
-      ) : null}
+      <PreviewOverlay
+        previewAttachment={previewAttachment}
+        previewAlbumItem={previewAlbumItem}
+        previewMotion={previewMotion}
+        previewOriginRect={previewOriginRect}
+        previewActionsOpen={previewActionsOpen}
+        previewTransform={previewTransform}
+        previewCarouselItems={previewCarouselItems}
+        previewCarouselTrackRef={previewCarouselTrackRef}
+        previewVt={PREVIEW_VT}
+        canCaregive={canCaregive}
+        handlers={previewOverlayHandlers}
+      />
     </main>
   );
 }

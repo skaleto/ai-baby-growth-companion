@@ -46,7 +46,7 @@ import type {
   GrowthTrendMetric,
   RecordEvent,
   RecordsEntryDrawer,
-} from "../App";
+} from "../appContracts";
 import growthIcon from "../assets/storybook-icons/growth.png";
 import recordsIcon from "../assets/storybook-icons/records.png";
 

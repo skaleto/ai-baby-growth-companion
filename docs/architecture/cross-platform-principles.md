@@ -113,8 +113,14 @@ export const RECORD_TYPES: Record<RecordKind, RecordTypeDef> = {
 
 ## 5. 防止上帝类重新长回来(纪律)
 
-1. **每拆一块**:跑 `npm run verify:frontend` + 加一个 memo-guard 测试(像 gesture [M] 守 AlbumScreen 那样:打字期间该组件渲染数必须为 0)。
-2. **行数预算**:CI 里给 App.tsx 设硬上限(如 `> 3000 行即红`),逼增量拆分——否则下一个功能又往里堆。
+> **D1 状态(2026-07-01 完成)**:App.tsx **9690 → 3684 行(−62%)**,拆成「容器 + 8 个领域 hook(`features/*/useXxxState`)+ 视图组件(`screens/*`)+ 服务端 store(`useAppStore`)+ 契约类型层(`appContracts.ts`)」。`useState` 104 → 15;`features/`·`screens/` 对 App 的反向依赖 6 → 0;打字重渲 30 → 0(composer external store)。App 现为纯消费者/编排器,不再是上帝类。
+
+1. **架构守卫(CI 门)**:`npm run test:architecture-guard`(已进 `verify:frontend`)——把"上帝类纪律"泛化到整个 `frontend/src`,不只 App.tsx。三条规则:
+   - **R1 行数棘轮**:每个文件 ≤ 其上限(大文件在 `scripts/test-architecture-guard.mjs` 的 `CEILINGS` 里逐个钉,其余默认 ≤400),**只许降不许升**。合理增长→在同一改动里有意识调高并注明;新文件超限→拆或登记。
+   - **R2 分层单向依赖**:`features/`·`screens/`·`views/`·`components/` **不得从 `App` import**(值或类型)。共享类型走 `appContracts.ts`,共享逻辑走 `utils/`。
+   - **R3 useState 密度**:单文件 ≤40 个 useState(上帝类最直观信号,拆前 App 有 104)。
+   - 业界对标:ESLint `max-lines`/`max-lines-per-function`/`complexity`、`import/no-cycle`、dependency-cruiser/eslint-plugin-boundaries、《Building Evolutionary Architectures》fitness functions。本仓库无 ESLint,用 fitness-function 测试等效实现。
+2. **每拆一块**:跑 `npm run verify:frontend` + 加 memo-guard(像 `test-records-memo` 守 records/app 打字重渲 =0 那样)。
 3. **新功能默认垂直切片**:新功能进 `features/<name>/`(state hook + screen + 局部 API),除非确属跨功能复用件才进 `components/`。
 4. **边界三连**:碰 FD/BE 响应 → 过 D10 校验器;碰原生 → 走 platform 端口层(D11);碰记录类型 → 改注册表(D13),不加新分支。
 

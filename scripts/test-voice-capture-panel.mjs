@@ -4,11 +4,15 @@ import { readFileSync } from "node:fs";
 
 const appSource = readFileSync("frontend/src/App.tsx", "utf8");
 const mobileCss = readFileSync("frontend/src/styles/mobile-app.css", "utf8");
+// 2026-07-01:AI/手动 composer 抽屉(records-assistant-composer 含 voice-recording-hidden 门控)抽进
+//   screens/RecordsEntryDrawer.tsx;录音时隐藏 composer 的结构断言检索面随之 = App + 抽屉组件合并。
+const recordsEntryDrawerSource = readFileSync("frontend/src/screens/RecordsEntryDrawer.tsx", "utf8");
+const composerHostSource = `${appSource}\n${recordsEntryDrawerSource}`;
 
 assert.doesNotMatch(appSource, /voice-cancel-hint/, "voice recording UI should not use the old small cancel pill");
 assert.match(appSource, /voice-recording-panel/, "voice recording should render a large bottom panel");
 assert.match(appSource, /voice-recording-active/, "app shell should enter a recording state");
-assert.match(appSource, /voice-recording-hidden/, "composer controls should be visually hidden while recording");
+assert.match(composerHostSource, /voice-recording-hidden/, "composer controls should be visually hidden while recording");
 assert.match(
   appSource,
   /voiceRecordingActive\s*\?\s*createPortal\([\s\S]*?className=\{`voice-recording-panel app-portal \$\{voiceCancelArmed \? "canceling" : ""\}`\.trim\(\)\}[\s\S]*?document\.body/,

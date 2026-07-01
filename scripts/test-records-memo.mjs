@@ -152,9 +152,12 @@ try {
   await page.evaluate(() => {
     window.__COUNT_RECORDS_RENDERS = true;
     window.__recordsRenders = 0;
+    window.__COUNT_APP_RENDERS = true;
+    window.__appRenders = 0;
   });
 
-  // 逐键敲入 ~30 个字符(每键一次 setInput → App 重渲;若 props 引用稳定,RecordsScreen 不应重渲)。
+  // 逐键敲入 ~30 个字符。input 已移入 features/chat/composerInput 的 external store,
+  // App 本体不应随击键重渲(__appRenders≤1);即便 App 重渲,memo 化的 RecordsScreen 也不应重渲(__recordsRenders≤1)。
   const typed = "宝宝今天中午喝了一百五十毫升奶睡了两个小时还发烧三十七度五"; // 28 字
   await composer.focus();
   await page.keyboard.type(typed, { delay: 12 });
@@ -170,7 +173,15 @@ try {
   );
   console.log(`[memo] records typing: ${typed.length} chars → __recordsRenders=${renders} (≤1) ✔`);
 
-  console.log("records memo guard test passed");
+  const appRenders = await page.evaluate(() => window.__appRenders || 0);
+  assert.ok(
+    appRenders <= 1,
+    `打字 ${typed.length} 字应 ≤1 次 App 重渲(input 已移入 composerInput external store;拆分前基线为 30),实际 ${appRenders} 次` +
+      `——若 ~等于字符数,说明 input 又回到了 App 状态(检查 features/chat/composerInput 与 <ComposerTextarea>)。`,
+  );
+  console.log(`[memo] app body typing: ${typed.length} chars → __appRenders=${appRenders} (≤1) ✔`);
+
+  console.log("records + composer memo guard test passed");
 } finally {
   if (browser) await browser.close();
   await server.stop();

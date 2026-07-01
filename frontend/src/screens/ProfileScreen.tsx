@@ -13,7 +13,7 @@ import { apiBaseUrl } from "../authApi";
 import type { AiUsageSummary, BabyProfile, ProTrialStatus } from "../types";
 import type { AuthFamily, AuthMember, AuthUser, FamilyMember, FamilyMembersResponse } from "../authApi";
 import type { LegalDocId } from "../legalContent";
-import type { RuntimeVersionInfo } from "../App";
+import type { RuntimeVersionInfo } from "../appContracts";
 import companionAvatarIcon from "../assets/storybook-icons/companion-avatar.png";
 import profileIcon from "../assets/storybook-icons/profile.png";
 

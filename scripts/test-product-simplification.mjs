@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const appSource = readFileSync("frontend/src/App.tsx", "utf8");
+const chatScreenSource = readFileSync("frontend/src/screens/ChatScreen.tsx", "utf8");
+// chat 的 state/handlers/agent 请求逻辑(submitComposerMessage / resolve*ForMessage / VISUAL_AGENT_MODEL /
+// visualToolGated / openMediaPicker 配额门禁等)抽进 features/chat/useChatState 后,这些断言的检索面 = App + hook 合并。
+const chatStateSource = readFileSync("frontend/src/features/chat/useChatState.ts", "utf8");
+const agentRequestSource = appSource + "\n" + chatStateSource;
+// chat 面板抽进 ChatScreen 后,部分 composer/camera 结构断言的检索面 = App + ChatScreen 合并(在哪个文件都算通过)。
+const shellSource = appSource + "\n" + chatScreenSource;
 const appOptionsSource = readFileSync("frontend/src/appOptions.ts", "utf8");
 const frontendSmokeSource = readFileSync("scripts/frontend-smoke.mjs", "utf8");
 const baseCss = readFileSync("frontend/src/styles/app-base.css", "utf8");
@@ -16,7 +23,15 @@ const warmCss = readFileSync("frontend/src/styles/warm-theme.css", "utf8");
 //    2026-06-29:D13 注册表先减到 9124;冷启动缓存秒开加钩子 → 9179;Records 轮①(care-log 数值层进 recordsDomain)→ 9148;②删死代码 care-trend → 9024;③ daily/weekly 护理聚合 + compactValue 进 recordsDomain → 8871。
 //    2026-06-30:加 records 子树渲染探针(+9,测打字重渲基线)→ 8880;随后抽 memo 化 RecordsScreen 时探针随 JSX 移出,App.tsx 应大幅回落。
 //    2026-06-30:Records 轮④ 抽出 React.memo 化 RecordsScreen(screens/RecordsScreen.tsx)——记录屏 JSX 整体移出 + composer 抽屉提升为兄弟节点(打字逐键 setState 不再重渲记录树,records_renders_on_typing 30→0)→ 8459。
-const APP_TSX_LINE_CEILING = 8459;
+//    2026-06-30:状态/逻辑大拆分轮——ledger/reminders/composer(external store,app_renders 30→0)/records/album 进 features/*;登录引导启动屏 + chat 整屏(消息列表+composer)进 screens/* → 6877。
+//    2026-06-30:session 一族(auth/login/onboarding/profile-edit/family-member/proTrial/aiUsage)的 state/effect/handlers 抽到 features/session/useSessionState → 6612。
+//    2026-07-01:chat 一族(composer/voice/agent 流式/媒体上传)的 state/refs/handlers/派生值 + 模块级 agent-response 归一化/语音数学纯函数抽到 features/chat/useChatState;isAgentProgressActivity/hasCareLogContent 下沉到 utils/agentChatShared(voicePanelLabel 仅 App JSX 用,留在 App)→ 5136。
+//    2026-07-01:顶层非挂载渲染块外迁——四个对话框(支出编辑/删除支出/删除时间线记录/批量删除)进 screens/AppDialogs.tsx,AI/手动 composer 抽屉(含 createPortal)进 screens/RecordsEntryDrawer.tsx;App 各留一个 memo 挂载点 + ref 稳定的 handlers 包(appDialogsHandlers / recordsEntryDrawerHandlers)→ 4736。
+//    2026-07-01:pending-effect(待确认副作用)/ album-prompt(相册提示)一族的 state/处理函数 + 模块级纯 draft/effect 构造器抽到 features/pendingEffects/usePendingEffects(persistRecord / applyAppSnapshot / persistAlbumItemOptimistic / showSystemWeakNotice / messageForStorage 经 lateRef 注入,reminderFromDraft / scheduleNativeReminders 按值传入)→ 4532。
+//    2026-07-01:全屏媒体预览子系统外迁——state + 全部 preview refs + 手势/翻页/缩放 handlers + 模块级 PreviewMotion/PreviewOriginRect/PREVIEW_VT/startViewTransition 看门狗 + 5 个自持 effect 抽到 features/preview/usePreviewState(无外部依赖;排在 useAlbumState 之前,产出后者消费的 setPreview*/previewAlbumItemsRef);预览浮层 JSX 抽成 React.memo 的 screens/PreviewOverlay(App 留一个 <PreviewOverlay/> 挂载点 + ref 稳定的 previewOverlayHandlers 包)。两个读 album 产出(albumPreviewItems/previewAlbumIndex)的 effect 留在 App → 3945。
+//    2026-07-01:降耦合轮——App 各子系统共享的契约类型(ComposerMode / Auth·AiUsageStatus / CompressionStatus / MediaUploadItem·MediaUploadStatus / RuntimeVersionInfo / RecordEvent·RecordEventType / CareEventDraft / RecordsEntryDrawer / Manual* / Pending* / GrowthTrendMetric·GrowthCurveData 及其私有 helper)从 App.tsx 抽到叶子模块 frontend/src/appContracts.ts;10 个 feature hooks/screens 的 `import type ... from "../App"` 全部改指 appContracts,App 对上帝组件的反向依赖清零(rg 'from "../App"' → 0)。纯类型搬迁、编译期擦除、零运行时行为变化 → 3830。
+//    2026-07-01:中央服务端状态 STORE 外迁——13 个 useStoredState collection 集合 + 8 个归一化 memo + 11 个 setX 包装 + 持久化/同步一族(buildAppSnapshot / applyAppSnapshot / applyEmptyAppSnapshot / resolveCacheAccountKey / cacheBackendState / loadStateFromBackend / applyStateResponse / persistRecord)+ pendingPersistAlbumIdsRef 抽到 features/store/useAppStore(在最顶部调用,被 session 与每个 feature 消费;setProTrial / setOnboardingRequired / authUser / authFamily / proTrial / setStorageStatus / backendReadyRef 经 storeLateRef 迟绑定,App 每次渲染刷新)。App 变 STORE 消费者;consentGiven / attachmentForStorage·messageForStorage·albumItemForStorage·persistAlbumItemOptimistic / bootstrapAuth 编排留在 App。顺带清 App 侧因搬迁而废弃的 import → 3685。
+const APP_TSX_LINE_CEILING = 3685;
 const appTsxLines = appSource.split("\n").length;
 assert.ok(
   appTsxLines <= APP_TSX_LINE_CEILING,
@@ -31,10 +46,11 @@ const cssBlock = (source, selector) => {
   return source.slice(start, end + 2);
 };
 
-const composerStart = appSource.indexOf('<div className="composer-tools"');
-const composerEnd = appSource.indexOf('<div className="composer-input-line"', composerStart);
+// chat composer 工具块随 chat 面板抽进 screens/ChatScreen.tsx;结构守卫检索面跟着迁到该文件。
+const composerStart = chatScreenSource.indexOf('<div className="composer-tools"');
+const composerEnd = chatScreenSource.indexOf('<div className="composer-input-line"', composerStart);
 assert.ok(composerStart >= 0 && composerEnd > composerStart, "chat composer tools block should be findable");
-const composerTools = appSource.slice(composerStart, composerEnd);
+const composerTools = chatScreenSource.slice(composerStart, composerEnd);
 
 assert.doesNotMatch(composerTools, /className="model-select"/, "chat composer should not expose model selection");
 assert.doesNotMatch(composerTools, /thinking-button/, "chat composer should not expose deep thinking mode");
@@ -69,19 +85,45 @@ assert.doesNotMatch(appSource, /<DailySummaryView\b/, "records today view should
 assert.doesNotMatch(appSource, /接收每日小结提醒|整理今天|重新整理|小宝今日观察/, "UI should not expose today-summary sorting/reminder copy");
 
 // D1/Records 轮:记录页 JSX 已抽成 React.memo 的 RecordsScreen(screens/RecordsScreen.tsx);
-// 打字所在的 AI/手动 composer 抽屉 createPortal 后从记录区提升为 <RecordsScreen/> 的兄弟节点(仍在 App.tsx)。
-// 故结构断言的检索面 = RecordsScreen 全文 + App.tsx 里「<RecordsScreen … /> → <AlbumScreen>」之间的挂载+提升出来的抽屉块;
-// 二者拼接后既覆盖记录屏 JSX,又覆盖留在 App 的 composer 抽屉,原有所有 recordsBlock 断言无需改写。
+// 2026-07-01:打字所在的 AI/手动 composer 抽屉(含 createPortal)进一步抽成 React.memo 的
+//   RecordsEntryDrawer(screens/RecordsEntryDrawer.tsx),App 只剩 <RecordsEntryDrawer …/> 挂载点。
+// 故结构断言的检索面 = RecordsScreen 全文 + RecordsEntryDrawer 全文 + App.tsx 里
+//   「<RecordsScreen … /> → <AlbumScreen>」之间的挂载块;三者拼接后既覆盖记录屏 JSX,
+//   又覆盖抽离出去的 composer 抽屉 JSX,原有所有 recordsBlock 断言无需改写。
 const recordsScreenSource = readFileSync("frontend/src/screens/RecordsScreen.tsx", "utf8");
+const recordsEntryDrawerSource = readFileSync("frontend/src/screens/RecordsEntryDrawer.tsx", "utf8");
+// 2026-07-01:四个顶层对话框(支出编辑/删除支出/删除时间线记录/批量删除)的 JSX 抽进 screens/AppDialogs.tsx,
+//   App 只剩 <AppDialogs …/> 挂载点 + 各确认 handler;对话框结构断言的检索面 = App + AppDialogs 合并。
+const appDialogsSource = readFileSync("frontend/src/screens/AppDialogs.tsx", "utf8");
+const dialogShellSource = `${appSource}\n${appDialogsSource}`;
+// 2026-07-01:全屏媒体预览子系统抽离——浮层 JSX 进 screens/PreviewOverlay.tsx(React.memo),
+//   state/refs/手势 handlers 进 features/preview/usePreviewState.ts;App 只剩 <PreviewOverlay …/> 挂载点。
+//   预览结构断言的检索面 = App + PreviewOverlay + usePreviewState 三者合并(在哪个文件都算通过)。
+const previewOverlaySource = readFileSync("frontend/src/screens/PreviewOverlay.tsx", "utf8");
+const previewStateSource = readFileSync("frontend/src/features/preview/usePreviewState.ts", "utf8");
+const previewShellSource = `${appSource}\n${previewOverlaySource}\n${previewStateSource}`;
+assert.match(appSource, /<PreviewOverlay\b/, "App should mount the extracted PreviewOverlay after the D1 memo split");
+assert.ok(
+  previewOverlaySource.indexOf('className={`media-preview ') >= 0,
+  "fullscreen media preview overlay JSX should live in screens/PreviewOverlay.tsx after the D1 memo split",
+);
+assert.match(previewShellSource, /media-preview-carousel/, "preview should keep the album-item swipe carousel");
+assert.match(previewShellSource, /const openPreviewAttachment =/, "preview open handler should live in features/preview/usePreviewState");
+assert.match(previewShellSource, /const closePreviewAttachment =/, "preview close handler should live in features/preview/usePreviewState");
+assert.match(previewShellSource, /const finishPreviewSwipe =/, "preview swipe-settle handler should live in features/preview/usePreviewState");
 assert.ok(
   recordsScreenSource.indexOf('<section className="records-screen') >= 0,
   "records screen JSX should live in screens/RecordsScreen.tsx after the D1 memo split",
+);
+assert.ok(
+  recordsEntryDrawerSource.indexOf("records-entry-drawer") >= 0,
+  "records entry drawer JSX should live in screens/RecordsEntryDrawer.tsx after the D1 memo split",
 );
 const recordsMountStart = appSource.indexOf("<RecordsScreen");
 const recordsMountEnd = appSource.indexOf("<AlbumScreen", recordsMountStart);
 assert.ok(recordsMountStart >= 0 && recordsMountEnd > recordsMountStart, "records screen mount block should be findable in App.tsx");
 const recordsMountAndDrawerBlock = appSource.slice(recordsMountStart, recordsMountEnd);
-const recordsBlock = `${recordsScreenSource}\n${recordsMountAndDrawerBlock}`;
+const recordsBlock = `${recordsScreenSource}\n${recordsEntryDrawerSource}\n${recordsMountAndDrawerBlock}`;
 assert.ok(
   recordsBlock.indexOf('className="segmented-tabs record-tabs"') >= 0,
   "records screen should keep primary record navigation",
@@ -222,7 +264,7 @@ assert.match(recordsBlock, /record-event-actions/, "records timeline should incl
 assert.match(recordsBlock, /beginTimelineEventSwipe/, "records timeline should listen for left-swipe gestures");
 assert.match(recordsBlock, /requestDeleteCareTimelineEvent\(event\)/, "records timeline delete should be available from swipe actions");
 assert.doesNotMatch(recordsBlock, /<button type="button" className="timeline-edit-button"/, "records timeline should not show a default edit button on every card");
-assert.match(appSource, /deleteCareEventDialog/, "records timeline delete should use a second confirmation dialog");
+assert.match(dialogShellSource, /deleteCareEventDialog/, "records timeline delete should use a second confirmation dialog");
 assert.match(appSource, /confirmDeleteCareTimelineEvent/, "records timeline delete confirmation should remove the care event from app state");
 assert.match(mobileCss, /\.record-event-list\s*\{[\s\S]*?gap:\s*14px;/, "records timeline should use more spacious long-card rhythm");
 assert.match(mobileCss, /\.record-event-swipe\s*\{[\s\S]*?overflow:\s*hidden;/, "records timeline swipe wrapper should hide actions until swiped");
@@ -271,24 +313,24 @@ assert.doesNotMatch(profileBlock, /className="milestone-nav-card"/, "profile pag
 assert.doesNotMatch(profileBlock, /自动整理|漏项轻提醒|今日小结/, "profile Pro copy should not sell auto-summary features");
 
 assert.match(
-  appSource,
+  agentRequestSource,
   /const VISUAL_AGENT_MODEL:[\s\S]*?doubao-seed-2\.0-pro/,
   "visual chat requests should route to Doubao",
 );
 assert.match(
-  appSource,
+  agentRequestSource,
   /const resolveAgentModelForMessage[\s\S]*?messageAttachments\.some\(isVisualAttachment\)[\s\S]*?return VISUAL_AGENT_MODEL;[\s\S]*?return DEFAULT_MODEL;/,
   "pure text chat requests should route to the default DeepSeek model",
 );
 assert.match(
-  appSource,
+  agentRequestSource,
   /resolveThinkingForMessage/,
   "chat requests should use system adaptive thinking mode instead of a user setting",
 );
-assert.match(appSource, /model:\s*agentModel/, "agent requests should send the system-selected model");
-assert.match(appSource, /thinkingEnabled:\s*agentThinkingEnabled/, "agent requests should send the system-selected thinking mode");
-assert.match(appSource, /lowLatencyEnabled:\s*agentLowLatencyEnabled/, "agent requests should send the system-selected latency mode");
-assert.doesNotMatch(appSource, /model:\s*currentModel\.id/, "agent requests should not send a UI-selected model");
+assert.match(agentRequestSource, /model:\s*agentModel/, "agent requests should send the system-selected model");
+assert.match(agentRequestSource, /thinkingEnabled:\s*agentThinkingEnabled/, "agent requests should send the system-selected thinking mode");
+assert.match(agentRequestSource, /lowLatencyEnabled:\s*agentLowLatencyEnabled/, "agent requests should send the system-selected latency mode");
+assert.doesNotMatch(agentRequestSource, /model:\s*currentModel\.id/, "agent requests should not send a UI-selected model");
 assert.doesNotMatch(
   appSource,
   /useStoredState<AgentModelId>\("baby-companion-model"/,
@@ -299,12 +341,12 @@ assert.doesNotMatch(
   /useStoredState\("baby-companion-thinking-enabled"/,
   "thinking mode should not be stored as a user preference",
 );
-assert.match(appSource, /const visualToolGated = !hasAiQuota;/, "visual media button should be gated by AI quota (Pro or remaining free allowance)");
-assert.match(appSource, /className=\{`icon-button \$\{visualToolClassName\}`\.trim\(\)\}/, "header camera button should show gated styling");
-assert.match(appSource, /className=\{`tool-button \$\{visualToolClassName\}`\.trim\(\)\}/, "composer camera button should show gated styling");
-assert.match(appSource, /aria-disabled=\{visualToolGated\}/, "camera buttons should expose a disabled-looking state without suppressing clicks");
+assert.match(agentRequestSource, /const visualToolGated = !hasAiQuota;/, "visual media button should be gated by AI quota (Pro or remaining free allowance)");
+assert.match(shellSource, /className=\{`icon-button \$\{visualToolClassName\}`\.trim\(\)\}/, "header camera button should show gated styling");
+assert.match(shellSource, /className=\{`tool-button \$\{visualToolClassName\}`\.trim\(\)\}/, "composer camera button should show gated styling");
+assert.match(shellSource, /aria-disabled=\{visualToolGated\}/, "camera buttons should expose a disabled-looking state without suppressing clicks");
 assert.match(
-  appSource,
+  agentRequestSource,
   /if \(!hasAiQuota\) \{[\s\S]*?本月免费 AI 体验次数已用完/,
   "clicking the gated camera button should explain the AI quota gate",
 );

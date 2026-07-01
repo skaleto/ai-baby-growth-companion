@@ -235,13 +235,14 @@ async function benchOnce(runIndex) {
   await drawerComposer.fill("");
   await drawerComposer.click();
   // 记录子树渲染计数:打字前开探针并清零,统计这串击键里记录树被重渲多少次(D1 直接指标)。
-  await page.evaluate(() => { window.__COUNT_RECORDS_RENDERS = true; window.__recordsRenders = 0; });
+  await page.evaluate(() => { window.__COUNT_RECORDS_RENDERS = true; window.__recordsRenders = 0; window.__COUNT_APP_RENDERS = true; window.__appRenders = 0; });
   await takeLongtasks(page);
   t0 = Date.now();
   await page.keyboard.type("宝宝今天第一次翻身啦真是太棒了宝宝今天第一次翻身啦真是太棒了", { delay: 0 });
   await settleFrames(page);
   metrics.typing_30chars_ms = Date.now() - t0;
   metrics.records_renders_on_typing = await page.evaluate(() => window.__recordsRenders || 0);
+  metrics.app_renders_on_typing = await page.evaluate(() => window.__appRenders || 0);
   const typeTasks = await takeLongtasks(page);
   metrics.typing_blocked_ms = blockedMs(typeTasks);
   await page.locator(".records-entry-drawer").getByRole("button", { name: "关闭" }).click();
