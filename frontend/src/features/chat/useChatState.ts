@@ -1792,20 +1792,17 @@ export function useChatState({
             ? voiceTranscript || "正在整理文字..."
             : voiceTranscript || composerInput.get().trim() || "按住说话";
   const voiceButtonStyle = { "--voice-level": voiceLevel.toFixed(3) } as CSSProperties;
+  // 松开后进入 processing(等 ASR 收尾)时不再显示蓝色蒙层/语音面板——松手即时收起。
+  // 此时 interim 识别文字已经在 composer 里(onTranscript 的 setInput),onFinal 再精修并自动提交,
+  // 所以收起蒙层不会丢字,反而消除了“松手后蒙层不走、文字延迟出现”的卡顿感。
   const voiceRecordingActive =
     composerMode === "voice" &&
-    (isListening || voiceStatus === "connecting" || voiceStatus === "processing" || voiceCancelArmed);
+    (isListening || voiceStatus === "connecting" || voiceCancelArmed);
   // voicePanelLabel 留在 App(只在 App 的 voice-recording-panel JSX 用,非 ChatScreen prop;仅依赖 voiceCancelArmed)。
-  const compressionMessage =
-    compressionStatus === "checking"
-      ? "正在检查是否需要整理较早聊天记录..."
-      : compressionStatus === "compressing"
-        ? "正在整理较早聊天记录，后续回答会更连贯。"
-        : compressionStatus === "done"
-          ? "较早聊天记录已整理进长期摘要。"
-          : compressionStatus === "failed"
-          ? "本次聊天记录整理未完成，不影响继续使用。"
-          : "";
+  // 会话摘要压缩是纯后台优化(压缩较早聊天记录让后续回答更连贯),压缩逻辑照常在后台跑。
+  // 但它异步跟在 AI 回答之后,若在聊天流里显示“正在整理…”,紧贴“已记录下来了”会让用户误以为
+  // 是自己这条记录还没处理完,造成困扰。故不再向 UI 暴露任何压缩状态文案(compressionMessage 恒空)。
+  const compressionMessage = "";
 
   return {
     composerMode,
