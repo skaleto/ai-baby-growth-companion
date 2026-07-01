@@ -34,7 +34,7 @@ const CEILINGS = {
   "screens/ChatScreen.tsx": 1001,
   "screens/RecordsScreen.tsx": 789,
   "features/preview/usePreviewState.ts": 606,
-  "features/session/useSessionState.ts": 600,
+  "features/session/useSessionState.ts": 615, // 2026-07-01 邀请码校验加 AbortController 10s 超时兜底(防请求挂起把"确认家庭身份"永久钉死)+15 行
   "screens/ProfileScreen.tsx": 547,
   "screens/RecordsEntryDrawer.tsx": 536,
   "albumPhotoSwipe.ts": 491,

@@ -140,7 +140,12 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
     const durationMs = Math.round(performance.now() - startedAt);
     const logger = response.ok ? console.info : console.warn;
     logger("[api] <-", { requestId: responseRequestId, method, path, status: response.status, durationMs });
-    if (response.status === 401 && !path.endsWith("/api/auth/login")) {
+    // 只有"确实带了 Authorization token"的请求收到 401 才算会话失效。
+    // 预鉴权端点(login、invite/roles 等)不带 token,它们的 401 是业务错误(如邀请码不正确),
+    // 必须交给调用方 .catch 处理,绝不能误当会话过期去 clearAuthToken + 踢回登录(会清掉秒开缓存/token)。
+    // 之前按 path 只豁免了 /api/auth/login,漏掉了 invite/roles——用"是否带 Authorization 头"判定更通用、更正确。
+    const carriedAuthToken = headers.has("Authorization");
+    if (response.status === 401 && carriedAuthToken) {
       clearAuthToken();
       dispatchAuthExpired("401");
     }
@@ -183,10 +188,10 @@ export async function loginWithInvite(
   return payload;
 }
 
-export async function readInviteRoleOptions(inviteCode: string, phone?: string): Promise<InviteRoleOptionsResponse> {
+export async function readInviteRoleOptions(inviteCode: string, phone?: string, signal?: AbortSignal): Promise<InviteRoleOptionsResponse> {
   const params = new URLSearchParams({ inviteCode });
   if (phone) params.set("phone", phone);
-  const response = await apiFetch(`${apiBaseUrl}/api/auth/invite/roles?${params.toString()}`);
+  const response = await apiFetch(`${apiBaseUrl}/api/auth/invite/roles?${params.toString()}`, { signal });
   if (!response.ok) throw new Error(await parseError(response, "邀请码暂时无法确认，请稍后再试。"));
   return (await response.json()) as InviteRoleOptionsResponse;
 }

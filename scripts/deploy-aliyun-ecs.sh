@@ -378,7 +378,10 @@ remote "SERVICE_NAME='$SERVICE_NAME' REMOTE_USER='$REMOTE_USER' REMOTE_APP_DIR='
 set -euo pipefail
 if [[ "$(id -u)" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 JAVA_BIN="$(command -v java)"
-CORS_ORIGINS="http://localhost:5173,http://localhost,capacitor://localhost,http://${ECS_HOST}:${DEPLOY_PORT}"
+# 生产网页域名必须在 CORS 白名单里,否则浏览器对 https://skbaby.top 的所有带 Origin 请求(登录等全部 POST、
+# www 跨源、以及会发 Origin 的请求)会被 Spring CORS 过滤器 403「Invalid CORS request」——网页端登录直接挂。
+# capacitor://localhost 供原生 App;localhost 供本地开发;裸 IP:端口 供直连后端兼容访问。
+CORS_ORIGINS="http://localhost:5173,http://localhost,capacitor://localhost,http://${ECS_HOST}:${DEPLOY_PORT},${PUBLIC_WEB_ORIGINS:-https://skbaby.top,https://www.skbaby.top}"
 
 $SUDO tee "/etc/systemd/system/${SERVICE_NAME}.service" >/dev/null <<SERVICE
 [Unit]

@@ -278,8 +278,13 @@ export function useSessionState({
 
     let cancelled = false;
     setIsCheckingInviteRoles(true);
+    // 兜底超时:invite/roles 若长时间不 settle(线路挂起/被中间层黑洞),.finally 永不触发会把
+    // “正在确认家庭身份…”永久钉死。用 AbortController 在 10s 后中止,走 catch 复位 loading 并提示重试。
+    const controller = new AbortController();
+    let abortTimer: number | undefined;
     const timer = window.setTimeout(() => {
-      readInviteRoleOptions(normalizedCode, compactPhone.length === 11 ? compactPhone : undefined)
+      abortTimer = window.setTimeout(() => controller.abort(), 10000);
+      readInviteRoleOptions(normalizedCode, compactPhone.length === 11 ? compactPhone : undefined, controller.signal)
         .then((result) => {
           if (cancelled) return;
           const occupied = result.occupiedRoles.filter((role) =>
@@ -304,9 +309,17 @@ export function useSessionState({
           setOccupiedInviteRoles([]);
           setInviteFamilyName("");
           setLoginExistingMember(null);
-          setInviteRoleHint(error instanceof Error ? error.message : "邀请码暂时无法确认");
+          const aborted = error instanceof DOMException && error.name === "AbortError";
+          setInviteRoleHint(
+            aborted
+              ? "确认家庭身份超时,请检查网络后重试。"
+              : error instanceof Error
+                ? error.message
+                : "邀请码暂时无法确认",
+          );
         })
         .finally(() => {
+          window.clearTimeout(abortTimer);
           if (!cancelled) setIsCheckingInviteRoles(false);
         });
     }, 260);
@@ -314,6 +327,8 @@ export function useSessionState({
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      window.clearTimeout(abortTimer);
+      controller.abort();
     };
   }, [loginInviteCode, loginPhone]);
 
