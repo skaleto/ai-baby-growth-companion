@@ -60,7 +60,7 @@
     "deploy:aliyun": "bash scripts/deploy-aliyun-ecs.sh",
     "preview": "vite preview --config frontend/vite.config.ts --host 0.0.0.0",
     "mobile:init": "npm run build && cap add ios && cap add android",
-    "mobile:sync": "npm run build && cap sync",
+    "mobile:sync": "VITE_AGENT_API_BASE_URL=\"${VITE_AGENT_API_BASE_URL:-https://skbaby.top}\" npm run build && cap sync",
     "mobile:ios": "npm run mobile:sync && cap open ios",
     "mobile:android": "npm run mobile:sync && cap open android"
   },
