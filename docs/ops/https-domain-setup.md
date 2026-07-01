@@ -133,3 +133,23 @@ CORS_ORIGINS="https://api.xiaobaoji.app,https://www.xiaobaoji.app,http://localho
   - OSS 上传器需 **JBR 17 编译**(系统 `java` 为 1.8,`isBlank()` 编译失败);`JAVA_HOME=/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home` 后 `upload-mobile-update-oss.sh` 成功,`ossObjectKey` 写回 manifest。
   - **只替换生产 manifest、不重启后端**(后端实时读):先备份 `manifest.json.bak-20260701142735`,`scp` 新 manifest → `chown babyapp`。
   - 线上验证:POST `/api/mobile-updates/check` 上报旧版 `0.1.0-20260626213013` 返回新版本 + OSS 签名 URL;按签名 URL 下载 5271264 字节,sha256 与 manifest 一致;上报新版本返回 `updateAvailable=false`「当前已是最新移动端资源。」。
+
+## 10. 2026-07-01 网页端登录 CORS 故障与修复(重要坑)
+
+**症状**:用户在 `https://skbaby.top` 网页端「重新登录」一直失败/卡住。
+
+**根因**:后端 CORS 白名单 `APP_CORS_ALLOWED_ORIGINS` 一直是 `http://localhost:5173,http://localhost,capacitor://localhost,http://120.55.188.242:8300`——**2026-06-24 上 HTTPS 域名时漏加 `https://skbaby.top` / `https://www.skbaby.top`**。浏览器对 `POST /api/auth/login` 必带 `Origin: https://skbaby.top`,Spring CORS 过滤器查白名单不中 → **403「Invalid CORS request」**,登录 POST 根本发不出去。
+
+**为什么拖到现在才暴露**:同源 **GET**(如 `/api/auth/invite/roles` 确认家庭身份)浏览器**不发 Origin 头**,CORS 过滤器放行 → 200,所以「确认家庭身份」那步能过,唯独**任何带 Origin 的请求(所有 POST/PUT/DELETE、以及 www 跨源、GET 带 Origin)**才 403。当时只验了页面能渲染,没验登录,故一直没发现。
+
+**排查要点(复现即诊断)**:
+- `curl https://skbaby.top/api/auth/invite/roles?...`(不带 Origin)→ 200;`curl ... -H "Origin: https://skbaby.top"` → 403 ⇒ 即 CORS 白名单问题。
+- `curl -X OPTIONS .../api/auth/login -H "Origin: https://skbaby.top" -H "Access-Control-Request-Method: POST"` 预检 403 ⇒ 同上。
+- 看生效白名单:`systemctl show ai-baby-growth-companion -p Environment --value | tr ' ' '\n' | grep CORS`。
+
+**修复**:
+- 线上即时:`sed -i '/^Environment=APP_CORS_ALLOWED_ORIGINS=/ s|$|,https://skbaby.top,https://www.skbaby.top|' /etc/systemd/system/ai-baby-growth-companion.service`(先 `cp` 备份)→ `systemctl daemon-reload && systemctl restart`(复用现有 jar,不重建后端)。
+- 防复发:`scripts/deploy-aliyun-ecs.sh` 的 `CORS_ORIGINS` 已把两个域名并入(`${PUBLIC_WEB_ORIGINS:-https://skbaby.top,https://www.skbaby.top}`),否则下次部署重生成 systemd unit 又会丢。
+- 验证:预检 + GET 带 Origin + www 全部 403→200,`access-control-allow-origin: https://skbaby.top` 正确回显;真实账号无头登录 `POST /api/auth/login` 200,主 App 完整加载。
+
+**教训**:**每次新增网页访问域名(含 www 与裸 IP:端口),都必须同步进 `APP_CORS_ALLOWED_ORIGINS`,并以「POST 登录」而非「页面渲染」为验收口径**。
