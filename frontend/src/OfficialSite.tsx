@@ -9,7 +9,6 @@ import {
   Download,
   HeartPulse,
   MessageCircle,
-  QrCode,
   ReceiptText,
   ShieldCheck,
   Sparkles,
@@ -22,8 +21,7 @@ import "./official-site.css";
 
 type LandingIcon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
 
-const iosDownloadUrl = import.meta.env.VITE_IOS_DOWNLOAD_URL || "#ios-download";
-const androidDownloadUrl = import.meta.env.VITE_ANDROID_DOWNLOAD_URL || "#android-download";
+const ICP_NUMBER = "浙ICP备2026046330号-1";
 
 const signalItems = [
   { value: "7x24", label: "夜间陪伴" },
@@ -70,19 +68,17 @@ const timeline = [
   "家庭档案同步，后续回答带上宝宝近况",
 ];
 
-const downloadItems: Array<{ icon: LandingIcon; platform: string; note: string; href: string; tone: string }> = [
+const downloadItems: Array<{ icon: LandingIcon; platform: string; note: string; tone: string }> = [
   {
     icon: Apple,
     platform: "iOS",
-    note: "预留 App Store / TestFlight 二维码链接",
-    href: iosDownloadUrl,
+    note: "敬请期待",
     tone: "ios",
   },
   {
     icon: Download,
     platform: "Android",
-    note: "预留 APK / 应用市场二维码链接",
-    href: androidDownloadUrl,
+    note: "敬请期待",
     tone: "android",
   },
 ];
@@ -120,7 +116,7 @@ function OfficialSite() {
               预留下载入口
               <ArrowRight size={18} />
             </a>
-            <a className="official-secondary-action" href="/">
+            <a className="official-secondary-action" href="/app">
               进入 Web App
             </a>
           </div>
@@ -221,29 +217,31 @@ function OfficialSite() {
       <section className="official-section official-download" id="download">
         <div className="official-section-head">
           <p>下载入口</p>
-          <h2>iOS 和 Android 二维码位置已预留</h2>
+          <h2>iOS 和 Android 敬请期待</h2>
         </div>
         <div className="official-download-grid">
           {downloadItems.map((item) => {
             const Icon = item.icon;
             return (
-              <a className={`official-download-card ${item.tone}`} href={item.href} key={item.platform}>
+              <article className={`official-download-card ${item.tone}`} key={item.platform}>
                 <div className="official-download-title">
                   <Icon size={22} />
                   <strong>{item.platform}</strong>
                 </div>
-                <div className="official-qr-frame" aria-hidden="true">
-                  <QrCode size={86} strokeWidth={1.2} />
-                  <span className="qr-corner top-left" />
-                  <span className="qr-corner top-right" />
-                  <span className="qr-corner bottom-left" />
+                <div className="official-coming-soon" aria-label={`${item.platform} 敬请期待`}>
+                  <span>敬请期待</span>
                 </div>
                 <p>{item.note}</p>
-              </a>
+              </article>
             );
           })}
         </div>
       </section>
+      <footer className="official-footer">
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
+          {ICP_NUMBER}
+        </a>
+      </footer>
     </main>
   );
 }

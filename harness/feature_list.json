@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-21",
+  "lastUpdated": "2026-06-24",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -127,7 +127,9 @@
         "2026-06-07 Records timeline density and swipe-actions fix passed npm run verify:frontend plus targeted Playwright probes; timeline rows are low-radius rectangular two-line cards, left-swipe reveals matching edit/delete actions, delete requires confirmation, and AI processing loading renders inside the message bubble.",
         "2026-06-13 Album preview UX fixes (video pointer-events swipe root cause, persistent bottom play/pause toggle, in-preview dark edit/delete dialogs that no longer close pswp, waterfall long-press edit/delete bubbles) passed npm run verify:frontend incl. rewritten gesture scenario [J] and new scenario [P].",
         "2026-06-21 Sleep music fix: close button now has a 44px tappable target with top safe-area padding, and local bundled wav playback uses the WebView audio path in native shells instead of the unresolved native public/ URI; npm run verify:frontend passed including sleep music smoke [SM1-SM4].",
-        "2026-06-21 reverted the exploratory album video color native-player/native-thumbnail path after user confirmed the source capture itself is gray and WeChat playback likely applies different display/color handling; Album video playback and upload thumbnails are back on the existing WebView/canvas path, and npm run verify:frontend passed."
+        "2026-06-21 reverted the exploratory album video color native-player/native-thumbnail path after user confirmed the source capture itself is gray and WeChat playback likely applies different display/color handling; Album video playback and upload thumbnails are back on the existing WebView/canvas path, and npm run verify:frontend passed.",
+        "2026-06-24 official site routing passed npm run verify:frontend: skbaby.top and www.skbaby.top root render OfficialSite, /app remains the Web App entry, localhost root remains App, mobile build target never renders the official site, download placeholders show `敬请期待`, and the footer displays `浙ICP备2026046330号-1`.",
+        "2026-06-25 official site footer removed the temporary public-security filing copy and badge; only the ICP number remains in the footer, and official-site regression coverage now rejects those placeholder elements."
       ],
       "notes": "Any navigation, Records, Album, Ledger, My, voice input, composer, modal, keyboard, or safe-area change needs this gate."
     },
@@ -155,7 +157,11 @@
         "2026-06-07 Records AI processing input responsiveness fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607210050 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
         "2026-06-07 Records timeline density and swipe-actions fix deployed with SYNC_DATA=0 and SYNC_MOBILE_UPDATES=1; OTA version 0.1.0-20260607221114 passed live health, systemd, POST mobile-updates/check, checksum, and production base URL verification.",
         "2026-06-21 deployed backend plus OTA with SYNC_DATA=0, SYNC_MOBILE_UPDATES=1, SYNC_MOBILE_UPDATE_MANIFEST_ONLY=1; live health ok, systemd active, and POST /api/mobile-updates/check returned OTA 0.1.0-20260621163720 with signed OSS URL.",
-        "2026-06-21 published rollback OTA 0.1.0-20260621212644 by uploading bundle to OSS and replacing only the production mobile-updates manifest; live POST /api/mobile-updates/check from 0.1.0-20260621174319 returned the rollback version with signed OSS URL, while the same check from 0.1.0-20260621212644 returned updateAvailable=false."
+        "2026-06-21 published rollback OTA 0.1.0-20260621212644 by uploading bundle to OSS and replacing only the production mobile-updates manifest; live POST /api/mobile-updates/check from 0.1.0-20260621174319 returned the rollback version with signed OSS URL, while the same check from 0.1.0-20260621212644 returned updateAvailable=false.",
+        "2026-06-24 prepared ECS Nginx HTTPS reverse proxy without touching app data or backend jar: backed up /etc/nginx/sites-available/xiaobaoji.conf, enabled 443 with placeholder cert paths /etc/nginx/ssl/xiaobaoji.pem and /etc/nginx/ssl/xiaobaoji.key, preserved 80 HTTP, set SSE proxy_buffering off, and verified nginx -t plus https://120.55.188.242/api/health -k returned ok.",
+        "2026-06-24 connected the Aliyun certificate from /ssl/cert.perm and /ssl/cert.key to Nginx for skbaby.top and www.skbaby.top; certificate/key matched, DNS resolved to 120.55.188.242, HTTPS health returned ok for both domains with SSL verify=0, domain HTTP returned 301 to HTTPS, and bare-IP HTTP stayed 200 for compatibility.",
+        "2026-06-24 deployed the rebuilt static site to /var/www/xiaobaoji after backing it up to /var/www/xiaobaoji-static-20260624224158.tgz; build used VITE_AGENT_API_BASE_URL=https://skbaby.top, remote static grep found 0 localhost:8080 hits and 1 https://skbaby.top hit, https://skbaby.top/ rendered the official site, https://skbaby.top/app rendered the Web App entry, and https://skbaby.top/api/health returned ok.",
+        "2026-06-25 redeployed the official-site footer cleanup to /var/www/xiaobaoji; live https://skbaby.top/ showed only the ICP number in the footer, and https://skbaby.top/app still rendered the Web App entry."
       ],
       "notes": "Do not sync or reset production data unless explicitly requested."
     },

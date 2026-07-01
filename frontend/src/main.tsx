@@ -3,12 +3,14 @@ import ReactDOM from "react-dom/client";
 import { startMobileUpdateRuntime } from "./mobileUpdates";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { installGlobalErrorHandlers, primeRuntimeVersions } from "./errorReporting";
+import { shouldRenderOfficialSite } from "./siteRouting";
 import "./styles.css";
 
-const officialPaths = new Set(["/official", "/landing", "/website"]);
-const normalizedPath = window.location.pathname.replace(/\/$/, "") || "/";
-const shouldRenderOfficialSite = officialPaths.has(normalizedPath);
-const isMobileBuild = import.meta.env.VITE_BUILD_TARGET === "mobile";
+const shouldRenderOfficial = shouldRenderOfficialSite({
+  pathname: window.location.pathname,
+  hostname: window.location.hostname,
+  buildTarget: import.meta.env.VITE_BUILD_TARGET,
+});
 
 // 尽早安装全局错误监听 + 预取运行时版本，确保崩溃上报能附带 OTA/原生版本。
 installGlobalErrorHandlers();
@@ -42,4 +44,4 @@ async function renderOfficialSite() {
   );
 }
 
-void (shouldRenderOfficialSite && !isMobileBuild ? renderOfficialSite() : renderApp());
+void (shouldRenderOfficial ? renderOfficialSite() : renderApp());

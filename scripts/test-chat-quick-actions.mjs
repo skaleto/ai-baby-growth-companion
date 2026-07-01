@@ -3,14 +3,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const appSource = readFileSync("frontend/src/App.tsx", "utf8");
+// 聊天 chat-panel JSX 已随架构债 D1/Chat 轮拆入 screens/ChatScreen.tsx;
+// quick action 的「DOM 结构」断言改读该屏,数据(quickActions useMemo / 文案)仍在 App。
+const chatScreenSource = readFileSync("frontend/src/screens/ChatScreen.tsx", "utf8");
 const baseCss = readFileSync("frontend/src/styles/app-base.css", "utf8");
 const mobileCss = readFileSync("frontend/src/styles/mobile-app.css", "utf8");
 const warmCss = readFileSync("frontend/src/styles/warm-theme.css", "utf8");
 
 assert.match(appSource, /const quickActions = useMemo[<(]/, "chat quick actions should be data-driven");
-assert.match(appSource, /className="quick-action"/, "quick action buttons should use the dedicated quick-action class");
-assert.match(appSource, /className="quick-action__icon"/, "quick action icons should use a consistent icon wrapper");
-assert.doesNotMatch(appSource, /quick-icon-img/, "chat quick actions should not mix raster illustration icons with lucide icons");
+assert.match(chatScreenSource, /className="quick-action"/, "quick action buttons should use the dedicated quick-action class");
+assert.match(chatScreenSource, /className="quick-action__icon"/, "quick action icons should use a consistent icon wrapper");
+assert.doesNotMatch(chatScreenSource, /quick-icon-img/, "chat quick actions should not mix raster illustration icons with lucide icons");
 assert.match(appSource, /label:\s*"问 AI"/, "chat quick action copy should use the compact label 问 AI");
 assert.doesNotMatch(appSource, /问问AI/, "chat quick action copy should avoid the cramped 问问AI label");
 assert.match(baseCss, /\.quick-action__icon/, "base CSS should size the quick action icon wrapper");
