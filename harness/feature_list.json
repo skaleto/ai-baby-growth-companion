@@ -1,6 +1,6 @@
 {
   "project": "ai-baby-growth-companion",
-  "lastUpdated": "2026-06-24",
+  "lastUpdated": "2026-07-01",
   "sourceOfTruth": {
     "rootEntrypoint": "AGENTS.md",
     "harnessDirectory": "harness",
@@ -161,7 +161,9 @@
         "2026-06-24 prepared ECS Nginx HTTPS reverse proxy without touching app data or backend jar: backed up /etc/nginx/sites-available/xiaobaoji.conf, enabled 443 with placeholder cert paths /etc/nginx/ssl/xiaobaoji.pem and /etc/nginx/ssl/xiaobaoji.key, preserved 80 HTTP, set SSE proxy_buffering off, and verified nginx -t plus https://120.55.188.242/api/health -k returned ok.",
         "2026-06-24 connected the Aliyun certificate from /ssl/cert.perm and /ssl/cert.key to Nginx for skbaby.top and www.skbaby.top; certificate/key matched, DNS resolved to 120.55.188.242, HTTPS health returned ok for both domains with SSL verify=0, domain HTTP returned 301 to HTTPS, and bare-IP HTTP stayed 200 for compatibility.",
         "2026-06-24 deployed the rebuilt static site to /var/www/xiaobaoji after backing it up to /var/www/xiaobaoji-static-20260624224158.tgz; build used VITE_AGENT_API_BASE_URL=https://skbaby.top, remote static grep found 0 localhost:8080 hits and 1 https://skbaby.top hit, https://skbaby.top/ rendered the official site, https://skbaby.top/app rendered the Web App entry, and https://skbaby.top/api/health returned ok.",
-        "2026-06-25 redeployed the official-site footer cleanup to /var/www/xiaobaoji; live https://skbaby.top/ showed only the ICP number in the footer, and https://skbaby.top/app still rendered the Web App entry."
+        "2026-06-25 redeployed the official-site footer cleanup to /var/www/xiaobaoji; live https://skbaby.top/ showed only the ICP number in the footer, and https://skbaby.top/app still rendered the Web App entry.",
+        "2026-07-01 redeployed the web static site to /var/www/xiaobaoji shipping the App.tsx decomposition (9d4fc79/fb1f201) plus the official-site routing commit after backing up /var/www/xiaobaoji-static-20260701142129.tgz; build used VITE_AGENT_API_BASE_URL=https://skbaby.top, dist grep found 0 localhost:8080 and 0 bare-IP 120.55.188.242 with 1 https://skbaby.top hit, rsync --delete preserved sleep-audio, and headless render confirmed https://skbaby.top/ renders OfficialSite while https://skbaby.top/app renders the Web App onboarding, with /api/health ok.",
+        "2026-07-01 published OTA 0.1.0-20260701142527 (App.tsx decomposition bundle) by building with VITE_AGENT_API_BASE_URL=https://skbaby.top, verifying the unzipped bundle had 0 localhost:8080 / 0 bare-IP hits and 1 https://skbaby.top hit, uploading to OSS via JBR17-compiled uploader, and replacing only the production mobile-updates manifest without restarting the backend (live reads); POST /api/mobile-updates/check from the old 0.1.0-20260626213013 returned the new version with a signed OSS URL and checksum 069b3e39…ddcddbaf that matched the downloaded 5271264-byte bundle, while a check from 0.1.0-20260701142527 returned updateAvailable=false."
       ],
       "notes": "Do not sync or reset production data unless explicitly requested."
     },

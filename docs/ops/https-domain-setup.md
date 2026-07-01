@@ -120,3 +120,16 @@ CORS_ORIGINS="https://api.xiaobaoji.app,https://www.xiaobaoji.app,http://localho
   - `https://skbaby.top/` 返回官网首页，包含 `小宝记`、`敬请期待`、`浙ICP备2026046330号-1`
   - `https://skbaby.top/app` 返回 Web App 入口页
   - `https://skbaby.top/api/health` 返回 `ok`
+
+## 9. 2026-07-01 重构上线：网页 dist + OTA 一并发布
+
+本次把 App.tsx 上帝类拆解(9690→3684 行,commit `fb1f201`)与官网按域名分流(commit `9d4fc79`)一起发布远端。
+
+- **网页静态站**:`VITE_AGENT_API_BASE_URL=https://skbaby.top npm run build`;发布前备份 `/var/www/xiaobaoji-static-20260701142129.tgz`;`rsync --delete` 推 `dist/` 到 `/var/www/xiaobaoji`(sleep-audio 本地=线上一致,不误删)后 `chown www-data`。
+  - dist 校验:`localhost:8080` 命中 0、裸 IP `120.55.188.242` 命中 0、`https://skbaby.top` 命中 1(index chunk)。
+  - 线上验证:`https://skbaby.top/` 首页引用新哈希 `index-C0ELkf9A.js`;无头渲染确认根路径渲染官网、`/app` 渲染 Web App 内测同意页;`/api/health` 返回 `ok`。
+- **OTA 热更新**:`VITE_AGENT_API_BASE_URL=https://skbaby.top npm run build:mobile:update` → 版本 `0.1.0-20260701142527`,sha256 `069b3e39…ddcddbaf`。
+  - 包校验(解压 grep):`localhost:8080` 0、裸 IP 0、`https://skbaby.top` 1。
+  - OSS 上传器需 **JBR 17 编译**(系统 `java` 为 1.8,`isBlank()` 编译失败);`JAVA_HOME=/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home` 后 `upload-mobile-update-oss.sh` 成功,`ossObjectKey` 写回 manifest。
+  - **只替换生产 manifest、不重启后端**(后端实时读):先备份 `manifest.json.bak-20260701142735`,`scp` 新 manifest → `chown babyapp`。
+  - 线上验证:POST `/api/mobile-updates/check` 上报旧版 `0.1.0-20260626213013` 返回新版本 + OSS 签名 URL;按签名 URL 下载 5271264 字节,sha256 与 manifest 一致;上报新版本返回 `updateAvailable=false`「当前已是最新移动端资源。」。
