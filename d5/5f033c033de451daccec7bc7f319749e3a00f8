@@ -1,0 +1,33 @@
+frontend/src/App.tsx
+  s_139cb91c084610::t_311c35d77f20a0 130-141,467,475,2379-2382
+frontend/src/appStateDomain.ts
+  s_139cb91c084610::t_9998b9f8d108fe 613-627,629-630
+frontend/src/manualRecordSpec.ts
+  s_139cb91c084610::t_10987b0f933667 1-76
+frontend/src/utils/careLogHelpers.ts
+  s_139cb91c084610::t_f2117fbd8ca50a 2,6-7
+package.json
+  s_139cb91c084610::t_30f29a9ccb980d 31,55
+scripts/test-architecture-guard.mjs
+  s_139cb91c084610::t_9ab3488ad150ae 35,37
+scripts/test-manual-record-spec.mjs
+  s_139cb91c084610::t_1f329ef9eea923 1-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d55f033c033de451daccec7bc7f319749e3a00f8",
+  "prompts": {},
+  "sessions": {
+    "s_139cb91c084610": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf1d1ca-7c6d-40f7-b40a-89f7f6c5bd7a",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
