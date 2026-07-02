@@ -1,0 +1,31 @@
+frontend/src/agentApi.ts
+  s_139cb91c084610::t_8cab26ce6fa4ac 3,59-60,113-114
+frontend/src/agentContract.ts
+  s_139cb91c084610::t_0628c4a7b9b0eb 1-45
+frontend/src/authApi.ts
+  s_139cb91c084610::t_f3fc7979bcb900 1-2,167-176,198,208-209,245,273-274
+frontend/src/authContract.ts
+  s_139cb91c084610::t_ba019536afbe74 1-50
+package.json
+  s_139cb91c084610::t_188f87e8b3d58f 40,56
+scripts/test-api-contract.mjs
+  s_139cb91c084610::t_10ac6925745342 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "f6157cd90db009e206400f37ff38d38fb3e07ccd",
+  "prompts": {},
+  "sessions": {
+    "s_139cb91c084610": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf1d1ca-7c6d-40f7-b40a-89f7f6c5bd7a",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
