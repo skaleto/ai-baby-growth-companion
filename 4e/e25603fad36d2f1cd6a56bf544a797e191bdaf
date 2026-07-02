@@ -1,0 +1,21 @@
+frontend/vite.config.ts
+  s_139cb91c084610::t_38118588193fb7 24-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "4ee25603fad36d2f1cd6a56bf544a797e191bdaf",
+  "prompts": {},
+  "sessions": {
+    "s_139cb91c084610": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf1d1ca-7c6d-40f7-b40a-89f7f6c5bd7a",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
