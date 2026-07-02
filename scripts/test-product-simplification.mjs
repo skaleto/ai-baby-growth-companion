@@ -155,17 +155,20 @@ assert.match(recordsBlock, /AI 自动记录/, "records assistant primary action 
 assert.match(recordsBlock, /手动记录/, "records manual entry action should use manual recording copy");
 assert.doesNotMatch(recordsBlock, /问问 AI/, "records assistant action should not use vague ask-AI copy");
 assert.doesNotMatch(recordsBlock, /手动补充/, "records manual action should not use vague supplement copy");
+// 2026-07 记录入口显著化(用户明确要求「入口太不明显」→ 卡片化):快速记录区从透明辅助文案升级成
+// 醒目卡片(第一屏 CTA),AI/手动按钮 40px 品牌绿,快捷提示改绿色胶囊 chip。以下守卫新设计不被改回低调。
 const recordsAssistantEntryCss = cssBlock(mobileCss, ".records-assistant-entry {");
-assert.match(recordsAssistantEntryCss, /background:\s*transparent;/, "records quick prompt area should not sit on a mismatched white card background");
-assert.match(recordsAssistantEntryCss, /border:\s*0;/, "records quick prompt area should not look like a nested card");
+assert.match(recordsAssistantEntryCss, /background:\s*linear-gradient/, "records quick record area should be a prominent tinted card (not transparent)");
+assert.match(recordsAssistantEntryCss, /border-radius:\s*16px;/, "records quick record area should be a rounded card to stand out as the primary CTA");
+const recordsPrimaryCta = cssBlock(mobileCss, ".records-assistant-actions button {");
+assert.match(recordsPrimaryCta, /min-height:\s*40px;/, "AI record primary action should be a 40px prominent CTA, not tiny auxiliary text");
+assert.match(recordsPrimaryCta, /background:\s*var\(--sage-dark/, "AI record primary action should be a solid brand-green CTA");
 const recordsPromptLinkCss = cssBlock(mobileCss, ".records-prompt-link {");
-assert.match(recordsPromptLinkCss, /background:\s*transparent\s*!important;/, "records quick prompt links should stay transparent");
-assert.match(recordsPromptLinkCss, /box-shadow:\s*none\s*!important;/, "records quick prompt links should not inherit warm-theme pill shadows");
-assert.match(recordsPromptLinkCss, /transform:\s*none\s*!important;/, "records quick prompt links should not jump like pill buttons");
+assert.match(recordsPromptLinkCss, /border-radius:\s*999px\s*!important;/, "records quick prompt links should be tappable pill chips");
 assert.match(
   warmCss,
-  /\.records-quick-row\s+\.records-prompt-link[\s\S]*?background:\s*transparent\s*!important;[\s\S]*?box-shadow:\s*none\s*!important;/,
-  "warm theme should preserve transparent Records quick prompt links after import order",
+  /\.records-quick-row\s+\.records-prompt-link[\s\S]*?border-radius:\s*999px\s*!important;[\s\S]*?background:\s*rgba\(103, 158, 127[\s\S]*?!important;/,
+  "warm theme should keep Records quick prompt chips (green pill) after import order",
 );
 assert.match(appSource, /import \{[^}]*\bcreatePortal\b[^}]*\} from "react-dom"/, "records drawers should render through a body portal instead of being clipped by the records page");
 assert.match(recordsBlock, /records-entry-drawer/, "records AI and manual entry should open dedicated drawers");
@@ -239,7 +242,10 @@ const manualFormBlock = recordsBlock.slice(manualFormStart, manualFormEnd);
 assert.doesNotMatch(manualFormBlock, /<textarea/, "manual record drawer should not expose a freeform note textarea");
 assert.doesNotMatch(manualFormBlock, /inputMode="decimal"/, "manual record numeric fields should not be freeform decimal inputs");
 assert.match(recordsBlock, /growth-curve-card/, "growth view should include a growth curve card");
-assert.match(recordsBlock, /growth-curve-svg/, "growth view should render an SVG growth curve");
+// 2026-07 曲线组件化:成长曲线 SVG 抽进共享 <CurveChart>(奶量/睡眠也复用它,不再是柱状图)。
+assert.match(recordsBlock, /<CurveChart[\s\S]{0,120}variant="growth"/, "growth view should render via the shared CurveChart (growth variant)");
+const curveChartSource = readFileSync("frontend/src/components/CurveChart.tsx", "utf8");
+assert.match(curveChartSource, /growth-curve-svg/, "shared CurveChart should render an SVG growth curve (reused by growth/milk/sleep)");
 assert.match(recordsBlock, /records-assistant-body/, "records assistant should render inside the AI drawer");
 assert.match(recordsBlock, /records-assistant-drawer/, "records assistant should render in a dedicated AI drawer");
 assert.match(recordsBlock, /records-assistant-composer/, "records assistant should provide an inline input composer");

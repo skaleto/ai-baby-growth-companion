@@ -6,7 +6,6 @@
 //   数据 props 均为 useMemo/state 产物。DOM 结构与拆分前逐字一致(CSS/手势/快照测试不感知)。
 import {
   memo,
-  type CSSProperties,
   type Dispatch,
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
@@ -28,10 +27,10 @@ import { GROWTH_MEASUREMENT_META, GROWTH_MEASUREMENT_TYPES, RECORD_VIEWS, type R
 import { CARE_EVENT_TYPE_OPTIONS } from "../appOptions";
 import { addMonths, creatorMetaText, monthTitle } from "../appStateDomain";
 import { todayISO } from "../data";
-import { compactValue, type DailyCareBreakdown, type WeeklyCareComparison } from "../recordsDomain";
+import { type DailyCareBreakdown, type WeeklyCareComparison } from "../recordsDomain";
 import { recordEventIconSrc } from "../recordIcons";
 import { StorySelect } from "../components/StorySelect";
-import { FeedingAlarmCard } from "../components/FeedingAlarmCard";
+import { CurveChart } from "../components/CurveChart";
 import { SleepMusicCard } from "../components/SleepMusicCard";
 import { SleepMusicScreen } from "./SleepMusicScreen";
 import { GrowthEntryView } from "../views/GrowthEntryView";
@@ -99,14 +98,6 @@ export type RecordsScreenProps = {
   sleepMusicOpen: boolean;
   // 快速记录入口
   quickActions: { label: string; prompt: string }[];
-  // 喂奶闹钟卡
-  feedingAlarm: { dueAtMs: number | null; intervalMinutes: number | null };
-  latestMilkAnchor: { occurredAt: Date } | null | undefined;
-  feedingAlarmHandlers: {
-    onFed: (amountMl: number | null) => void;
-    onPickOther: () => void;
-    onSetup: () => void;
-  };
   sleepMusicHandlers: { open: () => void; close: () => void };
   // 今日汇总
   selectedGrowthCount: number;
@@ -114,6 +105,8 @@ export type RecordsScreenProps = {
   dailyCareBreakdowns: DailyCareBreakdown[];
   // 趋势
   weeklyCareComparison: WeeklyCareComparison;
+  milkCurveData: GrowthCurveData;
+  sleepCurveData: GrowthCurveData;
   growthTrendMetrics: GrowthTrendMetric[];
   // 时间线
   selectedEvents: RecordEvent[];
@@ -157,14 +150,13 @@ export const RecordsScreen = memo(function RecordsScreen({
   milestonesViewOpen,
   sleepMusicOpen,
   quickActions,
-  feedingAlarm,
-  latestMilkAnchor,
-  feedingAlarmHandlers,
   sleepMusicHandlers,
   selectedGrowthCount,
   selectedKeyPointCount,
   dailyCareBreakdowns,
   weeklyCareComparison,
+  milkCurveData,
+  sleepCurveData,
   growthTrendMetrics,
   selectedEvents,
   swipedTimelineEventId,
@@ -322,16 +314,6 @@ export const RecordsScreen = memo(function RecordsScreen({
           </section>
           ) : null}
 
-          <FeedingAlarmCard
-            canCaregive={canCaregive}
-            dueAtMs={feedingAlarm.dueAtMs}
-            intervalMinutes={feedingAlarm.intervalMinutes}
-            lastMilkAtMs={latestMilkAnchor ? latestMilkAnchor.occurredAt.getTime() : null}
-            onFed={feedingAlarmHandlers.onFed}
-            onPickOther={feedingAlarmHandlers.onPickOther}
-            onSetup={feedingAlarmHandlers.onSetup}
-          />
-
           <SleepMusicCard onOpen={sleepMusicHandlers.open} />
 
           {sleepMusicOpen ? createPortal(<SleepMusicScreen onClose={sleepMusicHandlers.close} />, document.body) : null}
@@ -416,55 +398,31 @@ export const RecordsScreen = memo(function RecordsScreen({
                   <header>
                     <div>
                       <span>奶量</span>
-                      <strong>每天总量，一段代表一次</strong>
+                      <strong>近 7 天每日总量趋势</strong>
                     </div>
                     <small>{weeklyCareComparison.milkAverageLabel}</small>
                   </header>
-                  <div className="week-single-bars" aria-label="近7天奶量变化">
-                    {weeklyCareComparison.days.map((day) => (
-                      <div className={`week-care-day ${day.selected ? "selected" : ""}`} key={`${day.date}-milk`}>
-                        <div className="week-value-label">{day.milkValue !== undefined ? <span>{compactValue(day.milkValue, "ml")}</span> : null}</div>
-                        <span
-                          className={`week-bar-track week-milk ${day.milkValue === undefined ? "empty" : ""}`}
-                          title={`${day.date} 奶量 ${compactValue(day.milkValue, "ml")} ${day.milkCount ? `${day.milkCount}次` : ""}`}
-                        >
-                          <span className="week-segment-stack" style={{ "--bar-height": `${day.milkHeight}%` } as CSSProperties}>
-                            {day.milkSegments.map((value, index) => (
-                              <i key={`${day.date}-milk-${index}`} style={{ flexGrow: Math.max(value, 0.1) }} />
-                            ))}
-                          </span>
-                        </span>
-                        <em>{day.label}</em>
-                      </div>
-                    ))}
-                  </div>
+                  <CurveChart
+                    data={milkCurveData}
+                    variant="milk"
+                    ariaLabel="近 7 天奶量曲线"
+                    emptyHint="连续记录几天奶量，这里会画出趋势曲线。"
+                  />
                 </article>
                 <article className="week-care-metric week-care-sleep">
                   <header>
                     <div>
                       <span>睡眠</span>
-                      <strong>每天总时长，一段代表一段睡眠</strong>
+                      <strong>近 7 天每日总时长趋势</strong>
                     </div>
                     <small>{weeklyCareComparison.sleepAverageLabel}</small>
                   </header>
-                  <div className="week-single-bars" aria-label="近7天睡眠变化">
-                    {weeklyCareComparison.days.map((day) => (
-                      <div className={`week-care-day ${day.selected ? "selected" : ""}`} key={`${day.date}-sleep`}>
-                        <div className="week-value-label">{day.sleepValue !== undefined ? <span>{compactValue(day.sleepValue, "h", 1)}</span> : null}</div>
-                        <span
-                          className={`week-bar-track week-sleep ${day.sleepValue === undefined ? "empty" : ""}`}
-                          title={`${day.date} 睡眠 ${compactValue(day.sleepValue, "h", 1)} ${day.sleepCount ? `${day.sleepCount}段` : ""}`}
-                        >
-                          <span className="week-segment-stack" style={{ "--bar-height": `${day.sleepHeight}%` } as CSSProperties}>
-                            {day.sleepSegments.map((value, index) => (
-                              <i key={`${day.date}-sleep-${index}`} style={{ flexGrow: Math.max(value, 0.1) }} />
-                            ))}
-                          </span>
-                        </span>
-                        <em>{day.label}</em>
-                      </div>
-                    ))}
-                  </div>
+                  <CurveChart
+                    data={sleepCurveData}
+                    variant="sleep"
+                    ariaLabel="近 7 天睡眠曲线"
+                    emptyHint="连续记录几天睡眠，这里会画出趋势曲线。"
+                  />
                 </article>
               </div>
             ) : (
@@ -701,31 +659,12 @@ export const RecordsScreen = memo(function RecordsScreen({
                   );
                 })}
               </div>
-              {growthCurveData.points.length ? (
-                <div className="growth-curve-frame">
-                  <div className="growth-curve-scale" aria-hidden="true">
-                    <span>{growthCurveData.maxLabel}</span>
-                    <span>{growthCurveData.minLabel}</span>
-                  </div>
-                  <svg className="growth-curve-svg" viewBox="0 0 304 144" role="img" aria-label={`${GROWTH_MEASUREMENT_META[growthCurveType].label}变化曲线`}>
-                    <line x1="20" x2="284" y1="24" y2="24" />
-                    <line x1="20" x2="284" y1="71" y2="71" />
-                    <line x1="20" x2="284" y1="118" y2="118" />
-                    <polyline points={growthCurveData.polyline} />
-                    {growthCurveData.points.map((point) => (
-                      <g key={point.id}>
-                        <circle cx={point.x} cy={point.y} r="4.5" />
-                        <text x={point.x} y="136" textAnchor="middle">
-                          {point.label}
-                        </text>
-                      </g>
-                    ))}
-                  </svg>
-                  <p className="growth-curve-latest">最新：{growthCurveData.latestLabel}</p>
-                </div>
-              ) : (
-                <p className="growth-curve-empty">先记录一笔{GROWTH_MEASUREMENT_META[growthCurveType].label}，这里会自动生成曲线。</p>
-              )}
+              <CurveChart
+                data={growthCurveData}
+                variant="growth"
+                ariaLabel={`${GROWTH_MEASUREMENT_META[growthCurveType].label}变化曲线`}
+                emptyHint={`先记录一笔${GROWTH_MEASUREMENT_META[growthCurveType].label}，这里会自动生成曲线。`}
+              />
             </section>
             <section className="growth-entry-card" aria-label="宝宝成长">
               <div className="growth-entry-card-head">

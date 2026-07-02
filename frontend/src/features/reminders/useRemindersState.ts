@@ -1,4 +1,4 @@
-// 提醒(日程/喂奶闹钟)管理界面的状态与逻辑。
+// 提醒(日程/循环提醒)管理界面的状态与逻辑。
 //
 // 从 App.tsx 这个巨型组件里原样抽出 reminders 一族的 state / refs / 处理函数,
 // 行为与抽出前逐字节一致——只是搬家,不改运行时语义。系统本地通知的调度/取消必须与
@@ -6,7 +6,7 @@
 //
 // 调用约定(Option B):App.tsx 在 `canCaregive` 之后「提前」调用本 hook,并把返回值
 // 解构回与原来同名的局部变量,因此 App.tsx 里其余引用一律照常编译。`persistRecord` /
-// `deleteAppRecord` / `latestMilkAnchor` 在 App.tsx 里定义得比调用点晚,故通过
+// `deleteAppRecord` 在 App.tsx 里定义得比调用点晚,故通过
 // `mutatorsRef` 注入(沿用 App.tsx 既有的 `...Ref.current` 间接模式);App 在它们都就绪
 // 之后每次渲染都无条件刷新该 ref。其余在调用点之前就存在的依赖(`canCaregive` /
 // `careLogs` / `reminders` / `babyNickname` / `withBabyNickname` 以及 App 模块作用域里的
@@ -28,7 +28,7 @@ import {
   useState,
 } from "react";
 import { MAX_INTERVAL_MINUTES, MIN_INTERVAL_MINUTES, type MobileTab } from "../../appOptions";
-import { formatReminderDueText, isIntervalMilkReminder, isIntervalReminder } from "../../appStateDomain";
+import { formatReminderDueText, isIntervalReminder } from "../../appStateDomain";
 import { appAlert } from "../../components/appDialogs";
 import { formatIntervalText, reminderDate } from "../../utils/reminderLabels";
 import { REMINDER_QUICK_ACTIONS } from "../../utils/reminderAssets";
@@ -43,16 +43,7 @@ import {
 import { type AppStateCollection, type AppStateResponse } from "../../appStateApi";
 import type { CareLog, Reminder } from "../../types";
 
-// `latestMilkAnchor`(App 里 latestCareEventAnchor(careLogs, "milk") 的 useMemo 结果)的结构;
-// App.tsx 的 CareEventAnchor 类型未导出,这里按结构等价声明。
-type CareEventAnchor = {
-  id: string;
-  occurredAt: Date;
-  label: string;
-};
-
-// App.tsx 里 persistRecord / deleteAppRecord 的精确签名,以及在调用点之后才就绪的
-// latestMilkAnchor,统一经 mutatorsRef 注入。
+// App.tsx 里 persistRecord / deleteAppRecord 的精确签名,统一经 mutatorsRef 注入。
 export type RemindersMutators = {
   persistRecord: <T,>(
     collection: AppStateCollection,
@@ -61,7 +52,6 @@ export type RemindersMutators = {
     options?: { applyResponse?: boolean; mode?: "merge" | "replace" },
   ) => Promise<AppStateResponse>;
   deleteAppRecord: (collection: AppStateCollection, id: string) => Promise<AppStateResponse>;
-  latestMilkAnchor: CareEventAnchor | null;
 };
 
 export type UseRemindersStateDeps = {
@@ -134,12 +124,6 @@ export function useRemindersState({
       nextDraft.title = `给${babyNickname}洗澡`;
       nextDraft.category = "care";
       nextDraft.dueTime = "20:00";
-    } else if (action.label === "喂奶闹钟") {
-      nextDraft.title = "喂奶提醒";
-      nextDraft.category = "care";
-      nextDraft.scheduleMode = "interval";
-      nextDraft.alertMode = "ringing";
-      nextDraft.intervalMinutes = "180";
     } else if (action.label === "喂药") {
       nextDraft.title = `给${babyNickname}喂药`;
       nextDraft.category = "care";
@@ -214,8 +198,8 @@ export function useRemindersState({
           status: "open",
           dueAt: nextDueAt.toISOString(),
           dueText: formatReminderDueText(nextDueAt),
-          lastAnchorEventId: target.lastAnchorEventId ?? (isIntervalMilkReminder(target) ? mutatorsRef.current.latestMilkAnchor?.id : undefined),
-          lastAnchorAt: target.lastAnchorAt ?? (isIntervalMilkReminder(target) ? mutatorsRef.current.latestMilkAnchor?.occurredAt.toISOString() : undefined) ?? completedAt.toISOString(),
+          lastAnchorEventId: target.lastAnchorEventId ?? undefined,
+          lastAnchorAt: target.lastAnchorAt ?? completedAt.toISOString(),
           notificationStatus: "pending",
           notificationError: undefined,
         },

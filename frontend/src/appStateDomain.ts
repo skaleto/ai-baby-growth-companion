@@ -545,17 +545,16 @@ export const normalizeReminderRepeatRule = (value: unknown): ReminderRepeatRule 
   if (!value || typeof value !== "object") return undefined;
   const source = value as Partial<ReminderRepeatRule>;
   if (source.mode !== "fixedInterval") return undefined;
-  const anchorType = source.anchorType === "careEvent" ? "careEvent" : "now";
-  if (anchorType === "careEvent" && source.careEventType !== "milk") return undefined;
   const intervalMinutes = typeof source.intervalMinutes === "number" && Number.isFinite(source.intervalMinutes)
     ? Math.round(source.intervalMinutes)
     : undefined;
   if (!intervalMinutes) return undefined;
+  // 老数据里的 careEvent(milk 锚定)规则一律优雅降级为按当前时间循环。
   return {
     mode: "fixedInterval",
     intervalMinutes: Math.min(MAX_INTERVAL_MINUTES, Math.max(MIN_INTERVAL_MINUTES, intervalMinutes)),
-    anchorType,
-    careEventType: anchorType === "careEvent" ? "milk" : undefined,
+    anchorType: "now",
+    careEventType: undefined,
   };
 };
 
@@ -563,11 +562,6 @@ export const isIntervalReminder = (reminder: Pick<Reminder, "scheduleMode" | "re
   reminder.status !== "done" &&
   reminder.scheduleMode === "interval" &&
   reminder.repeatRule?.mode === "fixedInterval";
-
-export const isIntervalMilkReminder = (reminder: Pick<Reminder, "scheduleMode" | "repeatRule" | "status">) =>
-  isIntervalReminder(reminder) &&
-  reminder.repeatRule?.anchorType === "careEvent" &&
-  reminder.repeatRule?.careEventType === "milk";
 
 export const normalizeReminderSchedule = (reminder: Reminder, now = new Date()): Reminder => {
   const repeatRule = normalizeReminderRepeatRule(reminder.repeatRule);

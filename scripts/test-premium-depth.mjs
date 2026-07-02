@@ -10,8 +10,8 @@ for (const t of ["--r-chip","--r-card","--r-hero","--elev-list","--elev-card","-
   assert.ok(css.includes(t + ":"), `premium-depth.css 应定义 ${t}`);
 }
 
-// 2) 5 张门面卡各自设了品类 --glow
-for (const h of [".feeding-alarm-card",".sleep-entry-card",".growth-entry-card",".vaccine-card",".ledger-ai-entry-card"]) {
+// 2) 门面卡各自设了品类 --glow(喂奶闹钟卡 2026-07 已随功能移除)
+for (const h of [".sleep-entry-card",".growth-entry-card",".vaccine-card",".ledger-ai-entry-card"]) {
   const re = new RegExp(h.replace(/[.\-]/g, "\\$&") + "[^,{][^{]*\\{[^}]*--glow\\s*:");
   assert.ok(re.test(css), `${h} 应设置自己的品类 --glow`);
 }

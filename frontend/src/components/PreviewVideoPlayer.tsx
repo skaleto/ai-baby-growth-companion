@@ -1,12 +1,28 @@
-import { Pause, Play, RotateCcw } from "lucide-react";
+import Plyr from "plyr";
+import "plyr/dist/plyr.css";
+// 离线自包含:Plyr 默认 iconUrl 会去 fetch cdn.plyr.io 的图标精灵(违反 OTA 离线 + CSP)。
+// 这里把 vendored 的精灵以 ?raw 内联进 DOM 一次(loadSprite:false 让 Plyr 不发任何图标网络请求),
+// 控件通过 <use href="#plyr-*"> 直接引用已注入的 symbol。
+import plyrSpriteRaw from "../assets/plyr-sprite.svg?raw";
+
+let plyrSpriteInjected = false;
+function ensurePlyrSprite() {
+  if (plyrSpriteInjected || typeof document === "undefined") return;
+  plyrSpriteInjected = true;
+  const holder = document.createElement("div");
+  holder.setAttribute("aria-hidden", "true");
+  holder.style.display = "none";
+  holder.innerHTML = plyrSpriteRaw;
+  document.body.appendChild(holder);
+}
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../types";
-import { fractionFromPointer, progressFraction, seekTimeFromFraction } from "./previewVideoMath";
 import { cacheMediaFromRemote, captureVideoPosterToCache, VIDEO_CACHE_MAX_BYTES } from "../mediaCache";
 import { useCachedMediaSrc, useVideoPoster } from "./CachedMedia";
 
-const HIDE_DELAY_MS = 2500;
-
+// 视频播放/进度拖动改用成熟的 Plyr(替换原自研 pointer 进度条:热区小、逐帧 seek 卡顿、无可见滑块)。
+// Plyr 自带无障碍、键盘、触摸拖动 seek 与自动隐藏控件;拖动进度用它自己的 <input type=range>,
+// 手感与稳定性由库保证。我们只保留:本地缓存起播、无封面抽帧兜底、原生全屏退出即关预览。
 export function PreviewVideoPlayer({
   attachment,
   active,
@@ -17,25 +33,16 @@ export function PreviewVideoPlayer({
   bindVideo?: (node: HTMLVideoElement | null) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const plyrRef = useRef<Plyr | null>(null);
   // 本地缓存命中 → 本地播放(杀进程后即点即播);未命中保持在线播,不在此处触发下载。
   const videoSrc = useCachedMediaSrc(attachment.url, { download: false });
-  // 海报:thumbnailUrl(本地缓存)→ 抽帧兜底海报;两者皆无时 frameReady 前无遮盖(黑屏已被起播提速缓解)。
+  // 海报:thumbnailUrl(本地缓存)→ 抽帧兜底海报;交给 Plyr 的 poster 显示,起播前不黑屏。
   const poster = useVideoPoster(attachment);
   const cacheKickedRef = useRef(false);
   const posterCaptureRef = useRef(false);
-  const barRef = useRef<HTMLDivElement | null>(null);
-  const hideTimerRef = useRef<number | null>(null);
-  const draggingRef = useRef(false);
-  const [playing, setPlaying] = useState(false);
-  const [ended, setEnded] = useState(false);
-  const [fraction, setFraction] = useState(0);
-  const [controlsVisible, setControlsVisible] = useState(true);
-  // Keep the thumbnail covering the <video> until it paints a real frame, so
-  // opening doesn't flash black while the fresh element loads/decodes.
   const [frameReady, setFrameReady] = useState(false);
 
-  // Bind the internal ref AND forward to bindPreviewVideo (which sets muted=false,
-  // wires native-fullscreen-exit → close, and pauses on unbind).
+  // Bind the internal ref AND forward to bindPreviewVideo(设 muted=false、接管原生全屏退出、卸载即暂停)。
   const setVideoNode = useCallback(
     (node: HTMLVideoElement | null) => {
       videoRef.current = node;
@@ -44,112 +51,84 @@ export function PreviewVideoPlayer({
     [bindVideo],
   );
 
-  const scheduleHide = useCallback(() => {
-    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = window.setTimeout(() => setControlsVisible(false), HIDE_DELAY_MS);
+  // 初始化 Plyr(每次挂载一次;卸载先 destroy 还原 DOM 再由 React 移除元素)。
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    ensurePlyrSprite();
+    const player = new Plyr(video, {
+      controls: ["play-large", "play", "progress", "current-time", "mute", "fullscreen"],
+      clickToPlay: true,
+      hideControls: true,
+      resetOnEnd: true,
+      // 离线/CSP:精灵已内联进 DOM,loadSprite:false 让 Plyr 不发图标网络请求;
+      // blankVideo 置空,杜绝 Plyr 回退去 fetch cdn.plyr.io 的默认空白视频。
+      loadSprite: false,
+      blankVideo: "",
+      keyboard: { focused: true, global: false },
+      fullscreen: { enabled: true, iosNative: true },
+      tooltips: { controls: false, seek: true },
+    });
+    plyrRef.current = player;
+
+    // 隔离:在 Plyr 控件区(尤其进度滑块)拖动 = seek,不能冒泡到相册舞台触发左右滑翻页。
+    // 相册翻页是 onPreviewStagePointerDown 的 React 合成事件,原生 stopPropagation 可阻止其到达 React 根监听。
+    const controls = player.elements.controls;
+    const stopBubble = (event: Event) => event.stopPropagation();
+    controls?.addEventListener("pointerdown", stopBubble);
+    controls?.addEventListener("pointermove", stopBubble);
+    controls?.addEventListener("pointerup", stopBubble);
+
+    return () => {
+      controls?.removeEventListener("pointerdown", stopBubble);
+      controls?.removeEventListener("pointermove", stopBubble);
+      controls?.removeEventListener("pointerup", stopBubble);
+      try {
+        player.destroy();
+      } catch {
+        // destroy 在极端卸载竞态下可能抛错,忽略即可。
+      }
+      plyrRef.current = null;
+    };
+    // 仅挂载/卸载时运行;src 变化由下方 attachment.id effect 处理。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const revealControls = useCallback(() => {
-    setControlsVisible(true);
-    scheduleHide();
-  }, [scheduleHide]);
-
-  // Autoplay with sound when active; pause + reset when inactive.
+  // active 时静音起播(不被音频缓冲卡住,onPlaying 再解除静音);非 active 暂停并复位。
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     if (active) {
-      setControlsVisible(true);
-      // Start muted so playback isn't gated on audio buffering (fast tap-to-play);
-      // onPlaying unmutes once it's actually running.
       video.muted = true;
-      void video
-        .play()
-        .then(() => scheduleHide())
-        .catch(() => setControlsVisible(true));
+      void video.play().catch(() => undefined);
     } else {
       video.pause();
       video.currentTime = 0;
-      setFraction(0);
-      setEnded(false);
       setFrameReady(false);
     }
-  }, [active, scheduleHide]);
+  }, [active, videoSrc]);
 
-  // Re-show the poster whenever the media changes (carousel swipe).
+  // 媒体切换(carousel 翻页)时重新等待真帧。
   useEffect(() => {
     setFrameReady(false);
   }, [attachment.id]);
 
-  useEffect(
-    () => () => {
-      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
-    },
-    [],
-  );
-
-  const togglePlay = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (ended) {
-      video.currentTime = 0;
-      setEnded(false);
-      void video.play().catch(() => {});
-      return;
-    }
-    if (video.paused) void video.play().catch(() => {});
-    else video.pause();
-  }, [ended]);
-
-  const seekToClientX = useCallback((clientX: number) => {
-    const video = videoRef.current;
-    const bar = barRef.current;
-    if (!video || !bar) return;
-    const rect = bar.getBoundingClientRect();
-    const f = fractionFromPointer(clientX, rect.left, rect.width);
-    video.currentTime = seekTimeFromFraction(f, video.duration);
-    setFraction(f);
-    setEnded(false);
-  }, []);
-
-  // Controls stay shown while paused/ended; auto-hide only while actively playing.
-  const showControls = controlsVisible || !playing || ended;
-
   return (
-    <div
-      className={`preview-video-player${showControls ? " controls-visible" : ""}`}
-      onClick={(event) => event.stopPropagation()}
-    >
+    <div className="preview-video-player" onClick={(event) => event.stopPropagation()}>
       <video
         ref={setVideoNode}
         src={videoSrc || attachment.url}
-        poster={poster}
+        poster={poster || undefined}
         playsInline
         preload="auto"
         aria-label={attachment.name}
-        onClick={(event) => {
-          event.stopPropagation();
-          togglePlay();
-          revealControls();
-        }}
-        onPlay={() => {
-          setPlaying(true);
-          setEnded(false);
-        }}
         onPlaying={(event) => {
           event.currentTarget.muted = false;
           setFrameReady(true);
         }}
-        onPause={() => setPlaying(false)}
-        onEnded={() => {
-          setEnded(true);
-          setPlaying(false);
-          setControlsVisible(true);
-        }}
         onTimeUpdate={(event) => {
           const video = event.currentTarget;
           if (video.currentTime > 0) setFrameReady(true);
-          setFraction(progressFraction(video.currentTime, video.duration));
           // 播放稳定(≥3s)后才整文件落库——起播阶段不与 <video> 流加载抢带宽(否则开头黑屏变长)。
           if (video.currentTime >= 3 && !cacheKickedRef.current) {
             cacheKickedRef.current = true;
@@ -162,54 +141,9 @@ export function PreviewVideoPlayer({
           }
         }}
       />
-      {poster ? (
-        <img
-          className={`preview-video-poster${frameReady ? " is-hidden" : ""}`}
-          src={poster}
-          alt=""
-          aria-hidden="true"
-          decoding="async"
-        />
+      {poster && !frameReady ? (
+        <img className="preview-video-poster" src={poster} alt="" aria-hidden="true" decoding="async" />
       ) : null}
-      <button
-        type="button"
-        className="preview-video-toggle"
-        aria-label={ended ? "重播" : playing ? "暂停" : "播放"}
-        onClick={(event) => {
-          event.stopPropagation();
-          togglePlay();
-          revealControls();
-        }}
-      >
-        {ended ? <RotateCcw size={28} /> : playing ? <Pause size={28} /> : <Play size={28} />}
-      </button>
-      <div
-        ref={barRef}
-        className="preview-video-progress"
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          draggingRef.current = true;
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-          seekToClientX(event.clientX);
-          revealControls();
-        }}
-        onPointerMove={(event) => {
-          if (!draggingRef.current) return;
-          event.stopPropagation();
-          seekToClientX(event.clientX);
-        }}
-        onPointerUp={(event) => {
-          event.stopPropagation();
-          draggingRef.current = false;
-        }}
-        onPointerCancel={() => {
-          draggingRef.current = false;
-        }}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="preview-video-progress-track" aria-hidden="true" />
-        <div className="preview-video-progress-fill" style={{ width: `${fraction * 100}%` }} />
-      </div>
     </div>
   );
 }

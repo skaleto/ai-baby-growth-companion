@@ -359,14 +359,15 @@ body {
   color: #48685b;
 }
 
+/* #3 记录入口显著化:快捷提示从透明文字链接升级成可点的绿色胶囊 chip(与 mobile-app.css 一致)。 */
 .records-quick-row .records-prompt-link,
 .records-quick-row .records-prompt-link:hover,
 .records-quick-row .records-prompt-link:active {
-  min-height: auto !important;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
+  min-height: 30px !important;
+  padding: 0 12px !important;
+  border: 1px solid rgba(103, 158, 127, 0.3) !important;
+  border-radius: 999px !important;
+  background: rgba(103, 158, 127, 0.1) !important;
   box-shadow: none !important;
   color: var(--sage-dark) !important;
   transform: none !important;

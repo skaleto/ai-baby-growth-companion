@@ -1,6 +1,7 @@
 // 记录/护理域:从 App.tsx 上帝类抽出的纯计算层(架构债 D1/D6「业务逻辑框架无关、可纯测」,Records 大拆分轮)。
 // 纯模块:不引 React/资产/import.meta.env,可被 esbuild 逻辑测试打包。第一刀:奶量/睡眠的取值与分段聚合。
 import type { CareLog, CareLogEvent } from "./types";
+import type { GrowthCurveData } from "./appContracts";
 import { parseTimeSort } from "./utils/careLogHelpers";
 import { addDays } from "./appStateDomain";
 import { todayISO } from "./data";
@@ -206,5 +207,43 @@ export const buildWeeklyCareComparison = (careLogs: CareLog[], selectedDate: str
         sleepSegments: segmentValuesForLog(log, "sleep"),
       };
     }),
+  };
+};
+
+// 把「近 7 天某指标(奶量/睡眠)每日总量」适配成通用曲线数据(复用成长曲线的 GrowthCurveData 形状 + <CurveChart> 渲染)。
+// 只连有记录的天(缺记录跳过);点沿全宽等距铺开(与成长曲线一致),单点时居中。坐标系与 buildGrowthCurveData 对齐。
+export const buildCareCurveData = (
+  days: WeeklyCareDay[],
+  pick: (day: WeeklyCareDay) => number | undefined,
+  format: (value: number) => string,
+): GrowthCurveData => {
+  const present = days
+    .map((day) => ({ day, value: positiveNumber(pick(day)) }))
+    .filter((entry): entry is { day: WeeklyCareDay; value: number } => entry.value !== undefined);
+  if (!present.length) {
+    return { points: [], polyline: "", minLabel: "暂无记录", maxLabel: "记录后生成曲线", latestLabel: "暂无记录" };
+  }
+  const values = present.map((entry) => entry.value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
+  const left = 20;
+  const right = 284;
+  const top = 24;
+  const bottom = 118;
+  const width = right - left;
+  const height = bottom - top;
+  const points = present.map((entry, index) => {
+    const x = present.length === 1 ? (left + right) / 2 : left + (width * index) / (present.length - 1);
+    const y = bottom - ((entry.value - minValue) / range) * height;
+    return { id: entry.day.date, date: entry.day.date, label: entry.day.label, valueLabel: format(entry.value), x, y };
+  });
+  const latest = present[present.length - 1];
+  return {
+    points,
+    polyline: points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "),
+    minLabel: format(minValue),
+    maxLabel: format(maxValue),
+    latestLabel: `${latest.day.label} ${format(latest.value)}`,
   };
 };

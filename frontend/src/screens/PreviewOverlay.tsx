@@ -10,10 +10,14 @@
 // 手势/翻页/缩放的全部 handler 与 state 留在 App(经 features/preview/usePreviewState 抽出),
 // 本组件只做「受控视图」:接收状态 + 稳定 handler 包,原样渲染。previewCarouselTrackRef 由 App 持有并经
 // props 透传(手势数学直接读写该 DOM),故这里以 ref prop 形式接收。
-import { memo, type CSSProperties, type RefObject } from "react";
+import { lazy, memo, Suspense, type CSSProperties, type RefObject } from "react";
 import { MoreHorizontal, PencilLine, Trash2, X } from "lucide-react";
 import { CachedImg } from "../components/CachedMedia";
-import { PreviewVideoPlayer } from "../components/PreviewVideoPlayer";
+// Plyr(~36KB JS+CSS)只在打开视频预览时才需要。用 React.lazy 把整个视频播放器(连带 Plyr)分割成独立
+// chunk,不再进首屏主包(评审 P1)。视频预览本就是懒加载边界:相册/聊天里点开视频才触发。
+const PreviewVideoPlayer = lazy(() =>
+  import("../components/PreviewVideoPlayer").then((module) => ({ default: module.PreviewVideoPlayer })),
+);
 import { albumCategoryLabel } from "../albumDomain";
 import { creatorMetaText, formatFullDate } from "../appStateDomain";
 import type { AlbumItem, Attachment } from "../types";
@@ -180,7 +184,9 @@ export const PreviewOverlay = memo(function PreviewOverlay({
                     {attachment?.url ? (
                       attachment.kind === "video" ? (
                         isCurrent ? (
-                          <PreviewVideoPlayer attachment={attachment} active bindVideo={bindPreviewVideo} />
+                          <Suspense fallback={null}>
+                            <PreviewVideoPlayer attachment={attachment} active bindVideo={bindPreviewVideo} />
+                          </Suspense>
                         ) : (
                           <CachedImg src={attachment.thumbnailUrl || attachment.url} alt={attachment.name} draggable={false} />
                         )
@@ -208,7 +214,9 @@ export const PreviewOverlay = memo(function PreviewOverlay({
             </div>
           </div>
         ) : previewAttachment.kind === "video" ? (
-          <PreviewVideoPlayer attachment={previewAttachment} active bindVideo={bindPreviewVideo} />
+          <Suspense fallback={null}>
+            <PreviewVideoPlayer attachment={previewAttachment} active bindVideo={bindPreviewVideo} />
+          </Suspense>
         ) : (
           <CachedImg
             className={previewTransform.scale > 1 ? "is-zoomed" : ""}

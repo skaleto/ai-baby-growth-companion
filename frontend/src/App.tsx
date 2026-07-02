@@ -36,11 +36,7 @@ import {
 import { App as CapacitorApp } from "@capacitor/app";
 import "./styles/vendor-mobile.css";
 import { getPlatform, isAndroidPlatform, isIOSPlatform, isNativePlatform, isPluginAvailable, platformDisplayLabel } from "./platform";
-import {
-  createReminderDraft,
-  reminderDraftFromReminder,
-  type ReminderDraft,
-} from "./reminderDraft";
+import { type ReminderDraft } from "./reminderDraft";
 import { LocalNotifications, type ActionPerformed, type LocalNotificationSchema } from "@capacitor/local-notifications";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import {
@@ -148,7 +144,6 @@ import {
   formatTime,
   hasCompleteProfile,
   hasLegacyLocalState,
-  isIntervalMilkReminder,
   isIntervalReminder,
   localDateKey,
   localTimeKey,
@@ -180,8 +175,6 @@ import { AppDialogs, type AppDialogsHandlers } from "./screens/AppDialogs";
 import { RecordsEntryDrawer, type RecordsEntryDrawerHandlers } from "./screens/RecordsEntryDrawer";
 import { AuthSplash, LoginScreen, OnboardingScreen } from "./screens/AuthScreens";
 import { PreviewOverlay, type PreviewOverlayHandlers } from "./screens/PreviewOverlay";
-import { appAlert, appPrompt } from "./components/appDialogs";
-import { FeedingAlarmCard } from "./components/FeedingAlarmCard";
 import { SleepMusicScreen } from "./screens/SleepMusicScreen";
 import { SleepMusicCard } from "./components/SleepMusicCard";
 import { AppDateField, AppTimeField } from "./components/appWheelFields";
@@ -264,6 +257,7 @@ import {
   compactValue,
   buildDailyCareBreakdowns,
   buildWeeklyCareComparison,
+  buildCareCurveData,
 } from "./recordsDomain";
 import alarmSceneImage from "./assets/alarm/alarm-scene.webp";
 import emptyRemindersImg from "./assets/illustrations/empty-reminders.png";
@@ -607,38 +601,7 @@ const buildGrowthCurveData = (measurements: GrowthMeasurement[], type: GrowthMea
 
 const platformLabel = () => platformDisplayLabel();
 
-type CareEventAnchor = {
-  id: string;
-  occurredAt: Date;
-  label: string;
-};
-
 let reminderChannelsReady = false;
-
-const careEventAnchorDate = (log: CareLog, event: CareLogEvent) => {
-  if (!event.time) return null;
-  const date = event.date || log.date;
-  const parsed = new Date(`${date}T${event.time}:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const latestCareEventAnchor = (careLogs: CareLog[], type: CareLogEventType): CareEventAnchor | null => {
-  let latest: CareEventAnchor | null = null;
-  careLogs.forEach((log) => {
-    log.events.forEach((event, eventIndex) => {
-      if (event.type !== type) return;
-      const occurredAt = careEventAnchorDate(log, event);
-      if (!occurredAt) return;
-      if (latest && latest.occurredAt >= occurredAt) return;
-      latest = {
-        id: event.id || `${log.id}-${type}-${eventIndex}`,
-        occurredAt,
-        label: `${formatReminderDueText(occurredAt)}${event.amountMl ? ` ${event.amountMl}ml` : ""}`,
-      };
-    });
-  });
-  return latest;
-};
 
 const addReminderHistory = (reminder: Reminder, entry: string) => ({
   ...reminder,
@@ -656,14 +619,11 @@ const nextIntervalDueAt = (anchorAt: Date, intervalMinutes: number, now = new Da
   return dueAt;
 };
 
+// careLogs 参数保留以维持调用方签名不变;循环提醒一律按当前时间起算(不再按喝奶事件锚定)。
 const prepareIntervalReminder = (reminder: Reminder, careLogs: CareLog[], now = new Date()) => {
+  void careLogs;
   if (!isIntervalReminder(reminder) || !reminder.repeatRule) return normalizeReminderSchedule(reminder, now);
-  const anchor = isIntervalMilkReminder(reminder) ? latestCareEventAnchor(careLogs, "milk") : null;
-  const anchorAt = anchor?.occurredAt ?? now;
-  const dueAt = nextIntervalDueAt(anchorAt, reminder.repeatRule.intervalMinutes, now);
-  const entry = anchor
-    ? `按最近一次喝奶 ${anchor.label} 计算下一次提醒`
-    : "按当前时间开始循环提醒";
+  const dueAt = nextIntervalDueAt(now, reminder.repeatRule.intervalMinutes, now);
   return normalizeReminderSchedule(
     addReminderHistory(
       {
@@ -671,12 +631,12 @@ const prepareIntervalReminder = (reminder: Reminder, careLogs: CareLog[], now = 
         dueAt: dueAt.toISOString(),
         dueText: formatReminderDueText(dueAt),
         recurrence: `每 ${formatIntervalText(reminder.repeatRule.intervalMinutes)} ${reminder.title || "提醒"}`,
-        lastAnchorEventId: anchor?.id,
-        lastAnchorAt: anchorAt.toISOString(),
+        lastAnchorEventId: undefined,
+        lastAnchorAt: now.toISOString(),
         notificationStatus: "pending",
         notificationError: undefined,
       },
-      entry,
+      "按当前时间开始循环提醒",
     ),
     now,
   );
@@ -716,8 +676,8 @@ const ensureReminderChannels = async () => {
     });
     await LocalNotifications.createChannel({
       id: REMINDER_CHANNELS.soft_chime,
-      name: "小宝喂奶闹钟 · 柔和叮咚",
-      description: "短促柔和的喂奶循环提醒",
+      name: "小宝提醒 · 柔和叮咚",
+      description: "短促柔和的响铃提醒",
       sound: REMINDER_SOUND_FILES.soft_chime,
       importance: 4,
       visibility: 1,
@@ -725,8 +685,8 @@ const ensureReminderChannels = async () => {
     });
     await LocalNotifications.createChannel({
       id: REMINDER_CHANNELS.soft_bell,
-      name: "小宝喂奶闹钟 · 轻铃声",
-      description: "清脆但短促的喂奶循环提醒",
+      name: "小宝提醒 · 轻铃声",
+      description: "清脆但短促的响铃提醒",
       sound: REMINDER_SOUND_FILES.soft_bell,
       importance: 4,
       visibility: 1,
@@ -875,8 +835,8 @@ function reminderFromDraft(draft: ReminderDraft, existing?: Reminder): Reminder 
     ? {
         mode: "fixedInterval",
         intervalMinutes: Math.min(MAX_INTERVAL_MINUTES, Math.max(MIN_INTERVAL_MINUTES, intervalMinutes)),
-        anchorType: /奶|喂奶|喝奶|吃奶/.test(title) ? "careEvent" : "now",
-        careEventType: /奶|喂奶|喝奶|吃奶/.test(title) ? "milk" : undefined,
+        anchorType: "now",
+        careEventType: undefined,
       }
     : undefined;
   const dueAt = new Date(`${draft.dueDate || todayISO()}T${draft.dueTime || "09:00"}:00`);
@@ -1131,7 +1091,6 @@ function App() {
   // 上方解构回同名 ref(applyAppSnapshot / persistAlbumItemOptimistic / album hook 仍照常读写它)。
   const compressionInFlightRef = useRef(false);
   const compressionResetTimerRef = useRef<number | null>(null);
-  const intervalReminderRescheduleRef = useRef("");
   const remindersRef = useRef<Reminder[]>([]);
   const handledNativeNotificationKeysRef = useRef<Set<string>>(new Set());
   const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -1307,7 +1266,6 @@ function App() {
     deleteAppRecord: (() => {
       throw new Error("deleteAppRecord not ready");
     }) as RemindersMutators["deleteAppRecord"],
-    latestMilkAnchor: null,
   });
   const recordsMutatorsRef = useRef<RecordsMutators>({
     persistRecord: (() => {
@@ -1745,7 +1703,6 @@ function App() {
   }, [reminders, todayDate]);
   const actionableReminderCount =
     reminderBuckets.today.length + reminderBuckets.overdue.length + reminderBuckets.upcoming.length;
-  const latestMilkAnchor = useMemo(() => latestCareEventAnchor(careLogs, "milk"), [careLogs]);
   const recordEvents = useMemo(
     () => buildRecordEvents(careLogs, growthEvents, reminders),
     [careLogs, growthEvents, reminders],
@@ -1927,6 +1884,15 @@ function App() {
     () => buildGrowthCurveData(growthMeasurements, growthCurveType),
     [growthMeasurements, growthCurveType],
   );
+  // 奶量/睡眠改曲线:复用成长曲线的数据形状与 <CurveChart> 渲染(替换原柱状图)。
+  const milkCurveData = useMemo(
+    () => buildCareCurveData(weeklyCareComparison.days, (day) => day.milkValue, (value) => `${Math.round(value)}ml`),
+    [weeklyCareComparison],
+  );
+  const sleepCurveData = useMemo(
+    () => buildCareCurveData(weeklyCareComparison.days, (day) => day.sleepValue, (value) => `${value.toFixed(1)}h`),
+    [weeklyCareComparison],
+  );
   const buildAgentPageContext = () => ({
     activeTab: activeMobileTab,
     selectedDate,
@@ -2006,8 +1972,8 @@ function App() {
   // useLedgerState 在调用点更早,经此 ref 取用 STORE 返回的 mutators;每次渲染都无条件刷新。
   // deleteAppRecord 为模块导入(全程可用),persistRecord 在此处定义后两者皆就绪。
   ledgerMutatorsRef.current = { persistRecord, deleteAppRecord };
-  // useRemindersState 同理在调用点更早;persistRecord / deleteAppRecord / latestMilkAnchor 在此处都已就绪。
-  remindersMutatorsRef.current = { persistRecord, deleteAppRecord, latestMilkAnchor };
+  // useRemindersState 同理在调用点更早;persistRecord / deleteAppRecord 在此处都已就绪。
+  remindersMutatorsRef.current = { persistRecord, deleteAppRecord };
   // useRecordsState 同理在调用点更早;persistRecord / deleteAppRecord 在此处都已就绪。
   recordsMutatorsRef.current = { persistRecord, deleteAppRecord };
   // showSystemWeakNotice 的 useCallback 定义在 useRecordsState 调用点之后、此处之前,故在此处刷新迟绑定 ref。
@@ -2331,43 +2297,6 @@ function App() {
 
   // canAttachVisuals 变 false 时清空待发素材/上传队列的 effect 已抽到 useChatState。
 
-  useEffect(() => {
-    if (!canCaregive || !latestMilkAnchor) return;
-    const candidates = reminders.filter(
-      (reminder) =>
-        isIntervalMilkReminder(reminder) &&
-        (reminder.lastAnchorEventId !== latestMilkAnchor.id ||
-          reminder.lastAnchorAt !== latestMilkAnchor.occurredAt.toISOString()),
-    );
-    if (!candidates.length) return;
-
-    const signature = `${latestMilkAnchor.id}:${latestMilkAnchor.occurredAt.toISOString()}:${candidates
-      .map((item) => item.id)
-      .join(",")}`;
-    if (intervalReminderRescheduleRef.current === signature) return;
-    intervalReminderRescheduleRef.current = signature;
-
-    void (async () => {
-      try {
-        await Promise.all(candidates.map(cancelNativeReminder));
-        const scheduled = await scheduleNativeReminders(candidates, { careLogs });
-        if (!scheduled.length) return;
-        setReminders((current) => {
-          const byId = new Map(current.map((reminder) => [reminder.id, reminder]));
-          scheduled.forEach((reminder) => byId.set(reminder.id, reminder));
-          return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
-        });
-        for (const reminder of scheduled) {
-          await persistRecord("reminders", reminder.id, reminder);
-        }
-      } catch {
-        setStorageStatus("offline");
-      } finally {
-        intervalReminderRescheduleRef.current = "";
-      }
-    })();
-  }, [canCaregive, latestMilkAnchor?.id, latestMilkAnchor?.occurredAt, reminders, careLogs]);
-
   // profile 变化时同步 profileDraft / allergiesText 的 effect 已抽到 useSessionState。
 
   // readImageDimensionsFromFile / createVideoThumbnailDataUrl / readAgentAttachmentDataUrl /
@@ -2546,94 +2475,7 @@ function App() {
     hapticSuccess();
   };
 
-  // ── 喂奶闹钟(复用 interval-milk 提醒引擎 + 原生响铃)────────────────────────
-  // 「已喂」一键:落一条 milk careLog 事件(今天·现在),触发现有 latestMilkAnchor
-  // useEffect 自动重锚下次闹钟。
-  const recordQuickMilk = (amountMl: number | null) => {
-    if (!canCaregive) return;
-    const baseLog =
-      careLogs.find((log) => log.date === todayDate) ??
-      normalizeCareLog({ id: makeId("care"), date: todayDate, solids: [], notes: [], events: [] }, 0);
-    const nextEvent = normalizeCareLogEvent(
-      {
-        id: makeId("care-event"),
-        type: "milk",
-        date: todayDate,
-        time: currentClockText(),
-        title: canonicalCareEventTitle("milk"),
-        amountMl: amountMl ?? undefined,
-      },
-      (baseLog.events ?? []).length,
-      todayDate,
-    );
-    const nextLog = careLogWithEventStats({ ...baseLog, events: [...(baseLog.events ?? []), nextEvent] });
-    setCareLogs((current) => {
-      const has = current.some((item) => item.id === nextLog.id);
-      return has ? current.map((item) => (item.id === nextLog.id ? nextLog : item)) : [...current, nextLog];
-    });
-    void persistRecord("careLogs", nextLog.id, nextLog, { applyResponse: true, mode: "replace" }).catch(() =>
-      setStorageStatus("offline"),
-    );
-    hapticSuccess();
-  };
-
-  // 「其他…」自定义奶量(复用 appPrompt)。
-  const pickOtherMilkAmount = async () => {
-    const text = await appPrompt({ title: "奶量(ml)", placeholder: "例如 130" });
-    if (text == null) return;
-    const amount = Number(text.trim());
-    recordQuickMilk(Number.isFinite(amount) && amount > 0 ? Math.round(amount) : null);
-  };
-
-  // 「设置喂奶提醒」:一键建一条默认 3 小时、响铃、锚定喝奶的循环提醒(间隔可在提醒页调)。
-  const createMilkReminderShortcut = async () => {
-    if (!canCaregive) return;
-    const draft = createReminderDraft(new Date());
-    draft.title = "喂奶提醒";
-    draft.category = "care";
-    draft.scheduleMode = "interval";
-    draft.alertMode = "ringing";
-    draft.intervalMinutes = "180";
-    const baseReminder = reminderFromDraft(draft);
-    const [scheduled] = await scheduleNativeReminders([baseReminder], { careLogs });
-    const nextReminder = scheduled ?? baseReminder;
-    setReminders((current) => {
-      const byId = new Map(current.map((item) => [item.id, item]));
-      byId.set(nextReminder.id, nextReminder);
-      return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
-    });
-    void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() =>
-      setStorageStatus("offline"),
-    );
-    hapticSuccess();
-  };
-
-  // ref 稳定 handlers(memo 卡片);放在三个处理器之后避免 TDZ。
-  const feedingAlarmActionsRef = useRef({ recordQuickMilk, pickOtherMilkAmount, createMilkReminderShortcut });
-  feedingAlarmActionsRef.current = { recordQuickMilk, pickOtherMilkAmount, createMilkReminderShortcut };
-  const [feedingAlarmHandlers] = useState(() => ({
-    onFed: (amountMl: number | null) => feedingAlarmActionsRef.current.recordQuickMilk(amountMl),
-    onPickOther: () => {
-      void feedingAlarmActionsRef.current.pickOtherMilkAmount();
-    },
-    onSetup: () => {
-      void feedingAlarmActionsRef.current.createMilkReminderShortcut();
-    },
-  }));
-
-  // 选「最近 dueAt 的喂奶提醒」喂给卡片(纯原语,组件不碰 Reminder 类型)。
-  const feedingAlarm = useMemo(() => {
-    const milk = reminders
-      .filter(isIntervalMilkReminder)
-      .sort((a, b) => (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity))[0];
-    if (!milk) return { dueAtMs: null as number | null, intervalMinutes: null as number | null };
-    return {
-      dueAtMs: milk.dueAt ? Date.parse(milk.dueAt) : null,
-      intervalMinutes: milk.repeatRule?.intervalMinutes ?? null,
-    };
-  }, [reminders]);
-
-  // 哄睡音乐:全屏播放页开关(入口在记录页喂奶卡之下)。
+  // 哄睡音乐:全屏播放页开关(入口在记录页卡片之下)。
   const [sleepMusicOpen, setSleepMusicOpen] = useState(false);
   const [sleepMusicHandlers] = useState(() => ({ open: () => setSleepMusicOpen(true), close: () => setSleepMusicOpen(false) }));
 
@@ -3316,14 +3158,13 @@ function App() {
           milestonesViewOpen={milestonesViewOpen}
           sleepMusicOpen={sleepMusicOpen}
           quickActions={quickActions}
-          feedingAlarm={feedingAlarm}
-          latestMilkAnchor={latestMilkAnchor}
-          feedingAlarmHandlers={feedingAlarmHandlers}
           sleepMusicHandlers={sleepMusicHandlers}
           selectedGrowthCount={selectedGrowthCount}
           selectedKeyPointCount={selectedKeyPointCount}
           dailyCareBreakdowns={dailyCareBreakdowns}
           weeklyCareComparison={weeklyCareComparison}
+          milkCurveData={milkCurveData}
+          sleepCurveData={sleepCurveData}
           growthTrendMetrics={growthTrendMetrics}
           selectedEvents={selectedEvents}
           swipedTimelineEventId={swipedTimelineEventId}
