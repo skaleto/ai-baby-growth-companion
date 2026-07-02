@@ -47,7 +47,7 @@ import { monthsBetween } from "../../utils/babyAge";
 import { careEventsForLog } from "../../utils/careLogHelpers";
 import type { RegionCode } from "../../data/vaccineSchedule.fallback";
 import { hapticSuccess, hapticWarning } from "../../haptics";
-import { type AppStateCollection, type AppStateResponse } from "../../appStateApi";
+import { type DeleteAppRecord, type PersistRecord } from "../../appStateApi";
 import type {
   BabyProfile,
   CareLog,
@@ -66,13 +66,8 @@ type GrowthMeasurementDraft = {
 
 // App.tsx 里 persistRecord / deleteAppRecord 的精确签名,经 mutatorsRef 注入。
 export type RecordsMutators = {
-  persistRecord: <T,>(
-    collection: AppStateCollection,
-    id: string,
-    item: T,
-    options?: { applyResponse?: boolean; mode?: "merge" | "replace" },
-  ) => Promise<AppStateResponse>;
-  deleteAppRecord: (collection: AppStateCollection, id: string) => Promise<AppStateResponse>;
+  persistRecord: PersistRecord;
+  deleteAppRecord: DeleteAppRecord;
 };
 
 // showSystemWeakNotice(handleAddGrowthMeasurement 用)的 useCallback 定义在 hook 调用点之后,经此迟绑定 ref 注入。

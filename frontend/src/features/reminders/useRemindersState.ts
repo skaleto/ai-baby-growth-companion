@@ -40,18 +40,13 @@ import {
   type ReminderDraft,
   type ReminderPostponeDraft,
 } from "../../reminderDraft";
-import { type AppStateCollection, type AppStateResponse } from "../../appStateApi";
+import { type DeleteAppRecord, type PersistRecord } from "../../appStateApi";
 import type { CareLog, Reminder } from "../../types";
 
-// App.tsx 里 persistRecord / deleteAppRecord 的精确签名,统一经 mutatorsRef 注入。
+// App.tsx 里 persistRecord / deleteAppRecord 的精确签名,统一经 mutatorsRef 注入(签名单一来源见 appStateApi)。
 export type RemindersMutators = {
-  persistRecord: <T,>(
-    collection: AppStateCollection,
-    id: string,
-    item: T,
-    options?: { applyResponse?: boolean; mode?: "merge" | "replace" },
-  ) => Promise<AppStateResponse>;
-  deleteAppRecord: (collection: AppStateCollection, id: string) => Promise<AppStateResponse>;
+  persistRecord: PersistRecord;
+  deleteAppRecord: DeleteAppRecord;
 };
 
 export type UseRemindersStateDeps = {

@@ -33,7 +33,7 @@ import {
   groupExpensesByMonth,
   sumExpenses,
 } from "../../utils/expense";
-import { type AppStateCollection, type AppStateResponse } from "../../appStateApi";
+import { type DeleteAppRecord, type PersistRecord } from "../../appStateApi";
 import type { ExpenseCategory, ExpenseItem } from "../../types";
 
 export type ExpenseDraft = {
@@ -115,13 +115,8 @@ export function expenseFromDraft(draft: ExpenseDraft, existing?: ExpenseItem): E
 
 // App.tsx 里 persistRecord / deleteAppRecord 的精确签名,经 mutatorsRef 注入。
 export type LedgerMutators = {
-  persistRecord: <T,>(
-    collection: AppStateCollection,
-    id: string,
-    item: T,
-    options?: { applyResponse?: boolean; mode?: "merge" | "replace" },
-  ) => Promise<AppStateResponse>;
-  deleteAppRecord: (collection: AppStateCollection, id: string) => Promise<AppStateResponse>;
+  persistRecord: PersistRecord;
+  deleteAppRecord: DeleteAppRecord;
 };
 
 export type UseLedgerStateDeps = {

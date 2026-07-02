@@ -21,6 +21,18 @@ export type AppStateResponse = {
   state: Partial<AppStateSnapshot>;
 };
 
+// persistRecord / deleteAppRecord 的精确签名(实现由 useAppStore 提供、经 App 注入各领域 hook)。
+// 单一来源(评审 P9):6 个领域 hook 原先各自内联抄了一遍同一签名,统一到这里(与 upsertAppRecord/
+// AppStateCollection 同源),签名改动只此一处。各 hook 已 import 本模块,无新依赖、无循环。
+export type PersistRecord = <T,>(
+  collection: AppStateCollection,
+  id: string,
+  item: T,
+  options?: { applyResponse?: boolean; mode?: "merge" | "replace" },
+) => Promise<AppStateResponse>;
+
+export type DeleteAppRecord = (collection: AppStateCollection, id: string) => Promise<AppStateResponse>;
+
 export type UploadResponse = Attachment & {
   mimeType: string;
   filePath: string;

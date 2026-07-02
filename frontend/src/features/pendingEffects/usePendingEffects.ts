@@ -32,6 +32,7 @@ import {
   confirmPendingEffectOnServer,
   discardPendingEffectOnServer,
   type AppStateResponse,
+  type PersistRecord,
 } from "../../appStateApi";
 import { hapticSuccess } from "../../haptics";
 import { appAlert } from "../../components/appDialogs";
@@ -54,13 +55,7 @@ import type {
   PendingGrowthMeasurementDraft,
 } from "../../appContracts";
 
-// App.tsx 里 persistRecord 的精确签名(pending-effect / message 持久化用),经 lateRef 注入。
-type PersistRecord = <T,>(
-  collection: import("../../appStateApi").AppStateCollection,
-  id: string,
-  item: T,
-  options?: { applyResponse?: boolean; mode?: "merge" | "replace" },
-) => Promise<AppStateResponse>;
+// persistRecord 签名统一来源见 appStateApi(评审 P9,原先此处本地又抄了一遍)。
 
 // applyAppSnapshot / persistAlbumItemOptimistic / showSystemWeakNotice / messageForStorage
 // 都在 hook 调用点之后才定义,经此迟绑定 ref 注入。

@@ -62,7 +62,7 @@ import {
   type AlbumMediaDecision,
 } from "../../albumDomain";
 import { ensureMicrophonePermission } from "../../audioPermission";
-import { readAppState, type AppStateCollection, type AppStateResponse, uploadFileAttachment } from "../../appStateApi";
+import { readAppState, type AppStateResponse, type PersistRecord, uploadFileAttachment } from "../../appStateApi";
 import { AsrStreamController, runAsrStream } from "../../asrApi";
 import { makeId, todayISO } from "../../data";
 import { hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarning } from "../../haptics";
@@ -575,12 +575,7 @@ const formatAgentFailureMessage = (error: unknown, attachments: Attachment[]) =>
 // 它们只在事件处理(submitComposerMessage / processSelectedMediaFiles / openMediaPicker)里于触发时读取,
 // call-time 不需要,故迟绑定不改运行时语义(实际触发的永远是最新一次渲染的实现)。
 export type ChatLateDeps = {
-  persistRecord: <T,>(
-    collection: AppStateCollection,
-    id: string,
-    item: T,
-    options?: { applyResponse?: boolean; mode?: "merge" | "replace" },
-  ) => Promise<AppStateResponse>;
+  persistRecord: PersistRecord;
   applyStateResponse: (response: { state: Partial<AppStateSnapshot> }) => void;
   persistAlbumItemOptimistic: (item: AlbumItem) => Promise<AppStateResponse>;
   showSystemWeakNotice: (message: string, tone?: "info" | "success" | "warning", durationMs?: number) => void;

@@ -42,7 +42,7 @@ import { initialProfile } from "../../data";
 import { blankProfile, clearLocalAppState, hasCompleteProfile, normalizeProTrialStatus, splitListText, suggestedFamilyName } from "../../appStateDomain";
 import { appConfirm } from "../../components/appDialogs";
 import { clearCachedSnapshot } from "../../appStateCache";
-import { readAiUsageSummary, redeemProCode, submitProTrialApplication, type AppStateCollection, type AppStateResponse } from "../../appStateApi";
+import { readAiUsageSummary, redeemProCode, submitProTrialApplication, type AppStateResponse, type PersistRecord } from "../../appStateApi";
 import {
   AuthFamily,
   AuthMember,
@@ -75,12 +75,7 @@ export type SessionLateDeps = {
   setRecordsAssistantOpen: (value: false) => void;
   openReminderManagement: () => void;
   showSystemWeakNotice: (message: string, tone?: "info" | "success" | "warning", durationMs?: number) => void;
-  persistRecord: <T,>(
-    collection: AppStateCollection,
-    id: string,
-    item: T,
-    options?: { applyResponse?: boolean; mode?: "merge" | "replace" },
-  ) => Promise<AppStateResponse>;
+  persistRecord: PersistRecord;
   loadStateFromBackend: (
     options?: { importLegacy: boolean; onboardingRequired?: boolean; accountKey?: string | null },
   ) => Promise<AppStateResponse>;
