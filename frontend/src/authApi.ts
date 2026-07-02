@@ -1,3 +1,5 @@
+import { normalizeFamilyMembers, normalizeInviteRoleOptions } from "./authContract";
+
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
 export const apiBaseUrl = trimTrailingSlash(import.meta.env.VITE_AGENT_API_BASE_URL ?? "http://localhost:8080");
@@ -162,6 +164,16 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   }
 }
 
+// 评审 P6:登录/刷新响应必须带有效 accessToken,否则显式抛错——避免 setAuthToken(undefined) 把字符串
+// "undefined" 写进 localStorage,后续请求携带假 token 反复 401、把秒开缓存也带崩。登录网关的
+// user/family/member 对象不臆造默认值(伪造会静默放行错误权限),缺失即失败交给调用方。
+function requireAccessToken(payload: AuthLoginResponse): AuthLoginResponse {
+  if (!payload || typeof payload.accessToken !== "string" || payload.accessToken.length === 0) {
+    throw new Error("登录响应缺少有效的访问令牌，请稍后再试。");
+  }
+  return payload;
+}
+
 export async function parseError(response: Response, fallback: string) {
   try {
     const body = (await response.json()) as ApiErrorResponse;
@@ -183,7 +195,7 @@ export async function loginWithInvite(
     body: JSON.stringify({ phone, inviteCode, roleName, caregiver }),
   });
   if (!response.ok) throw new Error(await parseError(response, "登录失败，请稍后再试。"));
-  const payload = (await response.json()) as AuthLoginResponse;
+  const payload = requireAccessToken((await response.json()) as AuthLoginResponse);
   setAuthToken(payload.accessToken);
   return payload;
 }
@@ -193,7 +205,8 @@ export async function readInviteRoleOptions(inviteCode: string, phone?: string, 
   if (phone) params.set("phone", phone);
   const response = await apiFetch(`${apiBaseUrl}/api/auth/invite/roles?${params.toString()}`, { signal });
   if (!response.ok) throw new Error(await parseError(response, "邀请码暂时无法确认，请稍后再试。"));
-  return (await response.json()) as InviteRoleOptionsResponse;
+  // 评审 P6:三组角色数组恒为数组,防登录页 occupiedRoles.filter 白屏。
+  return normalizeInviteRoleOptions(await response.json());
 }
 
 export async function readCurrentUser(): Promise<AuthMeResponse> {
@@ -229,7 +242,7 @@ export async function refreshAccessToken(): Promise<AuthLoginResponse> {
     headers: authHeaders(),
   });
   if (!response.ok) throw new Error(await parseError(response, "登录已失效，请重新登录。"));
-  const payload = (await response.json()) as AuthLoginResponse;
+  const payload = requireAccessToken((await response.json()) as AuthLoginResponse);
   setAuthToken(payload.accessToken);
   return payload;
 }
@@ -257,7 +270,8 @@ export async function readFamilyMembers(): Promise<FamilyMembersResponse> {
     headers: authHeaders(),
   });
   if (!response.ok) throw new Error(await parseError(response, "家庭成员加载失败，请稍后再试。"));
-  return (await response.json()) as FamilyMembersResponse;
+  // 评审 P6:members 恒为数组,防成员页 members.map/.length 白屏。
+  return normalizeFamilyMembers(await response.json());
 }
 
 export async function removeFamilyMember(userId: string): Promise<void> {

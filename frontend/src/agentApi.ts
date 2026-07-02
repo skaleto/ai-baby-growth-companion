@@ -1,5 +1,6 @@
 import { AgentChatRequest, AgentChatResponse, ConversationSummary, ToolActivity } from "./types";
 import { apiBaseUrl, apiFetch, authHeaders } from "./authApi";
+import { normalizeAgentChatResponse } from "./agentContract";
 
 type ApiErrorResponse = {
   code?: string;
@@ -55,7 +56,8 @@ export async function runAgentChat(request: AgentChatRequest): Promise<AgentChat
     throw await toAgentError(response, "AI 服务请求失败");
   }
 
-  return (await response.json()) as AgentChatResponse;
+  // 评审 P6:统一归一数组字段,防下游 null.filter 白屏。
+  return normalizeAgentChatResponse(await response.json());
 }
 
 type StreamHandlers = {
@@ -108,7 +110,8 @@ export async function runAgentChatStream(
     if (!data) return;
 
     if (event === "final") {
-      finalResponse = JSON.parse(data) as AgentChatResponse;
+      // 评审 P6:同步归一 SSE 最终结果的数组字段(与非流式 runAgentChat 一致口径)。
+      finalResponse = normalizeAgentChatResponse(JSON.parse(data));
       return;
     }
 
