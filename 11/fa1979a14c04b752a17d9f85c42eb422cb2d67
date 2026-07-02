@@ -1,0 +1,33 @@
+frontend/src/appStateApi.ts
+  s_139cb91c084610::t_c88b805199fd3a 24-35
+frontend/src/features/chat/useChatState.ts
+  s_139cb91c084610::t_0df8aa57d9d45c 65,578
+frontend/src/features/ledger/useLedgerState.ts
+  s_139cb91c084610::t_41677763453302 36,118-119
+frontend/src/features/pendingEffects/usePendingEffects.ts
+  s_139cb91c084610::t_587ac060335d8f 35,58
+frontend/src/features/records/useRecordsState.ts
+  s_139cb91c084610::t_f8576b43e04d21 50,69-70
+frontend/src/features/reminders/useRemindersState.ts
+  s_139cb91c084610::t_6603f438e23a7b 43,46,48-49
+frontend/src/features/session/useSessionState.ts
+  s_139cb91c084610::t_4ae034e8689d34 45,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "11fa1979a14c04b752a17d9f85c42eb422cb2d67",
+  "prompts": {},
+  "sessions": {
+    "s_139cb91c084610": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf1d1ca-7c6d-40f7-b40a-89f7f6c5bd7a",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
