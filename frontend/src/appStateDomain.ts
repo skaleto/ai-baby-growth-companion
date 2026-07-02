@@ -610,15 +610,24 @@ export const normalizeEventClockText = (timeValue: unknown, noteValue: unknown) 
   return directTime ?? noteTime;
 };
 
+// 护理事件标题的单一来源(评审 P5)。careLogHelpers 的 careEventTitleMap 直接复用本表,
+// 不再各自维护一份同值字面量。注意:这些是「自然语言标题/标签」文案(喝奶/睡觉),与时间线卡片的
+// RECORD_EVENT_TYPES(喂奶/睡眠)、下拉 CARE_EVENT_TYPE_OPTIONS(note→其他)是有意的不同文案,勿合并。
+export const CARE_EVENT_TITLES: Record<CareLogEventType, string> = {
+  milk: "喝奶",
+  sleep: "睡觉",
+  wake: "醒来",
+  poop: "便便",
+  solid: "辅食",
+  temperature: "体温",
+  soothing: "哄睡",
+  note: "照护记录",
+};
+
+// 与原 if 链逐字等价:已知的非 note 类型返回其固定标题(忽略 fallback);note 及未知类型用 fallback || 照护记录。
 export const canonicalCareEventTitle = (type: CareLogEventType, fallback?: string) => {
-  if (type === "milk") return "喝奶";
-  if (type === "sleep") return "睡觉";
-  if (type === "wake") return "醒来";
-  if (type === "poop") return "便便";
-  if (type === "solid") return "辅食";
-  if (type === "temperature") return "体温";
-  if (type === "soothing") return "哄睡";
-  return fallback || "照护记录";
+  if (type !== "note" && CARE_EVENT_TITLES[type]) return CARE_EVENT_TITLES[type];
+  return fallback || CARE_EVENT_TITLES.note;
 };
 
 export const canonicalCareEventTags = (type: CareLogEventType, tags: string[]) => {

@@ -32,9 +32,9 @@ const SRC = "frontend/src";
 const DEFAULT_MAX = 400;
 // 当前 > DEFAULT_MAX 的文件,逐个钉在当前行数(2026-07-01 大拆分收尾态)。降了就把这里也调低。
 const CEILINGS = {
-  "App.tsx": 3496, // 容器/编排根(9690→3495;评审 P2 去掉 3 个 mutatorsRef 迟绑定间接层后再降 -189)
+  "App.tsx": 3467, // 容器/编排根(9690→3466;评审 P5 把手动记录常量/校验抽到 manualRecordSpec 后再降 -29)
   "features/chat/useChatState.ts": 1878, // chat 逻辑 hook(最大功能簇,后续可再分 voice/media 子 hook)
-  "appStateDomain.ts": 1024,
+  "appStateDomain.ts": 1027, // 评审 P5 抽出 CARE_EVENT_TITLES 单一来源 +3(P7 将整体拆分,届时大幅回落)
   "screens/ChatScreen.tsx": 1001,
   "screens/RecordsScreen.tsx": 789,
   "features/preview/usePreviewState.ts": 606,

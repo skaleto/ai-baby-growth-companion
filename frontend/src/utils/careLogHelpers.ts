@@ -1,18 +1,10 @@
 import { albumCategoryFromTags } from "../albumDomain";
-import { canonicalCareEventTitle, formatDate, normalizeClockText } from "../appStateDomain";
+import { CARE_EVENT_TITLES, canonicalCareEventTitle, formatDate, normalizeClockText } from "../appStateDomain";
 import { makeId, todayISO } from "../data";
 import type { AlbumItemCategory, CareLog, CareLogEvent, CareLogEventType } from "../types";
 
-export const careEventTitleMap: Record<CareLogEventType, string> = {
-  milk: "喝奶",
-  sleep: "睡觉",
-  wake: "醒来",
-  poop: "便便",
-  solid: "辅食",
-  temperature: "体温",
-  soothing: "哄睡",
-  note: "照护记录",
-};
+// 评审 P5:护理事件标题只有一份来源(appStateDomain 的 CARE_EVENT_TITLES);此处复用,不再另抄一份字面量。
+export const careEventTitleMap: Record<CareLogEventType, string> = CARE_EVENT_TITLES;
 
 export const soothingText = {
   easy: "好哄睡",

@@ -128,6 +128,18 @@ import {
   type RecordView,
 } from "./appOptions";
 import {
+  MANUAL_MILK_AMOUNTS,
+  MANUAL_MILK_NOTES,
+  MANUAL_POOP_NOTES,
+  MANUAL_RECORD_TYPES,
+  MANUAL_SLEEP_DURATIONS,
+  MANUAL_SOLID_NOTES,
+  MANUAL_TEMPERATURE_OPTIONS,
+  MANUAL_TIME_PRESETS,
+  manualCareNoteDefault,
+  manualCareValidationError,
+} from "./manualRecordSpec";
+import {
   addDays,
   addMonths,
   ageLabel,
@@ -226,7 +238,6 @@ import type {
   GrowthTrendMetric,
   ManualNumericDraftKey,
   ManualRecordKind,
-  ManualRecordTypeOption,
   MediaUploadStatus,
   PendingCareDraft,
   PendingGrowthDraft,
@@ -453,34 +464,7 @@ const formatGrowthMeasurementValue = (value: number, type: GrowthMeasurementType
   return `${value.toFixed(decimals).replace(/\.?0+$/, "")}${meta.unit}`;
 };
 
-const MANUAL_RECORD_TYPES: ManualRecordTypeOption[] = [
-  { type: "milk", label: "喂奶", hint: "奶量、亲喂或配方奶" },
-  { type: "sleep", label: "睡眠", hint: "睡了多久、醒来情况" },
-  { type: "poop", label: "便便尿布", hint: "便便、尿布状态" },
-  { type: "temperature", label: "体温", hint: "测量温度" },
-  { type: "solid", label: "辅食", hint: "辅食品类和接受度" },
-];
-
-const MANUAL_TIME_PRESETS = [
-  { label: "现在", offsetMinutes: 0 },
-  { label: "15 分钟前", offsetMinutes: 15 },
-  { label: "30 分钟前", offsetMinutes: 30 },
-  { label: "1 小时前", offsetMinutes: 60 },
-];
-
-const MANUAL_MILK_AMOUNTS = [60, 90, 120, 150, 180];
-const MANUAL_MILK_NOTES = ["母乳", "配方奶", "亲喂", "混合喂养"];
-const MANUAL_SLEEP_DURATIONS = [
-  { label: "20 分钟", value: "0.33" },
-  { label: "30 分钟", value: "0.5" },
-  { label: "45 分钟", value: "0.75" },
-  { label: "1 小时", value: "1" },
-  { label: "1.5 小时", value: "1.5" },
-  { label: "2 小时", value: "2" },
-];
-const MANUAL_TEMPERATURE_OPTIONS = [36.5, 36.8, 37.0, 37.3, 37.5, 38.0];
-const MANUAL_POOP_NOTES = ["尿布偏湿", "尿布很满", "黄色软便", "绿色便便", "干硬便便"];
-const MANUAL_SOLID_NOTES = ["米粉少量", "南瓜泥", "苹果泥", "胡萝卜泥", "接受度不错", "少量尝试"];
+// 手动记录的类型清单 / 快捷预设 / 默认 note / 保存校验 已抽到 manualRecordSpec.ts(评审 P5,顶部 import)。
 
 const createCareEventDraft = (type: CareLogEventType = "milk"): CareEventDraft => ({
   type,
@@ -488,7 +472,7 @@ const createCareEventDraft = (type: CareLogEventType = "milk"): CareEventDraft =
   amountMl: "",
   durationHours: "",
   temperature: "",
-  note: type === "poop" ? MANUAL_POOP_NOTES[0] : type === "solid" ? MANUAL_SOLID_NOTES[0] : "",
+  note: manualCareNoteDefault(type),
 });
 
 const timePresetValue = (offsetMinutes: number) => {
@@ -2392,23 +2376,10 @@ function App() {
     const durationHours = manualRecordKind === "sleep" && careEventDraft.durationHours ? Number(careEventDraft.durationHours) : undefined;
     const temperature = manualRecordKind === "temperature" && careEventDraft.temperature ? Number(careEventDraft.temperature) : undefined;
 
-    if (manualRecordKind === "milk" && (typeof amountMl !== "number" || !Number.isFinite(amountMl) || amountMl <= 0)) {
-      showSystemWeakNotice("请输入这次喂奶的奶量。", "warning");
-      return;
-    }
-    if (manualRecordKind === "sleep" && (typeof durationHours !== "number" || !Number.isFinite(durationHours) || durationHours <= 0)) {
-      showSystemWeakNotice("请输入这段睡眠的时长。", "warning");
-      return;
-    }
-    if (
-      manualRecordKind === "temperature" &&
-      (typeof temperature !== "number" || !Number.isFinite(temperature) || temperature < 34 || temperature > 42)
-    ) {
-      showSystemWeakNotice("请输入 34-42°C 之间的体温。", "warning");
-      return;
-    }
-    if ((manualRecordKind === "poop" || manualRecordKind === "solid") && !note) {
-      showSystemWeakNotice("请选择这次记录的状态。", "warning");
+    // 评审 P5:每类校验规则收敛到 manualRecordSpec,命中即弱提示并中止(文案与判定口径逐条等价)。
+    const validationError = manualCareValidationError(manualRecordKind, { amountMl, durationHours, temperature, note });
+    if (validationError) {
+      showSystemWeakNotice(validationError, "warning");
       return;
     }
 
