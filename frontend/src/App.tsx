@@ -306,12 +306,10 @@ import {
   expenseFromDraft,
   useLedgerState,
   type ExpenseDraft,
-  type LedgerMutators,
 } from "./features/ledger/useLedgerState";
-import { useRemindersState, type RemindersMutators } from "./features/reminders/useRemindersState";
+import { useRemindersState } from "./features/reminders/useRemindersState";
 import {
   useRecordsState,
-  type RecordsMutators,
   type RecordsLateDeps,
 } from "./features/records/useRecordsState";
 import { usePendingEffects, type PendingEffectsLateDeps } from "./features/pendingEffects/usePendingEffects";
@@ -992,7 +990,7 @@ function App() {
   // 中央服务端状态 STORE(13 个 collection 集合 + 归一化 memo + setX 包装 + 持久化/同步函数)已抽到
   // useAppStore。它被 session 与每个 feature hook 消费,故在**最顶部**调用,返回值解构回与原来同名的
   // 局部变量(profile / messages / careLogs / setMessages / persistRecord / applyAppSnapshot …),
-  // 故 App 其余引用(feature hooks 的 deps、各 mutatorsRef.current、boot 编排)一律照常。
+  // 故 App 其余引用(feature hooks 的 deps、persistRecord/deleteAppRecord 值参、boot 编排)一律照常。
   // 排序约束:本 hook 调用最早,但其函数依赖的 setProTrial / setOnboardingRequired / authUser /
   // authFamily / proTrial(来自更晚调用的 useSessionState)与 setStorageStatus / backendReadyRef
   // (App-local,定义在本调用点之后)全部经 storeLateRef 注入(镜像 sessionLateRef 模式);App 在它们
@@ -1249,34 +1247,11 @@ function App() {
       throw new Error("messageForStorage not ready");
     }) as ChatLateDeps["messageForStorage"],
   });
-  // persistRecord / deleteAppRecord 在下方才定义,故经 ref 注入(沿用本文件 remindersHandlersRef 的间接模式);
-  // 定义后每次渲染都无条件刷新这个 ref(见 deleteAppRecord 定义处的赋值)。
-  const ledgerMutatorsRef = useRef<LedgerMutators>({
-    persistRecord: (() => {
-      throw new Error("persistRecord not ready");
-    }) as LedgerMutators["persistRecord"],
-    deleteAppRecord: (() => {
-      throw new Error("deleteAppRecord not ready");
-    }) as LedgerMutators["deleteAppRecord"],
-  });
-  const remindersMutatorsRef = useRef<RemindersMutators>({
-    persistRecord: (() => {
-      throw new Error("persistRecord not ready");
-    }) as RemindersMutators["persistRecord"],
-    deleteAppRecord: (() => {
-      throw new Error("deleteAppRecord not ready");
-    }) as RemindersMutators["deleteAppRecord"],
-  });
-  const recordsMutatorsRef = useRef<RecordsMutators>({
-    persistRecord: (() => {
-      throw new Error("persistRecord not ready");
-    }) as RecordsMutators["persistRecord"],
-    deleteAppRecord: (() => {
-      throw new Error("deleteAppRecord not ready");
-    }) as RecordsMutators["deleteAppRecord"],
-  });
+  // 评审 P2:persistRecord 现由 useAppStore 以 useCallback 稳定、deleteAppRecord 为模块导入,
+  // 两者引用恒稳且在 STORE 解构点(上方)后即在作用域内,故 ledger/reminders/records 三个 hook
+  // 直接按值收 persistRecord / deleteAppRecord,不再需要 mutatorsRef 迟绑定间接层。
   // handleAddGrowthMeasurement 用的 showSystemWeakNotice 的 useCallback 定义在 hook 调用点之后才就绪,
-  // 经此迟绑定 ref 注入;在下方 mutators 赋值点同处刷新(那时它已就绪)。
+  // 仍经此迟绑定 ref 注入;在下方每次渲染刷新(那时它已就绪)。
   const recordsLateRef = useRef<RecordsLateDeps>({
     showSystemWeakNotice: () => undefined,
   });
@@ -1351,7 +1326,7 @@ function App() {
     requestBulkDeleteExpenses,
     closeBulkDeleteExpenses,
     confirmBulkDeleteExpenses,
-  } = useLedgerState({ expenses, setExpenses, canCaregive, todayDate, setStorageStatus, mutatorsRef: ledgerMutatorsRef });
+  } = useLedgerState({ expenses, setExpenses, canCaregive, todayDate, setStorageStatus, persistRecord, deleteAppRecord });
   const {
     reminderManagementOpen,
     setReminderManagementOpen,
@@ -1400,7 +1375,8 @@ function App() {
     cancelNativeReminder,
     reminderFromDraft,
     addReminderHistory,
-    mutatorsRef: remindersMutatorsRef,
+    persistRecord,
+    deleteAppRecord,
   });
   const {
     recordView,
@@ -1471,7 +1447,8 @@ function App() {
     setStorageStatus,
     setActiveMobileTab,
     createCareEventDraft,
-    mutatorsRef: recordsMutatorsRef,
+    persistRecord,
+    deleteAppRecord,
     lateRef: recordsLateRef,
   });
   // pending-effect(待确认副作用)/ album-prompt(相册提示)一族抽到 usePendingEffects。同 records:在 canCaregive
@@ -1969,13 +1946,6 @@ function App() {
     setStorageStatus,
     backendReadyRef,
   };
-  // useLedgerState 在调用点更早,经此 ref 取用 STORE 返回的 mutators;每次渲染都无条件刷新。
-  // deleteAppRecord 为模块导入(全程可用),persistRecord 在此处定义后两者皆就绪。
-  ledgerMutatorsRef.current = { persistRecord, deleteAppRecord };
-  // useRemindersState 同理在调用点更早;persistRecord / deleteAppRecord 在此处都已就绪。
-  remindersMutatorsRef.current = { persistRecord, deleteAppRecord };
-  // useRecordsState 同理在调用点更早;persistRecord / deleteAppRecord 在此处都已就绪。
-  recordsMutatorsRef.current = { persistRecord, deleteAppRecord };
   // showSystemWeakNotice 的 useCallback 定义在 useRecordsState 调用点之后、此处之前,故在此处刷新迟绑定 ref。
   recordsLateRef.current = { showSystemWeakNotice };
   // useSessionState 在调用点最早(canCaregive 之前);其迟绑定依赖(canCaregive / records hook 的

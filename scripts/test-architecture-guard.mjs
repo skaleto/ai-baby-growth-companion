@@ -11,12 +11,16 @@
 //   - 《Building Evolutionary Architectures》的 architecture fitness functions(把架构约束写成可执行、进 CI 的测试)
 // 本仓库无 ESLint / dependency-cruiser,沿用既有 scripts/test-*.mjs 的 fitness-function 风格:零重依赖、直接编码本轮成果与教训。
 //
-// 三条规则:
+// 四条规则:
 //   R1 文件行数棘轮:frontend/src 下每个文件 ≤ 其上限(已知大文件在 CEILINGS 里逐个钉死,其余默认 ≤ DEFAULT_MAX)。
 //      只许降不许升。合理新增导致某文件涨:在同一改动里把它的上限「有意识」调到新值并注明;新文件超 DEFAULT_MAX:要么拆,要么登记进 CEILINGS。
 //   R2 分层单向依赖:features/** 与 screens/** 不得从 "App" import(值或类型)。共享类型走 appContracts,共享逻辑走 utils/features。
 //      强制「容器 App → 功能 hook → 视图组件」单向依赖,消灭反向依赖与环(本轮已把这个数从 6 降到 0)。
 //   R3 useState 密度:单文件 useState 调用数 ≤ USESTATE_MAX(上帝类最直观信号——拆分前 App.tsx 有 104 个)。
+//   R4 STORE mutator 引用稳定(评审 P2):useAppStore.ts 里 applyAppSnapshot / applyStateResponse / persistRecord 必须 useCallback 包裹。
+//      ledger/reminders/records 三个 hook 现按值收 persistRecord(不再经 mutatorsRef 迟绑定间接层),其内部 useCallback/事件闭包
+//      直接捕获该引用。一旦有人把 persistRecord 退回每渲染重建的普通函数,闭包会「静默」捕获旧值(无类型错误、单测未必红)——
+//      本规则把这条隐性契约钉成 CI 门。见 docs/architecture/cross-platform-principles.md §5。
 
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -28,7 +32,7 @@ const SRC = "frontend/src";
 const DEFAULT_MAX = 400;
 // 当前 > DEFAULT_MAX 的文件,逐个钉在当前行数(2026-07-01 大拆分收尾态)。降了就把这里也调低。
 const CEILINGS = {
-  "App.tsx": 3685, // 容器/编排根(9690→3684,仍是最大文件;继续降是好事,但已非上帝类)
+  "App.tsx": 3496, // 容器/编排根(9690→3495;评审 P2 去掉 3 个 mutatorsRef 迟绑定间接层后再降 -189)
   "features/chat/useChatState.ts": 1878, // chat 逻辑 hook(最大功能簇,后续可再分 voice/media 子 hook)
   "appStateDomain.ts": 1024,
   "screens/ChatScreen.tsx": 1001,
@@ -40,7 +44,7 @@ const CEILINGS = {
   "albumPhotoSwipe.ts": 491,
   "types.ts": 462,
   "screens/RemindersScreen.tsx": 439,
-  "features/records/useRecordsState.ts": 437,
+  "features/records/useRecordsState.ts": 428, // 评审 P2:去 mutatorsRef、改收 persistRecord/deleteAppRecord 值参后 -9
   "views/LedgerView.tsx": 432,
   "albumDomain.ts": 417,
   "mediaCache.ts": 416,
@@ -106,6 +110,22 @@ for (const file of files) {
   }
 }
 
+// ── R4:STORE mutator 引用稳定(评审 P2)。ledger/reminders/records 按值收 persistRecord 依赖它 useCallback 恒稳。
+const STORE_FILE = path.join(SRC, "features/store/useAppStore.ts");
+const STABLE_MUTATORS = ["applyAppSnapshot", "applyStateResponse", "persistRecord"];
+const storeSrc = readFileSync(STORE_FILE, "utf8");
+for (const name of STABLE_MUTATORS) {
+  // 允许 `const persistRecord = useCallback(` 或带类型参数 `useCallback<...>` / `useCallback(async`。
+  const stable = new RegExp(`const\\s+${name}\\s*=\\s*useCallback[<(]`).test(storeSrc);
+  if (!stable) {
+    violations.push(
+      `R4 STORE mutator 引用不稳:useAppStore.ts 里 ${name} 未用 useCallback 包裹——` +
+        `ledger/reminders/records 已按值收 persistRecord(不再经 mutatorsRef),依赖其引用恒稳;` +
+        `退回每渲染重建的普通函数会让下游闭包静默捕获旧值。请保持 const ${name} = useCallback(...)。`,
+    );
+  }
+}
+
 if (violations.length) {
   console.error("架构守卫失败:\n" + violations.map((v) => "  ✗ " + v).join("\n"));
   assert.fail(`${violations.length} 条架构规则违规(见上)。防上帝类复发:拆分 / 归位 / 或有意识调棘轮并注明。`);
@@ -113,5 +133,6 @@ if (violations.length) {
 
 console.log(
   `architecture guard passed:${files.length} 文件全部满足 R1 行数棘轮(${Object.keys(CEILINGS).length} 个已登记大文件 + 默认 ≤${DEFAULT_MAX})、` +
-    `R2 分层单向依赖(features/screens/views/components 零 App 反向依赖)、R3 useState 密度 ≤${USESTATE_MAX}。`,
+    `R2 分层单向依赖(features/screens/views/components 零 App 反向依赖)、R3 useState 密度 ≤${USESTATE_MAX}、` +
+    `R4 STORE mutator(${STABLE_MUTATORS.join(" / ")})引用 useCallback 恒稳。`,
 );

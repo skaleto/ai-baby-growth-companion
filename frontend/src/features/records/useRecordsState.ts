@@ -4,16 +4,15 @@
 // 行为与抽出前逐字节一致——只是搬家,不改运行时语义。
 //
 // 调用约定(Option B):App.tsx 在 `canCaregive` 之后「提前」调用本 hook,并把返回值
-// 解构回与原来同名的局部变量,因此 App.tsx 里其余引用一律照常编译。`persistRecord` /
-// `deleteAppRecord` 在 App.tsx 里定义得比调用点晚,故通过 `mutatorsRef` 注入(沿用
-// App.tsx 既有的 `...Ref.current` 间接模式;ledger / reminders 同此模式);App 在它们就绪
-// 之后每次渲染都无条件刷新该 ref。早于调用点存在的依赖(canCaregive / profile / setProfile /
+// 解构回与原来同名的局部变量,因此 App.tsx 里其余引用一律照常编译。`persistRecord`
+// (useAppStore 内 useCallback 稳定)/ `deleteAppRecord`(模块级 import)引用稳定,直接按值传入。
+// 早于调用点存在的依赖(canCaregive / profile / setProfile /
 // growthEvents / setGrowthEvents / growthMeasurements / setGrowthMeasurements / careLogs /
 // setCareLogs / setStorageStatus / setActiveMobileTab 等)按值传入。
 //
 // 与 ledger / reminders 抽取的偏差:
 //  1) `showSystemWeakNotice`(handleAddGrowthMeasurement 用)的 useCallback 定义在 hook 调用点之后,
-//     故经迟绑定 ref `lateRef` 注入,App 在 mutators 赋值点同处刷新(那时它已就绪)。
+//     故经迟绑定 ref `lateRef` 注入,App 在其定义之后每次渲染刷新该 ref(那时它已就绪)。
 //  2) `RecordEvent` / `CareEventDraft` / `RecordsEntryDrawer` 是 App.tsx 内定义并导出的本地类型,
 //     本 hook 仅做「类型」import(编译期擦除,不形成运行时循环依赖)。
 //  3) `recordsScreenHandlersRef` / `recordsScreenHandlers`(喂给 memo 化 <RecordsScreen/> 的稳定
@@ -64,12 +63,6 @@ type GrowthMeasurementDraft = {
   note: string;
 };
 
-// App.tsx 里 persistRecord / deleteAppRecord 的精确签名,经 mutatorsRef 注入。
-export type RecordsMutators = {
-  persistRecord: PersistRecord;
-  deleteAppRecord: DeleteAppRecord;
-};
-
 // showSystemWeakNotice(handleAddGrowthMeasurement 用)的 useCallback 定义在 hook 调用点之后,经此迟绑定 ref 注入。
 export type RecordsLateDeps = {
   showSystemWeakNotice: (message: string, tone?: "info" | "success" | "warning", durationMs?: number) => void;
@@ -89,7 +82,9 @@ export type UseRecordsStateDeps = {
   setActiveMobileTab: (action: SetStateAction<MobileTab>) => void;
   // careEventDraft 的 useState 初值用;createCareEventDraft 留在 App(被 manual-record 一族复用),按值传入。
   createCareEventDraft: (type: CareEventDraft["type"]) => CareEventDraft;
-  mutatorsRef: MutableRefObject<RecordsMutators>;
+  // App.tsx 里 persistRecord / deleteAppRecord 的精确签名(单一来源见 appStateApi),引用稳定,按值传入。
+  persistRecord: PersistRecord;
+  deleteAppRecord: DeleteAppRecord;
   lateRef: MutableRefObject<RecordsLateDeps>;
 };
 
@@ -106,7 +101,8 @@ export function useRecordsState({
   setStorageStatus,
   setActiveMobileTab,
   createCareEventDraft,
-  mutatorsRef,
+  persistRecord,
+  deleteAppRecord,
   lateRef,
 }: UseRecordsStateDeps) {
   const [recordView, setRecordView] = useState<RecordView>("today");
@@ -149,7 +145,7 @@ export function useRecordsState({
     (code: RegionCode) => {
       const next = { ...profile, vaccineRegion: code };
       setProfile(next);
-      void mutatorsRef.current.persistRecord("profile", "default", next, { applyResponse: true }).catch(() => undefined);
+      void persistRecord("profile", "default", next, { applyResponse: true }).catch(() => undefined);
     },
     [profile],
   );
@@ -160,7 +156,7 @@ export function useRecordsState({
       const records = done ? [...rest, { doseId, date: todayISO() }] : rest;
       const next = { ...profile, vaccineRecords: records };
       setProfile(next);
-      void mutatorsRef.current.persistRecord("profile", "default", next, { applyResponse: true }).catch(() => undefined);
+      void persistRecord("profile", "default", next, { applyResponse: true }).catch(() => undefined);
       hapticSuccess();
     },
     [profile, canCaregive],
@@ -208,7 +204,7 @@ export function useRecordsState({
       tags: [milestoneTag(milestone.id)],
     }, 0);
     setGrowthEvents((current) => [...current, growth]);
-    void mutatorsRef.current.persistRecord("growthEvents", growth.id, growth).catch(() => setStorageStatus("offline"));
+    void persistRecord("growthEvents", growth.id, growth).catch(() => setStorageStatus("offline"));
     hapticSuccess();
   }, [canCaregive]);
 
@@ -245,7 +241,7 @@ export function useRecordsState({
       });
       return updated ? next : [...next, measurement];
     });
-    void mutatorsRef.current.persistRecord("growthMeasurements", measurement.id, measurement).catch(() => setStorageStatus("offline"));
+    void persistRecord("growthMeasurements", measurement.id, measurement).catch(() => setStorageStatus("offline"));
     if (editingGrowthMeasurementId) {
       resetGrowthMeasurementDraft();
     } else {
@@ -269,7 +265,7 @@ export function useRecordsState({
     if (!canCaregive) return;
     if (editingGrowthMeasurementId === id) resetGrowthMeasurementDraft();
     setGrowthMeasurements((current) => current.filter((item) => item.id !== id));
-    void mutatorsRef.current.deleteAppRecord("growthMeasurements", id).catch(() => setStorageStatus("offline"));
+    void deleteAppRecord("growthMeasurements", id).catch(() => setStorageStatus("offline"));
   };
 
   // clearRecordsEntryDrawerCloseTimer / closeRecordsEntryDrawer / openManualRecordDrawer 见上方第 4 条偏差,留在 App.tsx。
@@ -327,7 +323,7 @@ export function useRecordsState({
     });
 
     setCareLogs((current) => current.map((item) => (item.id === nextLog.id ? nextLog : item)));
-    void mutatorsRef.current.persistRecord("careLogs", nextLog.id, nextLog, { applyResponse: true, mode: "replace" }).catch(() => {
+    void persistRecord("careLogs", nextLog.id, nextLog, { applyResponse: true, mode: "replace" }).catch(() => {
       setStorageStatus("offline");
     });
     setEditingCareEventId("");

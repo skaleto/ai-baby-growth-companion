@@ -4,10 +4,9 @@
 // 行为与抽出前逐字节一致——只是搬家,不改运行时语义。
 //
 // 调用约定(Option B):App.tsx 在 `canCaregive` 之后「提前」调用本 hook,并把返回值
-// 解构回与原来同名的局部变量,因此 App.tsx 里其余引用一律照常编译。`persistRecord` /
-// `deleteAppRecord` 在 App.tsx 里定义得比调用点晚,故通过 `mutatorsRef` 注入(沿用
-// App.tsx 既有的 `...Ref.current` 间接模式);App 在 `deleteAppRecord` 定义之后每次渲染
-// 都无条件刷新该 ref。`setStorageStatus` 定义得早,直接按值传入。
+// 解构回与原来同名的局部变量,因此 App.tsx 里其余引用一律照常编译。`persistRecord`
+// (useAppStore 内 useCallback 稳定)/ `deleteAppRecord`(模块级 import)引用稳定,直接按值传入;
+// `setStorageStatus` 定义得早,同样按值传入。
 //
 // `createExpenseDraft` / `expenseDraftFromExpense` / `expenseFromDraft` / `ExpenseDraft`
 // 原本是 App.tsx 的模块内私有定义,且仍被留在 App.tsx 的代码(pending-effect 草稿、
@@ -15,7 +14,6 @@
 // 导出,App.tsx 改为从本模块 import 回去。
 import {
   type FormEvent,
-  type MutableRefObject,
   type SetStateAction,
   useCallback,
   useMemo,
@@ -113,19 +111,15 @@ export function expenseFromDraft(draft: ExpenseDraft, existing?: ExpenseItem): E
   );
 }
 
-// App.tsx 里 persistRecord / deleteAppRecord 的精确签名,经 mutatorsRef 注入。
-export type LedgerMutators = {
-  persistRecord: PersistRecord;
-  deleteAppRecord: DeleteAppRecord;
-};
-
 export type UseLedgerStateDeps = {
   expenses: ExpenseItem[];
   setExpenses: (action: SetStateAction<ExpenseItem[]>) => void;
   canCaregive: boolean;
   todayDate: string;
   setStorageStatus: (status: "loading" | "ready" | "offline") => void;
-  mutatorsRef: MutableRefObject<LedgerMutators>;
+  // App.tsx 里 persistRecord / deleteAppRecord 的精确签名(单一来源见 appStateApi),引用稳定,按值传入。
+  persistRecord: PersistRecord;
+  deleteAppRecord: DeleteAppRecord;
 };
 
 export function useLedgerState({
@@ -134,7 +128,8 @@ export function useLedgerState({
   canCaregive,
   todayDate,
   setStorageStatus,
-  mutatorsRef,
+  persistRecord,
+  deleteAppRecord,
 }: UseLedgerStateDeps) {
   const [ledgerView, setLedgerView] = useState<LedgerViewId>("month");
   const [expenseEditorOpen, setExpenseEditorOpen] = useState(false);
@@ -262,7 +257,7 @@ export function useLedgerState({
       );
     });
     try {
-      await mutatorsRef.current.persistRecord("expenses", nextExpense.id, expenseForStorage(nextExpense), { applyResponse: true, mode: "replace" });
+      await persistRecord("expenses", nextExpense.id, expenseForStorage(nextExpense), { applyResponse: true, mode: "replace" });
       closeExpenseEditor();
     } catch {
       setStorageStatus("offline");
@@ -285,7 +280,7 @@ export function useLedgerState({
     setDeleteExpenseTarget(null);
     setExpenses((current) => current.filter((item) => item.id !== target.id));
     try {
-      await mutatorsRef.current.deleteAppRecord("expenses", target.id);
+      await deleteAppRecord("expenses", target.id);
     } catch {
       setStorageStatus("offline");
     }
@@ -339,7 +334,7 @@ export function useLedgerState({
     setExpenseBulkMode(false);
     for (const id of targets) {
       try {
-        await mutatorsRef.current.deleteAppRecord("expenses", id);
+        await deleteAppRecord("expenses", id);
       } catch {
         setStorageStatus("offline");
       }

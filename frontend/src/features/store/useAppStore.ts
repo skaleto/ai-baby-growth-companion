@@ -25,7 +25,7 @@
 //    只调用本 hook 返回的 loadStateFromBackend / applyAppSnapshot / cacheBackendState 与 session setters;
 //  - attachmentForStorage / messageForStorage / albumItemForStorage / persistAlbumItemOptimistic:
 //    与 chat/album 序列化耦合,留在 App(persistRecord 已从本 hook 返回,它们照常调用)。
-import { type MutableRefObject, type SetStateAction, useMemo, useRef } from "react";
+import { type MutableRefObject, type SetStateAction, useCallback, useMemo, useRef } from "react";
 import { useStoredState } from "../../storage";
 import {
   importAppState,
@@ -174,7 +174,10 @@ export function useAppStore({ lateRef }: UseAppStoreDeps) {
     proTrial: lateRef.current.proTrial,
   });
 
-  const applyAppSnapshot = (state: Partial<AppStateSnapshot>) => {
+  // 评审 P2:applyAppSnapshot/applyStateResponse/persistRecord 用 useCallback 稳定引用——三者只闭包
+  // useState setter、ref(.current 调用期读最新)与模块级 import,无任何 per-render 反应值,故依赖数组精确且极小。
+  // persistRecord 稳定后,ledger/reminders/records 三个 hook 不再需要 mutatorsRef 间接注入,直接收值参。
+  const applyAppSnapshot = useCallback((state: Partial<AppStateSnapshot>) => {
     if ("profile" in state) setProfile((state.profile ?? blankProfile) as BabyProfile);
     if (state.messages) setMessages(state.messages);
     if (state.growthEvents) setGrowthEvents(state.growthEvents);
@@ -201,7 +204,7 @@ export function useAppStore({ lateRef }: UseAppStoreDeps) {
       setConversationSummary((state.conversationSummary ?? null) as ConversationSummary | null);
     }
     if ("proTrial" in state) lateRef.current.setProTrial(normalizeProTrialStatus(state.proTrial ?? null));
-  };
+  }, []);
 
   const applyEmptyAppSnapshot = () => {
     applyAppSnapshot({
@@ -259,13 +262,13 @@ export function useAppStore({ lateRef }: UseAppStoreDeps) {
     return response;
   };
 
-  const applyStateResponse = (response: { state: Partial<AppStateSnapshot> }) => {
+  const applyStateResponse = useCallback((response: { state: Partial<AppStateSnapshot> }) => {
     applyAppSnapshot(response.state);
     lateRef.current.backendReadyRef.current = true;
     lateRef.current.setStorageStatus("ready");
-  };
+  }, [applyAppSnapshot]);
 
-  const persistRecord = async <T,>(
+  const persistRecord = useCallback(async <T,>(
     collection: AppStateCollection,
     id: string,
     item: T,
@@ -284,7 +287,7 @@ export function useAppStore({ lateRef }: UseAppStoreDeps) {
       lateRef.current.setStorageStatus("offline");
       throw error;
     }
-  };
+  }, [applyStateResponse]);
 
   return {
     // collections + normalize memos

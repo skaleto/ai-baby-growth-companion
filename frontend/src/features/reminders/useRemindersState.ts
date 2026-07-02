@@ -5,10 +5,9 @@
 // 从前完全一致地触发。
 //
 // 调用约定(Option B):App.tsx 在 `canCaregive` 之后「提前」调用本 hook,并把返回值
-// 解构回与原来同名的局部变量,因此 App.tsx 里其余引用一律照常编译。`persistRecord` /
-// `deleteAppRecord` 在 App.tsx 里定义得比调用点晚,故通过
-// `mutatorsRef` 注入(沿用 App.tsx 既有的 `...Ref.current` 间接模式);App 在它们都就绪
-// 之后每次渲染都无条件刷新该 ref。其余在调用点之前就存在的依赖(`canCaregive` /
+// 解构回与原来同名的局部变量,因此 App.tsx 里其余引用一律照常编译。`persistRecord`
+// (useAppStore 内 useCallback 稳定)/ `deleteAppRecord`(模块级 import)引用稳定,直接按值传入。
+// 其余在调用点之前就存在的依赖(`canCaregive` /
 // `careLogs` / `reminders` / `babyNickname` / `withBabyNickname` 以及 App 模块作用域里的
 // 原生调度辅助函数 `scheduleNativeReminders` / `cancelNativeReminder` / `reminderFromDraft`
 // / `addReminderHistory`)按值传入。
@@ -21,7 +20,6 @@
 // 不属于本「提醒管理界面」一族,留在 App.tsx。
 import {
   type FormEvent,
-  type MutableRefObject,
   type SetStateAction,
   useCallback,
   useRef,
@@ -43,12 +41,6 @@ import {
 import { type DeleteAppRecord, type PersistRecord } from "../../appStateApi";
 import type { CareLog, Reminder } from "../../types";
 
-// App.tsx 里 persistRecord / deleteAppRecord 的精确签名,统一经 mutatorsRef 注入(签名单一来源见 appStateApi)。
-export type RemindersMutators = {
-  persistRecord: PersistRecord;
-  deleteAppRecord: DeleteAppRecord;
-};
-
 export type UseRemindersStateDeps = {
   canCaregive: boolean;
   careLogs: CareLog[];
@@ -65,7 +57,9 @@ export type UseRemindersStateDeps = {
   cancelNativeReminder: (reminder: Reminder) => Promise<void>;
   reminderFromDraft: (draft: ReminderDraft, existing?: Reminder) => Reminder;
   addReminderHistory: (reminder: Reminder, entry: string) => Reminder;
-  mutatorsRef: MutableRefObject<RemindersMutators>;
+  // App.tsx 里 persistRecord / deleteAppRecord 的精确签名(单一来源见 appStateApi),引用稳定,按值传入。
+  persistRecord: PersistRecord;
+  deleteAppRecord: DeleteAppRecord;
 };
 
 export function useRemindersState({
@@ -81,7 +75,8 @@ export function useRemindersState({
   cancelNativeReminder,
   reminderFromDraft,
   addReminderHistory,
-  mutatorsRef,
+  persistRecord,
+  deleteAppRecord,
 }: UseRemindersStateDeps) {
   const [reminderManagementOpen, setReminderManagementOpen] = useState(false);
   const [reminderEditorOpen, setReminderEditorOpen] = useState(false);
@@ -173,7 +168,7 @@ export function useRemindersState({
       return Array.from(byId.values()).sort((left, right) => reminderDate(left).localeCompare(reminderDate(right)));
     });
     try {
-      await mutatorsRef.current.persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true });
+      await persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true });
       closeReminderEditor();
     } catch {
       setStorageStatus("offline");
@@ -203,7 +198,7 @@ export function useRemindersState({
       const [scheduledReminder] = await scheduleNativeReminders([baseReminder], { careLogs: [], anchorInterval: false });
       const nextReminder = scheduledReminder ?? baseReminder;
       setReminders((current) => current.map((item) => (item.id === target.id ? nextReminder : item)));
-      void mutatorsRef.current.persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
+      void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
       return;
     }
     const nextReminder: Reminder = {
@@ -215,7 +210,7 @@ export function useRemindersState({
     setReminders((current) =>
       current.map((item) => (item.id === target.id ? nextReminder : item)),
     );
-    void mutatorsRef.current.persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
+    void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
   };
 
   const requestCompleteReminder = (target: Reminder) => {
@@ -262,7 +257,7 @@ export function useRemindersState({
     });
     const nextReminder = scheduledReminder ?? baseReminder;
     setReminders((current) => current.map((item) => (item.id === target.id ? nextReminder : item)));
-    void mutatorsRef.current.persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
+    void persistRecord("reminders", nextReminder.id, nextReminder, { applyResponse: true }).catch(() => undefined);
   };
 
   const confirmPostponeReminder = async () => {
@@ -292,7 +287,7 @@ export function useRemindersState({
     setDeleteReminderTarget(null);
     await cancelNativeReminder(target);
     setReminders((current) => current.filter((item) => item.id !== target.id));
-    void mutatorsRef.current.deleteAppRecord("reminders", target.id).catch(() => setStorageStatus("offline"));
+    void deleteAppRecord("reminders", target.id).catch(() => setStorageStatus("offline"));
   };
 
   const openReminderManagement = useCallback(() => {
