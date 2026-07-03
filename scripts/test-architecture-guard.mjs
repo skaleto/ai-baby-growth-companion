@@ -35,7 +35,7 @@ const CEILINGS = {
   "App.tsx": 3467, // 容器/编排根(9690→3466;评审 P5 把手动记录常量/校验抽到 manualRecordSpec 后再降 -29)
   "features/chat/useChatState.ts": 1878, // chat 逻辑 hook(最大功能簇,后续可再分 voice/media 子 hook)
   "appStateDomain.ts": 27, // 评审 P7:已拆成 domain/*.ts 内聚子模块,本文件只剩 re-export barrel(1027→27)
-  "screens/ChatScreen.tsx": 1001,
+  "screens/ChatScreen.tsx": 1013, // 评审 P8:长会话消息窗口化(chatHistoryWindow + 查看更早入口)+12
   "screens/RecordsScreen.tsx": 789,
   "features/preview/usePreviewState.ts": 606,
   "features/session/useSessionState.ts": 615, // 2026-07-01 邀请码校验加 AbortController 10s 超时兜底(防请求挂起把"确认家庭身份"永久钉死)+15 行

@@ -11,6 +11,7 @@
 // DOM 结构与拆分前逐字一致(CSS/手势/快照测试不感知)。
 import {
   memo,
+  useState,
   type CSSProperties,
   type ChangeEvent,
   type Dispatch,
@@ -55,6 +56,7 @@ import { StorySelect } from "../components/StorySelect";
 import { AiDataNotice } from "../components/AiDataNotice";
 import { AppDateField, AppTimeField } from "../components/appWheelFields";
 import { ComposerTextarea } from "../features/chat/composerInput";
+import { chatHistoryWindow } from "../features/chat/chatHistoryWindow";
 import type { ReminderDraft } from "../reminderDraft";
 import type { ExpenseDraft } from "../features/ledger/useLedgerState";
 import type {
@@ -233,6 +235,11 @@ export const ChatScreen = memo(function ChatScreen({
     updatePendingExpenseDraft,
   } = handlers;
 
+  // 评审 P8:长会话默认只渲染最近 CHAT_HISTORY_WINDOW 条,更早的折叠成一个入口一次性展开。
+  // 本地 UI 态,不影响 composer 打字隔离(输入订阅 external store);自动滚动到底仍命中最新消息。
+  const [chatHistoryExpanded, setChatHistoryExpanded] = useState(false);
+  const { visible: visibleMessages, hiddenEarlierCount } = chatHistoryWindow(messages, chatHistoryExpanded);
+
   return (
         <section className="chat-panel tab-content-enter" aria-label="每日聊天记录">
           <div className="chat-head">
@@ -299,7 +306,12 @@ export const ChatScreen = memo(function ChatScreen({
           </div>
 
           <div className="message-list" ref={messageListRef}>
-            {messages.map((message) => (
+            {hiddenEarlierCount > 0 ? (
+              <button type="button" className="chat-history-more" onClick={() => setChatHistoryExpanded(true)}>
+                查看更早的 {hiddenEarlierCount} 条消息
+              </button>
+            ) : null}
+            {visibleMessages.map((message) => (
               <article className={`message ${message.role}`} key={message.id}>
                 {message.role === "ai" ? (
                   <span className="message-companion" aria-hidden="true">
