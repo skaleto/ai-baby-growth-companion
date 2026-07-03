@@ -1,0 +1,31 @@
+frontend/src/features/chat/chatHistoryWindow.ts
+  s_139cb91c084610::t_cf75aa9c38ea96 1-26
+frontend/src/screens/ChatScreen.tsx
+  s_139cb91c084610::t_cce2f744f72800 14,59,238-242,309-314
+frontend/src/styles/mobile-app.css
+  s_139cb91c084610::t_4ce8006c3ae9a2 1552-1569
+package.json
+  s_139cb91c084610::t_7402c83d8166a5 49,57
+scripts/test-architecture-guard.mjs
+  s_139cb91c084610::t_824bfb75d35467 38
+scripts/test-chat-history-window.mjs
+  s_139cb91c084610::t_726f88f3634719 1-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "76efc5e5932b53c53554ff5c9f7d3094a82c0430",
+  "prompts": {},
+  "sessions": {
+    "s_139cb91c084610": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf1d1ca-7c6d-40f7-b40a-89f7f6c5bd7a",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
