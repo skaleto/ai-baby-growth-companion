@@ -60,6 +60,11 @@ class AgentRuntimeTests {
                 Runnable::run,
                 Clock.system(ZoneId.of("Asia/Shanghai"))
         );
+        AgentPromptComposer promptComposer = new AgentPromptComposer(
+                objectMapper,
+                disclosureService,
+                Clock.system(ZoneId.of("Asia/Shanghai"))
+        );
         return new AgentRuntime(
                 doubaoProperties,
                 objectMapper,
@@ -77,6 +82,7 @@ class AgentRuntimeTests {
                 modelGateway,
                 visualAnalysisService,
                 expenseRecognitionService,
+                promptComposer,
                 Runnable::run,
                 Clock.system(ZoneId.of("Asia/Shanghai"))
         );
