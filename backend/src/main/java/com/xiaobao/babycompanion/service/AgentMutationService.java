@@ -129,7 +129,8 @@ public class AgentMutationService {
 
     private List<String> careLogIdsForDate(AgentActionContext context, JsonNode patch) {
         String date = text(patch, "date", "");
-        return appStateService.readForUser(context.familyId(), context.userId()).state().careLogs().stream()
+        // 评审 P4:窄读 careLogs 单表(去读放大),不再 readForUser 拉全部 ~13 个集合;数据与原来逐条等价。
+        return appStateService.careLogsForFamily(context.familyId()).stream()
                 .filter((careLog) -> !StringUtils.hasText(date) || date.equals(text(careLog, "date", "")))
                 .map((careLog) -> text(careLog, "id", ""))
                 .filter(StringUtils::hasText)

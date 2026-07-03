@@ -298,9 +298,12 @@ public class AppStateService {
         );
     }
 
+    // 评审 P4:去读放大——幂等校验只需 careLogs,改读单表 readCareLogs(familyId),不再 readForUser 拉全部 ~13 个集合;
+    // careLogs 是家庭级共享(readForUser 里也是 readCareLogs(familyId),不按 userId 过滤),故 userId 于此无用,结果逐条等价。
+    @Transactional(readOnly = true)
     public boolean hasCareLogAgentAction(String familyId, String userId, String idempotencyKey) {
         if (!StringUtils.hasText(idempotencyKey)) return false;
-        return readForUser(familyId, userId).state().careLogs().stream()
+        return readCareLogs(familyId).stream()
                 .map((careLog) -> careLog.path("agentActionIds"))
                 .filter(JsonNode::isArray)
                 .flatMap((ids) -> {
@@ -309,6 +312,13 @@ public class AppStateService {
                     return values.stream();
                 })
                 .anyMatch((id) -> id.isTextual() && idempotencyKey.equals(id.asText()));
+    }
+
+    // 评审 P4:给 agent 记账链路(AgentMutationService.careLogIdsForDate)用的窄读——只读 careLogs 单表,
+    // 避免每次保存都 readForUser 拉全部集合(原来一次保存要跑 2~3 次全量读)。与 readForUser().state().careLogs() 逐条等价。
+    @Transactional(readOnly = true)
+    public List<JsonNode> careLogsForFamily(String familyId) {
+        return readCareLogs(familyId);
     }
 
     @Transactional
