@@ -3,6 +3,7 @@ package com.xiaobao.babycompanion.controller;
 import com.xiaobao.babycompanion.agent.AgentRequestGuard;
 import com.xiaobao.babycompanion.agent.AgentRuntime;
 import com.xiaobao.babycompanion.agent.AgentModelContextHarness;
+import com.xiaobao.babycompanion.agent.ConversationSummaryService;
 import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
@@ -24,17 +25,20 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class AgentController {
 
     private final AgentRuntime agentRuntime;
+    private final ConversationSummaryService conversationSummaryService;
     private final CurrentUser currentUser;
     private final AgentRequestGuard requestGuard;
     private final ProTrialService proTrialService;
 
     public AgentController(
             AgentRuntime agentRuntime,
+            ConversationSummaryService conversationSummaryService,
             CurrentUser currentUser,
             AgentRequestGuard requestGuard,
             ProTrialService proTrialService
     ) {
         this.agentRuntime = agentRuntime;
+        this.conversationSummaryService = conversationSummaryService;
         this.currentUser = currentUser;
         this.requestGuard = requestGuard;
         this.proTrialService = proTrialService;
@@ -74,6 +78,6 @@ public class AgentController {
     public ConversationSummaryResponse compressConversationSummary() {
         currentUser.requireCaregiver();
         requestGuard.checkAllowed(currentUser.requireFamilyId());
-        return agentRuntime.compressConversationSummary();
+        return conversationSummaryService.compressConversationSummary();
     }
 }

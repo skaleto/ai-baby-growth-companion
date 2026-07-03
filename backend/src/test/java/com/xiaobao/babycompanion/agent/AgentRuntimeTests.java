@@ -39,8 +39,13 @@ class AgentRuntimeTests {
     private AgentRuntime runtimeWith(DoubaoProperties doubaoProperties, AppStateService appStateService) {
         ObjectMapper objectMapper = new ObjectMapper();
         SkillDisclosureService disclosureService = new SkillDisclosureService(skillRegistry);
-        return new AgentRuntime(
+        AgentRuntimeProperties agentRuntimeProperties = new AgentRuntimeProperties();
+        AgentModelGateway modelGateway = new AgentModelGateway(
                 new DeepSeekProperties(),
+                doubaoProperties,
+                agentRuntimeProperties
+        );
+        return new AgentRuntime(
                 doubaoProperties,
                 objectMapper,
                 new AgentPlanner(objectMapper),
@@ -50,13 +55,13 @@ class AgentRuntimeTests {
                 new CurrentUser(),
                 skillRegistry,
                 disclosureService,
-                new AgentRuntimeProperties(),
+                agentRuntimeProperties,
                 new SkillRouter(disclosureService),
                 new ExpenseRecognitionSkill(objectMapper),
                 null,
                 new ToolRegistry(List.of()),
                 new SafetyGuard(),
-                null,
+                modelGateway,
                 Runnable::run,
                 Clock.system(ZoneId.of("Asia/Shanghai"))
         );

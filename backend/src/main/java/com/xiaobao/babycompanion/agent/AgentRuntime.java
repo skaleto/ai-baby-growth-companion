@@ -47,21 +47,16 @@ import com.xiaobao.babycompanion.dto.agent.AgentChatRequest;
 import com.xiaobao.babycompanion.dto.agent.AgentChatResponse;
 import com.xiaobao.babycompanion.dto.agent.AgentEffectDecision;
 import com.xiaobao.babycompanion.dto.agent.AgentSource;
-import com.xiaobao.babycompanion.dto.agent.ConversationSummaryResponse;
-import com.xiaobao.babycompanion.dto.app.AppStateDto;
 import com.xiaobao.babycompanion.exception.AgentResponseParseException;
 import com.xiaobao.babycompanion.exception.DeepSeekApiException;
 import com.xiaobao.babycompanion.persistence.entity.AgentRunRecord;
 import com.xiaobao.babycompanion.service.AppStateService;
 import com.xiaobao.babycompanion.service.AttachmentStorageService;
-import com.xiaobao.babycompanion.service.AiUsageLogService;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatRequest;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekChatResponse;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekFunctionCall;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekMessage;
-import com.xiaobao.babycompanion.service.deepseek.DeepSeekResponseFormat;
 import com.xiaobao.babycompanion.service.deepseek.DeepSeekToolCall;
-import com.xiaobao.babycompanion.service.deepseek.DeepSeekUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -69,10 +64,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -83,11 +76,6 @@ public class AgentRuntime {
     private static final int MAX_AGENT_VISUAL_ATTACHMENTS = 8;
     private static final int VISUAL_ANALYSIS_BATCH_SIZE = 4;
 
-    private static final int SUMMARY_MIN_NEW_MESSAGES = 24;
-    private static final int SUMMARY_MIN_NEW_CHARS = 12_000;
-    private static final int SUMMARY_RECENT_MESSAGE_KEEP = 12;
-
-    private final DeepSeekProperties properties;
     private final DoubaoProperties doubaoProperties;
     private final AgentRuntimeProperties agentRuntimeProperties;
     private final ObjectMapper objectMapper;
@@ -95,7 +83,7 @@ public class AgentRuntime {
     private final AgentContextService agentContextService;
     private final AppStateService appStateService;
     private final AttachmentStorageService attachmentStorageService;
-    private final AiUsageLogService aiUsageLogService;
+    private final AgentModelGateway modelGateway;
     private final CurrentUser currentUser;
     private final SkillRegistry skillRegistry;
     private final SkillDisclosureService skillDisclosureService;
@@ -109,8 +97,6 @@ public class AgentRuntime {
     private final Executor agentStreamExecutor;
     private final Clock clock;
     private final HttpClient httpClient;
-    private final RestClient restClient;
-    private final RestClient doubaoRestClient;
 
     public AgentRuntime(
             DeepSeekProperties properties,
@@ -127,7 +113,6 @@ public class AgentRuntime {
             SafetyGuard safetyGuard
     ) {
         this(
-                properties,
                 doubaoProperties,
                 objectMapper,
                 agentPlanner,
@@ -143,7 +128,7 @@ public class AgentRuntime {
                 null,
                 toolRegistry,
                 safetyGuard,
-                null,
+                new AgentModelGateway(properties, doubaoProperties, new AgentRuntimeProperties(), null),
                 Runnable::run,
                 Clock.system(ZoneId.of("Asia/Shanghai"))
         );
@@ -151,7 +136,6 @@ public class AgentRuntime {
 
     @Autowired
     public AgentRuntime(
-            DeepSeekProperties properties,
             DoubaoProperties doubaoProperties,
             ObjectMapper objectMapper,
             AgentPlanner agentPlanner,
@@ -167,11 +151,10 @@ public class AgentRuntime {
             AgentTraceService agentTraceService,
             ToolRegistry toolRegistry,
             SafetyGuard safetyGuard,
-            AiUsageLogService aiUsageLogService,
+            AgentModelGateway modelGateway,
             @Qualifier("agentStreamExecutor") Executor agentStreamExecutor,
             Clock clock
     ) {
-        this.properties = properties;
         this.doubaoProperties = doubaoProperties;
         this.agentRuntimeProperties = agentRuntimeProperties == null ? new AgentRuntimeProperties() : agentRuntimeProperties;
         this.objectMapper = objectMapper;
@@ -179,7 +162,7 @@ public class AgentRuntime {
         this.agentContextService = agentContextService;
         this.appStateService = appStateService;
         this.attachmentStorageService = attachmentStorageService;
-        this.aiUsageLogService = aiUsageLogService;
+        this.modelGateway = modelGateway;
         this.currentUser = currentUser;
         this.skillRegistry = skillRegistry;
         this.skillDisclosureService = skillDisclosureService;
@@ -192,33 +175,17 @@ public class AgentRuntime {
         this.safetyGuard = safetyGuard;
         this.agentStreamExecutor = agentStreamExecutor;
         this.clock = clock;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(properties.getConnectTimeout())
-                .build();
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(this.httpClient);
-        requestFactory.setReadTimeout(properties.getReadTimeout());
-        this.restClient = RestClient.builder()
-                .baseUrl(properties.getBaseUrl())
-                .requestFactory(requestFactory)
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .build();
-        JdkClientHttpRequestFactory doubaoRequestFactory = new JdkClientHttpRequestFactory(this.httpClient);
-        doubaoRequestFactory.setReadTimeout(doubaoProperties.getReadTimeout());
-        this.doubaoRestClient = RestClient.builder()
-                .baseUrl(doubaoProperties.getBaseUrl())
-                .requestFactory(doubaoRequestFactory)
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .build();
+        this.httpClient = modelGateway.httpClient();
     }
 
     public AgentChatResponse chat(AgentChatRequest request) {
-        RuntimeModel runtimeModel = resolveModel(request.model(), Boolean.TRUE.equals(request.lowLatencyEnabled()));
-        RuntimeModel plannerRuntimeModel = resolvePlannerModel();
-        String apiKey = resolvedApiKey(runtimeModel);
+        RuntimeModel runtimeModel = modelGateway.resolveModel(request.model(), Boolean.TRUE.equals(request.lowLatencyEnabled()));
+        RuntimeModel plannerRuntimeModel = modelGateway.resolvePlannerModel();
+        String apiKey = modelGateway.resolvedApiKey(runtimeModel);
         if (!StringUtils.hasText(apiKey)) {
             throw new IllegalStateException(runtimeModel.apiKeyHelp() + " is not configured");
         }
-        String plannerApiKey = resolvedApiKey(plannerRuntimeModel);
+        String plannerApiKey = modelGateway.resolvedApiKey(plannerRuntimeModel);
         if (!StringUtils.hasText(plannerApiKey)) {
             throw new IllegalStateException(plannerRuntimeModel.apiKeyHelp() + " is not configured for agent planning");
         }
@@ -233,7 +200,7 @@ public class AgentRuntime {
         AgentContextSnapshot contextSnapshot = agentContextService.build(familyId, principal.userId(), request, plan, signals);
         SkillPlan skillPlan = skillRouter == null ? SkillPlan.empty() : skillRouter.plan(request, plan, signals);
         recordAgentPlanTrace(agentRun, plan, skillPlan);
-        RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
+        RuntimeModel expenseRuntimeModel = modelGateway.resolveExpenseRecognitionModel(runtimeModel);
         List<VisualAttachmentInput> visualInputs = visualInputsForSkillExecution(
                 request,
                 skillPlan,
@@ -303,7 +270,7 @@ public class AgentRuntime {
         );
 
         try {
-            DeepSeekChatResponse response = restClient(runtimeModel).post()
+            DeepSeekChatResponse response = modelGateway.restClient(runtimeModel).post()
                     .uri(runtimeModel.chatPath())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .body(chatRequest)
@@ -313,7 +280,7 @@ public class AgentRuntime {
             if (response == null || response.choices() == null || response.choices().isEmpty()) {
                 throw new DeepSeekApiException(runtimeModel.id() + " returned an empty response");
             }
-            recordUsage(runtimeModel, "agent_chat", inputType(request), familyId, principal.userId(), response.id(), response.usage(), true, null, false, true);
+            modelGateway.recordUsage(runtimeModel, "agent_chat", inputType(request), familyId, principal.userId(), response.id(), response.usage(), true, null, false, true);
 
             String content = Optional.ofNullable(response.choices().get(0).message())
                     .map(DeepSeekMessage::contentAsText)
@@ -328,7 +295,7 @@ public class AgentRuntime {
             completeAgentRunTrace(agentRun, finalResponse.effectDecisions());
             return finalResponse;
         } catch (RestClientException exception) {
-            recordUsage(runtimeModel, "agent_chat", inputType(request), familyId, principal.userId(), traceId, null, false, rootCauseMessage(exception), false, true);
+            modelGateway.recordUsage(runtimeModel, "agent_chat", inputType(request), familyId, principal.userId(), traceId, null, false, rootCauseMessage(exception), false, true);
             AgentChatResponse fallbackResponse = actionResultFallbackResponse(
                     request.message(),
                     actionResults,
@@ -364,13 +331,13 @@ public class AgentRuntime {
     }
 
     public SseEmitter stream(AgentChatRequest request) {
-        RuntimeModel runtimeModel = resolveModel(request.model(), Boolean.TRUE.equals(request.lowLatencyEnabled()));
-        RuntimeModel plannerRuntimeModel = resolvePlannerModel();
-        String apiKey = resolvedApiKey(runtimeModel);
+        RuntimeModel runtimeModel = modelGateway.resolveModel(request.model(), Boolean.TRUE.equals(request.lowLatencyEnabled()));
+        RuntimeModel plannerRuntimeModel = modelGateway.resolvePlannerModel();
+        String apiKey = modelGateway.resolvedApiKey(runtimeModel);
         if (!StringUtils.hasText(apiKey)) {
             throw new IllegalStateException(runtimeModel.apiKeyHelp() + " is not configured");
         }
-        String plannerApiKey = resolvedApiKey(plannerRuntimeModel);
+        String plannerApiKey = modelGateway.resolvedApiKey(plannerRuntimeModel);
         if (!StringUtils.hasText(plannerApiKey)) {
             throw new IllegalStateException(plannerRuntimeModel.apiKeyHelp() + " is not configured for agent planning");
         }
@@ -380,7 +347,7 @@ public class AgentRuntime {
         String familyId = principal.familyId();
         List<Skill> selectedSkills = skillRegistry.selectSkills(request);
         AgentRunRecord agentRun = startAgentRunTrace(traceId, familyId, principal.userId(), request, plannerRuntimeModel, runtimeModel);
-        RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
+        RuntimeModel expenseRuntimeModel = modelGateway.resolveExpenseRecognitionModel(runtimeModel);
         SseEmitter emitter = new SseEmitter(streamTimeoutBudget(request, runtimeModel, plannerRuntimeModel, expenseRuntimeModel).toMillis());
 
         String requestId = MDC.get("requestId");
@@ -496,143 +463,6 @@ public class AgentRuntime {
         return count;
     }
 
-    public ConversationSummaryResponse compressConversationSummary() {
-        AuthPrincipal principal = currentUser.requirePrincipal();
-        AppStateDto state = appStateService.readForUser(principal.familyId(), principal.userId()).state();
-        List<JsonNode> messages = state.messages() == null ? List.of() : state.messages();
-        JsonNode currentSummary = state.conversationSummary();
-
-        int coveredIndex = coveredMessageIndex(messages, currentSummary);
-        int compressEndExclusive = Math.max(coveredIndex + 1, messages.size() - SUMMARY_RECENT_MESSAGE_KEEP);
-        if (compressEndExclusive <= coveredIndex + 1) {
-            return new ConversationSummaryResponse(false, "skipped", currentSummary);
-        }
-
-        List<JsonNode> newMessages = messages.subList(coveredIndex + 1, messages.size());
-        int newMessageChars = newMessages.stream().mapToInt(this::messageTextLength).sum();
-        if (newMessages.size() < SUMMARY_MIN_NEW_MESSAGES && newMessageChars < SUMMARY_MIN_NEW_CHARS) {
-            return new ConversationSummaryResponse(false, "skipped", currentSummary);
-        }
-
-        List<JsonNode> candidates = messages.subList(coveredIndex + 1, compressEndExclusive);
-
-        RuntimeModel summaryModel = resolvePlannerModel();
-        String apiKey = resolvedApiKey(summaryModel);
-        if (!StringUtils.hasText(apiKey)) {
-            throw new IllegalStateException(summaryModel.apiKeyHelp() + " is not configured for conversation compression");
-        }
-
-        JsonNode summary = runSummaryModel(summaryModel, apiKey, currentSummary, candidates, principal.familyId(), principal.userId());
-        JsonNode saved = appStateService
-                .upsertRecord("conversationSummary", "conversation-summary", summary, "replace")
-                .state()
-                .conversationSummary();
-        return new ConversationSummaryResponse(true, "compressed", saved == null ? summary : saved);
-    }
-
-    private JsonNode runSummaryModel(RuntimeModel runtimeModel, String apiKey, JsonNode currentSummary, List<JsonNode> messages, String familyId, String userId) {
-        try {
-            DeepSeekChatRequest request = new DeepSeekChatRequest(
-                    runtimeModel.apiModel(),
-                    List.of(
-                            new DeepSeekMessage("system", AgentPrompts.SUMMARY_SYSTEM_PROMPT),
-                            new DeepSeekMessage("user", buildSummaryPrompt(currentSummary, messages))
-                    ),
-                    false,
-                    1200,
-                    0.0,
-                    responseFormat(runtimeModel),
-                    Map.of("type", "disabled"),
-                    null,
-                    null,
-                    null
-            );
-            DeepSeekChatResponse response = restClient(runtimeModel).post()
-                    .uri(runtimeModel.chatPath())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .body(request)
-                    .retrieve()
-                    .body(DeepSeekChatResponse.class);
-            if (response != null) {
-                recordUsage(runtimeModel, "conversation_summary", "text", familyId, userId, response.id(), response.usage(), true, null, false, true);
-            }
-            String content = Optional.ofNullable(response)
-                    .map(DeepSeekChatResponse::choices)
-                    .filter((choices) -> !choices.isEmpty())
-                    .map((choices) -> choices.get(0).message())
-                    .map(DeepSeekMessage::contentAsText)
-                    .orElseThrow(() -> new DeepSeekApiException("Summary model returned an empty response"));
-            String text = objectMapper.readTree(extractJsonObject(content)).path("text").asText("");
-            if (!StringUtils.hasText(text)) {
-                throw new DeepSeekApiException("Summary model did not include text");
-            }
-
-            JsonNode last = messages.get(messages.size() - 1);
-            ObjectNode summary = objectMapper.createObjectNode();
-            summary.put("id", "conversation-summary");
-            summary.put("text", text.trim());
-            summary.put("coveredThroughMessageId", nodeText(last, "id", ""));
-            summary.put("coveredThroughCreatedAt", nodeText(last, "createdAt", ""));
-            summary.put("sourceMessageCount", sourceMessageCount(currentSummary) + messages.size());
-            summary.put("updatedAt", Instant.now().toString());
-            return summary;
-        } catch (RestClientException | JsonProcessingException exception) {
-            recordUsage(runtimeModel, "conversation_summary", "text", familyId, userId, "conversation-summary-" + UUID.randomUUID(), null, false, rootCauseMessage(exception), false, true);
-            throw new DeepSeekApiException("Failed to compress conversation summary", exception);
-        }
-    }
-
-    private String buildSummaryPrompt(JsonNode currentSummary, List<JsonNode> messages) throws JsonProcessingException {
-        Map<String, Object> context = new LinkedHashMap<>();
-        putCurrentTime(context);
-        context.put("existingSummary", currentSummary);
-        context.put("messagesToCompress", messages.stream().map(this::summaryMessage).toList());
-        return "请压缩下面较早聊天，合并到 existingSummary，输出 JSON。\n上下文:\n%s"
-                .formatted(objectMapper.writeValueAsString(context));
-    }
-
-    private Map<String, Object> summaryMessage(JsonNode message) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("id", nodeText(message, "id", ""));
-        item.put("role", nodeText(message, "role", ""));
-        item.put("createdAt", nodeText(message, "createdAt", ""));
-        item.put("text", nodeText(message, "text", ""));
-        JsonNode tags = message == null ? null : message.get("tags");
-        if (tags != null && tags.isArray()) item.put("tags", tags);
-        return item;
-    }
-
-    private int coveredMessageIndex(List<JsonNode> messages, JsonNode summary) {
-        if (summary == null || summary.isNull()) return -1;
-        String coveredId = nodeText(summary, "coveredThroughMessageId", "");
-        if (StringUtils.hasText(coveredId)) {
-            for (int index = messages.size() - 1; index >= 0; index -= 1) {
-                if (coveredId.equals(nodeText(messages.get(index), "id", ""))) return index;
-            }
-        }
-        String coveredAt = nodeText(summary, "coveredThroughCreatedAt", "");
-        if (StringUtils.hasText(coveredAt)) {
-            int matched = -1;
-            for (int index = 0; index < messages.size(); index += 1) {
-                String createdAt = nodeText(messages.get(index), "createdAt", "");
-                if (StringUtils.hasText(createdAt) && createdAt.compareTo(coveredAt) <= 0) {
-                    matched = index;
-                }
-            }
-            return matched;
-        }
-        return -1;
-    }
-
-    private int messageTextLength(JsonNode message) {
-        return nodeText(message, "text", "").length();
-    }
-
-    private int sourceMessageCount(JsonNode summary) {
-        JsonNode value = summary == null ? null : summary.get("sourceMessageCount");
-        return value != null && value.canConvertToInt() ? value.asInt() : 0;
-    }
-
     private void streamAgentResponse(
             AgentChatRequest request,
             SseEmitter emitter,
@@ -659,7 +489,7 @@ public class AgentRuntime {
             SkillPlan skillPlan = skillRouter == null ? SkillPlan.empty() : skillRouter.plan(request, plan, signals);
             recordAgentPlanTrace(agentRun, plan, skillPlan);
             sendProgressEvent(emitter, "context", "completed", "上下文已准备好");
-            RuntimeModel expenseRuntimeModel = resolveExpenseRecognitionModel(runtimeModel);
+            RuntimeModel expenseRuntimeModel = modelGateway.resolveExpenseRecognitionModel(runtimeModel);
             List<VisualAttachmentInput> visualInputs = visualInputsForSkillExecution(
                     request,
                     skillPlan,
@@ -743,8 +573,8 @@ public class AgentRuntime {
             sendModelWorkStatus(emitter, finalVisualInputs, visualAnalysisResults);
             sendProgressEvent(emitter, "final-composer", "running", "生成最终回复");
 
-            RuntimeModel finalRuntimeModel = resolveFinalComposerModel(plan, visualInputs, toolResults, runtimeModel);
-            String finalApiKey = resolvedApiKey(finalRuntimeModel);
+            RuntimeModel finalRuntimeModel = modelGateway.resolveFinalComposerModel(plan, visualInputs, toolResults, runtimeModel);
+            String finalApiKey = modelGateway.resolvedApiKey(finalRuntimeModel);
             // 让 agent_run.final_model 记录分流后实际使用的模型（lite/pro），保证耗时埋点可按档位查询
             if (agentRun != null) {
                 agentRun.setFinalModel(finalRuntimeModel.id());
@@ -767,7 +597,7 @@ public class AgentRuntime {
                     actionResults
             ));
             HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(endpointUrl(finalRuntimeModel)))
+                    .uri(URI.create(modelGateway.endpointUrl(finalRuntimeModel)))
                     .timeout(finalRuntimeModel.readTimeout().plusSeconds(30))
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + finalApiKey)
@@ -813,7 +643,7 @@ public class AgentRuntime {
             List<AgentSource> sources
     ) {
         try {
-            AgentChatResponse parsed = objectMapper.readValue(extractJsonObject(content), AgentChatResponse.class);
+            AgentChatResponse parsed = objectMapper.readValue(modelGateway.extractJsonObject(content), AgentChatResponse.class);
             if (!StringUtils.hasText(parsed.aiText())) {
                 throw new AgentResponseParseException("Agent response did not include aiText");
             }
@@ -876,13 +706,13 @@ public class AgentRuntime {
                         ), null, null)
                 ),
                 stream,
-                finalComposerMaxTokens(),
-                finalComposerTemperature(),
-                responseFormat(runtimeModel),
+                modelGateway.finalComposerMaxTokens(),
+                modelGateway.finalComposerTemperature(),
+                modelGateway.responseFormat(runtimeModel),
                 thinkingConfig(request),
                 null,
                 null,
-                serviceTier(runtimeModel)
+                modelGateway.serviceTier(runtimeModel)
         );
     }
 
@@ -903,14 +733,14 @@ public class AgentRuntime {
                 plannerRuntimeModel.provider() == Provider.DEEPSEEK
         );
         try {
-            DeepSeekChatResponse response = restClient(plannerRuntimeModel).post()
+            DeepSeekChatResponse response = modelGateway.restClient(plannerRuntimeModel).post()
                     .uri(plannerRuntimeModel.chatPath())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .body(plannerRequest)
                     .retrieve()
                     .body(DeepSeekChatResponse.class);
             if (response != null) {
-                recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, response.id(), response.usage(), true, null, false, true);
+                modelGateway.recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, response.id(), response.usage(), true, null, false, true);
             }
 
             String content = Optional.ofNullable(response)
@@ -930,7 +760,7 @@ public class AgentRuntime {
                     rootCauseMessage(exception),
                     exception
             );
-            recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, "planner-" + UUID.randomUUID(), null, false, rootCauseMessage(exception), false, true);
+            modelGateway.recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, "planner-" + UUID.randomUUID(), null, false, rootCauseMessage(exception), false, true);
             throw new DeepSeekApiException("Failed to call model API for agent planning", exception);
         }
     }
@@ -958,7 +788,7 @@ public class AgentRuntime {
                 agentRuntimeProperties.getModels().getExpenseRecognition(),
                 visualInputs
         );
-        String expenseApiKey = resolvedApiKey(expenseRuntimeModel);
+        String expenseApiKey = modelGateway.resolvedApiKey(expenseRuntimeModel);
         ExpenseRecognitionResult result = expenseRecognitionSkill.execute(
                 input,
                 (modelRequest, batchNumber, batchCount) -> {
@@ -1018,7 +848,7 @@ public class AgentRuntime {
             throw new IllegalStateException(runtimeModel.apiKeyHelp() + " is not configured for expense recognition");
         }
         try {
-            DeepSeekChatResponse response = restClient(runtimeModel).post()
+            DeepSeekChatResponse response = modelGateway.restClient(runtimeModel).post()
                     .uri(runtimeModel.chatPath())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .body(modelRequest)
@@ -1027,14 +857,14 @@ public class AgentRuntime {
             if (response == null || response.choices() == null || response.choices().isEmpty()) {
                 throw new DeepSeekApiException(runtimeModel.id() + " expense recognition returned an empty response");
             }
-            recordUsage(runtimeModel, "agent_expense_recognition", inputType(originalRequest), familyId, userId, response.id(), response.usage(), true, null, false, true);
+            modelGateway.recordUsage(runtimeModel, "agent_expense_recognition", inputType(originalRequest), familyId, userId, response.id(), response.usage(), true, null, false, true);
             String content = Optional.ofNullable(response.choices().get(0).message())
                     .map(DeepSeekMessage::contentAsText)
                     .filter(StringUtils::hasText)
                     .orElseThrow(() -> new DeepSeekApiException(runtimeModel.id() + " expense recognition did not include message content"));
             return new ExpenseRecognitionModelResponse(response.id(), response.model(), content, response.usage());
         } catch (RuntimeException exception) {
-            recordUsage(runtimeModel, "agent_expense_recognition", inputType(originalRequest), familyId, userId, traceId + "-expense-" + batchNumber, null, false, rootCauseMessage(exception), false, true);
+            modelGateway.recordUsage(runtimeModel, "agent_expense_recognition", inputType(originalRequest), familyId, userId, traceId + "-expense-" + batchNumber, null, false, rootCauseMessage(exception), false, true);
             LOGGER.warn(
                     "Expense recognition skill model call failed. traceId={}, provider={}, model={}, batch={}/{}, cause={}",
                     traceId,
@@ -1074,7 +904,7 @@ public class AgentRuntime {
             );
             DeepSeekChatRequest analysisRequest = buildVisualAnalysisRequest(request, runtimeModel, traceId, batch, batchNumber, batches.size());
             try {
-                DeepSeekChatResponse response = restClient(runtimeModel).post()
+                DeepSeekChatResponse response = modelGateway.restClient(runtimeModel).post()
                         .uri(runtimeModel.chatPath())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                         .body(analysisRequest)
@@ -1083,7 +913,7 @@ public class AgentRuntime {
                 if (response == null || response.choices() == null || response.choices().isEmpty()) {
                     throw new DeepSeekApiException(runtimeModel.id() + " visual analysis returned an empty response");
                 }
-                recordUsage(runtimeModel, "agent_visual_analysis", inputType(request), familyId, userId, response.id(), response.usage(), true, null, false, true);
+                modelGateway.recordUsage(runtimeModel, "agent_visual_analysis", inputType(request), familyId, userId, response.id(), response.usage(), true, null, false, true);
                 String summary = Optional.ofNullable(response.choices().get(0).message())
                         .map(DeepSeekMessage::contentAsText)
                         .filter(StringUtils::hasText)
@@ -1106,7 +936,7 @@ public class AgentRuntime {
                         rootCauseMessage(exception),
                         exception
                 );
-                recordUsage(runtimeModel, "agent_visual_analysis", inputType(request), familyId, userId, traceId + "-visual-" + batchNumber, null, false, rootCauseMessage(exception), false, true);
+                modelGateway.recordUsage(runtimeModel, "agent_visual_analysis", inputType(request), familyId, userId, traceId + "-visual-" + batchNumber, null, false, rootCauseMessage(exception), false, true);
                 throw exception;
             }
         }
@@ -1147,7 +977,7 @@ public class AgentRuntime {
                 Map.of("type", "disabled"),
                 null,
                 null,
-                serviceTier(runtimeModel)
+                modelGateway.serviceTier(runtimeModel)
         );
     }
 
@@ -1255,7 +1085,7 @@ public class AgentRuntime {
 
         DeepSeekChatRequest toolRoutingRequest = buildToolRoutingRequest(request, selectedSkills, tools, runtimeModel, traceId);
         try {
-            DeepSeekChatResponse response = restClient(runtimeModel).post()
+            DeepSeekChatResponse response = modelGateway.restClient(runtimeModel).post()
                     .uri(runtimeModel.chatPath())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .body(toolRoutingRequest)
@@ -1296,7 +1126,7 @@ public class AgentRuntime {
                 Map.of("type", "disabled"),
                 tools.stream().map(AgentTool::definition).toList(),
                 likelyNeedsExternalLookup(request.message()) || likelyNeedsAgentAction(request.message()) ? "required" : "auto",
-                serviceTier(runtimeModel)
+                modelGateway.serviceTier(runtimeModel)
         );
     }
 
@@ -1393,10 +1223,6 @@ public class AgentRuntime {
         return Map.of("type", Boolean.TRUE.equals(request.thinkingEnabled()) ? "enabled" : "disabled");
     }
 
-    private DeepSeekResponseFormat responseFormat(RuntimeModel runtimeModel) {
-        return runtimeModel.provider() == Provider.DEEPSEEK ? new DeepSeekResponseFormat("json_object") : null;
-    }
-
     private void streamDeepSeekResponse(
             HttpRequest request,
             SseEmitter emitter,
@@ -1429,7 +1255,7 @@ public class AgentRuntime {
                             response.statusCode(),
                             abbreviate(errorBody, 1200)
                     );
-                    recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, "HTTP_" + response.statusCode(), false, true);
+                    modelGateway.recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, "HTTP_" + response.statusCode(), false, true);
                     AgentChatResponse fallbackResponse = actionResultFallbackResponse(
                             userMessage,
                             actionResults,
@@ -1463,7 +1289,7 @@ public class AgentRuntime {
                     usedSkills,
                     sources
             );
-            recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, requestId.get(), null, true, null, false, true);
+            modelGateway.recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, requestId.get(), null, true, null, false, true);
             AgentChatResponse finalResponse = withSafetyAlertsAndActionResults(parsed, userMessage, actionResults);
             completeAfterFinalSent(emitter, agentRun, finalResponse);
             emitter.complete();
@@ -1476,7 +1302,7 @@ public class AgentRuntime {
                     rootCauseMessage(exception),
                     exception
             );
-            recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, rootCauseMessage(exception), false, true);
+            modelGateway.recordUsage(runtimeModel, "agent_stream", inputType, familyId, userId, traceId, null, false, rootCauseMessage(exception), false, true);
             AgentChatResponse fallbackResponse = actionResultFallbackResponse(
                     userMessage,
                     actionResults,
@@ -1698,144 +1524,6 @@ public class AgentRuntime {
         return StringUtils.hasText(message) ? message : "AI 服务暂时不可用，请稍后再试。";
     }
 
-    private RuntimeModel resolveModel(String requestedModel) {
-        return resolveModel(requestedModel, false);
-    }
-
-    private RuntimeModel resolveModel(String requestedModel, boolean lowLatencyEnabled) {
-        String configuredFinalModel = agentRuntimeProperties.getModels().getFinalComposer().getModel();
-        String model = StringUtils.hasText(requestedModel)
-                ? requestedModel.trim()
-                : StringUtils.hasText(configuredFinalModel) ? configuredFinalModel.trim() : properties.getModel();
-        return switch (model) {
-            case "deepseek-v4-flash" -> new RuntimeModel(
-                    "deepseek-v4-flash",
-                    Provider.DEEPSEEK,
-                    "deepseek-v4-flash",
-                    false,
-                    false,
-                    false,
-                    properties.getBaseUrl(),
-                    properties.getChatPath(),
-                    properties.getReadTimeout(),
-                    "DEEPSEEK_API_KEY"
-            );
-            case "deepseek-v4-pro" -> new RuntimeModel(
-                    "deepseek-v4-pro",
-                    Provider.DEEPSEEK,
-                    "deepseek-v4-pro",
-                    false,
-                    false,
-                    false,
-                    properties.getBaseUrl(),
-                    properties.getChatPath(),
-                    properties.getReadTimeout(),
-                    "DEEPSEEK_API_KEY"
-            );
-            case "doubao-seed-2.0-lite", "doubao-seed-2-0-lite-260215" -> doubaoRuntimeModel(
-                    "doubao-seed-2.0-lite",
-                    doubaoProperties.getSeed20LiteModel(),
-                    lowLatencyEnabled
-            );
-            case "doubao-seed-2.0-pro", "doubao-seed-2-0-pro-260215" -> doubaoRuntimeModel(
-                    "doubao-seed-2.0-pro",
-                    doubaoProperties.getSeed20ProModel(),
-                    lowLatencyEnabled
-            );
-            default -> throw new IllegalArgumentException("Unsupported agent model: " + model);
-        };
-    }
-
-    private RuntimeModel doubaoRuntimeModel(
-            String modelId,
-            String standardModel,
-            boolean lowLatencyEnabled
-    ) {
-        return new RuntimeModel(
-                modelId,
-                Provider.DOUBAO,
-                standardModel,
-                true,
-                true,
-                lowLatencyEnabled,
-                doubaoProperties.getBaseUrl(),
-                doubaoProperties.getChatPath(),
-                doubaoProperties.getReadTimeout(),
-                "DOUBAO_API_KEY or ARK_API_KEY"
-        );
-    }
-
-    private RuntimeModel resolvePlannerModel() {
-        String configured = agentRuntimeProperties.getModels().getPlanner().getModel();
-        return resolveModel(StringUtils.hasText(configured) ? configured : properties.getPlannerModel());
-    }
-
-    private RuntimeModel resolveExpenseRecognitionModel(RuntimeModel fallback) {
-        String configured = agentRuntimeProperties.getModels().getExpenseRecognition().getModel();
-        if (StringUtils.hasText(configured)) {
-            return resolveModel(configured.trim(), false);
-        }
-        if (fallback != null && fallback.supportsImageInput()) {
-            return fallback;
-        }
-        return resolveModel("doubao-seed-2.0-pro", false);
-    }
-
-    private RuntimeModel resolveFinalComposerModel(
-            AgentPlan plan,
-            List<VisualAttachmentInput> visualInputs,
-            List<AgentToolResult> toolResults,
-            RuntimeModel fallback
-    ) {
-        // 仅对 doubao 链路分流；用户显式选了别的 provider（如 deepseek）则保持原样
-        if (fallback == null || fallback.provider() != Provider.DOUBAO) {
-            return fallback;
-        }
-        boolean hasVisual = visualInputs != null && !visualInputs.isEmpty();
-        boolean hasTools = toolResults != null && !toolResults.isEmpty();
-        boolean recordIntent = plan != null && "record".equalsIgnoreCase(plan.intent());
-        // 简单记录（纯文本记录、无图、无联网工具）用更快更省的 lite；复杂问答用 pro。两者都走 fast 服务档提速。
-        boolean simpleRecord = recordIntent && !hasVisual && !hasTools;
-        String modelId = simpleRecord ? "doubao-seed-2.0-lite" : "doubao-seed-2.0-pro";
-        return resolveModel(modelId, true);
-    }
-
-    private int finalComposerMaxTokens() {
-        Integer configured = agentRuntimeProperties.getModels().getFinalComposer().getMaxTokens();
-        return configured == null || configured <= 0 ? properties.getAgentMaxTokens() : configured;
-    }
-
-    private double finalComposerTemperature() {
-        Double configured = agentRuntimeProperties.getModels().getFinalComposer().getTemperature();
-        if (configured == null || configured < 0) return Math.min(properties.getTemperature(), 0.2);
-        return Math.max(0.0, Math.min(1.0, configured));
-    }
-
-    private String resolvedApiKey(RuntimeModel runtimeModel) {
-        return switch (runtimeModel.provider()) {
-            case DEEPSEEK -> properties.getResolvedApiKey();
-            case DOUBAO -> doubaoProperties.getResolvedApiKey();
-        };
-    }
-
-    private RestClient restClient(RuntimeModel runtimeModel) {
-        return switch (runtimeModel.provider()) {
-            case DEEPSEEK -> restClient;
-            case DOUBAO -> doubaoRestClient;
-        };
-    }
-
-    private String endpointUrl(RuntimeModel runtimeModel) {
-        return runtimeModel.baseUrl().replaceAll("/+$", "") + runtimeModel.chatPath();
-    }
-
-    private String serviceTier(RuntimeModel runtimeModel) {
-        if (runtimeModel.provider() != Provider.DOUBAO || !runtimeModel.lowLatencyEnabled()) return null;
-        return StringUtils.hasText(doubaoProperties.getLowLatencyServiceTier())
-                ? doubaoProperties.getLowLatencyServiceTier()
-                : "fast";
-    }
-
     private String inputType(AgentChatRequest request) {
         if (request == null || request.attachments() == null || request.attachments().isEmpty()) return "text";
         boolean hasVideo = request.attachments().stream().anyMatch((attachment) -> "video".equals(attachment.kind()));
@@ -1844,38 +1532,6 @@ public class AgentRuntime {
         if (hasImage) return "image";
         boolean hasAudio = request.attachments().stream().anyMatch((attachment) -> "audio".equals(attachment.kind()));
         return hasAudio ? "audio" : "text";
-    }
-
-    private void recordUsage(
-            RuntimeModel runtimeModel,
-            String feature,
-            String inputType,
-            String familyId,
-            String userId,
-            String requestId,
-            DeepSeekUsage usage,
-            boolean success,
-            String errorCode,
-            boolean proRequired,
-            boolean quotaCounted
-    ) {
-        if (aiUsageLogService == null || runtimeModel == null) return;
-        aiUsageLogService.record(new AiUsageLogService.UsageEvent(
-                familyId,
-                userId,
-                requestId,
-                runtimeModel.provider().name().toLowerCase(),
-                runtimeModel.id(),
-                feature,
-                inputType,
-                usage == null ? null : usage.promptTokens(),
-                usage == null ? null : usage.completionTokens(),
-                usage == null ? null : usage.totalTokens(),
-                success,
-                errorCode,
-                proRequired,
-                quotaCounted
-        ));
     }
 
     private Map<String, Object> requesterContext(AuthPrincipal principal) {
@@ -2193,20 +1849,6 @@ public class AgentRuntime {
     private boolean looksLikeExpenseEvidence(String text) {
         if (!StringUtils.hasText(text)) return false;
         return text.matches(".*(花费|支出|账本|记账|费用|订单|小票|收据|发票|付款|支付|金额).*");
-    }
-
-    private String extractJsonObject(String content) {
-        String trimmed = content.trim();
-        if (trimmed.startsWith("```")) {
-            trimmed = trimmed.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
-        }
-
-        int start = trimmed.indexOf('{');
-        int end = trimmed.lastIndexOf('}');
-        if (start < 0 || end <= start) {
-            throw new AgentResponseParseException("Agent response did not contain a JSON object");
-        }
-        return trimmed.substring(start, end + 1);
     }
 
     private <T> List<T> tail(List<T> items, int limit) {
