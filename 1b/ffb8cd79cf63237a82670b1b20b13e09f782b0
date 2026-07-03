@@ -1,0 +1,25 @@
+backend/src/main/java/com/xiaobao/babycompanion/agent/AgentPromptComposer.java
+  s_5d045c17f841d4::t_2b316c0f6f0f7e 1-333
+backend/src/main/java/com/xiaobao/babycompanion/agent/AgentRuntime.java
+  s_5d045c17f841d4::t_d10aaabf31dcd3 79,133,161,174,675,838
+backend/src/test/java/com/xiaobao/babycompanion/agent/AgentRuntimeTests.java
+  s_5d045c17f841d4::t_d64adc3a116ea9 63-67,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1bffb8cd79cf63237a82670b1b20b13e09f782b0",
+  "prompts": {},
+  "sessions": {
+    "s_5d045c17f841d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a008a29dc88b1eff7",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
