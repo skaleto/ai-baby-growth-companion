@@ -1,0 +1,23 @@
+backend/src/main/java/com/xiaobao/babycompanion/service/AgentMutationService.java
+  s_139cb91c084610::t_a4e9f5f309c43d 132-133
+backend/src/main/java/com/xiaobao/babycompanion/service/AppStateService.java
+  s_139cb91c084610::t_9aeda084364028 301-303,306,317-323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "56dc8787b776fe7a1cfadcb12416502a32c38ca9",
+  "prompts": {},
+  "sessions": {
+    "s_139cb91c084610": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf1d1ca-7c6d-40f7-b40a-89f7f6c5bd7a",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
