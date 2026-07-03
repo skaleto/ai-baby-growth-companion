@@ -45,13 +45,17 @@ class AgentRuntimeTests {
                 doubaoProperties,
                 agentRuntimeProperties
         );
+        VisualAnalysisService visualAnalysisService = new VisualAnalysisService(
+                modelGateway,
+                objectMapper,
+                (AttachmentStorageService) null
+        );
         return new AgentRuntime(
                 doubaoProperties,
                 objectMapper,
                 new AgentPlanner(objectMapper),
                 null,
                 appStateService,
-                (AttachmentStorageService) null,
                 new CurrentUser(),
                 skillRegistry,
                 disclosureService,
@@ -62,6 +66,7 @@ class AgentRuntimeTests {
                 new ToolRegistry(List.of()),
                 new SafetyGuard(),
                 modelGateway,
+                visualAnalysisService,
                 Runnable::run,
                 Clock.system(ZoneId.of("Asia/Shanghai"))
         );
