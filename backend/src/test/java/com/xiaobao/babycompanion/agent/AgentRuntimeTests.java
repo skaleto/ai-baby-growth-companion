@@ -50,6 +50,16 @@ class AgentRuntimeTests {
                 objectMapper,
                 (AttachmentStorageService) null
         );
+        AgentExpenseRecognitionService expenseRecognitionService = new AgentExpenseRecognitionService(
+                modelGateway,
+                new ExpenseRecognitionSkill(objectMapper),
+                objectMapper,
+                appStateService,
+                agentRuntimeProperties,
+                null,
+                Runnable::run,
+                Clock.system(ZoneId.of("Asia/Shanghai"))
+        );
         return new AgentRuntime(
                 doubaoProperties,
                 objectMapper,
@@ -61,12 +71,12 @@ class AgentRuntimeTests {
                 disclosureService,
                 agentRuntimeProperties,
                 new SkillRouter(disclosureService),
-                new ExpenseRecognitionSkill(objectMapper),
                 null,
                 new ToolRegistry(List.of()),
                 new SafetyGuard(),
                 modelGateway,
                 visualAnalysisService,
+                expenseRecognitionService,
                 Runnable::run,
                 Clock.system(ZoneId.of("Asia/Shanghai"))
         );
@@ -209,8 +219,17 @@ class AgentRuntimeTests {
     @Test
     void expenseRecognitionCreatesPendingDraftInsteadOfDirectExpenseSave() {
         AppStateService appStateService = mock(AppStateService.class);
-        AgentRuntime runtime = runtimeWith(new DoubaoProperties(), appStateService);
         ObjectMapper objectMapper = new ObjectMapper();
+        AgentExpenseRecognitionService expenseRecognitionService = new AgentExpenseRecognitionService(
+                new AgentModelGateway(new DeepSeekProperties(), new DoubaoProperties(), new AgentRuntimeProperties()),
+                new ExpenseRecognitionSkill(objectMapper),
+                objectMapper,
+                appStateService,
+                new AgentRuntimeProperties(),
+                null,
+                Runnable::run,
+                Clock.system(ZoneId.of("Asia/Shanghai"))
+        );
         ObjectNode expense = objectMapper.createObjectNode();
         expense.put("title", "奶粉");
         expense.put("amount", 268);
@@ -218,7 +237,7 @@ class AgentRuntimeTests {
         expense.put("category", "formula");
         expense.put("date", "2026-06-07");
 
-        List<AgentActionResult> results = runtime.expenseRecognitionActionResults(
+        List<AgentActionResult> results = expenseRecognitionService.expenseRecognitionActionResults(
                 new ExpenseRecognitionResult(
                         "complete",
                         "我已识别出奶粉 268 元。",

@@ -6,7 +6,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -28,8 +27,6 @@ import java.util.stream.Stream;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.xiaobao.babycompanion.auth.AuthPrincipal;
 import com.xiaobao.babycompanion.auth.CurrentUser;
 import com.xiaobao.babycompanion.agent.action.AgentActionContext;
@@ -83,11 +80,11 @@ public class AgentRuntime {
     private final AppStateService appStateService;
     private final AgentModelGateway modelGateway;
     private final VisualAnalysisService visualAnalysisService;
+    private final AgentExpenseRecognitionService expenseRecognitionService;
     private final CurrentUser currentUser;
     private final SkillRegistry skillRegistry;
     private final SkillDisclosureService skillDisclosureService;
     private final SkillRouter skillRouter;
-    private final ExpenseRecognitionSkill expenseRecognitionSkill;
     private final AgentTraceService agentTraceService;
     private final ToolRegistry toolRegistry;
     private final AgentActionExecutor agentActionExecutor;
@@ -122,12 +119,21 @@ public class AgentRuntime {
                 skillDisclosureService,
                 new AgentRuntimeProperties(),
                 new SkillRouter(skillDisclosureService),
-                new ExpenseRecognitionSkill(objectMapper),
                 null,
                 toolRegistry,
                 safetyGuard,
                 liteModelGateway(properties, doubaoProperties),
                 new VisualAnalysisService(liteModelGateway(properties, doubaoProperties), objectMapper, attachmentStorageService),
+                new AgentExpenseRecognitionService(
+                        liteModelGateway(properties, doubaoProperties),
+                        new ExpenseRecognitionSkill(objectMapper),
+                        objectMapper,
+                        appStateService,
+                        new AgentRuntimeProperties(),
+                        null,
+                        Runnable::run,
+                        Clock.system(ZoneId.of("Asia/Shanghai"))
+                ),
                 Runnable::run,
                 Clock.system(ZoneId.of("Asia/Shanghai"))
         );
@@ -149,12 +155,12 @@ public class AgentRuntime {
             SkillDisclosureService skillDisclosureService,
             AgentRuntimeProperties agentRuntimeProperties,
             SkillRouter skillRouter,
-            ExpenseRecognitionSkill expenseRecognitionSkill,
             AgentTraceService agentTraceService,
             ToolRegistry toolRegistry,
             SafetyGuard safetyGuard,
             AgentModelGateway modelGateway,
             VisualAnalysisService visualAnalysisService,
+            AgentExpenseRecognitionService expenseRecognitionService,
             @Qualifier("agentStreamExecutor") Executor agentStreamExecutor,
             Clock clock
     ) {
@@ -166,11 +172,11 @@ public class AgentRuntime {
         this.appStateService = appStateService;
         this.modelGateway = modelGateway;
         this.visualAnalysisService = visualAnalysisService;
+        this.expenseRecognitionService = expenseRecognitionService;
         this.currentUser = currentUser;
         this.skillRegistry = skillRegistry;
         this.skillDisclosureService = skillDisclosureService;
         this.skillRouter = skillRouter;
-        this.expenseRecognitionSkill = expenseRecognitionSkill;
         this.agentTraceService = agentTraceService;
         this.toolRegistry = toolRegistry;
         this.agentActionExecutor = new AgentActionExecutor(objectMapper);
@@ -210,7 +216,7 @@ public class AgentRuntime {
                 familyId,
                 skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID) ? expenseRuntimeModel : runtimeModel
         );
-        ExpenseRecognitionResult expenseRecognitionResult = executeExpenseRecognition(
+        ExpenseRecognitionResult expenseRecognitionResult = expenseRecognitionService.executeExpenseRecognition(
                 request,
                 signals,
                 traceId,
@@ -244,8 +250,8 @@ public class AgentRuntime {
         List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
                 ? List.of()
                 : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
-        boolean expensePendingIntent = shouldCreateExpensePending(request.message(), plan, skillPlan);
-        List<AgentActionResult> expenseActionResults = expenseRecognitionActionResults(
+        boolean expensePendingIntent = expenseRecognitionService.shouldCreateExpensePending(request.message(), plan, skillPlan);
+        List<AgentActionResult> expenseActionResults = expenseRecognitionService.expenseRecognitionActionResults(
                 expenseRecognitionResult,
                 expensePendingIntent,
                 traceId,
@@ -482,7 +488,7 @@ public class AgentRuntime {
                         "已准备 " + visualInputs.size() + " 个图片/视频素材"
                 );
             }
-            ExpenseRecognitionResult expenseRecognitionResult = executeExpenseRecognition(
+            ExpenseRecognitionResult expenseRecognitionResult = expenseRecognitionService.executeExpenseRecognition(
                     request,
                     signals,
                     traceId,
@@ -528,13 +534,13 @@ public class AgentRuntime {
             List<VisualAttachmentInput> finalVisualInputs = expenseRecognitionResult != null
                     ? List.of()
                     : visualAnalysisResults.isEmpty() ? visualInputs : List.of();
-            boolean expensePendingIntent = shouldCreateExpensePending(request.message(), plan, skillPlan);
+            boolean expensePendingIntent = expenseRecognitionService.shouldCreateExpensePending(request.message(), plan, skillPlan);
             if (stopStreamIfCancelled(cancelled, agentRun, traceId, "before_expense_pending")) return;
             if (expenseRecognitionResult != null && expensePendingIntent && !expenseRecognitionResult.effectCandidates().isEmpty()) {
                 sendProgressEvent(emitter, "expense-pending", "running", "整理账本待确认草稿");
                 sendStatusEvent(emitter, "generating", "正在整理账本草稿");
             }
-            List<AgentActionResult> expenseActionResults = expenseRecognitionActionResults(
+            List<AgentActionResult> expenseActionResults = expenseRecognitionService.expenseRecognitionActionResults(
                     expenseRecognitionResult,
                     expensePendingIntent,
                     traceId,
@@ -740,120 +746,6 @@ public class AgentRuntime {
             );
             modelGateway.recordUsage(plannerRuntimeModel, "agent_planner", inputType(request), familyId, userId, "planner-" + UUID.randomUUID(), null, false, rootCauseMessage(exception), false, true);
             throw new DeepSeekApiException("Failed to call model API for agent planning", exception);
-        }
-    }
-
-    private ExpenseRecognitionResult executeExpenseRecognition(
-            AgentChatRequest request,
-            RecordSignals signals,
-            String traceId,
-            String familyId,
-            String userId,
-            AgentRunRecord agentRun,
-            SkillPlan skillPlan,
-            RuntimeModel expenseRuntimeModel,
-            List<VisualAttachmentInput> visualInputs,
-            SseEmitter emitter
-    ) {
-        if (expenseRecognitionSkill == null || skillPlan == null || !skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID)) {
-            return null;
-        }
-        ExpenseRecognitionInput input = new ExpenseRecognitionInput(
-                request,
-                signals,
-                traceId,
-                expenseRuntimeModel,
-                agentRuntimeProperties.getModels().getExpenseRecognition(),
-                visualInputs
-        );
-        String expenseApiKey = modelGateway.resolvedApiKey(expenseRuntimeModel);
-        ExpenseRecognitionResult result = expenseRecognitionSkill.execute(
-                input,
-                (modelRequest, batchNumber, batchCount) -> {
-                    String batchId = "expense-recognition-batch-" + batchNumber;
-                    String batchMessage = batchCount > 1
-                            ? "识别第 " + batchNumber + "/" + batchCount + " 批支出图片"
-                            : "识别支出图片";
-                    sendProgressEvent(emitter, batchId, "running", batchMessage);
-                    try {
-                        ExpenseRecognitionModelResponse response = callExpenseRecognitionModel(
-                                expenseRuntimeModel,
-                                expenseApiKey,
-                                modelRequest,
-                                batchNumber,
-                                batchCount,
-                                request,
-                                familyId,
-                                userId,
-                                traceId
-                        );
-                        sendProgressEvent(emitter, batchId, "completed", batchMessage + "完成");
-                        return response;
-                    } catch (RuntimeException exception) {
-                        sendProgressEvent(emitter, batchId, "failed", batchMessage + "失败");
-                        throw exception;
-                    }
-                },
-                (message) -> {
-                    sendStatusEvent(emitter, "analyzing_media", message);
-                    sendProgressEvent(emitter, "expense-recognition", "running", message);
-                },
-                agentStreamExecutor
-        );
-        if ("complete".equals(result.status())) {
-            sendProgressEvent(emitter, "expense-recognition", "completed", "已整理出 " + result.effectCandidates().size() + " 条支出草稿");
-        } else if ("failed".equals(result.status())) {
-            sendProgressEvent(emitter, "expense-recognition", "failed", StringUtils.hasText(result.userFacingError()) ? result.userFacingError() : "支出图片识别失败");
-        } else {
-            sendProgressEvent(emitter, "expense-recognition", "completed", result.aiTextDraft());
-        }
-        recordSkillRunTrace(agentRun, traceId, result);
-        return result;
-    }
-
-    private ExpenseRecognitionModelResponse callExpenseRecognitionModel(
-            RuntimeModel runtimeModel,
-            String apiKey,
-            DeepSeekChatRequest modelRequest,
-            int batchNumber,
-            int batchCount,
-            AgentChatRequest originalRequest,
-            String familyId,
-            String userId,
-            String traceId
-    ) {
-        if (!StringUtils.hasText(apiKey)) {
-            throw new IllegalStateException(runtimeModel.apiKeyHelp() + " is not configured for expense recognition");
-        }
-        try {
-            DeepSeekChatResponse response = modelGateway.restClient(runtimeModel).post()
-                    .uri(runtimeModel.chatPath())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .body(modelRequest)
-                    .retrieve()
-                    .body(DeepSeekChatResponse.class);
-            if (response == null || response.choices() == null || response.choices().isEmpty()) {
-                throw new DeepSeekApiException(runtimeModel.id() + " expense recognition returned an empty response");
-            }
-            modelGateway.recordUsage(runtimeModel, "agent_expense_recognition", inputType(originalRequest), familyId, userId, response.id(), response.usage(), true, null, false, true);
-            String content = Optional.ofNullable(response.choices().get(0).message())
-                    .map(DeepSeekMessage::contentAsText)
-                    .filter(StringUtils::hasText)
-                    .orElseThrow(() -> new DeepSeekApiException(runtimeModel.id() + " expense recognition did not include message content"));
-            return new ExpenseRecognitionModelResponse(response.id(), response.model(), content, response.usage());
-        } catch (RuntimeException exception) {
-            modelGateway.recordUsage(runtimeModel, "agent_expense_recognition", inputType(originalRequest), familyId, userId, traceId + "-expense-" + batchNumber, null, false, rootCauseMessage(exception), false, true);
-            LOGGER.warn(
-                    "Expense recognition skill model call failed. traceId={}, provider={}, model={}, batch={}/{}, cause={}",
-                    traceId,
-                    runtimeModel.provider(),
-                    runtimeModel.id(),
-                    batchNumber,
-                    batchCount,
-                    rootCauseMessage(exception),
-                    exception
-            );
-            throw exception;
         }
     }
 
@@ -1650,128 +1542,11 @@ public class AgentRuntime {
                 .toList();
     }
 
-    private boolean hasExpenseRecordingIntent(String message) {
-        if (!StringUtils.hasText(message)) return false;
-        String text = message.trim();
-        boolean expenseContext = text.matches(".*(花费|支出|账本|记账|费用|订单|小票|收据|发票|付款|支付).*");
-        boolean recordIntent = text.matches(".*(记下来|记下|记录|再记录|重新记录|记到账本|记入账本|存到账本|写到账本|记一遍|入账).*");
-        return expenseContext && recordIntent;
-    }
-
-    boolean shouldCreateExpensePending(String message, AgentPlan plan, SkillPlan skillPlan) {
-        if (hasExpenseRecordingIntent(message)) return true;
-        if (plan == null || skillPlan == null || !skillPlan.executes(SkillRouter.EXPENSE_RECOGNITION_SKILL_ID)) return false;
-        boolean plannerRecordIntent = "record".equalsIgnoreCase(plan.intent());
-        boolean plannerExpenseTopic = listOrEmpty(plan.topics()).stream().anyMatch((topic) -> "expense".equalsIgnoreCase(topic));
-        return plannerRecordIntent && plannerExpenseTopic;
-    }
-
-    List<AgentActionResult> expenseRecognitionActionResults(
-            ExpenseRecognitionResult result,
-            boolean shouldCreatePending,
-            String traceId,
-            String familyId,
-            String userId
-    ) {
-        if (result == null || !shouldCreatePending) return List.of();
-        if (result.effectCandidates().isEmpty()) {
-            if (!result.clarifications().isEmpty()) {
-                return List.of(AgentActionResult.needsInput(
-                        "expense_recognition",
-                        "pending_effect",
-                        result.clarifications().get(0),
-                        List.of("amount", "date", "purpose")
-                ));
-            }
-            if (StringUtils.hasText(result.userFacingError())) {
-                return List.of(AgentActionResult.failed(
-                        "expense_recognition",
-                        "pending_effect",
-                        result.userFacingError(),
-                        result.status()
-                ));
-            }
-            return List.of();
-        }
-        if (appStateService == null) {
-            return List.of(AgentActionResult.failed(
-                    "expense_recognition",
-                    "pending_effect",
-                    "账本草稿暂时没有保存成功，可以稍后再试。",
-                    "missing_app_state_service"
-            ));
-        }
-        ArrayNode expenses = objectMapper.createArrayNode();
-        result.effectCandidates().stream()
-                .map(AgentEffectDecision::payload)
-                .filter((payload) -> payload != null && payload.isObject())
-                .map((payload) -> (ObjectNode) payload.deepCopy())
-                .forEach((expense) -> {
-                    if (!StringUtils.hasText(nodeText(expense, "id", ""))) {
-                        expense.put("id", "expense-" + stableExpenseSignature(expense));
-                    }
-                    expense.put("source", "agent");
-                    expenses.add(expense);
-                });
-        if (expenses.isEmpty()) return List.of();
-        String pendingId = "pending-effect:expense-recognition:%s:%s".formatted(familyId, stableExpenseSignature(expenses));
-        ObjectNode pending = objectMapper.createObjectNode();
-        pending.put("id", pendingId);
-        pending.put("domain", "ledger");
-        pending.put("status", "pending");
-        pending.put("createdAt", Instant.now(clock).toString());
-        pending.putArray("tags").add("账本");
-        pending.set("expenses", expenses);
-        ObjectNode source = pending.putObject("source");
-        source.put("kind", "agent_action");
-        source.put("traceId", traceId);
-        source.put("toolCallId", "expense-recognition:" + stableExpenseSignature(expenses));
-        source.put("toolName", "expense_recognition");
-        source.put("idempotencyKey", stableExpenseSignature(expenses));
-        ObjectNode payload = objectMapper.createObjectNode();
-        payload.set("expenses", expenses.deepCopy());
-        pending.set("payload", payload);
-        appStateService.upsertAgentPendingEffect(familyId, userId, pending);
-        return List.of(new AgentActionResult(
-                "pending_created",
-                "expense_recognition",
-                "pending_effect",
-                List.of(),
-                pendingId,
-                Map.of("expenseCount", expenses.size()),
-                "已整理成待确认账本草稿。",
-                List.of(),
-                List.of()
-        ));
-    }
-
     private List<AgentActionResult> mergeActionResults(
             List<AgentActionResult> left,
             List<AgentActionResult> right
     ) {
         return Stream.concat(listOrEmpty(left).stream(), listOrEmpty(right).stream()).toList();
-    }
-
-    private String stableExpenseSignature(JsonNode node) {
-        if (node == null || node.isNull()) return "empty";
-        String raw;
-        if (node instanceof ArrayNode array) {
-            List<String> parts = new ArrayList<>();
-            array.forEach((item) -> parts.add(stableExpenseSignature(item)));
-            raw = String.join("|", parts);
-        } else {
-            raw = String.join(
-                    "|",
-                    nodeText(node, "dedupeKey", ""),
-                    nodeText(node, "sourceExpenseKey", ""),
-                    nodeText(node, "date", ""),
-                    nodeText(node, "title", ""),
-                    node.path("amount").asText(""),
-                    nodeText(node, "merchant", "")
-            );
-            if (!StringUtils.hasText(raw.replace("|", ""))) raw = node.toString();
-        }
-        return Integer.toHexString(raw.hashCode());
     }
 
     private List<AgentSource> collectSources(List<AgentToolResult> toolResults) {
@@ -1811,15 +1586,6 @@ public class AgentRuntime {
             agentTraceService.recordPlan(agentRun, plan, skillPlan);
         } catch (RuntimeException exception) {
             LOGGER.warn("Failed to update agent trace plan. traceId={}, cause={}", agentRun.getTraceId(), rootCauseMessage(exception));
-        }
-    }
-
-    private void recordSkillRunTrace(AgentRunRecord agentRun, String traceId, ExpenseRecognitionResult result) {
-        if (agentTraceService == null || result == null || result.traceSummary() == null) return;
-        try {
-            agentTraceService.recordSkillRun(agentRun == null ? null : agentRun.getId(), traceId, result.traceSummary());
-        } catch (RuntimeException exception) {
-            LOGGER.warn("Failed to record skill trace. traceId={}, cause={}", traceId, rootCauseMessage(exception));
         }
     }
 
