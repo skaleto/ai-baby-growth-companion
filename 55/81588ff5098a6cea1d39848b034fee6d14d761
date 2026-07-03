@@ -1,0 +1,25 @@
+backend/src/main/java/com/xiaobao/babycompanion/agent/AgentModelGateway.java
+  s_5d045c17f841d4::t_f294fb407e0f96 1-274
+backend/src/main/java/com/xiaobao/babycompanion/agent/ConversationSummaryService.java
+  s_5d045c17f841d4::t_5c6b70497d8105 1-262
+backend/src/main/java/com/xiaobao/babycompanion/controller/AgentController.java
+  s_5d045c17f841d4::t_0dc4d81c4c9f8f 6,28,35,41,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "5581588ff5098a6cea1d39848b034fee6d14d761",
+  "prompts": {},
+  "sessions": {
+    "s_5d045c17f841d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a008a29dc88b1eff7",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
