@@ -1,0 +1,51 @@
+frontend/src/appStateDomain.ts
+  s_93990e424ae0e6::t_ada3b868720c95 1-26
+frontend/src/domain/care.ts
+  s_93990e424ae0e6::t_b752055852ff02 1-150
+frontend/src/domain/coerce.ts
+  s_93990e424ae0e6::t_58108c32bb2c83 1-33
+frontend/src/domain/dateTime.ts
+  s_139cb91c084610::t_19b2a58bbdf625 1-170
+frontend/src/domain/expense.ts
+  s_93990e424ae0e6::t_ac24d03cbe47af 1-38
+frontend/src/domain/growth.ts
+  s_93990e424ae0e6::t_80c7b464f8a80a 1-33
+frontend/src/domain/localAppState.ts
+  s_93990e424ae0e6::t_a3e0d68fc3bdcf 1-73
+frontend/src/domain/media.ts
+  s_93990e424ae0e6::t_32a77a1a64f8ec 1-120
+frontend/src/domain/misc.ts
+  s_93990e424ae0e6::t_d61af898ca4765 1-120
+frontend/src/domain/profile.ts
+  s_93990e424ae0e6::t_a661b0f1667507 1-80
+frontend/src/domain/reminder.ts
+  s_93990e424ae0e6::t_9c583f962a5b65 1-256
+scripts/test-architecture-guard.mjs
+  s_139cb91c084610::t_a5978bc87c4dd0 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "dcb26b17d32999ca9d914fb712de3d8b3e62bdc5",
+  "prompts": {},
+  "sessions": {
+    "s_139cb91c084610": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bf1d1ca-7c6d-40f7-b40a-89f7f6c5bd7a",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    },
+    "s_93990e424ae0e6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0dc3a762acba2f20",
+        "model": "unknown"
+      },
+      "human_author": "yaoyibin.vi <yaoyibin.vi@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
