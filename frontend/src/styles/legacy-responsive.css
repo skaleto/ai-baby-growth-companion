@@ -225,7 +225,7 @@
     border-radius: 8px;
     background:
       linear-gradient(rgba(255, 253, 250, 0.72), rgba(255, 253, 250, 0.72)),
-      linear-gradient(90deg, rgba(91, 127, 109, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(117, 168, 142, 0.05) 1px, transparent 1px),
       linear-gradient(rgba(88, 127, 168, 0.05) 1px, transparent 1px);
     background-size: auto, 26px 26px, 26px 26px;
     -webkit-overflow-scrolling: touch;
@@ -446,7 +446,7 @@
 
   .mobile-tabbar button.active {
     color: var(--sage-dark);
-    background: rgba(91, 127, 109, 0.12);
+    background: rgba(117, 168, 142, 0.12);
   }
 }
 

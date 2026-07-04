@@ -4,17 +4,11 @@
    挂到 body 的应用自有弹层须带 .app-portal 类;第三方容器需要时在其样式里显式声明。 */
 
 :where(#root, .app-portal) button {
-  transition: transform 100ms ease-out, box-shadow 120ms ease-out;
+  transition: transform 100ms ease-out;
 }
 
 :where(#root, .app-portal) button:active:not(:disabled) {
   transform: scale(0.97);
-}
-
-@media (hover: hover) {
-  :where(#root, .app-portal) button:hover:not(:disabled) {
-    box-shadow: 0 2px 8px rgba(180, 140, 80, 0.12);
-  }
 }
 
 /* Respect reduced motion */

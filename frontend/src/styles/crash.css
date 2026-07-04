@@ -57,7 +57,7 @@
   font-size: 15px;
   font-weight: 600;
   color: #fff;
-  background: linear-gradient(135deg, #4a6f5d, #58a37f);
+  background: #4a6f5d;
   cursor: pointer;
   transition: opacity 0.15s ease, transform 0.1s ease;
 }

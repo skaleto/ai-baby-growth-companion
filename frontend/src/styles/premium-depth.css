@@ -38,12 +38,19 @@
 .app-profile-card,
 .profile-detail-card,
 .profile-form,
-.reminder-group,
-.ledger-manual-cta {
+.reminder-group {
   border-radius: var(--r-card);
   background: var(--surface-card);
   box-shadow: var(--edge-light), var(--elev-card);
   border: 1px solid rgba(234, 223, 208, .9);
+}
+
+/* ===== 手动记账入口 CTA(按钮):扁平实心浅底,无渐变/高光/阴影 ===== */
+.ledger-manual-cta {
+  border-radius: var(--r-card);
+  background: #f7fbf4;
+  box-shadow: none;
+  border: 1px solid rgba(117, 168, 142, .28);
 }
 
 /* ===== 列表层卡片:只给微深度 + 顶部高光,不换底色(密集列表保持克制) ===== */
@@ -55,13 +62,13 @@
   box-shadow: var(--edge-light), var(--elev-list);
 }
 
-/* ===== 次级按钮:升级圆角 + 微深度,保留原浅底/描边气质 ===== */
+/* ===== 次级按钮:升级圆角,扁平化(去内高光/去阴影) ===== */
 .screen-action-button {
   border-radius: var(--r-chip);
-  box-shadow: var(--edge-light), var(--elev-list);
+  box-shadow: none;
 }
 
-/* ===== 主按钮:鼠尾草立体渐变 + 内高光 + 柔阴影 ===== */
+/* ===== 主按钮:扁平实心品牌绿(去渐变/去内高光/去阴影) ===== */
 .send-button,
 .auth-form > button,
 .onboarding-actions button,
@@ -72,8 +79,8 @@
 .inline-edit-button,
 .care-log-form button {
   border-radius: var(--r-chip);
-  background: var(--btn-primary-bg);
-  box-shadow: var(--btn-primary-edge), var(--elev-btn);
+  background: #3d8268;
+  box-shadow: none;
   border: 1px solid #3d8268;
   color: #fffaf1;
 }

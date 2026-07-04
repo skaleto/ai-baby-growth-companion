@@ -26,7 +26,7 @@ body {
   max-width: 100vw;
   overscroll-behavior: none;
   background:
-    linear-gradient(135deg, rgba(91, 127, 109, 0.1), transparent 30%),
+    linear-gradient(135deg, rgba(117, 168, 142, 0.1), transparent 30%),
     linear-gradient(315deg, rgba(88, 127, 168, 0.08), transparent 28%),
     #eef2ed;
   touch-action: pan-y;
@@ -282,9 +282,6 @@ body.keyboard-open .mobile-tabbar {
   color: var(--ink);
   text-align: left;
   overflow-wrap: anywhere;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
-    0 8px 18px rgba(106, 78, 48, 0.04);
   transition:
     background 160ms ease,
     border-color 160ms ease,
@@ -317,22 +314,14 @@ body.keyboard-open .mobile-tabbar {
 
 .auth-choice-row button.selected:first-child {
   border-color: #58a37f;
-  background: linear-gradient(180deg, #fffdf8, #f0fbf4);
+  background: #f0fbf4;
   color: #2f745e;
-  box-shadow:
-    inset 0 0 0 1px rgba(88, 163, 127, 0.28),
-    0 0 0 3px rgba(88, 163, 127, 0.13),
-    0 10px 20px rgba(47, 116, 94, 0.08);
 }
 
 .auth-choice-row button.selected:nth-child(2) {
   border-color: #6aa4d9;
-  background: linear-gradient(180deg, #fffdf8, #f2f9ff);
+  background: #f2f9ff;
   color: #356f9e;
-  box-shadow:
-    inset 0 0 0 1px rgba(106, 164, 217, 0.28),
-    0 0 0 3px rgba(106, 164, 217, 0.13),
-    0 10px 20px rgba(53, 115, 163, 0.08);
 }
 
 .auth-choice-row strong {
@@ -635,10 +624,7 @@ body.keyboard-open .mobile-tabbar {
 .screen-action-button.danger {
   border-color: rgba(221, 134, 118, 0.5);
   color: #fffaf5;
-  background:
-    linear-gradient(180deg, rgba(196, 96, 91, 0.98), rgba(171, 74, 80, 0.98)),
-    #b55357;
-  box-shadow: 0 10px 20px rgba(161, 74, 74, 0.18);
+  background: #b55357;
 }
 
 .small-action {
@@ -745,7 +731,7 @@ body.keyboard-open .mobile-tabbar {
   gap: 5px;
   min-height: 34px;
   padding: 0 10px;
-  border: 1px solid rgba(91, 127, 109, 0.28);
+  border: 1px solid rgba(117, 168, 142, 0.28);
   border-radius: 8px;
   background: rgba(255, 253, 248, 0.96);
   color: var(--sage-dark);
@@ -770,17 +756,15 @@ body.keyboard-open .mobile-tabbar {
   color: #fff;
   font-size: 13px;
   font-weight: 900;
-  box-shadow: 0 2px 6px rgba(60, 94, 77, 0.22);
 }
 
 .records-assistant-body button {
   min-height: 32px;
   padding: 0 11px;
-  border: 1px solid rgba(91, 127, 109, 0.24);
+  border: 1px solid rgba(117, 168, 142, 0.24);
   border-radius: 999px;
   background: rgba(103, 158, 127, 0.13);
   color: #426b5c;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.78) inset;
 }
 
 .records-assistant-actions .quiet {
@@ -1123,7 +1107,7 @@ body.keyboard-open .records-entry-drawer {
   align-items: center;
   gap: 7px;
   padding: 8px;
-  border: 1px solid rgba(91, 127, 109, 0.22);
+  border: 1px solid rgba(117, 168, 142, 0.22);
   border-radius: 10px;
   background: rgba(242, 250, 245, 0.82);
   color: var(--sage-dark);
@@ -1151,7 +1135,7 @@ body.keyboard-open .records-entry-drawer {
 .records-assistant-pending-card button {
   min-height: 30px;
   padding: 0 8px;
-  border: 1px solid rgba(91, 127, 109, 0.26);
+  border: 1px solid rgba(117, 168, 142, 0.26);
   border-radius: 8px;
   background: #fffdf8;
   color: var(--sage-dark);
@@ -1404,7 +1388,6 @@ body.keyboard-open .records-assistant-composer {
   border-color: rgba(94, 143, 121, 0.44);
   background: rgba(103, 158, 127, 0.16);
   color: #335e50;
-  box-shadow: inset 0 0 0 1px rgba(94, 143, 121, 0.12);
 }
 
 .manual-time-presets {
@@ -1543,7 +1526,7 @@ body.keyboard-open .records-assistant-composer {
   border-radius: 8px;
   background:
     linear-gradient(rgba(255, 253, 250, 0.72), rgba(255, 253, 250, 0.72)),
-    linear-gradient(90deg, rgba(91, 127, 109, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(117, 168, 142, 0.05) 1px, transparent 1px),
     linear-gradient(rgba(88, 127, 168, 0.05) 1px, transparent 1px);
   background-size: auto, 26px 26px, 26px 26px;
   -webkit-overflow-scrolling: touch;
@@ -1554,17 +1537,17 @@ body.keyboard-open .records-assistant-composer {
   display: block;
   margin: 2px auto 10px;
   padding: 6px 16px;
-  border: 1px solid rgba(91, 127, 109, 0.28);
+  border: 1px solid rgba(117, 168, 142, 0.28);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.82);
-  color: #5b7f6d;
+  color: #75a88e;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .chat-history-more:active {
-  background: rgba(91, 127, 109, 0.12);
+  background: rgba(117, 168, 142, 0.12);
 }
 
 .message {
@@ -1709,7 +1692,7 @@ body.keyboard-open .records-assistant-composer {
   border: 1px solid rgba(124, 146, 166, 0.34);
   border-radius: 8px;
   outline: none;
-  background: linear-gradient(180deg, #fff, #f8fbff);
+  background: #f8fbff;
   color: var(--ink);
   font-size: 15px;
   font-weight: 700;
@@ -1765,10 +1748,6 @@ body.keyboard-open .records-assistant-composer {
   color: #17436f;
   border-color: rgba(72, 145, 255, 0.9);
   background: #f4f9ff;
-  box-shadow:
-    0 0 calc(34px + var(--voice-level) * 64px) rgba(72, 145, 255, calc(0.36 + var(--voice-level) * 0.42)),
-    0 12px calc(22px + var(--voice-level) * 38px) rgba(72, 145, 255, calc(0.18 + var(--voice-level) * 0.26)),
-    inset 0 0 calc(18px + var(--voice-level) * 34px) rgba(72, 145, 255, calc(0.16 + var(--voice-level) * 0.24));
   transform: scale(calc(1 + var(--voice-level) * 0.045));
 }
 
@@ -1781,7 +1760,6 @@ body.keyboard-open .records-assistant-composer {
   color: #9b344a;
   border-color: rgba(169, 85, 104, 0.55);
   background: #fff7f8;
-  box-shadow: 0 10px 22px rgba(169, 85, 104, 0.12);
   transform: scale(0.985);
 }
 
@@ -2264,7 +2242,7 @@ body.keyboard-open .records-assistant-composer {
 
 .expense-attachment-thumb svg {
   padding: 7px;
-  background: rgba(91, 127, 109, 0.12);
+  background: rgba(117, 168, 142, 0.12);
 }
 
 .expense-item > strong {
@@ -2693,7 +2671,6 @@ body.keyboard-open .expense-optional-fields {
 .album-category-row button.active {
   color: #2f5e4d;
   background: #e9f5ee;
-  box-shadow: 0 6px 14px rgba(90, 132, 112, 0.12);
 }
 
 .album-category-row {
@@ -3195,16 +3172,13 @@ body.keyboard-open .expense-optional-fields {
   margin: 8px 0 4px;
   min-height: 68px;
   padding: 11px 12px;
-  border: 1px solid rgba(91, 127, 109, 0.28);
+  border: 1px solid rgba(117, 168, 142, 0.28);
   border-radius: 12px;
-  background:
-    linear-gradient(135deg, rgba(239, 249, 241, 0.98), rgba(255, 250, 232, 0.9)),
-    #f7fbf4;
+  background: #f7fbf4;
   color: var(--sage-dark);
   cursor: pointer;
   text-align: left;
-  box-shadow: 0 12px 26px rgba(77, 126, 103, 0.12);
-  transition: transform 140ms ease, box-shadow 140ms ease;
+  transition: transform 140ms ease;
 }
 
 .ledger-manual-cta::after {
@@ -3217,12 +3191,11 @@ body.keyboard-open .expense-optional-fields {
   background:
     linear-gradient(#fffdf8, #fffdf8) center / 13px 2px no-repeat,
     linear-gradient(#fffdf8, #fffdf8) center / 2px 13px no-repeat,
-    rgba(91, 127, 109, 0.86);
+    rgba(117, 168, 142, 0.86);
 }
 
 .ledger-manual-cta:active {
   transform: translateY(1px) scale(0.99);
-  box-shadow: 0 8px 18px rgba(77, 126, 103, 0.12);
 }
 
 .ledger-manual-cta > span {
@@ -3232,7 +3205,7 @@ body.keyboard-open .expense-optional-fields {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: rgba(91, 127, 109, 0.12);
+  background: rgba(117, 168, 142, 0.12);
   color: var(--sage-dark);
 }
 
@@ -3794,9 +3767,9 @@ body.keyboard-open .expense-optional-fields {
   align-items: center;
   min-height: 30px;
   padding: 0 10px;
-  border: 1px solid rgba(91, 127, 109, 0.2);
+  border: 1px solid rgba(117, 168, 142, 0.2);
   border-radius: 999px;
-  background: rgba(91, 127, 109, 0.08);
+  background: rgba(117, 168, 142, 0.08);
   color: var(--sage-dark);
   font-size: 13px;
 }
@@ -3808,7 +3781,7 @@ body.keyboard-open .expense-optional-fields {
   gap: 10px;
   width: 100%;
   padding: 12px;
-  border: 1px solid rgba(91, 127, 109, 0.18);
+  border: 1px solid rgba(117, 168, 142, 0.18);
   border-radius: 12px;
   background: rgba(248, 253, 249, 0.92);
   color: var(--ink);
@@ -3822,7 +3795,7 @@ body.keyboard-open .expense-optional-fields {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: rgba(91, 127, 109, 0.1);
+  background: rgba(117, 168, 142, 0.1);
   color: var(--sage-dark);
 }
 
@@ -3980,7 +3953,7 @@ body.keyboard-open .expense-optional-fields {
   align-items: start;
   gap: 8px;
   padding: 9px;
-  border: 1px solid rgba(91, 127, 109, 0.3);
+  border: 1px solid rgba(117, 168, 142, 0.3);
   border-radius: 8px;
   background: #eef6f0;
   color: var(--sage-dark);
@@ -4020,7 +3993,7 @@ body.keyboard-open .expense-optional-fields {
 .auto-effect-card button {
   min-height: 32px;
   padding: 0 10px;
-  border: 1px solid rgba(91, 127, 109, 0.34);
+  border: 1px solid rgba(117, 168, 142, 0.34);
   border-radius: 8px;
   background: #fff;
   color: var(--sage-dark);
@@ -4308,7 +4281,7 @@ body.keyboard-open .expense-optional-fields {
   padding: 10px;
   border: 1px solid rgba(223, 227, 221, 0.82);
   border-radius: 8px;
-  background: rgba(91, 127, 109, 0.08);
+  background: rgba(117, 168, 142, 0.08);
 }
 
 .trend-metric-card header {
@@ -4473,7 +4446,6 @@ body.keyboard-open .expense-optional-fields {
   border: 1px solid rgba(255, 255, 255, 0.75);
   border-radius: 4px;
   background: rgba(234, 223, 208, 0.48);
-  box-shadow: inset 0 1px 3px rgba(106, 78, 48, 0.08);
 }
 
 .daily-segment {
